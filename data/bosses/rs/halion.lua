@@ -21,6 +21,7 @@ ns.bossPhases[HALION] = {
     },
 }
 ns.summaries[HALION] = {
+    deps = { tankHits = { "Рассекающий удар" } },
     cureLabels = SIDE,
     cureNote = "sum.b.rs.curednote",
     badges = {

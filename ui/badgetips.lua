@@ -52,6 +52,7 @@ end
 local function Dec(v, digits)
     return (format("%." .. digits .. "f", v):gsub("%.", ","))
 end
+Tips.Dec = Dec
 local VERDICT = { red = "sum.mc.on", green = "sum.mc.off", yellow = "sum.mc.maybe" }
 local TONE = { red = "bad", green = "good" }
 local function Control(out, c, base)
@@ -200,9 +201,26 @@ local function Buffs(st, def)
     if pulls > 0 then Put(out, "note", T("sum.tip.pullnote")) end
     return out
 end
+local function Shed(st, def)
+    local out = {}
+    Head(out, T(def.tip))
+    Put(out, "text", ns.Penalties.ShedText(st.hangs, true))
+    for k = 1, min(TIMES, #st.hangs) do
+        local h = st.hangs[k]
+        local how = T("sum.tt.shed." .. tostring(h.off))
+        if h.off == "shed" and h.by then how = how .. ": " .. (ns.L["sum.shed.by." .. h.by] or h.by) end
+        local tone = h.off == "shed" and "warn" or (h.off == "full" and "bad" or "dim")
+        Put(out, "sub", Clock(max(0, h.t)), format(T("sum.tt.shed.sec"), floor(h.dur + 0.5), h.full), how, tone)
+    end
+    if #st.hangs > TIMES then Put(out, "sub", (format(T("sum.tip.more"), #st.hangs - TIMES):gsub("^%s+", ""))) end
+    Put(out, "sep")
+    Put(out, "note", T("sum.tip.shednote"))
+    return out
+end
 function Tips.Badge(st, def)
     local kind = def.kind
     if kind == "given" or kind == "got" then return Buffs(st, def) end
+    if def.shed and st.hangs and ns.Penalties then return Shed(st, def) end
     if ns.ActionTips and ns.ActionTips[kind] then return ns.ActionTips[kind](st, def) end
     local out = {}
     Head(out, T(def.tip))
@@ -380,6 +398,8 @@ function Tips.Verdict(d)
         text = format(T(key), ReadyName(d) or "?")
     elseif why == "late" then
         text = format(T(key), react, ReadyName(d) or "?")
+    elseif why == "dep" and ns.DeathDeps then
+        text = ns.DeathDeps.Text(d)
     else
         text = T("sum.dg.nodmg")
     end
@@ -387,6 +407,7 @@ function Tips.Verdict(d)
         text = text .. format(T(d.late and "sum.dg.alsolate" or "sum.dg.also"), ReadyName(d))
     end
     if d.mass and why ~= "wave" and why ~= "wavefast" and why ~= "waverule" then text = text .. T("sum.dg.massmark") end
+    if d.dep and why ~= "dep" and why ~= "mc" and ns.DeathDeps then text = text .. "; " .. ns.DeathDeps.Text(d) end
     return text
 end
 function Tips.Death(p, fight)
@@ -395,7 +416,7 @@ function Tips.Death(p, fight)
     local counted, worst = ns.DeathGrade.Skull(p)
     Put(out, "row", T("sum.tt.count"), tostring(counted), nil, GRADE_TONE[worst or ""])
     if p.deaths > counted then Put(out, "row", T("sum.dg.tailn"), tostring(p.deaths - counted), nil, "dim") end
-    local tail, mass = false, false
+    local tail, mass, dep = false, false, false
     for k = 1, min(TIMES, #p.deathInfo) do
         local d = p.deathInfo[k]
         local killer = d.killer
@@ -409,6 +430,7 @@ function Tips.Death(p, fight)
         if p.role == "tank" then Guards(out, p, d, fight.from) end
         tail = tail or d.tail == true
         mass = mass or d.mass == true
+        dep = dep or d.why == "dep"
     end
     if #p.deathInfo > TIMES then
         Put(out, "sub", (format(T("sum.tip.more"), #p.deathInfo - TIMES):gsub("^%s+", "")))
@@ -428,6 +450,7 @@ function Tips.Death(p, fight)
     if mcN > 0 then Put(out, "note", T("sum.mc.died.note")) end
     if tail then Put(out, "note", T("sum.dg.tailnote")) end
     if mass then Put(out, "note", T("sum.dg.massnote")) end
+    if dep then Put(out, "note", T("sum.dd.note")) end
     if scripted then Put(out, "note", T("sum.b.scripted")) end
     Put(out, "note", T("sum.dg.note"))
     return out
@@ -441,6 +464,16 @@ function Tips.Ready(r, fight)
     Put(out, "note", T("sum.dg.readynote"))
     return out
 end
+function Tips.EarlyPull(v, pullAt)
+    local out = {}
+    Head(out, T("sum.pt.head"))
+    Put(out, "row", T("sum.pt.early"), format(T("sum.pt.sec"), Dec(v.early, 1)), nil, "warn")
+    Put(out, "row", T("sum.pt.timer"), format(T("sum.pt.by"), v.sec, v.who), nil, "dim")
+    Put(out, "row", T("sum.pt.set"), Clock(max(0, pullAt - v.t)), nil, "dim")
+    Put(out, "sep")
+    Put(out, "note", T("sum.pt.note"))
+    return out
+end
 function Tips.Blame(p, fight)
     local out = {}
     Head(out, T("sum.dg.blamehead"))
@@ -451,6 +484,17 @@ function Tips.Blame(p, fight)
     end
     Put(out, "sep")
     Put(out, "note", T("sum.dg.blamenote"))
+    return out
+end
+function Tips.Caused(list, fight)
+    local out = {}
+    Head(out, T("sum.dd.head"))
+    for k = 1, min(TIMES, #list) do
+        local c = list[k]
+        Put(out, "sub", Clock(c.t - fight.from), format(T("sum.dd.row"), c.victim, ns.DeathDeps.What(c.dep)))
+    end
+    Put(out, "sep")
+    Put(out, "note", T("sum.dd.note"))
     return out
 end
 function Tips.Duty(reason, have, need)
@@ -545,6 +589,9 @@ function Tips.Hit(fight, hit, reason)
     elseif info and info.need then
         local key = info.melee == nil and "sum.tt.needdps" or (info.melee and "sum.tt.needmelee" or "sum.tt.needranged")
         Put(out, "row", T(key), format(T("sum.tt.ofs"), Short(info.amount or 0), Short(info.need)), nil, "bad")
+    elseif info and info.early then
+        Put(out, "row", T("sum.pt.early"), format(T("sum.pt.sec"), Dec(info.early, 1)), nil, "warn")
+        Put(out, "row", T("sum.pt.timer"), format(T("sum.pt.by"), info.sec, info.setter or "?"), nil, "dim")
     end
     local parts = {}
     for k = 1, min(TIMES, #hit.events) do
@@ -552,13 +599,30 @@ function Tips.Hit(fight, hit, reason)
         parts[#parts + 1] = t and Clock(t - fight.from) or T("sum.gp.whole")
     end
     if #parts > 0 then Put(out, "row", T("sum.tt.when"), concat(parts, ", "), nil, "dim") end
+    for k = 1, rule.kind == "caused" and min(TIMES, #hit.events) or 0 do
+        local e = hit.events[k]
+        local dep = e.info and e.info.dep
+        if dep and ns.DeathDeps then
+            Put(out, "sub", Clock(e.t - fight.from), format(T("sum.dd.row"), e.info.victim or "?", ns.DeathDeps.What(dep)))
+        end
+    end
+    for k = 1, #(hit.shed or {}) do
+        local sh = hit.shed[k]
+        Put(out, "text", (#hit.shed > 1 and (sh.spell .. ": ") or "") .. ns.Penalties.ShedText(sh.hangs, true))
+    end
+    if hit.shed then
+        Put(out, "sep")
+        Put(out, "note", T("sum.tip.shednote"))
+    end
     local ctl = info and info.ctl
     for k = 1, ctl and #hit.events or 0 do
         local c = hit.events[k].info and hit.events[k].info.ctl
         if c then Control(out, c, fight.from) end
     end
-    if ctl or rule.unverified then Put(out, "sep") end
+    local yellow = info and info.early and info.grade == "yellow"
+    if ctl or rule.unverified or yellow then Put(out, "sep") end
     if ctl then Put(out, "note", T("sum.mc.note")) end
+    if yellow then Put(out, "note", T("sum.pt.gpnote")) end
     if rule.unverified then Put(out, "note", T("sum.gp.unverified")) end
     Put(out, "foot", T("sum.tt.foothit"))
     return out
@@ -571,6 +635,10 @@ function Tips.GPRow(item, reasonOf)
         local sum = 0
         for k = 1, #hit.events do sum = sum + hit.events[k].gp end
         Put(out, "row", reasonOf(hit.rule), format(T("sum.tt.gp"), sum), format("x%d", #hit.events))
+        for k = 1, #(hit.shed or {}) do
+            Put(out, "sub", ns.Penalties.ShedText(hit.shed[k].hangs, true), nil, nil,
+                ns.Penalties.Grade(hit) == "yellow" and "warn" or nil)
+        end
     end
     Put(out, "sep")
     Put(out, "row", T("sum.tt.gptotal"), format(T("sum.tt.gp"), item.total))

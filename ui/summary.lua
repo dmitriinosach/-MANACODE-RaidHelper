@@ -153,11 +153,27 @@ local function Entries(p, s)
         list[#list + 1] = Replay({ icon = Icon(TRANQ_SPELL), count = tostring(#p.blame), verdict = worst,
             links = victims, lines = Tips.Blame(p, fight) }, p.blame[1].t)
     end
+    local caused = ns.DeathDeps and ns.DeathDeps.Caused(s, p) or {}
+    if #caused > 0 then
+        local victims, fired = {}, false
+        for k = 1, #caused do victims[k] = caused[k].victim end
+        for _, hit in ipairs(pens[p.name] or {}) do fired = fired or hit.rule.kind == "caused" end
+        local dep = caused[1].dep
+        list[#list + 1] = Replay({ icon = Icon(dep.spell and s.spellIds[dep.spell] or SKULL_ICON), count = tostring(#caused),
+            verdict = fired and "red" or "yellow", links = victims, lines = Tips.Caused(caused, fight),
+            proof = P and fired and Proof(p, P.ByKind("caused")) or nil }, caused[1].t)
+    end
     local mark = ns.MindCtl.Mark(p)
     if mark then
         list[#list + 1] = Replay({ icon = mark.armed and CTL_ICON or Icon(CTL_SPELL), count = tostring(mark.count),
             verdict = mark.verdict, links = #mark.kills > 0 and mark.kills or nil, lines = Tips.Control(p, fight),
             proof = P and Proof(p, P.ByKind("mcweapon")) }, First(p.ctl, "t"))
+    end
+    local early = ns.PullTimer and ns.PullTimer.EarlyOf(s, p.name)
+    if early then
+        list[#list + 1] = Replay({ icon = Icon(ns.pullTimer.icon), count = Tips.Dec(early.early, 1),
+            verdict = "yellow", lines = Tips.EarlyPull(early, s.pull.t),
+            proof = P and Proof(p, P.ByKind("earlypull")) }, s.pull.t)
     end
     local duties = ns.Penalties and ns.Penalties.Duties(s, fight, p) or {}
     local forced = {}
@@ -174,8 +190,9 @@ local function Entries(p, s)
     end
     local fired = {}
     for _, hit in ipairs(pens[p.name] or {}) do
-        for _, sp in ipairs(hit.rule.spells or {}) do fired[sp] = true end
-        if hit.rule.npc then fired[hit.rule.npc] = true end
+        local grade = ns.Penalties.Grade(hit)
+        for _, sp in ipairs(hit.rule.spells or {}) do fired[sp] = fired[sp] == "red" and "red" or grade end
+        if hit.rule.npc then fired[hit.rule.npc] = "red" end
     end
     for i = 1, #s.badges do
         local st = p.badges[i]
@@ -193,6 +210,14 @@ local function Entries(p, s)
                 text = format("%d/%d", st.hits, st.n)
                 grade = ns.Actions.Grade(st.n, st.hits, forced[i])
             end
+            if bd.shed and st.hangs then
+                local shed = 0
+                for k = 1, #st.hangs do
+                    if st.hangs[k].off == "shed" then shed = shed + 1 end
+                end
+                text = format("%d/%d", shed, #st.hangs)
+                grade = shed > 0 and "yellow" or nil
+            end
             local first = First(st.times)
             local linked = bd.kind == "killer" or bd.kind == "given" or bd.kind == "got"
                 or (bd.kind == "applied" and not bd.names) or LINKED[bd.kind] == true
@@ -207,8 +232,8 @@ local function Entries(p, s)
                 proof = ask,
                 count = text,
                 alert = alert,
-                verdict = Verdict(fired[bd.spell or bd.npc or ""] == true or bd.kind == "killer")
-                    or grade or st.grade or bd.grade,
+                verdict = Verdict(fired[bd.spell or bd.npc or ""] == "red" or bd.kind == "killer")
+                    or (fired[bd.spell or ""] == "yellow" and "yellow") or grade or st.grade or bd.grade,
                 links = linked and st.notes or nil,
                 arrow = ARROWS[bd.kind],
                 lines = Tips.Badge(st, bd) }, first and fight.from + first, bd.kind)
@@ -255,8 +280,25 @@ local function PullTotal(s, m)
     local who = pull.owner or (pull.pet and format(ns.T("tl.pull.pet"), pull.src)) or pull.src
     local full = pull.owner and format(ns.T("sum.pull.tipby"), who, how, pull.src)
         or format(ns.T("sum.pull.tip"), who, how)
-    m.subs = { format(ns.T("sum.pull.short"), pull.owner or pull.src) }
+    local early = pull.timer and pull.timer.early
+    local short = format(ns.T("sum.pull.short"), pull.owner or pull.src)
+    if early then short = short .. format(ns.T("sum.pull.early"), Tips.Dec(early, 1)) end
+    m.subs = { short }
     m.lines = { { kind = "head", left = m.title, right = m.value .. "  " .. m.sub }, { kind = "text", left = full } }
+    if pull.timer then
+        local key = early and "sum.pull.timerearly" or "sum.pull.timer"
+        m.lines[3] = { kind = "text", left = format(ns.T(key), pull.timer.sec, pull.timer.who, Tips.Dec(early or 0, 1)) }
+    end
+end
+local function WipeTotal(s, m)
+    local cause = ns.DeathDeps and ns.DeathDeps.FirstCause(s, fight, pens)
+    if not cause then return end
+    local at = Clock(max(0, cause.t - fight.from))
+    m.subs = m.subs or {}
+    m.subs[#m.subs + 1] = format(ns.T("sum.dd.firstshort"), cause.who, at)
+    m.lines = m.lines or { { kind = "head", left = m.title, right = m.value .. "  " .. m.sub } }
+    m.lines[#m.lines + 1] = { kind = "text", left = format(ns.T("sum.dd.first"), cause.text, cause.who, at) }
+    m.lines[#m.lines + 1] = { kind = "note", left = ns.T("sum.dd.firstnote") }
 end
 local function DrawStats(s, w)
     local sec = ns.Totals.Time(s)
@@ -278,7 +320,10 @@ local function DrawStats(s, w)
         local c = cells[i]
         local f = Stat(i)
         local m = { title = ns.T(c[1]), value = c[2], sub = c[3], color = c[4] }
-        if c[1] == "sum.s.result" then PullTotal(s, m) end
+        if c[1] == "sum.s.result" then
+            PullTotal(s, m)
+            WipeTotal(s, m)
+        end
         if c[1] == "sum.s.dps" or c[1] == "sum.s.hps" then m.lines = Tips.Combat(s, m.title, m.value) end
         if c[1] == "sum.s.dps" and ns.ExpectView and not fight.foreign then ns.ExpectView.Total(fight, s, m) end
         f:SetModel(m)

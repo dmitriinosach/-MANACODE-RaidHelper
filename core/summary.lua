@@ -15,6 +15,10 @@ local TAUNT_TAKEN_SHARE = 0.08
 local TANK_CASTS = 5
 local TANK_TAUNTS = 2
 local IMMUNE_WINDOW = 1.5
+local SHED_FULL = 20
+local SHED_RELINK = 0.3
+local SHED_SLACK = 1
+local SHED_DEATH = 1
 local HIT_GAP = 2
 local TOTEM_DISPEL_WINDOW = 0.5
 local RECENT = 10
@@ -557,7 +561,73 @@ local function Roles(s)
         end
     end
 end
+local function ShedAura(st, bd, sub, ts, id, from, im)
+    local list = st.hangs
+    local h = list and list[#list]
+    if sub == "SPELL_AURA_REMOVED" then
+        if h and not h.gone then
+            h.gone = ts
+            if im and math.abs(ts - im.t) <= IMMUNE_WINDOW then h.by = im.name end
+        end
+        return false
+    end
+    if sub ~= "SPELL_AURA_APPLIED" and sub ~= "SPELL_AURA_REFRESH" then return false end
+    local full = bd.shed[id or 0] or SHED_FULL
+    if h and (not h.gone or ts - h.gone <= SHED_RELINK) then
+        h.on, h.gone, h.by, h.full = ts, nil, nil, full
+        return false
+    end
+    if sub ~= "SPELL_AURA_APPLIED" then return false end
+    list = list or {}
+    st.hangs = list
+    list[#list + 1] = { t = ts - from, on = ts, full = full }
+    return true
+end
+local function ShedBy(p, badges, ts, name)
+    for i = 1, #badges do
+        local list = badges[i].shed and p.badges[i].hangs
+        local h = list and list[#list]
+        if h and h.gone and not h.by and math.abs(ts - h.gone) <= IMMUNE_WINDOW then h.by = name end
+    end
+end
+local function DiedNear(list, t)
+    for i = 1, #list do
+        if math.abs(list[i] - t) <= SHED_DEATH then return true end
+    end
+    return false
+end
+local function Forgive(list, a, b)
+    for i = #(list or {}), 1, -1 do
+        if list[i] >= a - SHED_RELINK and list[i] <= b + SHED_RELINK then table.remove(list, i) end
+    end
+end
+local function ShedClose(s, fight)
+    for i = 1, #s.badges do
+        local bd = s.badges[i]
+        for k = 1, bd.shed and #s.players or 0 do
+            local p = s.players[k]
+            local list = p.badges[i].hangs or {}
+            for j = 1, #list do
+                local h = list[j]
+                local off = h.gone and h.gone < fight.to - SHED_RELINK and h.gone or nil
+                h.dur = math.max(0, (off or fight.to) - (fight.from + h.t))
+                if not off then
+                    h.off = "end"
+                elseif DiedNear(p.deathAt, off) then
+                    h.off = "died"
+                elseif off < h.on + h.full - SHED_SLACK then
+                    h.off = "shed"
+                    Forgive(p.hits[bd.spell], fight.from + h.t, off)
+                else
+                    h.off = "full"
+                end
+                h.on, h.gone = nil, nil
+            end
+        end
+    end
+end
 local function Finish(s, fight, hpLines)
+    ShedClose(s, fight)
     for i = 1, #s.blocks do
         local b = s.blocks[i]
         if b.def.kind == "casts" then b.casts = math.max(b.starts, b.done + b.total) end
@@ -852,6 +922,8 @@ local function Build(fight)
     local useful = s.useful
     local live = s.live
     local gw = s.gw
+    local dd = ns.DeathDeps and ns.DeathDeps.Begin(fight, def, s)
+    s.dd = dd
     local immune = ns.immunities or {}
     local owners, lastImmune, chasers, shields, blasts = {}, {}, {}, {}, {}
     local totemNames, cleared = {}, {}
@@ -925,6 +997,7 @@ local function Build(fight)
         if dstName and sub:find("SPELL_AURA_", 1, true) then
             ns.Totals.Aura(tt, ts, sub, srcGUID, srcName, srcFlags, dstName, a1, a2)
         end
+        if sub == "FW_PULLT" then ns.PullTimer.Feed(s, ts, srcName, a1) end
         if sub == "FW_ACH" and ts >= fight.from and ts <= to then
             Earned(s, byName, tonumber(a1), srcName, ts)
             if ts <= fight.to then ns.RaidPart.Got(rp, tonumber(a1), srcName, ts) end
@@ -934,6 +1007,7 @@ local function Build(fight)
             if gw.names[a2] and (sub == "SPELL_AURA_APPLIED" or sub == "SPELL_AURA_REMOVED") then
                 ns.DeathGrade.Aura(gw, byName, ts, sub, dstGUID, dstName, a2)
             end
+            if dd and dd.subs[sub] then ns.DeathDeps.Feed(dd, ts, sub, srcName, dstName, a1, a2, a5) end
             if sub == "FW_EMOTE" and ts >= fight.from and ts <= fight.to and type(a1) == "string" then
                 local ep = dstName and byName[dstName]
                 if ep then
@@ -1216,6 +1290,7 @@ local function Build(fight)
                 end
                 if dst and sub == "SPELL_AURA_APPLIED" and a2 and immune[a2] then
                     lastImmune[dstName] = { t = ts, name = a2 }
+                    ShedBy(dst, badges, ts, a2)
                 end
                 local ch = swing and dst and srcGUID and chasers[srcGUID]
                 if ch and not ch.victim then
@@ -1232,16 +1307,14 @@ local function Build(fight)
                     local bd = badges[i]
                     if bd.kind == "aura" and dst and a2 == bd.spell then
                         local st = dst.badges[i]
-                        if sub == "SPELL_AURA_APPLIED" then
+                        local new = sub == "SPELL_AURA_APPLIED"
+                        if bd.shed then
+                            new = ShedAura(st, bd, sub, ts, tonumber(a1), fight.from, lastImmune[dstName])
+                        end
+                        if new then
                             st.n = st.n + 1
                             st.times[#st.times + 1] = ts - fight.from
                             s.icons[i] = s.icons[i] or tonumber(a1)
-                        elseif sub == "SPELL_AURA_REMOVED" and bd.early then
-                            local im = lastImmune[dstName]
-                            if im and math.abs(ts - im.t) <= IMMUNE_WINDOW then
-                                st.cleansed = st.cleansed + 1
-                                st.notes[#st.notes + 1] = im.name
-                            end
                         end
                     elseif bd.kind == "ticks" and dst and a2 == bd.spell and sub:find("PERIODIC", 1, true) then
                         local st = dst.badges[i]
@@ -1338,12 +1411,14 @@ local function Build(fight)
     GunEnd(s, fight)
     if track then s.phases = ns.Phases.Done(fight, track) end
     if ctl then ns.MindCtl.Finish(ctl, s, fight.to) end
+    if ns.PullTimer then ns.PullTimer.Judge(s) end
     ns.Totals.Finish(tt, s)
     Finish(s, fight, hpLines)
     s.rp = ns.RaidPart.Close(rp, s.players)
     return s
 end
 Summary.Build = Build
+Summary.Shed = { Aura = ShedAura, By = ShedBy, Close = ShedClose }
 local function JobKey(fight)
     local key = running[fight]
     if not key then

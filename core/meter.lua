@@ -8,6 +8,7 @@ local FRIENDLY = 0x10
 local SPELL_DMG = 1
 local SWING_DMG = 2
 local HEAL = 3
+local CURVE_MAX = 64
 local KIND = {
     SWING_DAMAGE = SWING_DMG,
     RANGE_DAMAGE = SPELL_DMG,
@@ -18,9 +19,9 @@ local KIND = {
     SPELL_HEAL = HEAL,
     SPELL_PERIODIC_HEAL = HEAL,
 }
-local Meter = { dmg = {}, heal = {} }
+local Meter = { dmg = {}, heal = {}, curve = {} }
 ns.Meter = Meter
-local dmg, heal = Meter.dmg, Meter.heal
+local dmg, heal, curve = Meter.dmg, Meter.heal, Meter.curve
 for i = 1, WINDOW do
     dmg[i], heal[i] = 0, 0
 end
@@ -35,6 +36,7 @@ local fighting = false
 local fightAt, fightDur = 0, 0
 local fightDmg, fightHeal = 0, 0
 local silence = 0
+local curveStep, curveTick = 1, 0
 local frame = CreateFrame("Frame")
 frame:Hide()
 local seenAll = 0
@@ -56,8 +58,14 @@ end
 function Meter.Fighting()
     return fighting
 end
+function Meter.FightTime()
+    return fighting and (GetTime() - fightAt) or fightDur
+end
+function Meter.CurveStep()
+    return curveStep
+end
 function Meter.Rates()
-    local dur = fighting and (GetTime() - fightAt) or fightDur
+    local dur = Meter.FightTime()
     if dur < 1 then dur = 1 end
     return fightDmg / dur, fightHeal / dur
 end
@@ -75,10 +83,29 @@ local function Amount(v)
     if type(v) == "number" then return v end
     return tonumber(v) or 0
 end
+local function ClearCurve()
+    for i = #curve, 1, -1 do curve[i] = nil end
+    curveStep, curveTick = 1, 0
+end
 local function FightStart()
     fighting = true
     fightAt = GetTime()
     fightDmg, fightHeal = 0, 0
+    ClearCurve()
+end
+local function StepCurve()
+    curveTick = curveTick + 1
+    if curveTick < curveStep then return end
+    curveTick = 0
+    local dur = GetTime() - fightAt
+    if dur < 1 then dur = 1 end
+    local n = #curve + 1
+    curve[n] = fightDmg / dur
+    if n < CURVE_MAX then return end
+    local half = CURVE_MAX / 2
+    for i = 1, half do curve[i] = curve[i * 2] end
+    for i = half + 1, n do curve[i] = nil end
+    curveStep = curveStep * 2
 end
 frame:SetScript("OnEvent", function(_, _, _, sub, _, _, srcFlags, _, _, dstFlags, a1, _, _, a4, a5)
     local kind = KIND[sub]
@@ -121,6 +148,7 @@ local function Advance()
     inRaid = GetNumRaidMembers() > 0
     affil = inRaid and AFFIL_RAID or AFFIL_MINE
     if fighting then
+        StepCurve()
         silence = silence + 1
         if silence >= IDLE_END and not UnitAffectingCombat("player") then
             fighting = false
@@ -141,6 +169,7 @@ function Meter.Reset()
     end
     slot, dmgSum, healSum, span, acc = 1, 0, 0, 0, 0
     fighting, fightAt, fightDur, fightDmg, fightHeal, silence = false, 0, 0, 0, 0, 0
+    ClearCurve()
     inRaid = GetNumRaidMembers() > 0
     affil = inRaid and AFFIL_RAID or AFFIL_MINE
 end

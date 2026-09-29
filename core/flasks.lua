@@ -127,7 +127,7 @@ local function Count(j, name)
     for i = 1, #j.list do
         local e = j.list[i]
         if e.n == name then
-            n = n + 1
+            n = n + (e.c or 1)
             if not last or e.t > last then last = e.t end
         end
     end
@@ -139,6 +139,18 @@ function Flasks.KindOf(role, class)
     if role == "melee" then return "ap" end
     if role == "ranged" then return class == "HUNTER" and "ap" or "sp" end
     return nil
+end
+function Flasks.UnitOf(name)
+    for i = 1, GetNumRaidMembers() or 0 do
+        local unit = "raid" .. i
+        if UnitName(unit) == name then return unit end
+    end
+    for i = 1, GetNumPartyMembers() or 0 do
+        local unit = "party" .. i
+        if UnitName(unit) == name then return unit end
+    end
+    if UnitName("npc") == name then return "npc" end
+    return name
 end
 function Flasks.ClassOf(name)
     local _, token = UnitClass(name)
@@ -249,8 +261,9 @@ local function AuraIndex()
 end
 function Flasks.ScanAura(name)
     AuraIndex()
+    local unit = Flasks.UnitOf(name)
     for i = 1, AURAS do
-        local aura, _, _, _, _, dur, _, _, _, _, id = UnitAura(name, i, "HELPFUL")
+        local aura, _, _, _, _, dur, _, _, _, _, id = UnitAura(unit, i, "HELPFUL")
         if not aura then break end
         local hit = byAura[aura]
         if (id and ns.flaskAlchemy[id]) or hit == true or (hit and dur and dur >= ALCH_DUR) then
@@ -293,7 +306,7 @@ function Flasks.Decide(name, now, stock)
     local j = Flasks.Journal(now)
     local n, last = Count(j, name)
     local norm, dur = Flasks.Norm(name)
-    local plan = { name = name, give = false, n = n, norm = norm, dur = dur, alch = dur > 1 }
+    local plan = { name = name, give = false, n = n, norm = norm, limit = Opt().limit, dur = dur, alch = dur > 1 }
     plan.kind, plan.src = Flasks.Role(name)
     if plan.kind then plan.item = Flasks.Item(plan.kind) end
     if n >= norm then
@@ -325,24 +338,26 @@ function Flasks.Decide(name, now, stock)
     plan.give = true
     return plan
 end
-function Flasks.Record(name, item, kind, now, forced)
+function Flasks.Record(name, item, kind, now, forced, count)
     now = now or time()
     local j = Flasks.Journal(now)
-    j.list[#j.list + 1] = { n = name, i = item.id, k = kind, t = now, f = forced or nil }
+    local c = count and count > 1 and count or nil
+    j.list[#j.list + 1] = { n = name, i = item.id, k = kind, t = now, f = forced or nil, c = c }
     j.last = now
     Notify()
 end
 function Flasks.Stats()
     local j = Flasks.Journal()
-    local seen, people = {}, 0
+    local seen, people, n = {}, 0, 0
     for i = 1, #j.list do
         local who = j.list[i].n
+        n = n + (j.list[i].c or 1)
         if not seen[who] then
             seen[who] = true
             people = people + 1
         end
     end
-    return #j.list, people
+    return n, people
 end
 function Flasks.Rows()
     local j = Flasks.Journal()
@@ -355,8 +370,9 @@ function Flasks.Rows()
             byName[e.n] = r
             rows[#rows + 1] = r
         end
-        r.n = r.n + 1
-        r.items[e.i] = (r.items[e.i] or 0) + 1
+        local c = e.c or 1
+        r.n = r.n + c
+        r.items[e.i] = (r.items[e.i] or 0) + c
         r.last = max(r.last, e.t)
     end
     tsort(rows, function(a, b)
@@ -371,7 +387,7 @@ function Flasks.Given(raid)
     if raid and not Same(j.raid, raid) then return out end
     for i = 1, #j.list do
         local id = j.list[i].i
-        out[id] = (out[id] or 0) + 1
+        out[id] = (out[id] or 0) + (j.list[i].c or 1)
     end
     return out
 end

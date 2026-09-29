@@ -392,6 +392,8 @@ function DG.Run(s, fight, lines)
     local ctx = { s = s, gw = gw, lines = lines, rules = Rules(fight), marked = Marked(s),
                   noReset = NoReset(s) }
     for i = 1, #list do Judge(ctx, list[i].p, list[i].d) end
+    if ns.DeathDeps then ns.DeathDeps.Run(s, fight) end
+    s.dd = nil
     Clean(s)
 end
 function DG.Worse(a, b)

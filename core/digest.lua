@@ -3,7 +3,7 @@ local floor = math.floor
 local abs = math.abs
 local format = string.format
 local tsort = table.sort
-local TOTALS_VERSION = 3
+local TOTALS_VERSION = 6
 local TRASH_VERSION = 1
 local ABIL_KEEP = 10
 local TRASH_KEY = "#trash"
@@ -16,7 +16,7 @@ local ROOTS = { "summaries", "buffsGiven", "actions", "achDefs", "bossPhases", "
                 "consumeEnchant", "vehicles", "fixates", "taunts", "tankSpells", "scriptedKills", "bossParts" }
 local COMMON = { "buffsGiven", "actions", "immunities", "defensives", "shieldSpells", "shieldEat", "shieldPassive",
                  "consumeCast", "consumeCreate", "consumeEnchant", "vehicles", "fixates", "taunts", "tankSpells",
-                 "scriptedKills", "bosses", "bossParts", "bossWin", "bossSurvive" }
+                 "scriptedKills", "bosses", "bossParts", "bossWin", "bossSurvive", "pullTimer", "deathDeps" }
 local DROP = { byName = true, track = true, set = true }
 local STAT_ZERO = { n = true, hits = true, amount = true, cleansed = true, max = true }
 local STAT_LIST = { times = true, notes = true }

@@ -192,7 +192,7 @@ local function PlayerCost(pr, p)
     local c, miss = 0, 0
     for item, n in pairs(p.used) do
         local sp = pr.by[item]
-        if sp and not sp.free then
+        if sp and not sp.free and DRUNK[sp.cat] then
             local each = pr.c[item]
             if each then c = c + each * n else miss = miss + n end
         end

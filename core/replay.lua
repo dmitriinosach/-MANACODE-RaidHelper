@@ -25,6 +25,8 @@ local Z_MIN = 0.15
 local PERSP_MAX = 0.8
 local FIT_SAMPLES = 32
 local LERP_GAP = 1.5
+local MEND_GAP = 0.5
+local DEATH_SNAP = 1
 local SNAP = 0.25
 local BOSS_GAP = 3
 local LEAD_HOLD = 10
@@ -243,6 +245,73 @@ local function FillTracks(fight, frames, level, byName, tracks, deaths)
         end
     end
 end
+local function Moved(tr, i)
+    return tr.x[i] ~= tr.x[i - 1] or tr.y[i] ~= tr.y[i - 1]
+end
+local function Mend(tr)
+    local X, Y, T, old = tr.x, tr.y, tr.t, tr.old
+    local n, fixed = tr.n, 0
+    local i = 3
+    while i < n do
+        if X[i] >= 0 and X[i - 1] >= 0 and X[i - 2] >= 0 and not old[i] and not Moved(tr, i) and Moved(tr, i - 1) then
+            local j = i
+            while j < n and X[j + 1] == X[i] and Y[j + 1] == Y[i] do j = j + 1 end
+            local a, b = i - 1, j + 1
+            if b <= n and X[b] >= 0 and not old[b] and T[b] - T[a] <= MEND_GAP and T[b] > T[a] then
+                for m = i, j do
+                    local k = (T[m] - T[a]) / (T[b] - T[a])
+                    X[m], Y[m] = X[a] + (X[b] - X[a]) * k, Y[a] + (Y[b] - Y[a]) * k
+                    fixed = fixed + 1
+                end
+            end
+            i = j + 1
+        else
+            i = i + 1
+        end
+    end
+    return fixed
+end
+local function MarkOrder(a, b)
+    if a.t ~= b.t then return a.t < b.t end
+    return a.name < b.name
+end
+local function SnapOne(scene, tr, ts)
+    local T, dz = tr.t, tr.dz
+    local i = Bisect(T, tr.n, ts)
+    if i >= 1 and dz[i] > 0 then return false end
+    local j0, jd = i + 1, nil
+    for j = j0, tr.n do
+        if T[j] > ts + DEATH_SNAP then break end
+        if dz[j] > 0 then
+            jd = j
+            break
+        end
+    end
+    if not jd or T[jd] ~= dz[jd] then return false end
+    local d0 = dz[jd]
+    for m = j0, jd - 1 do dz[m] = ts end
+    local m = jd
+    while m <= tr.n and dz[m] == d0 do
+        dz[m] = ts
+        m = m + 1
+    end
+    T[j0] = ts
+    local marks = scene.deaths
+    for q = 1, #marks do
+        if marks[q].name == tr.name and marks[q].t == d0 then marks[q].t = ts end
+    end
+    return true
+end
+function Replay.SnapDeaths(scene, ks, ts)
+    local done = 0
+    for i = 1, #ks do
+        local tr = scene.tracks[ks[i]]
+        if tr and SnapOne(scene, tr, ts[i]) then done = done + 1 end
+    end
+    if done > 0 then tsort(scene.deaths, MarkOrder) end
+    scene.snapped = done
+    return done
+end
 local function FillGaps(scene, frames)
     local ts, kinds, since, floors = {}, {}, {}, {}
     local n, prev, prevFloor = 0, false, nil
@@ -371,6 +440,9 @@ function Replay.Build(fight, frames)
     }
     ns.Jobs.Band(0.1, 0.6)
     FillTracks(fight, frames, level, {}, scene.tracks, scene.deaths)
+    local mended = 0
+    for k = 1, #scene.tracks do mended = mended + Mend(scene.tracks[k]) end
+    scene.mended = mended
     FillGaps(scene, frames)
     tsort(scene.tracks, TrackOrder)
     for k = 1, #scene.tracks do scene.states[k] = NewState() end

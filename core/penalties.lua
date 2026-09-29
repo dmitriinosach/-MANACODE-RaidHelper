@@ -1,5 +1,8 @@
 local _, ns = ...
 local floor = math.floor
+local format = string.format
+local concat = table.concat
+local tremove = table.remove
 local tsort = table.sort
 local tinsert = table.insert
 local DEFAULT = "spartans"
@@ -373,6 +376,56 @@ local function IsMelee(p)
     if p.class and RANGED_CLASS[p.class] then return false end
     return p.dmg > 0 and p.swingDmg / p.dmg >= MELEE_SHARE
 end
+function Penalties.Hangs(s, p, spell)
+    for i = 1, #(s.badges or {}) do
+        local bd = s.badges[i]
+        local st = bd.shed and bd.spell == spell and p.badges and p.badges[i]
+        local list = type(st) == "table" and st.hangs
+        if list and #list > 0 then return list end
+    end
+    return nil
+end
+local function ShedOf(rule, s, p)
+    if rule.kind ~= "hit" then return nil end
+    local out
+    for i = 1, #(rule.spells or {}) do
+        local list = Penalties.Hangs(s, p, rule.spells[i])
+        if list then
+            out = out or {}
+            out[#out + 1] = { spell = rule.spells[i], hangs = list }
+        end
+    end
+    return out
+end
+function Penalties.ShedText(list, whole)
+    local shed, full, by, seen, secs = 0, 0, {}, {}, {}
+    for i = 1, #list do
+        local h = list[i]
+        if h.off == "shed" then
+            shed = shed + 1
+            local name = h.by and (ns.L["sum.shed.by." .. h.by] or h.by)
+            if name and not seen[name] then
+                seen[name] = true
+                by[#by + 1] = name
+            end
+        end
+        local sec = tostring(floor((h.dur or 0) + 0.5))
+        secs[i] = format(ns.T(h.off == "died" and "sum.shed.died" or "sum.shed.sec"), sec)
+        if (h.full or 0) > full then full = h.full end
+    end
+    local last = tremove(secs)
+    local held = #secs > 0 and format(ns.T("sum.shed.and"), concat(secs, ", "), last) or last
+    local text = format(ns.T("sum.shed.text"), #list, shed, #by > 0 and format(" (%s)", concat(by, ", ")) or "",
+        held)
+    if whole and full > 0 then text = text .. format(ns.T("sum.shed.of"), full) end
+    return text
+end
+function Penalties.Grade(hit)
+    for k = 1, #hit.events do
+        if hit.events[k].grade ~= "yellow" then return "red" end
+    end
+    return #hit.events > 0 and "yellow" or "red"
+end
 local function Detect(rule, p, s, fight)
     local out = {}
     local kind = rule.kind
@@ -382,7 +435,8 @@ local function Detect(rule, p, s, fight)
         if kind == "anydeath" and not fight.killed then n = n - 1 end
         for i = 1, n do
             local d = p.deathInfo[i]
-            if not d.tail and (kind == "anydeath" or (not d.nogp and DeathMatch(rule, d))) then
+            local theirs = d.why == "dep"
+            if not d.tail and not theirs and (kind == "anydeath" or (not d.nogp and DeathMatch(rule, d))) then
                 out[#out + 1] = { t = d.t }
             end
         end
@@ -399,6 +453,9 @@ local function Detect(rule, p, s, fight)
             end
         end
         tsort(out, function(a, b) return a.t < b.t end)
+    elseif kind == "caused" then
+        local list = ns.DeathDeps and ns.DeathDeps.Caused(s, p, rule) or {}
+        for i = 1, #list do out[i] = { t = list[i].t, victim = list[i].victim, dep = list[i].dep } end
     elseif kind == "hit" then
         local times = {}
         for i = 1, #(rule.spells or {}) do
@@ -409,6 +466,16 @@ local function Detect(rule, p, s, fight)
         end
         local ep = Episodes(times, rule.gap or HIT_GAP)
         for i = 1, #ep do out[i] = { t = ep[i] } end
+        local sheds = ShedOf(rule, s, p)
+        for i = 1, #(sheds or {}) do
+            local list = sheds[i].hangs
+            for k = 1, #list do
+                if list[k].off == "shed" then
+                    out[#out + 1] = { t = fight.from + list[k].t, grade = "yellow", hang = list[k] }
+                end
+            end
+        end
+        if sheds then tsort(out, function(a, b) return a.t < b.t end) end
     elseif kind == "chased" then
         local list = p.chased[rule.npc] or {}
         for i = 1, #list do out[i] = { t = list[i] } end
@@ -439,6 +506,9 @@ local function Detect(rule, p, s, fight)
             local dps = p.dmg / (s.combat or s.dur)
             if dps < (rule.dps or 0) then out[1] = { t = nil, amount = dps, need = rule.dps } end
         end
+    elseif kind == "earlypull" then
+        local v = ns.PullTimer and ns.PullTimer.EarlyOf(s, p.name)
+        if v then out[1] = { t = s.pull.t, grade = "yellow", early = v.early, sec = v.sec, setter = v.who } end
     end
     return out
 end
@@ -452,6 +522,7 @@ local function RuleIcon(rule, s, p)
         return duty and duty.id or ICONS.manual
     end
     if rule.kind == "chased" then return s.spellIds[rule.npc] or ICONS.manual end
+    if rule.kind == "earlypull" then return ns.pullTimer and ns.pullTimer.icon or ICONS.manual end
     if rule.spells then
         for i = 1, #rule.spells do
             local id = s.spellIds[rule.spells[i]]
@@ -485,18 +556,22 @@ function Penalties.Evaluate(s, fight)
             end
             if #found > 0 then
                 if rule.mode == "once" then found = { found[1] } end
-                local events = {}
+                local events, nr, ny = {}, 0, 0
                 for k = 1, #found do
                     local f = found[k]
+                    local yellow = f.grade == "yellow"
+                    if yellow then ny = ny + 1 else nr = nr + 1 end
                     local gp = rule.gp or 0
-                    if rule.mode == "grow" then gp = gp + (rule.step or 0) * (k - 1) end
-                    local key = table.concat({ fk, p.name, rule.key, k }, "|")
-                    local bumped = bump[key] == true and rule.wipe ~= nil
-                    if bumped then gp = rule.wipe end
-                    events[k] = { key = key, t = f.t, gp = gp, bumped = bumped, info = f }
-                    if rule.firstGp and f.t and (not first or f.t < first.t) then first = events[k] end
+                    if rule.mode == "grow" then gp = gp + (rule.step or 0) * (nr - 1) end
+                    local key = table.concat({ fk, p.name, rule.key, yellow and ("y" .. ny) or nr }, "|")
+                    local bumped = bump[key] == true and (yellow or rule.wipe ~= nil)
+                    if bumped and not yellow then gp = rule.wipe end
+                    if yellow and not bumped then gp = 0 end
+                    events[k] = { key = key, t = f.t, gp = gp, bumped = bumped, info = f, grade = f.grade }
+                    if rule.firstGp and f.t and not yellow and (not first or f.t < first.t) then first = events[k] end
                 end
-                hits[#hits + 1] = { p = p, hit = { rule = rule, events = events, icon = RuleIcon(rule, s, p) } }
+                hits[#hits + 1] = { p = p, hit = { rule = rule, events = events, icon = RuleIcon(rule, s, p),
+                    shed = ShedOf(rule, s, p) } }
             end
         end
         if first and not first.bumped then first.gp = rule.firstGp end
@@ -544,6 +619,9 @@ function Penalties.RemoveManual(fight, name, key, eventKey)
 end
 function Penalties.Bump(key)
     Store().bump[key] = true
+end
+function Penalties.Unbump(key)
+    Store().bump[key] = nil
 end
 function Penalties.Reason(rule)
     if type(rule.reason) == "string" and rule.reason ~= "" then return rule.reason end

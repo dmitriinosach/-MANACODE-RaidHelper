@@ -3,7 +3,7 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 0.2.0-beta.1
+## Version: 0.2.0-beta.2
 ## X-Date: 2026-09-29
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
@@ -17,6 +17,7 @@ data\effect_defaults.lua
 data\phases.lua
 data\maps.lua
 data\summaries.lua
+data\deathdeps.lua
 data\replay.lua
 data\replayfeed.lua
 data\defensives.lua
@@ -41,10 +42,12 @@ data\bosses\toc\champions.lua
 data\bosses\toc\twins.lua
 data\bosses\toc\anubarak.lua
 data\penalties.lua
+data\pulltimer.lua
 data\actions.lua
 data\raidsummary.lua
 data\achievements\ulduar.lua
 data\achievements\toc.lua
+data\achievements\names.lua
 data\flasks.lua
 data\ranging.lua
 core\raid.lua
@@ -64,6 +67,7 @@ core\index.lua
 core\autorec.lua
 core\penalties.lua
 core\comm.lua
+core\pulltimer.lua
 core\gpguild.lua
 core\proof.lua
 core\mindctl.lua
@@ -76,6 +80,7 @@ core\codec.lua
 core\raidpart.lua
 core\summary.lua
 core\deathgrade.lua
+core\deathdeps.lua
 core\achievements.lua
 core\digest.lua
 core\fighttree.lua
@@ -92,6 +97,7 @@ core\ranging.lua
 core\deathpreview.lua
 core\share.lua
 core\flasks.lua
+core\flaskrole.lua
 core\flasktrade.lua
 ui\kit\themes.lua
 ui\kit\theme.lua

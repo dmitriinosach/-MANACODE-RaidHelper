@@ -2,6 +2,11 @@ local _, ns = ...
 ns.summaries["Король-лич"] = {
     death = { npc = "Шаркающий ужас", wave = "Ударная волна", frenzy = "Исступление", enrage = "Бешенство",
               tranq = "Усмиряющий выстрел" },
+    deps = {
+        dispel = { { spell = "Мертвящая чума", type = "Disease", dur = 15, hold = 5 } },
+        tanked = { "Шаркающий ужас" },
+        mechs = { { key = "valkyr", text = "sum.dd.m.valkyr", spells = { ns.EnvName("FALLING") }, ride = 8 } },
+    },
     stats = {
         { kind = "auras", label = "sum.s.harvest", spells = { "Жатва душ", "Великая жатва душ" }, gap = 10 },
     },

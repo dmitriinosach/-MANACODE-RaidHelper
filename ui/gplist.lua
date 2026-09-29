@@ -84,7 +84,9 @@ local function IssueOne(fight, item, issued, epgp)
     if reason == "" then reason = format("FailWatch: %s — %s", fight.boss, concat(labels, ", ")) end
     local ok = pcall(epgp.IncGPBy, epgp, item.name, reason:sub(1, 200), gp)
     if not ok then return false end
-    for e = 1, #item.events do issued[item.events[e].key] = true end
+    for e = 1, #item.events do
+        if item.events[e].gp > 0 then issued[item.events[e].key] = true end
+    end
     return true
 end
 function GPList.Issue(fight, batch)
@@ -120,7 +122,7 @@ local function HitEvents(hit, name)
     for k = 1, #hit.events do
         local ev = hit.events[k]
         out[k] = { key = ev.key, gp = ev.gp, reason = reason, t = ev.t, bumped = ev.bumped, name = name,
-            manual = ev.info and ev.info.manual or nil }
+            manual = ev.info and ev.info.manual or nil, grade = ev.grade }
     end
     return out
 end
@@ -150,13 +152,25 @@ local function EventMenu(fight, hit, name)
         local ev = events[k]
         local when = ev.t and Clock(ev.t - fight.from) or ns.T("sum.gp.whole")
         local done = issued[ev.key]
-        menu[#menu + 1] = {
-            text = format(ns.T(done and "sum.gp.itemdone" or "sum.gp.item"), when, ev.gp),
-            notCheckable = true,
-            disabled = done,
-            func = function() GPList.Issue(fight, { { name = name, events = { ev } } }) end,
-        }
-        if rule.wipe and not ev.bumped and not done then
+        if done or ev.gp > 0 then
+            menu[#menu + 1] = {
+                text = format(ns.T(done and "sum.gp.itemdone" or "sum.gp.item"), when, ev.gp),
+                notCheckable = true,
+                disabled = done,
+                func = function() GPList.Issue(fight, { { name = name, events = { ev } } }) end,
+            }
+        end
+        if ev.grade == "yellow" and not done then
+            menu[#menu + 1] = {
+                text = ev.bumped and format(ns.T("sum.gp.uncharge"), when)
+                    or format(ns.T("sum.gp.charge"), when, rule.gp or 0),
+                notCheckable = true,
+                func = function()
+                    if ev.bumped then ns.Penalties.Unbump(ev.key) else ns.Penalties.Bump(ev.key) end
+                    GPList.Changed()
+                end,
+            }
+        elseif rule.wipe and not ev.bumped and not done then
             menu[#menu + 1] = {
                 text = format(ns.T("sum.gp.bump"), when, rule.wipe),
                 notCheckable = true,
@@ -186,6 +200,21 @@ local function HitLines(fight, hit)
     local lines = ns.BadgeTips.Hit(fight, hit, ns.Penalties.Reason(hit.rule))
     if ns.ReplayLink then ns.ReplayLink.Tag(lines, fight, FirstAt(hit.events)) end
     return lines
+end
+function GPList.Note(item)
+    local list = {}
+    for h = 1, #item.hits do
+        local hit = item.hits[h]
+        for k = 1, #(hit.shed or {}) do list[#list + 1] = { hit = hit, hangs = hit.shed[k].hangs } end
+    end
+    if #list == 0 then return nil, false end
+    local parts, yellow = {}, true
+    for i = 1, #list do
+        local text = ns.Penalties.ShedText(list[i].hangs)
+        parts[i] = #list > 1 and (ns.Penalties.Reason(list[i].hit.rule) .. ": " .. text) or text
+        if ns.Penalties.Grade(list[i].hit) ~= "yellow" then yellow = false end
+    end
+    return concat(parts, "; "), yellow
 end
 local function Guards(p, hits)
     local out, by = {}, {}
@@ -281,6 +310,9 @@ local function Row(f, k)
     r.gp:SetPoint("RIGHT", -(L.btnw + L.proofw + (L.small and 6 or 14)), 0)
     r.gp:SetWidth(L.gpw)
     r.gp:SetJustifyH("RIGHT")
+    r.note = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.note:SetPoint("RIGHT", r.gp, "LEFT", -4, 0)
+    r.note:SetJustifyH("RIGHT")
     r.btn = ns.MakeButton(r, f.prefix .. k)
     r.btn:SetWidth(L.btnw)
     r.btn:SetHeight(L.rowh - 4)
@@ -324,7 +356,7 @@ local function FillRow(r, item, fight, icons)
             b:SetModel({
                 icon = Icon(hit.icon),
                 count = count,
-                verdict = "red",
+                verdict = ns.Penalties.Grade(hit),
                 pair = (kind == "death" or kind == "anydeath") and pair or nil,
                 lines = HitLines(fight, hit),
                 onClick = MarkClick,
@@ -351,12 +383,28 @@ local function FillRow(r, item, fight, icons)
         end
     end
     r.gp:SetText(format(ns.T(L.small and "gp.sum.short" or "sum.gp.sum"), item.total))
+    local note, yellow = GPList.Note(item)
+    local room = (icons - min(icons, nh + #guards)) * L.iconw - 4
+    if note and room >= L.iconw then
+        r.note:SetWidth(room)
+        r.note:SetText(note)
+        local c = ns.Badges.style.muted
+        if yellow then
+            r.note:SetTextColor(ns.Kit.Color("badge.yellow"))
+        else
+            r.note:SetTextColor(c[1], c[2], c[3])
+        end
+        r.note:Show()
+    else
+        r.note:SetText("")
+        r.note:Hide()
+    end
     r.btn.batch = { item }
     if item.pending > 0 then
         r.btn.text:SetText(ns.T("sum.gp.give"))
         r.btn:Enable()
     else
-        r.btn.text:SetText(ns.T("sum.gp.done"))
+        r.btn.text:SetText(ns.T(item.total > 0 and "sum.gp.done" or "sum.gp.give"))
         r.btn:Disable()
     end
     r.btn:Show()
@@ -394,6 +442,7 @@ local function Draw(self, fight, model, width, offset, slots)
         r.name:SetTextColor(muted[1], muted[2], muted[3])
         for i = 1, #r.icons do r.icons[i]:Hide() end
         r.gp:SetText("")
+        r.note:Hide()
         r.btn:Hide()
         if r.proof then
             r.proof.ask = nil

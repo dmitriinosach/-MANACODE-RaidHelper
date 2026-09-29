@@ -55,10 +55,11 @@ local function StatusText(s)
     if st == "placed" or st == "accepting" or st == "accepted" or st == "press" then
         return format(T("flask.st." .. st), item)
     end
-    if st == "wait" or st == "offer" or st == "stranger" or st == "combat" or st == "removed" then
+    if st == "wait" or st == "offer" or st == "stranger" or st == "combat" or st == "removed" or st == "split" then
         return T("flask.st." .. st)
     end
-    if st == "cursor" or st == "full" or st == "pick" then
+    if st == "many" then return format(T("flask.st.many"), s.many or 0) end
+    if st == "cursor" or st == "full" or st == "pick" or st == "nosplit" then
         return format(T("flask.put." .. st), F.ItemName(s.plan and s.plan.item))
     end
     if s.plan then return Trade.Reason(s.plan) end
@@ -183,7 +184,7 @@ function View.Refresh()
     local kind = s.kind or (p and p.kind)
     for k, b in pairs(kindBtn) do b:SetActive(k == kind) end
     local placed = s.item ~= nil
-    if p and not placed and p.item and s.status ~= "combat" and s.status ~= "stranger" then
+    if p and not placed and p.item and p.n < p.limit and s.status ~= "combat" and s.status ~= "stranger" then
         forceBtn:Enable()
     else
         forceBtn:Disable()

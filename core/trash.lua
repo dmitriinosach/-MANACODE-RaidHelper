@@ -152,12 +152,18 @@ end
 function Trash.Pull(seg, ts)
     seg.pull = ts
     local cutMs = floor((ts - RING - seg.t0) * 1000)
+    ns.RecCodec.Flush(seg)
     while ns.RecCodec.FrontOld(seg, cutMs) do
         live = live or Trash.Begin(seg.raid, seg.t0)
         Trash.FeedChunk(live, seg, ns.RecCodec.Shift(seg), deaths)
     end
-    Trim(seg, cutMs)
+    local old = ns.RecCodec.SplitFront(seg, cutMs)
+    if old then
+        live = live or Trash.Begin(seg.raid, seg.t0)
+        Trash.FeedChunk(live, seg, old, deaths)
+    end
     local first = ns.RecCodec.Head(seg.chunks[1] or (seg.buf and seg.buf[1]))
+    Trim(seg, first or cutMs)
     if first and first > 0 then ns.RecCodec.Rebase(seg, seg.t0 + first / 1000) end
 end
 function Trash.Close(seg)

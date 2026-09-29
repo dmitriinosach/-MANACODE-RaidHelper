@@ -78,9 +78,9 @@ function Ach.Def(key)
     return byKey[key]
 end
 function Ach.Info(id)
-    if not GetAchievementInfo then return nil, nil, nil, 0 end
-    local _, name, points, _, _, _, _, desc, _, icon = GetAchievementInfo(id)
-    return name, desc, icon, tonumber(points) or 0
+    local _, name, points, desc, icon
+    if GetAchievementInfo then _, name, points, _, _, _, _, desc, _, icon = GetAchievementInfo(id) end
+    return name or (ns.achNames and ns.achNames[id]), desc, icon, tonumber(points) or 0
 end
 local function Blame(st, name, t, v, note)
     local key = name or "#"

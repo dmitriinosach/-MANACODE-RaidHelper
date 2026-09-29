@@ -359,13 +359,16 @@ local function LastSegOf(f)
     return f.segs and f.segs[#f.segs] or f.seg
 end
 local function Announce(f, s)
+    local m = ns.GPList.Build(f, s)
+    if #m.items == 0 or m.pending <= 0 then
+        if Mini.IsShown() and follow then Mini.Refresh() end
+        return
+    end
+    if ns.Panel and ns.Panel.SetAlert and not Mini.IsShown() then ns.Panel.SetAlert("gp", true) end
     if not ns.Raid.IsLead() then
         if Mini.IsShown() and follow then Mini.Refresh() end
         return
     end
-    local m = ns.GPList.Build(f, s)
-    if #m.items == 0 or m.pending <= 0 then return end
-    if ns.Panel and ns.Panel.SetAlert and not Mini.IsShown() then ns.Panel.SetAlert("gp", true) end
     ns.Print(format(ns.T("gp.signal"), #m.items, ns.Plural(#m.items, ns.T("gp.players")), m.pending, f.boss))
     if Mini.IsShown() and follow then Mini.Refresh() end
 end

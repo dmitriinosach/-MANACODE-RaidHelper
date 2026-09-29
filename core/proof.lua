@@ -152,14 +152,24 @@ end
 local function IdOf(s, name)
     return s and s.spellIds and s.spellIds[name] or nil
 end
-local function HitWhat(rule, p, s)
-    local parts = {}
-    for i = 1, #(rule.spells or {}) do
-        local sp = rule.spells[i]
+local function HitWhat(rule, p, s, shed)
+    local parts, hung, held = {}, {}, {}
+    for i = 1, #(shed or {}) do hung[shed[i].spell] = shed[i].hangs end
+    local spells = rule.spells or {}
+    for i = 1, #spells do
+        local sp = spells[i]
         local n = p and p.hits and p.hits[sp] and #p.hits[sp] or 0
-        if n > 0 then parts[#parts + 1] = format(T("proof.xn"), Link(IdOf(s, sp), sp), n) end
+        if hung[sp] then
+            held[#held + 1] = (#spells > 1 and (Link(IdOf(s, sp), sp) .. ": ") or "") .. ns.Penalties.ShedText(hung[sp])
+        elseif n > 0 then
+            parts[#parts + 1] = format(T("proof.xn"), Link(IdOf(s, sp), sp), n)
+        end
     end
-    if #parts == 0 then parts[1] = Link(IdOf(s, (rule.spells or {})[1] or "?"), (rule.spells or {})[1]) end
+    if #held > 0 then
+        if #parts > 0 then held[#held + 1] = format(T("proof.hit"), concat(parts, ", ")) end
+        return concat(held, "; ")
+    end
+    if #parts == 0 then parts[1] = Link(IdOf(s, spells[1] or "?"), spells[1]) end
     return format(T("proof.hit"), concat(parts, ", "))
 end
 local function Chain(fight, hit, p, s)
@@ -170,7 +180,7 @@ local function Chain(fight, hit, p, s)
     if info.manual then return { T("proof.manual") } end
     local out = {}
     if kind == "hit" then
-        out[1] = HitWhat(rule, p, s)
+        out[1] = HitWhat(rule, p, s, hit.shed)
     elseif kind == "chased" then
         out[1] = format(T("proof.chased"), Plain(rule.npc), #hit.events)
     elseif kind == "mccast" then
@@ -206,6 +216,9 @@ local function Chain(fight, hit, p, s)
         return out
     elseif kind == "mindps" then
         out[1] = format(T("proof.mindps"), Short(info.amount or 0), Short(info.need or 0))
+        return out
+    elseif kind == "earlypull" and info.early then
+        out[1] = format(T("proof.earlypull"), Dec(info.early), info.sec or 0, Plain(info.setter))
         return out
     else
         out[1] = T("proof.rule")
@@ -246,27 +259,36 @@ local function Sum(events)
 end
 local function HitTexts(fight, name, p, s, hit, out)
     local rule = hit.rule
-    if DEATH_KINDS[rule.kind] or rule.kind == "killer" then
+    if DEATH_KINDS[rule.kind] or rule.kind == "killer" or rule.kind == "caused" then
         for k = 1, #hit.events do
             local ev = hit.events[k]
             local gp, done = Sum({ ev })
             local chain, head = nil, Head(name, rule, gp, done)
             if ev.info and ev.info.manual then
                 chain = { T("proof.manual") }
-            elseif rule.kind == "killer" then
+            elseif rule.kind == "killer" or rule.kind == "caused" then
                 local victim = ev.info and ev.info.victim
                 local vp = victim and Player(fight, victim, s)
                 local d = DeathAt(vp, ev.t)
                 chain = { format(T("proof.victim"), Plain(victim)) }
                 if ev.t then chain[1] = chain[1] .. " " .. format(T("proof.at"), Clock(ev.t - fight.from)) end
                 if d then chain[2] = Killer(d, victim, fight.boss) end
+                if rule.kind == "caused" then
+                    chain[1] = format(T("proof.caused"), Plain(victim)) .. (ev.t and (" " .. format(T("proof.at"), Clock(ev.t - fight.from))) or "")
+                    local dep = ev.info and ev.info.dep
+                    if dep and ns.DeathDeps then chain[2] = Plain(ns.DeathDeps.What(dep)) end
+                end
             end
             out[#out + 1] = chain and Compose(head, chain) or DeathClause(fight, head, p, DeathAt(p, ev.t), name)
         end
         return
     end
     local gp, done = Sum(hit.events)
-    out[#out + 1] = Compose(Head(name, rule, gp, done), Chain(fight, hit, p, s))
+    local head = Head(name, rule, gp, done)
+    if gp == 0 and ns.Penalties and ns.Penalties.Grade(hit) == "yellow" then
+        head = format(T("proof.head.maybe"), TAG, Plain(name), Plain(ns.Penalties.Reason(rule)))
+    end
+    out[#out + 1] = Compose(head, Chain(fight, hit, p, s))
 end
 local function DeathHit(hits, t)
     for i = 1, #(hits or {}) do

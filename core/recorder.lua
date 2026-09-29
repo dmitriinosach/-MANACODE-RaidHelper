@@ -10,9 +10,12 @@ local SNAP_PERIOD = 0.2
 local POS_PERIOD = 0.25
 local MAP_PERIOD = 1
 local KEY_PERIOD = 5
+local CLOCK_HOLD = 2
+local CLOCK_BACK = 1
 local TICK_PERIOD = 0.5
 local BOSS_PERIOD = 1
 local RING_PERIOD = 1
+local PULL_MUTE = 30
 local MAX_RAID = 40
 local MAX_PARTY = 4
 local F_PLAYER = 0x400
@@ -64,8 +67,9 @@ local bossRound = 0
 local inVehicle = {}
 local vehicleFight = false
 local auraStacks = {}
-local anchorTs = nil
-local anchorClock = 0
+local clockOff = nil
+local clockAt = 0
+local lastNow = 0
 local seen, kept = 0, 0
 local slotUnit, slotGuid, slotName, slotPlayer, slotPet = {}, {}, {}, {}, {}
 local slots = 0
@@ -82,7 +86,7 @@ local killAt, killEnd, killSure, killEnc = nil, nil, false, nil
 local scriptHold = nil
 local dead = {}
 local bossSeen = {}
-local closed = { why = nil, enc = nil, at = nil }
+local closed = { why = nil, enc = nil, at = nil, mute = nil }
 local wpnQueue, wpnAt, wpnName = {}, {}, {}
 local wpnGuid, wpnUnit, wpnSent = nil, nil, nil
 local foreignUnit, foreignAt = nil, nil
@@ -94,12 +98,19 @@ local pauseZone = nil
 local pauseLeft = false
 local ZONE_EVENTS = { "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA" }
 local function Now()
-    if anchorTs then
-        return anchorTs + (GetTime() - anchorClock)
-    end
-    return time()
+    local t = clockOff and GetTime() + clockOff or time()
+    if t < lastNow and t > lastNow - CLOCK_BACK then t = lastNow end
+    lastNow = t
+    return t
 end
 Recorder.Now = Now
+local function Anchor(ts)
+    local g = GetTime()
+    local off = ts - g
+    if not clockOff or off <= clockOff or g - clockAt > CLOCK_HOLD then
+        clockOff, clockAt = off, g
+    end
+end
 function Recorder.IsOn()
     return isOn
 end
@@ -155,6 +166,7 @@ local function CloseSegment(why, enc)
     seenIdle = not fighting
     if not ns.Store.Live() then return end
     closed.why, closed.enc, closed.at = why, enc, time()
+    closed.mute = why == "kill" and enc and GetTime() + PULL_MUTE or nil
     ns.Raid.Touch(ns.Store.Live())
     ns.Store.Close()
     if why == "kill" and RequestRaidInfo then RequestRaidInfo() end
@@ -352,6 +364,14 @@ local function WpnReady()
     WpnRead(wpnUnit, wpnGuid)
     WpnDone()
 end
+local function Spent(name, auto)
+    if not closed.mute then return false end
+    if GetTime() >= closed.mute then
+        closed.mute = nil
+        return false
+    end
+    return ns.Encounters.Of(name, auto) == closed.enc
+end
 local function RecordEvent(ts, ...)
     local sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, spell, _, auraType = ...
     NoteClass(srcGUID, srcName, srcFlags)
@@ -367,14 +387,13 @@ local function RecordEvent(ts, ...)
     if ns.RecFilter.Keep(sub, srcGUID, srcName, dstGUID, dstName, spellId, auraType, seg.bosses, writeAll) then
         ok = ns.Store.Append(ts, ...)
     end
-    if not seg.pull and ns.RecFilter.Pulls(sub, srcFlags, dstName, seg.bosses) then
+    if not seg.pull and ns.RecFilter.Pulls(sub, srcFlags, dstName, seg.bosses) and not Spent(dstName, seg.bosses) then
         ns.Trash.Pull(seg, ts)
         frameHp, framePos = true, true
     end
     if sub == "UNIT_DIED" and dstFlags and band(dstFlags, F_PLAYER) > 0 then ns.Trash.Died(ts) end
     if spellId == WPN_AURA and sub == "SPELL_AURA_APPLIED" then WpnAsk(dstGUID, dstName) end
-    anchorTs = ts
-    anchorClock = GetTime()
+    Anchor(ts)
     WatchEnd(sub, srcName, srcFlags, dstName, dstFlags, spellId, spell, seg.bosses)
     if not vehicleFight then
         NoteVehicleFight(srcName)
@@ -450,6 +469,15 @@ local function OnAchievement(msg, sender)
         ResetSegmentState()
     end
     ns.Store.Append(ts, "FW_ACH", nil, name, 0, nil, nil, 0, id)
+end
+function Recorder.Mark(sub, ...)
+    if not isOn or paused or not inZone then return false end
+    local ts = Now()
+    if not ns.Store.Live() then
+        ns.Store.Open(ts)
+        ResetSegmentState()
+    end
+    return ns.Store.Append(ts, sub, ...)
 end
 local function WpnStep(now)
     if wpnGuid then

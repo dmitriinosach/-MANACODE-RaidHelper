@@ -10,6 +10,9 @@ local wipe = wipe
 local match = string.match
 local gsub = string.gsub
 local tremove = table.remove
+local sub = string.sub
+local byte = string.byte
+local gmatch = string.gmatch
 local VERSION = 2
 local CHUNK = 512
 local POINTS = 256
@@ -410,10 +413,55 @@ function Codec.Shift(seg)
     end
     return s
 end
+local function CutPoints(pts, isPos, cutMs)
+    local n = #pts
+    local ms, a, b, keep = 0, 0, 0, 0
+    for i = 1, n do
+        local d, v1, v2 = match(pts[i], "^(-?%d*),(-?%d*),?(-?%d*)")
+        local t = (i == 1 and 0 or ms) + (tonumber(d) or 0)
+        if t > cutMs then break end
+        ms, keep = t, i
+        if not isPos then
+            a = tonumber(v1) or 0
+            if v2 ~= "" then b = tonumber(v2) or b end
+        elseif i == 1 then
+            a, b = tonumber(v1) or 0, tonumber(v2) or 0
+        else
+            a, b = a + (tonumber(v1) or 0), b + (tonumber(v2) or 0)
+        end
+    end
+    if keep == 0 or (keep == 1 and ms == cutMs) then return 0, nil end
+    local delta = 0
+    for i = 1, keep do delta = delta - #pts[i] - 1 end
+    local head = cutMs .. "," .. a .. "," .. b
+    delta = delta + #head + 1
+    if keep < n then
+        local nxt = pts[keep + 1]
+        local d = match(nxt, "^(-?%d*)")
+        local dd = ms + (tonumber(d) or 0) - cutMs
+        local fixed = (dd ~= 0 and dd or "") .. sub(nxt, #d + 1)
+        delta = delta + #fixed - #nxt
+        pts[keep + 1] = fixed
+    end
+    pts[keep] = head
+    local shift = keep - 1
+    if shift > 0 then
+        for i = keep, n do pts[i - shift] = pts[i] end
+        for i = n - shift + 1, n do pts[i] = nil end
+    end
+    return delta, keep == n and cutMs or nil
+end
+local function Split(s)
+    local out = {}
+    for p in gmatch(s, "[^;]+") do out[#out + 1] = p end
+    return out
+end
 function Codec.TrimStreams(seg, cutMs)
+    cutMs = floor(cutMs)
     local st = states[seg]
     for kind, store in pairs({ hp = seg.hp, pos = seg.pos }) do
-        local bufs = st and (kind == "hp" and st.hpBuf or st.posBuf) or {}
+        local isPos = kind == "pos"
+        local bufs = st and (isPos and st.posBuf or st.hpBuf) or {}
         for name, list in pairs(store) do
             while list[1] do
                 local nxt = Head(list[2] or (bufs[name] and bufs[name][1]))
@@ -421,8 +469,44 @@ function Codec.TrimStreams(seg, cutMs)
                 seg.bytes = seg.bytes - #list[1] - 1
                 tremove(list, 1)
             end
+            if list[1] and Head(list[1]) < cutMs then
+                local pts = Split(list[1])
+                local delta = CutPoints(pts, isPos, cutMs)
+                list[1] = concat(pts, ";")
+                seg.bytes = seg.bytes + delta
+            end
+        end
+        local lastMs = st and (isPos and st.posMs or st.hpMs)
+        for name, buf in pairs(bufs) do
+            local list = store[name]
+            if buf[1] and not (list and list[1]) and Head(buf[1]) < cutMs then
+                local delta, last = CutPoints(buf, isPos, cutMs)
+                seg.bytes = seg.bytes + delta
+                if last then lastMs[name] = last end
+            end
         end
     end
+end
+function Codec.SplitFront(seg, cutMs)
+    local s = seg.chunks[1]
+    if not s or Head(s) >= cutMs then return nil end
+    local pos, ms, n = 1, 0, 0
+    while true do
+        local d, nx = match(s, "^(-?%d*)[^;]*()", pos)
+        local t = (pos == 1 and 0 or ms) + (tonumber(d) or 0)
+        if t >= cutMs then
+            local rest = t .. sub(s, pos + #d)
+            local old = sub(s, 1, pos - 2)
+            seg.chunks[1] = rest
+            seg.n = seg.n - n
+            seg.bytes = seg.bytes - (#s - #rest)
+            return old
+        end
+        ms, n = t, n + 1
+        if byte(s, nx) ~= 59 then break end
+        pos = nx + 1
+    end
+    return Codec.Shift(seg)
 end
 local function Shifted(s, delta)
     local head, rest = match(s, "^(-?%d*)(.*)$")

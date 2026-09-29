@@ -381,6 +381,7 @@ local function OnDied(c, ts, dstGUID, dst)
     local k = dst and c.byK[dst]
     if k then
         for s in pairs(c.open[k]) do Close(c, k, s, ts) end
+        c.diedK[#c.diedK + 1], c.diedT[#c.diedT + 1] = k, ts
         return
     end
     if dst and c.bosses[dst] then c.L.bossDied = ts end
@@ -447,7 +448,7 @@ local function NewContext(scene)
         swT = {}, swK = {}, btT = {}, btK = {}, tgT = {}, tgK = {}, hold = TARGET_HOLD, tauT = {}, tauK = {},
         tankHits = {}, addBy = {}, addN = 0, pools = {}, born = {}, follow = {},
         hitAt = {}, coneTo = {}, coneDef = {}, aimX = {}, aimY = {}, aimN = {}, aimOpen = {}, aimSpells = aimSpells,
-        npcOf = {},
+        npcOf = {}, diedK = {}, diedT = {},
     }
 end
 local function TargetAt(c, t, lo)
@@ -704,6 +705,7 @@ function Layers.Build(scene)
         end
     end
     local res = ph and ns.Phases.Done(fight, ph) or ns.Phases.Get(fight)
+    ns.Replay.SnapDeaths(scene, c.diedK, c.diedT)
     FinishPools(c)
     FinishAdds(c)
     Tanks(c)

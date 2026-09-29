@@ -1,6 +1,7 @@
 local ADDON, ns = ...
 local format = string.format
 local floor = math.floor
+local ceil = math.ceil
 local abs = math.abs
 local sin = math.sin
 local max = math.max
@@ -20,9 +21,11 @@ local EQ_H = 16
 local EQ_BTN = 14
 local EQ_GAP = 3
 local EQ_BARS = 30
+local GRAPH_BARS = 16
 local GRAPH_SLOT = 2
-local GRAPH_GAP = 6
-local NUM_W = 44
+local GRAPH_GAP = 5
+local NUM_W = 40
+local NUM_PROBE = 999.9
 local NUM_GAP = 3
 local MUTE = 0.55
 local SCALE_MIN, SCALE_MAX, SCALE_STEP = 0.60, 1.50, 0.05
@@ -46,9 +49,11 @@ local ICONS = {
 local Panel = {}
 ns.Panel = Panel
 local frame, lockBtn, dot, countText, strip, stripFill
-local pauseBtn, sizeBtn, eq, eqBg, graphs, dpsGraph, hpsGraph, dpsText, hpsText
+local pauseBtn, sizeBtn, eq, eqBg, graphs
 local buttons = {}
-local eqBars, dpsBars, hpsBars = {}, {}, {}
+local eqBars = {}
+local blocks = {}
+local vals = {}
 local buckets = {}
 local alerts = {}
 local countAcc, drawAcc = COUNT_PERIOD, 0
@@ -304,8 +309,8 @@ local function RefreshCounts()
         countText:SetText(format(ns.T("panel.counts.seen"), ns.Num(seen)))
     end
 end
-local function MakeBars(bars, parent, layer, token)
-    for i = 1, EQ_BARS do
+local function MakeBars(bars, n, parent, layer, token)
+    for i = 1, n do
         local t = parent:CreateTexture(nil, layer)
         t:SetWidth(1)
         t:SetHeight(1)
@@ -315,7 +320,7 @@ local function MakeBars(bars, parent, layer, token)
     end
 end
 local function LayBars(bars, slot)
-    for i = 1, EQ_BARS do
+    for i = 1, #bars do
         local t = bars[i]
         t:ClearAllPoints()
         t:SetPoint("BOTTOMLEFT", (i - 1) * slot, 0)
@@ -327,17 +332,21 @@ local function WatchMeter()
 end
 local function NumWidth()
     local w = NUM_W
-    if dpsText then
-        local was = hpsText:GetText()
-        hpsText:SetText("999.9к")
-        w = max(w, hpsText:GetStringWidth() + 4)
-        hpsText:SetText(was)
+    local fs = blocks[1] and blocks[1].text
+    if fs then
+        local was = fs:GetText()
+        fs:SetText(format("%.1f%s", NUM_PROBE, ns.T("num.k")))
+        w = max(w, fs:GetStringWidth() + 4)
+        fs:SetText(was)
     end
     return w
 end
 local function Width()
     local w = baseW
-    if Saved().open then w = max(w, PAD * 2 + (EQ_BARS * GRAPH_SLOT - 1 + NUM_GAP) * 2 + NumWidth() * 2 + GRAPH_GAP) end
+    if Saved().open then
+        local n = #blocks
+        w = max(w, PAD * 2 + (GRAPH_BARS * GRAPH_SLOT - 1 + NUM_GAP + NumWidth()) * n + GRAPH_GAP * (n - 1))
+    end
     return max(w, countText:GetStringWidth() + PAD * 2 + 4)
 end
 local function ApplySize()
@@ -350,8 +359,7 @@ local function ApplySize()
     LayBars(eqBars, eqSlot)
     if Saved().open then
         local nw = NumWidth()
-        dpsText:SetWidth(nw)
-        hpsText:SetWidth(nw)
+        for i = 1, #blocks do blocks[i].text:SetWidth(nw) end
         graphs:SetWidth(w - PAD * 2)
         graphs:Show()
         h = h + ROWGAP + EQ_H
@@ -413,14 +421,9 @@ local function DrawEq()
         end
     end
 end
-local function DrawGraph(bars, ring, slot)
-    local peak = 1
-    for i = 1, EQ_BARS do
-        if ring[i] > peak then peak = ring[i] end
-    end
-    for i = 1, EQ_BARS do
-        local v = ring[(slot + i - 1) % EQ_BARS + 1]
-        local t = bars[i]
+local function PaintBars(bars, peak)
+    for i = 1, #bars do
+        local v, t = vals[i], bars[i]
         if v <= 0 then
             t:SetHeight(1)
             t:SetAlpha(0.25)
@@ -430,19 +433,44 @@ local function DrawGraph(bars, ring, slot)
         end
     end
 end
+local function DrawGraph(bars, ring, slot, size)
+    local n, peak = #bars, 1
+    for i = 1, n do
+        local v = ring[(slot - n + i - 1) % size + 1] or 0
+        vals[i] = v
+        if v > peak then peak = v end
+    end
+    PaintBars(bars, peak)
+end
+local function DrawCurve(bars, curve)
+    local n, have, peak = #bars, #curve, 1
+    for i = 1, n do
+        local v = 0
+        if have > n then
+            v = curve[ceil(i * have / n)]
+        elseif i <= have then
+            v = curve[i]
+        end
+        vals[i] = v
+        if v > peak then peak = v end
+    end
+    PaintBars(bars, peak)
+end
 local function DrawGraphs()
     local M = ns.Meter
     if not M then return end
-    local slot = M.Slot()
-    DrawGraph(dpsBars, M.dmg, slot)
-    DrawGraph(hpsBars, M.heal, slot)
-    local dps, hps = M.Rates()
-    local raid = M.InRaid()
-    dpsText:SetText(Short(dps))
-    hpsText:SetText(Short(hps))
-    local a = M.Fighting() and 1 or 0.7
-    dpsText:SetAlpha(a)
-    hpsText:SetAlpha(a)
+    local slot, size = M.Slot(), M.Window()
+    DrawGraph(blocks[1].bars, M.dmg, slot, size)
+    DrawGraph(blocks[2].bars, M.heal, slot, size)
+    DrawCurve(blocks[3].bars, M.curve)
+    local wd, wh = M.WindowRates()
+    local dps = M.Rates()
+    blocks[1].text:SetText(Short(wd))
+    blocks[2].text:SetText(Short(wh))
+    blocks[3].text:SetText(Short(dps))
+    blocks[1].text:SetAlpha(M.Active() and 1 or 0.7)
+    blocks[2].text:SetAlpha(M.Active() and 1 or 0.7)
+    blocks[3].text:SetAlpha(M.Fighting() and 1 or 0.7)
 end
 local function StepDot()
     local R = ns.Recorder
@@ -537,7 +565,7 @@ local function BuildStrip()
     eqBg = eq:CreateTexture(nil, "BACKGROUND")
     eqBg:SetAllPoints()
     ns.Kit.Paint(eqBg, "progress.track")
-    MakeBars(eqBars, eq, "ARTWORK", nil)
+    MakeBars(eqBars, EQ_BARS, eq, "ARTWORK", nil)
     countText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     countText:SetPoint("TOP", 0, -(PAD + ICON + ROWGAP + EQ_H + 2))
     countText:SetJustifyH("CENTER")
@@ -546,11 +574,11 @@ end
 local function MakeGraph(parent, bars, token)
     local g = CreateFrame("Frame", nil, parent)
     g:SetHeight(EQ_H)
-    g:SetWidth(EQ_BARS * GRAPH_SLOT - 1)
+    g:SetWidth(GRAPH_BARS * GRAPH_SLOT - 1)
     local bg = g:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     ns.Kit.Paint(bg, "progress.track")
-    MakeBars(bars, g, "ARTWORK", token)
+    MakeBars(bars, GRAPH_BARS, g, "ARTWORK", token)
     LayBars(bars, GRAPH_SLOT)
     return g
 end
@@ -563,42 +591,66 @@ local function MakeNumber(g)
     ns.Kit.Text(fs, "text.primary")
     return fs
 end
+local function FightTip(M)
+    local dps = M.Rates()
+    local t = M.FightTime()
+    local state = M.Fighting() and "panel.tip.going" or (t > 0 and "panel.tip.last" or "panel.tip.none")
+    return {
+        { kind = "head", left = ns.T(M.InRaid() and "panel.dps.fight.raid" or "panel.dps.fight") },
+        { kind = "row", left = ns.T("panel.tip.fight"), right = Short(dps) },
+        { kind = "row", left = ns.T("panel.tip.time"), right = format("%d:%02d", floor(t / 60), floor(t % 60)) },
+        { kind = "note", left = ns.T(state) },
+        { kind = "foot", left = ns.T("panel.tip.avg") },
+    }
+end
+local function NowTip(M, heal)
+    local dps, hps = M.Rates()
+    local wd, wh = M.WindowRates()
+    local key = (heal and "panel.hps.now" or "panel.dps.now") .. (M.InRaid() and ".raid" or "")
+    return {
+        { kind = "head", left = ns.T(key) },
+        { kind = "row", left = format(ns.T("panel.tip.window"), M.Window()), right = Short(heal and wh or wd) },
+        { kind = "row", left = ns.T("panel.tip.fight"), right = Short(heal and hps or dps) },
+        { kind = "foot", left = format(ns.T(heal and "panel.tip.heal" or "panel.tip.dmg"), M.Window(), GRAPH_BARS) },
+    }
+end
 local function GraphEnter(self)
     local M = ns.Meter
     if not M then return end
-    local heal = self.heal
-    local dps, hps = M.Rates()
-    local wd, wh = M.WindowRates()
-    local raid = M.InRaid()
-    local key = heal and (raid and "panel.hps.raid" or "panel.hps") or (raid and "panel.dps.raid" or "panel.dps")
-    ns.Tip.Show(self, {
-        { kind = "head", left = ns.T(key) },
-        { kind = "row", left = ns.T("panel.tip.fight"), right = Short(heal and hps or dps) },
-        { kind = "row", left = format(ns.T("panel.tip.window"), M.Window()), right = Short(heal and wh or wd) },
-        { kind = "foot", left = ns.T(heal and "panel.tip.heal" or "panel.tip.dmg") },
-    })
+    ns.Tip.Show(self, self.kind == "avg" and FightTip(M) or NowTip(M, self.kind == "heal"))
 end
-local function Hover(g, num, heal)
+local function Hover(g, num, kind)
     local h = CreateFrame("Frame", nil, graphs)
     h:SetPoint("TOPLEFT", g, "TOPLEFT", 0, 0)
     h:SetPoint("BOTTOMRIGHT", num, "BOTTOMRIGHT", 0, 0)
     h:EnableMouse(true)
-    h.heal = heal
+    h.kind = kind
     h:SetScript("OnEnter", GraphEnter)
     h:SetScript("OnLeave", ns.Tip.Hide)
 end
+local BLOCKS = {
+    { kind = "dmg", token = "sem.dmg" },
+    { kind = "heal", token = "sem.heal" },
+    { kind = "avg", token = "sem.stat.dps" },
+}
 local function BuildGraphs()
     graphs = CreateFrame("Frame", nil, frame)
     graphs:SetHeight(EQ_H)
     graphs:SetPoint("TOPLEFT", PAD, -(PAD + ICON + ROWGAP + EQ_H + 2 + TEXTH + ROWGAP))
-    dpsGraph = MakeGraph(graphs, dpsBars, "sem.dmg")
-    dpsGraph:SetPoint("LEFT", 0, 0)
-    dpsText = MakeNumber(dpsGraph)
-    hpsGraph = MakeGraph(graphs, hpsBars, "sem.heal")
-    hpsGraph:SetPoint("LEFT", dpsText, "RIGHT", GRAPH_GAP, 0)
-    hpsText = MakeNumber(hpsGraph)
-    Hover(dpsGraph, dpsText, false)
-    Hover(hpsGraph, hpsText, true)
+    local prev
+    for i = 1, #BLOCKS do
+        local b = { kind = BLOCKS[i].kind, bars = {} }
+        b.g = MakeGraph(graphs, b.bars, BLOCKS[i].token)
+        if prev then
+            b.g:SetPoint("LEFT", prev, "RIGHT", GRAPH_GAP, 0)
+        else
+            b.g:SetPoint("LEFT", 0, 0)
+        end
+        b.text = MakeNumber(b.g)
+        Hover(b.g, b.text, b.kind)
+        prev = b.text
+        blocks[i] = b
+    end
     graphs:Hide()
 end
 local function Build()

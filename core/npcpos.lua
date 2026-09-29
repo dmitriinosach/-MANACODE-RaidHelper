@@ -48,6 +48,7 @@ NpcPos.off = false
 NpcPos.WINDOW = WINDOW
 NpcPos.MELEE_MIN = MELEE_MIN
 NpcPos.RNG_MIN = RNG_MIN
+NpcPos.EASE = EASE
 local px, py, qx, qy, sx, sy = {}, {}, {}, {}, {}, {}
 local rmx, rmy, rlo, rhi = {}, {}, {}, {}
 local pick = {}
@@ -432,6 +433,23 @@ local function PlaceAdds(np)
         end
     end
 end
+local function Settle(tr, soft, stepMax)
+    local ease = NpcPos.EASE
+    if ease >= 1 then return end
+    local X, Y, T = tr.x, tr.y, tr.t
+    for i = tr.n - 1, 1, -1 do
+        if X[i] >= 0 and X[i + 1] >= 0 and T[i + 1] - T[i] <= STEP * 1.5 then
+            local bx, by = X[i + 1], Y[i + 1]
+            if soft[i] then
+                X[i] = bx + (X[i] - bx) * ease
+                Y[i] = by + (Y[i] - by) * ease
+            end
+            local dx, dy = X[i] - bx, Y[i] - by
+            local d = sqrt(dx * dx + dy * dy)
+            if d > stepMax then X[i], Y[i] = bx + dx / d * stepMax, by + dy / d * stepMax end
+        end
+    end
+end
 function NpcPos.Place(np, TargetAt)
     local p0 = debugprofilestop()
     Order(np)
@@ -456,6 +474,7 @@ function NpcPos.Place(np, TargetAt)
     local stepMax = SPEED * ppy * STEP
     local tr = ns.Replay.NewTrack(scene.bossName or scene.fight.boss)
     tr.fx, tr.fy = {}, {}
+    local soft = {}
     local lo = 0
     local ax, ay, at = nil, 0, -1e9
     local lastX, lastY, lastT = nil, 0, 0
@@ -483,9 +502,10 @@ function NpcPos.Place(np, TargetAt)
         if src then
             st[src] = st[src] + 1
             if src ~= "hold" then lastX, lastY, lastT = cx, cy, t end
+            local eased = (src == "melee" or src == "range") and ax and t - at <= STEP * 1.5
             if ax and t - at <= STEP * 1.5 then
-                if src == "melee" or src == "range" then
-                    cx, cy = ax + (cx - ax) * EASE, ay + (cy - ay) * EASE
+                if eased then
+                    cx, cy = ax + (cx - ax) * NpcPos.EASE, ay + (cy - ay) * NpcPos.EASE
                 end
                 local dx, dy = cx - ax, cy - ay
                 local d = sqrt(dx * dx + dy * dy)
@@ -500,12 +520,14 @@ function NpcPos.Place(np, TargetAt)
             end
             ns.Replay.Push(tr, t, cx, cy, 1, 0)
             tr.fx[tr.n], tr.fy[tr.n] = fx, fy
+            if eased then soft[tr.n] = true end
         elseif tr.n > 0 and tr.x[tr.n] >= 0 then
             ns.Replay.Push(tr, t, -1, -1, 1, 0)
             tr.fx[tr.n], tr.fy[tr.n] = 0, 1
         end
         t = t + STEP
     end
+    Settle(tr, soft, stepMax)
     if tr.n > 0 then
         scene.boss = tr
         scene.bossName = scene.bossName or scene.fight.boss

@@ -1,5 +1,12 @@
 local _, ns = ...
 ns.summaries["Гниломорд"] = {
+    deps = {
+        dispel = { { spell = "Мутировавшая инфекция", type = "Disease", dur = 12 } },
+        mechs = {
+            { key = "bigooze", text = "sum.dd.m.bigooze", srcs = { "Большой слизнюк" }, melee = true, by = "tank" },
+            { key = "smallooze", text = "sum.dd.m.smallooze", srcs = { "Малый слизнюк" }, melee = true },
+        },
+    },
     badges = {
         { kind = "death", spells = { "Брызги слизи" }, id = 73190, tip = "sum.b.spraydeath" },
         { kind = "death", spells = { "Липкая жижа", "Поток слизнюков" }, id = 71208, tip = "sum.b.rotpuddledeath" },
