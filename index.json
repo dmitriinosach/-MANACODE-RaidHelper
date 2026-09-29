@@ -17,7 +17,24 @@
       "zip": "rec/main-2809.zip",
       "zipBytes": 10434703,
       "sha256": "05545163ac3e4e9885be5aa280e3f9bb025e42b9c333560b8c5b19074927a8b9"
+    },
+    {
+      "id": "main-2909",
+      "title": "Запись 25.09–29.09: ЦЛК, РС, ИВК, Ульдуар",
+      "rec": 2,
+      "scan": 11,
+      "totals": 6,
+      "trash": 1,
+      "fx": 5,
+      "cls": 1,
+      "addon": "0.2.0-beta.2",
+      "addonMin": "0.2.0-beta.1",
+      "attempts": 47,
+      "bytes": 67459599,
+      "zip": "rec/main-2909.zip",
+      "zipBytes": 14738752,
+      "sha256": "066870431f0fd1b53d85dc2783f9fab02a95d071f7a5180e15535ea750c73ac3"
     }
   ],
-  "baked": "2026-09-29T16:34:35Z"
+  "baked": "2026-09-29T21:14:30Z"
 }
