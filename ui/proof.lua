@@ -1,0 +1,124 @@
+local _, ns = ...
+local format = string.format
+local ICON = "Interface\\GossipFrame\\GossipGossipIcon"
+local PAD = 4
+local View = {}
+ns.ProofView = View
+local hovered
+local settings = {}
+local watcher = CreateFrame("Frame")
+local function T(key)
+    return ns.T(key)
+end
+local function Ctrl()
+    return IsControlKeyDown ~= nil and IsControlKeyDown() and true or false
+end
+function View.Preview(ask, out)
+    local msgs = ask and ns.Proof.Messages(ask) or {}
+    if #msgs == 0 then
+        out[#out + 1] = { kind = "note", left = T("proof.tip.none") }
+        return out
+    end
+    out[#out + 1] = { kind = "row", left = format(T("proof.tip.will"), #msgs), tone = "dim" }
+    for i = 1, #msgs do out[#out + 1] = { kind = "note", left = msgs[i] } end
+    return out
+end
+function View.Lines(ask)
+    local out = { { kind = "head", left = format(T("proof.tip.head"), ns.Proof.Label(ns.Proof.Channel())) } }
+    View.Preview(ask, out)
+    out[#out + 1] = { kind = "foot", left = T("proof.tip.btn") }
+    return out
+end
+function View.Enter(mark)
+    if not (mark.proof and ns.Proof) then return false end
+    hovered = mark
+    local out = {}
+    for i = 1, #(mark.lines or {}) do out[i] = mark.lines[i] end
+    if Ctrl() then
+        out[#out + 1] = { kind = "sep" }
+        View.Preview(mark.proof, out)
+    end
+    out[#out + 1] = { kind = "foot", left = format(T("proof.tip.ctrl"), ns.Proof.Label(ns.Proof.Channel())) }
+    ns.Tip.Dock(mark, out, mark.tipIcon)
+    return true
+end
+function View.Leave(mark)
+    if hovered == mark or not mark then hovered = nil end
+end
+function View.Click(mark, button)
+    if not (mark.proof and ns.Proof and button == "LeftButton" and Ctrl()) then return false end
+    ns.Tip.Hide()
+    hovered = nil
+    ns.Proof.Send(mark.proof)
+    return true
+end
+local function PaintSetting(b)
+    local label = format(T("proof.set"), ns.Proof.Label(ns.Proof.Channel()))
+    b.text:SetText(label)
+    b.tipTitle = label
+end
+function View.Menu(anchor)
+    local menu = { { text = T("proof.menu"), isTitle = true, notCheckable = true } }
+    local cur = ns.Proof.Channel()
+    for i = 1, #ns.Proof.CHANNELS do
+        local c = ns.Proof.CHANNELS[i]
+        menu[#menu + 1] = {
+            text = ns.Proof.Label(c),
+            checked = c == cur,
+            func = function()
+                ns.Proof.SetChannel(c)
+                for k = 1, #settings do PaintSetting(settings[k]) end
+            end,
+        }
+    end
+    ns.Tip.Hide()
+    ns.Kit.Menu(menu, anchor)
+end
+local function ButtonEnter(self)
+    ns.Kit.Tint(self.icon, "text.good")
+    if self.ask then ns.Tip.Show(self, View.Lines(self.ask)) end
+end
+local function ButtonLeave(self)
+    ns.Kit.Tint(self.icon, "text.muted")
+    ns.Tip.Hide()
+end
+local function ButtonClick(self, button)
+    if button == "RightButton" then
+        View.Menu(self)
+        return
+    end
+    ns.Tip.Hide()
+    if self.ask then ns.Proof.Send(self.ask) end
+end
+function View.Button(parent, size)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetWidth(size + PAD)
+    b:SetHeight(size + PAD)
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    b.icon = b:CreateTexture(nil, "OVERLAY")
+    b.icon:SetWidth(size)
+    b.icon:SetHeight(size)
+    b.icon:SetPoint("CENTER", 0, 0)
+    b.icon:SetTexture(ICON)
+    ns.Kit.Tint(b.icon, "text.muted")
+    b:SetScript("OnEnter", ButtonEnter)
+    b:SetScript("OnLeave", ButtonLeave)
+    b:SetScript("OnClick", ButtonClick)
+    return b
+end
+function View.Repaint()
+    for k = 1, #settings do PaintSetting(settings[k]) end
+end
+function View.Setting(parent, name)
+    local b = ns.MakeButton(parent, name)
+    b.tip = T("proof.set.tip")
+    b.onClick = function() View.Menu(b) end
+    PaintSetting(b)
+    settings[#settings + 1] = b
+    return b
+end
+watcher:RegisterEvent("MODIFIER_STATE_CHANGED")
+watcher:SetScript("OnEvent", function()
+    local m = hovered
+    if m and m:IsVisible() and m.proof then View.Enter(m) end
+end)
