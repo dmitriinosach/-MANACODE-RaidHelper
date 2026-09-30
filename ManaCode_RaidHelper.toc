@@ -3,7 +3,7 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 0.2.0-beta.3
+## Version: 0.2.0-beta.4
 ## X-Date: 2026-09-30
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
@@ -23,6 +23,9 @@ data\summaries.lua
 data\deathdeps.lua
 data\replay.lua
 data\replayfeed.lua
+data\roomheight\deathwhisper.lua
+data\roomheight\lanathel.lua
+data\roomheight\lichking.lua
 data\defensives.lua
 data\procs.lua
 data\bosses\icc\marrowgar.lua
@@ -169,6 +172,7 @@ ui\replaylayers.lua
 ui\replayfeed.lua
 ui\replaymodels.lua
 ui\replayfollow.lua
+ui\replaygeo.lua
 ui\replayiso.lua
 ui\deathpreview.lua
 ui\share.lua
@@ -178,6 +182,7 @@ ui\sumhide.lua
 ui\flasks.lua
 ui\servercmd.lua
 ui\devtool.lua
+ui\devcalib.lua
 
 lead\compat\wotlk.lua
 lead\rl.lua

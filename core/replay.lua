@@ -10,6 +10,7 @@ local min = math.min
 local tsort = table.sort
 local select = select
 local strsub = string.sub
+local strbyte = string.byte
 local AREA_W = 1002
 local AREA_H = 668
 local RIM = 0.45
@@ -35,6 +36,10 @@ local MOVE_YPS = 1.5
 local RUN_YPS = 4
 local MELEE_YD = 10
 local DEFAULT_PPY = 3
+local HEIGHT_ZERO = 35
+local HEIGHT_SKIP = 92
+local HEIGHT_VOID = 126
+local HEIGHT_MIN_W = 0.3
 local FIT_LO = 0.01
 local FIT_HI = 0.99
 local FIT_PAD = 1.15
@@ -96,6 +101,47 @@ end
 function Replay.ModelOf(boss)
     return ns.replayData.models[boss] or nil
 end
+local function PixelsPerYard(area, level)
+    local byArea = area and ns.mapScale and ns.mapScale[area]
+    local size = byArea and byArea[level]
+    if not size or not size.w or size.w <= 0 then return DEFAULT_PPY end
+    return AREA_W / size.w
+end
+Replay.PixelsPerYard = PixelsPerYard
+function Replay.AreaOf(room)
+    local known = ns.maps and ns.maps[room.boss]
+    if known and known.area then return known.area end
+    local tex = room.tex
+    if strsub(tex, 1, 4) == "toc_" then return "TheArgentColiseum" end
+    if tex == "halion" then return "TheRubySanctum" end
+    if tex == "gunship" then return "IcecrownCitadel" end
+    return "Ulduar"
+end
+Replay.calibLive = {}
+function Replay.FixOf(room)
+    local f = Replay.calibLive[room.tex]
+    if not f then
+        local db = ManaCodeRaidHelperDB
+        local all = type(db) == "table" and db.calibFix
+        f = type(all) == "table" and all[room.tex] or nil
+    end
+    if type(f) ~= "table" then f = room.fix end
+    if type(f) ~= "table" then return nil end
+    return f
+end
+function Replay.FixMatrix(room)
+    local f = Replay.FixOf(room)
+    if not f then return 1, 0, 0, 0 end
+    local ppy = PixelsPerYard(Replay.AreaOf(room), room.floor)
+    local k = tonumber(f.scale) or 1
+    local a = (tonumber(f.rot) or 0) * math.pi / 180
+    return k * cos(a), k * sin(a), (tonumber(f.dx) or 0) * ppy, (tonumber(f.dy) or 0) * ppy
+end
+function Replay.FixPoint(room, x, y)
+    local c, s, dx, dy = Replay.FixMatrix(room)
+    local u, v = x - room.cx, y - room.cy
+    return room.cx + c * u - s * v + dx, room.cy + s * u + c * v + dy
+end
 function Replay.RoomOf(boss, level)
     for _, room in pairs(Replay.ROOMS) do
         if room.boss == boss and room.floor == level then return room end
@@ -108,11 +154,40 @@ function Replay.HasRoom(boss)
     end
     return false
 end
-local function PixelsPerYard(area, level)
-    local byArea = area and ns.mapScale and ns.mapScale[area]
-    local size = byArea and byArea[level]
-    if not size or not size.w or size.w <= 0 then return DEFAULT_PPY end
-    return AREA_W / size.w
+local function HeightCell(hm, i, j)
+    local row = hm.rows[j]
+    if not row or i < 1 or i > hm.n then return nil end
+    local b = strbyte(row, i)
+    if not b or b == HEIGHT_VOID then return nil end
+    if b > HEIGHT_SKIP then b = b - 1 end
+    return hm.base + hm.q * (b - HEIGHT_ZERO)
+end
+function Replay.HeightAt(room, x, y)
+    local hm = room and ns.roomHeight and ns.roomHeight[room.tex]
+    if not hm then return nil end
+    local n, span = hm.n, room.r / RIM
+    local gx = ((x - room.cx) / span + 0.5) * n + 0.5
+    local gy = ((y - room.cy) / span + 0.5) * n + 0.5
+    local i, j = floor(gx), floor(gy)
+    local fx, fy = gx - i, gy - j
+    local sum, weight = 0, 0
+    for dj = 0, 1 do
+        local wy = dj == 1 and fy or 1 - fy
+        for di = 0, 1 do
+            local w = (di == 1 and fx or 1 - fx) * wy
+            local z = w > 0 and HeightCell(hm, i + di, j + dj)
+            if z then
+                sum = sum + w * z
+                weight = weight + w
+            end
+        end
+    end
+    if weight < HEIGHT_MIN_W then return nil end
+    return sum / weight
+end
+function Replay.IsoOf(room)
+    local hm = room and ns.roomHeight and ns.roomHeight[room.tex]
+    return hm and hm.iso or nil
 end
 local function PickFloor(fight, frames)
     local count, area = {}, {}
@@ -595,11 +670,14 @@ local function Chord(r, d)
     if q <= 0 then return 0 end
     return sqrt(q)
 end
+local fixC, fixS, fixX, fixY = 1, 0, 0, 0
 local function Corner(cam, room, span, x, ry, k, st, slot)
     local rx = x / (cam.zoom * k)
     local c, s = cam.c, cam.s
-    local u = (cam.cx + rx * c + ry * s - room.cx) / span + 0.5
-    local v = (cam.cy - rx * s + ry * c - room.cy) / span + 0.5
+    local px = cam.cx + rx * c + ry * s - room.cx
+    local py = cam.cy - rx * s + ry * c - room.cy
+    local u = (fixC * px - fixS * py + fixX) / span + 0.5
+    local v = (fixS * px + fixC * py + fixY) / span + 0.5
     if u < 0 or u > 1 or v < 0 or v > 1 then
         Replay.texOut = Replay.texOut + 1
         u, v = min(1, max(0, u)), min(1, max(0, v))
@@ -674,6 +752,7 @@ function Replay.Strips(cam, room, out)
     local fit = 1
     if need > STRIPS then fit = (STRIPS - rows) / max(1, need - rows) end
     local span = r / RIM
+    fixC, fixS, fixX, fixY = Replay.FixMatrix(room)
     local used = 0
     for i = 1, rows do
         local n, xl, xr = rowN[i], rowL[i], rowR[i]

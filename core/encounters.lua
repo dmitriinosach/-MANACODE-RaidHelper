@@ -33,6 +33,13 @@ local BOSS_SUBS = {
     SPELL_SUMMON = true,
     SPELL_AURA_APPLIED = true,
 }
+local MISSED_SUBS = {
+    SWING_MISSED = true,
+    SPELL_MISSED = true,
+    RANGE_MISSED = true,
+    SPELL_PERIODIC_MISSED = true,
+    SPELL_BUILDING_MISSED = true,
+}
 local Encounters = {}
 ns.Encounters = Encounters
 Encounters.BOSS_SUBS = BOSS_SUBS
@@ -1004,6 +1011,13 @@ function Encounters.HpTrail(lines, who, from, to)
     tsort(hp, ByT)
     return hp
 end
+local function SwingLabel(srcName)
+    if not srcName then return ns.T("tl.swing") end
+    return string.format(ns.T("tl.swing.src"), srcName)
+end
+local function ByMc(fight, srcName, srcFlags)
+    return srcName ~= nil and fight.players[srcName] ~= nil and srcFlags ~= nil and band(srcFlags, F_PLAYER) == 0
+end
 local function BuildTimeline(fight, who, idx)
     local out = { boss = {}, casts = {}, auras = {}, taken = {}, healed = {},
                   hp = {}, deaths = {}, marks = {}, dmgDone = 0, healDone = 0 }
@@ -1110,9 +1124,19 @@ local function BuildTimeline(fight, who, idx)
                     out.taken[#out.taken + 1] = { t = ts, label = ns.EnvName(a1), amount = tonumber(a2) or 0,
                                                   over = tonumber(a3) or 0, absorbed = tonumber(a7) or 0,
                                                   kind = "hit" }
+                elseif swing and srcGUID and chasers[srcGUID] then
+                    local hit = sub == "SWING_DAMAGE"
+                    out.taken[#out.taken + 1] = { t = ts, label = string.format(ns.T("tl.caught"), srcName),
+                                                  amount = hit and tonumber(a1) or 0,
+                                                  over = hit and tonumber(a2) or 0,
+                                                  absorbed = tonumber(hit and a6 or a2) or 0,
+                                                  miss = (not hit) and tostring(a1) or nil,
+                                                  missN = (not hit) and (tonumber(a2) or 0) or nil,
+                                                  kind = "hit", src = srcName, id = chasers[srcGUID].id,
+                                                  chaser = srcGUID }
                 elseif sub:find("_DAMAGE", 1, true) then
                     out.taken[#out.taken + 1] = { t = ts,
-                                                  label = swing and ns.T("tl.swing") or tostring(a2 or a1),
+                                                  label = swing and SwingLabel(srcName) or tostring(a2 or a1),
                                                   swing = swing,
                                                   amount = tonumber(swing and a1 or a4) or 0,
                                                   over = tonumber(swing and a2 or a5) or 0,
@@ -1121,9 +1145,20 @@ local function BuildTimeline(fight, who, idx)
                                                   tick = sub:find("PERIODIC", 1, true) ~= nil,
                                                   id = (not swing) and a1 or nil,
                                                   chaser = fixates[srcName] and srcGUID or nil,
-                                                  mc = srcName ~= nil and fight.players[srcName] ~= nil
-                                                      and srcFlags ~= nil
-                                                      and band(srcFlags, F_PLAYER) == 0 }
+                                                  mc = ByMc(fight, srcName, srcFlags) }
+                elseif MISSED_SUBS[sub] then
+                    local how = tostring((swing and a1 or a4) or "MISS")
+                    local n = tonumber(swing and a2 or a5) or 0
+                    out.taken[#out.taken + 1] = { t = ts,
+                                                  label = swing and SwingLabel(srcName) or tostring(a2 or a1),
+                                                  swing = swing, amount = 0, over = 0,
+                                                  absorbed = how == "ABSORB" and n or 0,
+                                                  miss = how, missN = n,
+                                                  kind = "hit", src = srcName,
+                                                  tick = sub:find("PERIODIC", 1, true) ~= nil,
+                                                  id = (not swing) and a1 or nil,
+                                                  chaser = fixates[srcName] and srcGUID or nil,
+                                                  mc = ByMc(fight, srcName, srcFlags) }
                 elseif sub:find("_HEAL", 1, true) then
                     local amount = tonumber(a4) or 0
                     local over = tonumber(a5) or 0
@@ -1181,6 +1216,31 @@ local function BuildTimeline(fight, who, idx)
         out.deaths = RealDeaths(out.deaths, out.hp)
     end
     return out
+end
+local function ByTotal(a, b)
+    if a.total ~= b.total then return a.total > b.total end
+    if a.hits ~= b.hits then return a.hits > b.hits end
+    if a.misses ~= b.misses then return a.misses > b.misses end
+    return a.label < b.label
+end
+function Encounters.GroupRows(items)
+    local rows, index = {}, {}
+    if not items then return rows end
+    for i = 1, #items do
+        local it = items[i]
+        local row = index[it.label]
+        if not row then
+            row = { label = it.label, id = it.id, items = {}, total = 0, hits = 0, misses = 0, swing = it.swing }
+            index[it.label] = row
+            rows[#rows + 1] = row
+        end
+        row.items[#row.items + 1] = it
+        row.total = row.total + (it.amount or 0)
+        if it.miss then row.misses = row.misses + 1 else row.hits = row.hits + 1 end
+        if it.tick then row.hot = true end
+    end
+    tsort(rows, ByTotal)
+    return rows
 end
 local tlReq = nil
 function Encounters.Timeline(fight, who, onDone)

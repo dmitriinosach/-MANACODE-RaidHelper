@@ -160,6 +160,9 @@ local function Lock()
     if ns.Raid and ns.Raid.DevLock then ns.Raid.DevLock() end
     Out({ T("dev.out.chat") })
 end
+local function Calib()
+    if ns.DevCalib then ns.DevCalib.Toggle() end
+end
 local function AnimList()
     local out = {}
     local all = Bosses()
@@ -348,6 +351,7 @@ local function BuildChecks(y, inner)
     local checks = {
         { "range", Range }, { "models", Models }, { "map", Map },
         { "cmd", Cmds }, { "auto", Auto }, { "lock", Lock },
+        { "calib", Calib },
     }
     local third = floor((inner - gap * 2) / 3)
     for i = 1, #checks do
@@ -357,7 +361,7 @@ local function BuildChecks(y, inner)
         Put(b, pad + col * (third + gap), y - floor((i - 1) / 3) * ROW, third)
         View.btn[key] = b
     end
-    return y - 2 * ROW - 4
+    return y - floor((#checks + 2) / 3) * ROW - 4
 end
 local function BuildAnim(y, inner)
     local pad, gap = Kit.Space.pad, Kit.Space.row
@@ -460,6 +464,7 @@ function View.Show()
 end
 function View.Hide()
     if frame then frame:Hide() end
+    if ns.DevCalib then ns.DevCalib.Hide() end
 end
 function View.Toggle()
     if frame and frame:IsShown() then View.Hide() else View.Show() end

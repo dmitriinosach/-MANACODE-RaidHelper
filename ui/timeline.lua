@@ -35,6 +35,7 @@ local FXROW = 18
 local INDENT = 11
 local FXPAD = 3
 local FXBAR = FXROW - FXPAD * 2
+local MISSH = 5
 local THEAD = 14
 local TOPPAD = 6
 local HANDLEH = 7
@@ -527,23 +528,16 @@ local function BuildAuraRows()
         end
     end
 end
-local function GroupBySpell(items)
-    local rows, index = {}, {}
-    if not items then return rows end
-    for i = 1, #items do
-        local it = items[i]
-        local row = index[it.label]
-        if not row then
-            row = { label = it.label, id = it.id, items = {}, total = 0, swing = it.swing }
-            index[it.label] = row
-            rows[#rows + 1] = row
-        end
-        row.items[#row.items + 1] = it
-        row.total = row.total + (it.amount or 0)
-        if it.tick then row.hot = true end
-    end
-    tsort(rows, function(a, b) return a.total > b.total end)
-    return rows
+local function RowTotal(row, heal)
+    local text = format(heal and ns.T("tl.row.heal") or ns.T("tl.row.hit"), ns.Num(row.total), row.hits,
+        ns.Plural(row.hits, ns.T(heal and "tl.w.heal" or "tl.w.hit")))
+    if row.misses > 0 then text = text .. format(ns.T("tl.row.miss"), row.misses) end
+    return text
+end
+local function MissText(it)
+    local word = ns.L["tl.miss." .. it.miss] or it.miss
+    if (it.missN or 0) > 0 then return word .. " " .. ns.Num(it.missN) end
+    return word
 end
 local function SplitHot(rows, track)
     local root, hot, off = {}, {}, {}
@@ -603,8 +597,8 @@ local function AttachSpans(rows)
     end
 end
 local function BuildAmountRows()
-    hitRows = GroupBySpell(data and data.taken)
-    healRows = GroupBySpell(data and data.healed)
+    hitRows = ns.Encounters.GroupRows(data and data.taken)
+    healRows = ns.Encounters.GroupRows(data and data.healed)
     AttachSpans(healRows)
     AttachSpans(hitRows)
     healRows = SplitHot(healRows, "healed")
@@ -812,9 +806,7 @@ local function DrawAmountRows(rows, bound, color, heal)
         gut.tip = row.label
         gut.spellId = tonumber(row.id)
         gut.jumpTo = nil
-        gut.tip2 = format(heal and ns.T("tl.row.heal") or ns.T("tl.row.hit"),
-            ns.Num(row.total), #row.items,
-            ns.Plural(#row.items, ns.T(heal and "tl.w.heal" or "tl.w.hit")))
+        gut.tip2 = RowTotal(row, heal)
         gut.tip3 = ns.T("tl.row.bind")
         if row.id then
             catHeads[#catHeads + 1] = { frame = gut, tex = gut.tex,
@@ -866,13 +858,19 @@ local function DrawAmountRows(rows, bound, color, heal)
             if it.t >= viewFrom and it.t <= viewTo then
                 local x = XOf(it.t)
                 if x - lastX >= 2 then
-                    local hh = max(2, (it.amount / peak) ^ 0.5 * FXBAR)
                     local b = GetBlock()
                     b:SetWidth(3)
-                    b:SetHeight(hh)
                     b:ClearAllPoints()
-                    b:SetPoint("TOPLEFT", canvas, "TOPLEFT", x, -(y + FXPAD + FXBAR - hh))
-                    ns.Kit.Shade(b.tex, color, row.off and 0.30 or 0.95)
+                    if it.miss then
+                        b:SetHeight(MISSH)
+                        b:SetPoint("TOPLEFT", canvas, "TOPLEFT", x, -(y + FXPAD))
+                        ns.Kit.Shade(b.tex, "sem.lane.takenMiss", row.off and 0.30 or 0.95)
+                    else
+                        local hh = max(2, (it.amount / peak) ^ 0.5 * FXBAR)
+                        b:SetHeight(hh)
+                        b:SetPoint("TOPLEFT", canvas, "TOPLEFT", x, -(y + FXPAD + FXBAR - hh))
+                        ns.Kit.Shade(b.tex, color, row.off and 0.30 or 0.95)
+                    end
                     b.icon:Hide()
                     b.label:SetText("")
                     b.tip, b.at = it.label, it.t
@@ -883,11 +881,11 @@ local function DrawAmountRows(rows, bound, color, heal)
                         extra = format(heal and ns.T("tl.tip.overheal") or ns.T("tl.tip.overkill"),
                             it.over)
                     end
-                    if (it.absorbed or 0) > 0 then
+                    if (it.absorbed or 0) > 0 and not it.miss then
                         extra = extra .. format(ns.T("tl.tip.absorbed"), it.absorbed)
                     end
                     b.tip2 = format(heal and ns.T("tl.tip.gotheal") or ns.T("tl.tip.gothit"),
-                        it.src or "?", player or "?", ns.Num(it.amount), extra)
+                        it.src or "?", player or "?", it.miss and MissText(it) or ns.Num(it.amount), extra)
                     if it.mc then
                         b.tip3 = format(ns.T("tl.tip.mc"), it.src or "?")
                     end
@@ -896,10 +894,7 @@ local function DrawAmountRows(rows, bound, color, heal)
                         b.tip4 = format(ns.T("tl.tip.splash"), it.chaseN or 0,
                             ns.Num(it.chaseSum or 0))
                     end
-                    b.tip5 = format(ns.T("tl.tip.when"), Clock(it.t - fight.from),
-                        format(heal and ns.T("tl.row.heal") or ns.T("tl.row.hit"),
-                            ns.Num(row.total), #row.items,
-                            ns.Plural(#row.items, ns.T(heal and "tl.w.heal" or "tl.w.hit"))))
+                    b.tip5 = format(ns.T("tl.tip.when"), Clock(it.t - fight.from), RowTotal(row, heal))
                     lastX = x
                 end
             end
@@ -1096,7 +1091,8 @@ local function ShowReadouts(t)
     local heal = LastBefore(data.healed, t)
     text[4] = heal and (t - heal.t) < 3 and format("%s: +%d", heal.label, heal.amount) or nil
     local d = LastBefore(data.taken, t)
-    text[5] = d and (t - d.t) < 3 and format("%s: %d", d.label, d.amount) or nil
+    text[5] = d and (t - d.t) < 3 and (d.miss and format("%s: %s", d.label, MissText(d))
+        or format("%s: %d", d.label, d.amount)) or nil
     local h = LastBefore(data.hp, t)
     if h then
         text[6] = h.hp and format("%d%%  (%d)", floor(h.pct * 100 + 0.5), h.hp)

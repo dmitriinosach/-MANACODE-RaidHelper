@@ -75,6 +75,8 @@ local TILT_MAX = 1
 local START_ANGLE = pi / 4
 local START_TILT = 0.55
 local START_PERSP = 0.3
+local GEO_WAIT = 0.35
+local GEO_BTN = 46
 local VIEW_LOW = 0.35
 local VIEW_HIGH = 0.8
 local NAV_BTN = 24
@@ -111,6 +113,7 @@ local LayersView = ns.ReplayLayersView
 local Models = ns.ReplayModels
 local Follow = ns.ReplayFollow
 local Figs = ns.ReplayFigs
+local Geo = ns.ReplayGeo
 local order, depth = {}, {}
 local picked
 local function Clamp(v, lo, hi)
@@ -303,7 +306,11 @@ local function PlaceFigures(elapsed)
         local fig = figs[k]
         local s = k <= n and scene.states[k] or scene.bossState
         local sx, sy, kz = 0, 0, 0
-        if s.vis then sx, sy, kz = Replay.Project(cam, s.x, s.y) end
+        if s.vis then
+            local x, y, lift = Geo.Where(cam, scene, s.x, s.y)
+            sx, sy, kz = Replay.Project(cam, x, y)
+            sy = sy - lift
+        end
         local scale = kz > 0 and DepthScale(sy, kz) or 0
         if kz > 0 and sx > -hw + 2 and sx < hw - 2 and sy < hh - 2 and sy - (ICON + LIFT) * scale > -hh then
             fig.kz = kz
@@ -321,6 +328,12 @@ local function PlaceFigures(elapsed)
 end
 local function PlaceFloor()
     local scene = run.scene
+    if Geo.Place(cam, scene.room, scene.ppy) then
+        for k = 1, run.stripUsed do strips[k]:Hide() end
+        run.stripUsed = 0
+        for i = 1, #dots do dots[i]:Hide() end
+        return
+    end
     local used = 0
     if scene.room and run.hasTex then
         used = Replay.Strips(cam, scene.room, stripData)
@@ -417,6 +430,13 @@ local function UpdateCamUi()
     if not ui.modeBtn then return end
     ui.modeBtn.text:SetText(ns.T(run.flat and "iso.cam.2d" or "iso.cam.3d"))
     ui.modeBtn.tip = ns.T(run.flat and "iso.tip.to3d" or "iso.tip.to2d")
+    if run.scene and Geo.Has(run.scene.room) then
+        ui.geoBtn.text:SetText(ns.T(Geo.on and "iso.geo.vol" or "iso.geo.flat"))
+        ui.geoBtn.tip = ns.T(Geo.on and "iso.tip.geo.vol" or "iso.tip.geo.flat")
+        ui.geoBtn:Show()
+    else
+        ui.geoBtn:Hide()
+    end
 end
 local function Saved()
     local settings = ns.GetDB().settings
@@ -436,6 +456,7 @@ local function LoadCamera()
     run.flat = saved.flat == true
     run.mode = (saved.models == "all" or saved.models == "picked") and saved.models or "none"
     run.focusHeal = saved.focusHeal == true
+    Geo.on = saved.geo ~= false
 end
 local function Reframe()
     if run.flat then
@@ -456,13 +477,16 @@ local function SetView(tilt)
     run.tilt3 = Clamp(tilt, TILT_MIN, TILT_MAX)
     Reframe()
     SaveCamera()
+    Geo.Snap(cam, cam.angle, 0, GEO_WAIT)
 end
 local function SetFlat(flat)
     run.flat = flat
     Reframe()
     SaveCamera()
+    if not flat then Geo.Snap(cam, cam.angle, 0, 0) end
 end
 local function Turn(delta)
+    if not run.flat and Geo.Snap(cam, cam.angle + delta, delta > 0 and 1 or delta < 0 and -1 or 0, 0) then return end
     cam.angle = (cam.angle + delta) % (2 * pi)
     run.camDirty = true
     SaveCamera()
@@ -577,6 +601,14 @@ local function Tick(self, elapsed)
     end
     if run.scrubbing then SeekToCursor() end
     if run.drag then Drag() end
+    local turned, snapped = Geo.Step(cam, elapsed)
+    if snapped then
+        run.tilt3, run.persp3, run.flat = cam.tilt, 0, false
+        Reframe()
+        SaveCamera()
+    elseif turned then
+        run.camDirty = true
+    end
     Follow.Step(elapsed)
     if run.camDirty then ApplyCamera() end
     Replay.Sample(scene, run.t)
@@ -608,6 +640,8 @@ local function ResetCamera(defaults)
     else
         LoadCamera()
     end
+    local iso = Geo.Iso(run.scene and run.scene.room)
+    if iso then cam.angle, run.tilt3, run.persp3, run.flat = Geo.Nearest(cam.angle), iso.tilt, 0, false end
     if run.flat then
         cam.tilt, cam.persp = 1, 0
     else
@@ -751,6 +785,8 @@ local function UseScene(scene)
             if not strips[k]:SetTexture(path) then run.hasTex = false end
         end
     end
+    Geo.Use(scene.room)
+    if not run.flat then Geo.Snap(cam, cam.angle, 0, 0) end
     if not scene.room then
         ui.hint:SetText(ns.T("iso.notex"))
         ui.hint:Show()
@@ -838,6 +874,7 @@ local function ViewDown(_, button)
     local x, y = GetCursorPosition()
     local k = ui.view:GetEffectiveScale()
     run.drag = button
+    Geo.Cancel()
     run.pressHover = run.hover
     run.dragX, run.dragY = x / k, y / k
     run.dragAngle, run.dragCx, run.dragCy = cam.angle, cam.cx, cam.cy
@@ -856,6 +893,7 @@ local function ViewUp()
         end
     elseif run.drag == "LeftButton" then
         SaveCamera()
+        if not run.flat then Geo.Snap(cam, cam.angle, 0, 0) end
     end
     run.drag = nil
 end
@@ -912,8 +950,13 @@ local function BuildNav(top)
     ui.modeBtn:SetWidth(COMPASS)
     ui.modeBtn:SetPoint("TOP", less, "BOTTOM", 0, -10)
     ui.modeBtn.onClick = function() SetFlat(not run.flat) end
+    ui.geoBtn = NavButton(top, nil, "iso.tip.geo.flat")
+    ui.geoBtn:SetWidth(GEO_BTN)
+    ui.geoBtn:SetPoint("TOP", ui.modeBtn, "BOTTOM", 0, -4)
+    ui.geoBtn.onClick = function() Iso.SetGeo(not Geo.on, true) end
+    ui.geoBtn:Hide()
     local help = NavButton(top, ICONS.help, "iso.tip.help")
-    help:SetPoint("TOP", ui.modeBtn, "BOTTOM", 0, -10)
+    help:SetPoint("TOP", ui.geoBtn, "BOTTOM", 0, -10)
     help.onClick = function()
         if ui.legend:IsShown() then ui.legend:Hide() else ui.legend:Show() end
     end
@@ -952,6 +995,7 @@ local function BuildView(frame)
     ui.marks:SetFrameLevel(view:GetFrameLevel() + 2)
     Models.Build(view, view:GetFrameLevel() + MODEL_LEVEL)
     run.levelBase = view:GetFrameLevel() + MODEL_LEVEL + Models.Levels()
+    Geo.Build(view, min(117, run.levelBase + 2 * 42 + 2))
     local top = CreateFrame("Frame", nil, view)
     top:SetAllPoints(view)
     top:SetFrameLevel(min(118, run.levelBase + 2 * 42 + 4))
@@ -1132,6 +1176,7 @@ local function Build()
     run.narrow = false
     frame:SetScript("OnUpdate", Tick)
     frame:SetScript("OnHide", function()
+        Geo.Release()
         run.playing = false
         run.drag = nil
         run.scrubbing = false
@@ -1156,6 +1201,7 @@ local function LoadFight(fight)
     for k = 1, #strips do strips[k]:Hide() end
     run.stripUsed = 0
     for k = 1, #dots do dots[k]:Hide() end
+    Geo.Use(nil)
     LayersView.Use(nil)
     Models.Use(nil)
     ns.ReplayFeed.Use(nil)
@@ -1231,6 +1277,21 @@ function Iso.SetPlaying(on)
     if not run.scene then return end
     run.playing = on and true or false
     UpdatePlay()
+end
+function Iso.SetGeo(on, quiet)
+    Geo.on = on and true or false
+    Saved().geo = Geo.on
+    if run.scene then
+        if Geo.on then
+            Geo.Snap(cam, cam.angle, 0, 0)
+        else
+            Geo.Cancel()
+            run.persp3 = START_PERSP
+            Reframe()
+        end
+    end
+    UpdateCamUi()
+    if not quiet then ns.Print(ns.T(Geo.on and "iso.geo.on" or "iso.geo.off")) end
 end
 function Iso.SetCamera(index)
     run.camIndex = index

@@ -190,6 +190,8 @@ local function Handler(msg)
                 ns.Print(x and format(ns.T("iso.mpos"), tonumber(x), tonumber(y), tonumber(z)) or ns.T("iso.mpos.off"))
             elseif rest == "flip" then
                 ns.ReplayIso.FlipFace()
+            elseif rest == "geo" then
+                ns.ReplayIso.SetGeo(not ns.ReplayGeo.on)
             elseif camera then
                 local index = tonumber(camera)
                 ns.ReplayIso.SetCamera(index and index >= 0 and index or nil)
