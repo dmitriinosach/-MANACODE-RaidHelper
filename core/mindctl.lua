@@ -24,8 +24,12 @@ local SLOW_GAP = 1.6
 local SLOW_TEMPO = 0.8
 local DUAL_HITS = 4
 local TOL = 0.05
+local MERGE = 2
+local CD_FLOOR = 0.5
 local RANK = { red = 3, yellow = 2, green = 1 }
 local GAINED = { SPELL_AURA_APPLIED = true, SPELL_AURA_REFRESH = true, SPELL_AURA_APPLIED_DOSE = true }
+local USE = { SPELL_CAST_SUCCESS = true, SPELL_AURA_APPLIED = true, SPELL_DAMAGE = true, SPELL_MISSED = true }
+local HARM = { SPELL_DAMAGE = true, SPELL_MISSED = true, SPELL_AURA_APPLIED = true, SPELL_PERIODIC_DAMAGE = true }
 local Ctl = {}
 ns.MindCtl = Ctl
 local function On(v)
@@ -58,10 +62,22 @@ local function Norm(amount, resisted, blocked, absorbed, crit)
     if On(crit) then v = v / 2 end
     return v
 end
-function Ctl.Begin(rule, byName, owners, pets)
-    return { rule = rule, aura = tonumber(rule.aura), byName = byName, owners = owners, pets = pets,
-             who = {}, procOf = {}, open = 0, lastEnd = -AFTER - 1, n = 0,
-             lt = {}, ld = {}, lm = {}, la = {}, lsp = {} }
+function Ctl.Begin(rule, byName, owners, pets, drain)
+    local st = { rule = rule, aura = tonumber(rule.aura), byName = byName, owners = owners, pets = pets,
+                 who = {}, procOf = {}, open = 0, lastEnd = -AFTER - 1, n = 0,
+                 lt = {}, ld = {}, lm = {}, la = {}, lsp = {} }
+    if drain then
+        st.drain, st.drainId, st.drainName, st.drainCls = drain, {}, {}, {}
+        for cls, list in pairs(drain) do
+            for i = 1, #list do
+                local e = list[i]
+                st.drainCls[e] = cls
+                st.drainName[e.spell] = true
+                for k = 1, #e.ids do st.drainId[e.ids[k]] = e end
+            end
+        end
+    end
+    return st
 end
 local function Who(st, name)
     local w = st.who[name]
@@ -127,6 +143,37 @@ local function Struck(st, c, w, ts, sub, swing, hurt, a1, a2, a4, a5, a6, a7)
     if IsProc(st, a2) then c.procs = c.procs + 1 end
     if GAINED[sub] then w.dots[a2] = true end
 end
+local function Use(st, ts, name, e)
+    local p = st.byName[name]
+    if not p or st.drainCls[e] ~= p.class then return end
+    local w = Who(st, name)
+    local last = w.last and w.last[e]
+    if not w.last then w.last, w.useT, w.useN = {}, {}, {} end
+    w.last[e] = ts
+    if last and ts - last <= MERGE then return end
+    w.useT[#w.useT + 1] = ts
+    w.useN[#w.useN + 1] = e.spell
+    local c = w.cur
+    if c then
+        c.used = c.used or {}
+        c.used[e.spell] = true
+    end
+end
+local function Harm(c, sub, dstName, spell, amount)
+    if find(sub, "_DAMAGE", 1, true) then
+        c.dd = c.dd or {}
+        c.dd[spell] = (c.dd[spell] or 0) + (tonumber(amount) or 0)
+    end
+    if dstName then
+        c.da = c.da or {}
+        local set = c.da[spell]
+        if not set then
+            set = {}
+            c.da[spell] = set
+        end
+        set[dstName] = true
+    end
+end
 function Ctl.Feed(st, ts, sub, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a4, a5, a6, a7, a8)
     local byName = st.byName
     if sub == "FW_WPN" then
@@ -138,6 +185,10 @@ function Ctl.Feed(st, ts, sub, srcName, srcFlags, dstGUID, dstName, dstFlags, a1
         Toggle(st, ts, dstName, sub == "SPELL_AURA_APPLIED")
         return
     end
+    if st.drainId and USE[sub] and srcName then
+        local e = st.drainId[tonumber(a1) or 0]
+        if e then Use(st, ts, srcName, e) end
+    end
     local w = srcName and st.who[srcName]
     local c = w and w.cur
     local swing = find(sub, "SWING", 1, true) == 1
@@ -146,6 +197,9 @@ function Ctl.Feed(st, ts, sub, srcName, srcFlags, dstGUID, dstName, dstFlags, a1
         or (dstFlags ~= nil and band(dstFlags, F_PETS) > 0 and band(dstFlags, F_BY_PLAYER) > 0
             and band(dstFlags, F_OURS) > 0)
     if c and ally and dstName ~= srcName then
+        if st.drainName and HARM[sub] and type(a2) == "string" and st.drainName[a2] then
+            Harm(c, sub, dstName, a2, a4)
+        end
         Struck(st, c, w, ts, sub, swing, hurt, a1, a2, a4, a5, a6, a7)
     elseif c and dstName == srcName and GAINED[sub] and type(a2) == "string" and IsProc(st, a2) then
         c.procs = c.procs + 1
@@ -256,6 +310,53 @@ local function Blame(st, victim, t)
              grade = (gap < REACT or hits == 1) and "green" or "yellow",
              spell = kill and st.lsp[kill] or nil, amount = kill and la[kill] or nil, dot = t > c.to }
 end
+local function Count(set)
+    local n = 0
+    for _ in pairs(set or {}) do n = n + 1 end
+    return n
+end
+local function DrainDefs(w, list)
+    local defs, has = {}, {}
+    for i = 1, #list do
+        local e = list[i]
+        local prev, gap = nil, nil
+        for k = 1, #w.useT do
+            if w.useN[k] == e.spell then
+                has[e.spell] = true
+                local at = w.useT[k]
+                if prev and (not gap or at - prev < gap) then gap = at - prev end
+                prev = at
+            end
+        end
+        local cd = e.cd
+        if gap then cd = math.max(cd * CD_FLOOR, math.min(cd, gap)) end
+        defs[e.spell] = { e.spell, cd }
+    end
+    return defs, has
+end
+local function Drain(st, w, p)
+    local DG = ns.DeathGrade
+    local list = st.drain and st.drain[p.class or ""]
+    if not (DG and list and w.useT) then return end
+    local defs, has = DrainDefs(w, list)
+    for i = 1, #w.list do
+        local c = w.list[i]
+        local seen = DG.Seen(p, c.t - TOL, defs, w.useT, w.useN)
+        local out = {}
+        for k = 1, #list do
+            local e = list[k]
+            if has[e.spell] then
+                local ready = DG.Left(seen, e.spell, c.t, nil, nil, defs) == 0
+                local used = c.used ~= nil and c.used[e.spell] == true
+                out[#out + 1] = { spell = e.spell, id = e.id, ready = ready, used = used,
+                                  dmg = used and c.dd and c.dd[e.spell] or 0,
+                                  allies = used and Count(c.da and c.da[e.spell]) or 0 }
+                if ready and used then c.miss = true end
+            end
+        end
+        if #out > 0 then c.drain = out end
+    end
+end
 function Ctl.Finish(st, s, till)
     local classes = {}
     for _, cls in ipairs(st.rule.classes or {}) do classes[cls] = true end
@@ -271,6 +372,11 @@ function Ctl.Finish(st, s, till)
                 c.to = c.to or till
                 c.checked = checked
                 Judge(st, c, base, dual, own, p.class)
+            end
+            Drain(st, w, p)
+            for i = 1, #w.list do
+                local c = w.list[i]
+                c.used, c.dd, c.da = nil, nil, nil
             end
             p.ctl = w.list
         end
@@ -296,18 +402,14 @@ function Ctl.Deaths(p)
 end
 function Ctl.Mark(p)
     local list = p.ctl
-    if not list then return nil end
-    local worst, bad, kills = nil, { red = 0, yellow = 0, green = 0 }, {}
+    if not list or #list == 0 then return nil end
+    local worst, kills = nil, {}
     for i = 1, #list do
         local c = list[i]
         local v = c.verdict
-        if v then
-            bad[v] = bad[v] + 1
-            if not worst or RANK[v] > RANK[worst] then worst = v end
-        end
+        if c.miss and (not v or RANK[v] < RANK.yellow) then v = "yellow" end
+        if v and (not worst or RANK[v] > RANK[worst]) then worst = v end
         for k = 1, #c.kills do kills[#kills + 1] = c.kills[k] end
     end
-    if bad.red + bad.yellow == 0 and #kills == 0 then return nil end
-    local count = bad.red > 0 and bad.red or (bad.yellow > 0 and bad.yellow or #kills)
-    return { count = count, verdict = worst, armed = worst ~= nil, kills = kills }
+    return { count = #list, verdict = worst, kills = kills }
 end

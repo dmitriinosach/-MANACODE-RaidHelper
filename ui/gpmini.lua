@@ -66,6 +66,9 @@ local function Clock(sec)
     local m = floor(sec / 60)
     return format("%d:%02d", m, floor(sec - m * 60))
 end
+local function Outcome(f)
+    return ns.Kit.Hex(f.killed and "sem.win" or "sem.wipe") .. ns.T(f.killed and "fl.win" or "fl.wipe") .. "|r"
+end
 local function Tip(owner, lines)
     if ns.Tip then ns.Tip.Show(owner, lines) end
 end
@@ -86,8 +89,8 @@ local function TitleTip()
     local fights = RaidFights()
     local n, total = TryNumber(fights, current)
     local lines = { { current.boss, "tip.body" } }
-    lines[#lines + 1] = { format(ns.T("gpmini.tip.try"), n, total,
-        ns.T(current.killed and "tl.fight.win" or "tl.fight.wipe"), Clock(current.to - current.from)), "tip.title" }
+    lines[#lines + 1] = { format(ns.T("gpmini.tip.try"), n, total, Outcome(current), Clock(current.to - current.from)),
+        "tip.title" }
     lines[#lines + 1] = { format(ns.T("sum.gp.preset"), ns.Penalties.Label(ns.Penalties.Active())), "text.secondary" }
     if model then
         lines[#lines + 1] = { format(ns.T("gpmini.tip.gp"), #model.items, model.pending), "tip.title" }
@@ -264,8 +267,7 @@ local function PaintHead(fights)
         return
     end
     local n = TryNumber(fights, current)
-    titleText:SetText(format(ns.T("gpmini.title"), n,
-        ns.T(current.killed and "tl.fight.win" or "tl.fight.wipe"), current.boss))
+    titleText:SetText(format(ns.T("gpmini.title"), n, Outcome(current), current.boss))
 end
 local function PaintList()
     local width = W - PADX * 2 - BAR - 4

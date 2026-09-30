@@ -10,4 +10,8 @@ ns.summaries["Тухлопуз"] = {
     blocks = {
         { kind = "taken", label = "sum.k.vilegas", spells = { "Губительный газ" } },
     },
+    stacks = {
+        { spell = "Невосприимчивость к гнили" },
+        { spell = "Газовое вздутие" },
+    },
 }

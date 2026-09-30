@@ -1,10 +1,10 @@
 local _, ns = ...
 ns.pullTimer = {
-    early = 1,
-    window = 60,
+    early = 2,
+    window = 180,
     dup = 1.5,
     min = 1,
-    max = 60,
+    max = 180,
     icon = 100,
     addon = { ["DBMv4-PT"] = "pt", ["DBMv4-Pizza"] = "pizza" },
     pizza = { ["Атака"] = true, ["Pull in"] = true, ["Pull en"] = true, ["Pull dans"] = true },

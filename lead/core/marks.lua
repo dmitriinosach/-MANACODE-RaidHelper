@@ -396,6 +396,62 @@ function M.Release(i)
     changed()
     return "free"
 end
+M.KEY = "RAIDLEAD_MARK"
+function M.KeyOf(i)
+    local key = GetBindingKey(M.KEY .. i)
+    return key and GetBindingText(key, "KEY_")
+end
+function M.Key(i)
+    local r = M.Target(i)
+    if r == "rights" then
+        ns.say(ns.T("tipNeedOfficer"))
+    elseif r == "none" then
+        ns.say(ns.T("keysNoTarget"))
+    end
+    return r
+end
+function M.KeyRelease()
+    if not M.CanMark() then
+        ns.say(ns.T("tipNeedOfficer"))
+        return "rights"
+    end
+    if not UnitExists("target") then
+        ns.say(ns.T("keysNoTarget"))
+        return "none"
+    end
+    local name = UnitName("target")
+    for i = 1, M.COUNT do
+        local l = listOf(i)
+        if l then
+            for j = #l, 1, -1 do
+                if l[j] == name then
+                    if l[2] then
+                        table.remove(l, j)
+                        if held[i] and held[i].name == name then held[i] = nil end
+                        calm(i)
+                        changed()
+                        return "free"
+                    end
+                    return M.Release(i)
+                end
+            end
+        end
+    end
+    local i = GetRaidTargetIndex("target")
+    if i and i >= 1 and i <= M.COUNT then return M.Release(i) end
+    ns.say(ns.T("keysNoPin"))
+    return "none"
+end
+BINDING_HEADER_RAIDLEAD = ns.T("keysHeader")
+BINDING_NAME_RAIDLEAD_MARK1 = ns.T("keysMark1")
+BINDING_NAME_RAIDLEAD_MARK2 = ns.T("keysMark2")
+BINDING_NAME_RAIDLEAD_MARK3 = ns.T("keysMark3")
+BINDING_NAME_RAIDLEAD_MARK4 = ns.T("keysMark4")
+BINDING_NAME_RAIDLEAD_MARK5 = ns.T("keysMark5")
+BINDING_NAME_RAIDLEAD_MARK6 = ns.T("keysMark6")
+BINDING_NAME_RAIDLEAD_MARK7 = ns.T("keysMark7")
+BINDING_NAME_RAIDLEAD_MARK8 = ns.T("keysMark8")
+BINDING_NAME_RAIDLEAD_RELEASE = ns.T("keysRelease")
 function M.Grab()
     local n = 0
     for _, m in ipairs(ns.Session.Roster()) do

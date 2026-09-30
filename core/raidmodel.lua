@@ -116,8 +116,6 @@ local function Heal(res)
         local p = list[i]
         local tip = { { kind = "head", left = p.name, class = p.class } }
         Put(tip, "row", T("rsum.tt.heal"), Short(p.heal))
-        Put(tip, "sep")
-        Put(tip, "note", T("rsum.tt.healnote"))
         rows[i] = { who = p.name, class = p.class, text = Short(p.heal), v = p.heal, lines = tip }
     end
     return { key = "heal", title = format(T("rsum.title.sum"), T("rsum.d.heal"), Short(Sum(res, "heal"))),

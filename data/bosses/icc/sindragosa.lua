@@ -13,6 +13,13 @@ ns.summaries["Синдрагоса"] = {
           note = "sum.b.nograde", tip = "sum.b.asphyxdeath" },
         { kind = "death", spells = { "Рассекающий удар", "Мощный удар хвостом" }, id = 19983, neutral = true,
           note = "sum.b.nograde", tip = "sum.b.cleavedeath" },
+        { kind = "stack", spell = "Таинственная энергия", tip = "sum.b.buffet" },
+    },
+    stacks = {
+        { spell = "Неустойчивость", over = 3 },
+        { spell = "Обморожение" },
+        { spell = "Таинственная энергия" },
+        lap = { wave = "tomb", phase = "p1", before = "stk.air.before", after = "stk.air.after" },
     },
     blocks = {
         { kind = "friendly", label = "sum.k.backlash", spells = { "Ответный удар" } },

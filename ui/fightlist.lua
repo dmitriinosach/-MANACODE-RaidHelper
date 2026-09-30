@@ -597,6 +597,7 @@ function FL.Participants(f)
     return list, counts ~= nil
 end
 local function OnPlayer(row)
+    if row.who and ns.ReplayFollow and ns.ReplayFollow.Pick(fight, row.who) then return end
     if row.who and ns.Timeline and ns.Timeline.SelectPlayer then
         ns.Timeline.SelectPlayer(row.who)
     end
@@ -774,7 +775,8 @@ local function AttachNav(host, title, status)
     navOut:SetPoint("LEFT", navNext, "RIGHT", NAVGAP * 2, 0)
     nav:Hide()
     local play = ns.ReplayLink.Head(host, nav)
-    if ns.ShareView then ns.ShareView.Head(host) end
+    local share = ns.ShareView and ns.ShareView.Head(host)
+    if share and ns.SumHide then ns.SumHide.Head(host, share) end
     if status then status:SetPoint("LEFT", play, "RIGHT", NAVGAP * 2, 0) end
 end
 Tips.raid = function(r)
@@ -791,11 +793,11 @@ Tips.raid = function(r)
     out[#out + 1] = Line(format(ns.T("fl.tip.passed"), raid.passed, raid.total, raid.tries,
         raid.deaths))
     local fold = Folded(raid, r.line.index)
-    out[#out + 1] = Line(ns.T(fold and "fl.tip.raid.open" or "fl.tip.raid.fold"), "tip.body", true)
+    out[#out + 1] = Line(ns.T(fold and "fl.tip.raid.open" or "fl.tip.raid.fold"), "text.primary", true)
     if ns.Timeline and ns.Timeline.ShowRaid and not RaidShown(raid) then
-        out[#out + 1] = Line(ns.T("rsum.fl.tip.open"), "tip.body", true)
+        out[#out + 1] = Line(ns.T("rsum.fl.tip.open"), "text.primary", true)
     end
-    out[#out + 1] = Line(ns.T("fl.tip.raid.menu"), "tip.body")
+    out[#out + 1] = Line(ns.T("fl.tip.raid.menu"), "text.primary")
     return out
 end
 Tips.enc = function(r)
@@ -814,10 +816,10 @@ Tips.enc = function(r)
         out[#out + 1] = Line(format(ns.T("fl.tip.enc.line"), i, ns.T(f.killed and "fl.win" or "fl.wipe"),
             Clock(f.to - f.from), f.deaths or 0, Hour(f.from)), token)
     end
-    out[#out + 1] = Line(ns.T(enc.passed and "fl.tip.enc.kill" or "fl.tip.enc.last"), "tip.body", true)
-    if ns.FightTree.Wipes(enc) > 0 then out[#out + 1] = Line(ns.T("fl.tip.enc.wipes"), "tip.body") end
-    out[#out + 1] = Line(ns.T("fl.tip.enc.nav"), "tip.body")
-    out[#out + 1] = Line(ns.T("fl.tip.enc.menu"), "tip.body")
+    out[#out + 1] = Line(ns.T(enc.passed and "fl.tip.enc.kill" or "fl.tip.enc.last"), "text.primary", true)
+    if ns.FightTree.Wipes(enc) > 0 then out[#out + 1] = Line(ns.T("fl.tip.enc.wipes"), "text.primary") end
+    out[#out + 1] = Line(ns.T("fl.tip.enc.nav"), "text.primary")
+    out[#out + 1] = Line(ns.T("fl.tip.enc.menu"), "text.primary")
     return out
 end
 Tips.wipe = function(r)
@@ -826,8 +828,8 @@ Tips.wipe = function(r)
         Line(format(ns.T("fl.try.title"), f.boss, n)),
         Line(format(ns.T("fl.tip.enc.line"), n, ns.T("fl.wipe"), Clock(f.to - f.from), f.deaths or 0,
             Hour(f.from)), "sem.wipe"),
-        Line(ns.T("fl.tip.wipe.open"), "tip.body", true),
-        Line(ns.T("fl.tip.wipe.menu"), "tip.body"),
+        Line(ns.T("fl.tip.wipe.open"), "text.primary", true),
+        Line(ns.T("fl.tip.wipe.menu"), "text.primary"),
     }
 end
 function Del.Land(key, lost)
@@ -943,7 +945,7 @@ Tips.player = function(c)
     elseif p.deaths == 0 and p.faults == 0 then
         out[#out + 1] = Line(ns.T("fl.tip.clean"), "sem.win")
     end
-    out[#out + 1] = Line(ns.T("fl.tip.player"), "tip.body", true)
+    out[#out + 1] = Line(ns.T("fl.tip.player"), "text.primary", true)
     return out
 end
 local function Wheel(frame, bar, move)

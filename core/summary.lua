@@ -11,9 +11,15 @@ local LEAD = 35
 local SHIELD_LEAD = 60
 local TAIL = 5
 local TANK_SHARE = 0.15
+local TANK_SHARE_STRICT = 0.25
 local TAUNT_TAKEN_SHARE = 0.08
+local TAKEN_SHARE_STRICT = 0.16
 local TANK_CASTS = 5
-local TANK_TAUNTS = 2
+local TANK_MAX = 3
+local TANK_HOLD = 0.3
+local TANK_SUB = "FW_TANKSNAP"
+local TANK_KINDS = { "strong", "weak", "mt", "unseen" }
+local SIGN_SUBS = { SPELL_AURA_APPLIED = true, SPELL_AURA_REFRESH = true, SPELL_AURA_REMOVED = true, [TANK_SUB] = true }
 local IMMUNE_WINDOW = 1.5
 local SHED_FULL = 20
 local SHED_RELINK = 0.3
@@ -30,6 +36,10 @@ local AOE_WINDOW = 0.4
 local BIG_RAID = 12
 local KEEP = 20
 local BURST = 1
+local ABIL_KEEP = 8
+local SWING_KEY = "#swing"
+local REST_KEY = "#rest"
+local MELEE_ID = 6603
 local LIVE = { aura = true, ticks = true, stack = true, hit = true, chased = true, applied = true }
 local Summary = {}
 ns.Summary = Summary
@@ -81,8 +91,9 @@ local function NewSummary(fight, def)
         lead = math.max(fight.from - LEAD, ns.Encounters.Lead and ns.Encounters.Lead(fight) or 0),
         dmg = 0, bossDmg = 0, heal = 0, deaths = 0, dispels = 0, interrupts = 0,
         players = {}, blocks = {}, badges = {}, icons = {}, extra = {},
-        spellIds = {}, soaked = {}, given = {}, earned = {},
+        spellIds = {}, soaked = {}, given = {}, earned = {}, rides = {},
     }
+    for name in pairs(ns.vehicles or {}) do s.rides[name] = true end
     local own, common = def.badges or {}, ns.buffsGiven or {}
     for i = 1, #own do s.badges[i] = own[i] end
     s.own = #own
@@ -100,6 +111,12 @@ local function NewSummary(fight, def)
             Fill(bd.set, bd.names)
         end
         if bd.kind == "dmgto" and bd.soak then Fill(s.soaked, bd.names) end
+        if bd.kind == "bounce" then
+            bd.set = bd.set or {}
+            Fill(bd.set, bd.names)
+            s.bounce = s.bounce or {}
+            Fill(s.bounce, bd.names)
+        end
         if bd.kind == "captor" then s.captor = i end
         if bd.kind == "applied" and not bd.set then
             bd.set = {}
@@ -142,6 +159,7 @@ local function NewSummary(fight, def)
         local bd = blocks[i]
         local b = { def = bd, total = 0, by = {}, split = {}, names = {} }
         Fill(b.names, bd.names)
+        if bd.npc and bd.kind == "abom" then s.rides[bd.npc] = true end
         if bd.soak then
             b.hits = {}
             Fill(s.soaked, bd.names)
@@ -156,6 +174,11 @@ local function NewSummary(fight, def)
             b.hits, b.starts, b.done, b.casts, b.missDmg, b.missHits = {}, 0, 0, 0, 0, 0
             Fill(bd.kind == "removed" and s.cureSet or s.hurt, bd.spells)
             if bd.kind == "casts" then Fill(s.castSet, bd.spells) end
+            if bd.kind == "taken" and bd.stacks then
+                b.peak = {}
+                s.stacked = s.stacked or {}
+                Fill(s.stacked, bd.spells)
+            end
         end
         if bd.kind == "cannons" then
             b.ships, b.hits, b.kills, b.secs, b.all = {}, {}, {}, {}, {}
@@ -197,7 +220,52 @@ local function Add(b, who, key, amount)
     end
     sp[key] = (sp[key] or 0) + amount
 end
-local function DamageTo(s, p, who, target, amount)
+local function Ab(t, who, key, amount, crit, id)
+    local ab = t.ab
+    if not ab then
+        ab = {}
+        t.ab = ab
+    end
+    local m = ab[who]
+    if not m then
+        m = {}
+        ab[who] = m
+    end
+    local r = m[key]
+    if not r then
+        r = { a = 0, n = 0, id = tonumber(id) }
+        m[key] = r
+    end
+    r.a = r.a + amount
+    r.n = r.n + 1
+    if crit then r.c = (r.c or 0) + 1 end
+end
+Summary.Ab = Ab
+local function AbKey(s, swing, src, who, spell)
+    if src ~= who and not (src and s.rides[src]) then return "@" .. tostring(src or "?") end
+    if swing then return SWING_KEY end
+    return tostring(spell)
+end
+local function AbTrim(ab)
+    for _, m in pairs(ab or {}) do
+        local list = {}
+        for key, r in pairs(m) do list[#list + 1] = { key = key, a = r.a } end
+        if #list > ABIL_KEEP then
+            tsort(list, function(x, y)
+                if x.a ~= y.a then return x.a > y.a end
+                return x.key < y.key
+            end)
+            local rest = { a = 0, n = 0, k = 0 }
+            for k = ABIL_KEEP + 1, #list do
+                local r = m[list[k].key]
+                m[list[k].key] = nil
+                rest.a, rest.n, rest.k = rest.a + r.a, rest.n + r.n, rest.k + 1
+            end
+            m[REST_KEY] = rest
+        end
+    end
+end
+local function DamageTo(s, p, who, target, amount, src, swing, spell, crit, id)
     local badges = s.badges
     for i = 1, s.own do
         local bd = badges[i]
@@ -211,9 +279,24 @@ local function DamageTo(s, p, who, target, amount)
     end
     for i = 1, #s.blocks do
         local b = s.blocks[i]
-        if b.names[target] and b.def.kind == "damageTo" then
+        if b.names[target] and (b.def.kind == "damageTo" or b.def.kind == "oozes") then
             Add(b, who, target, amount)
+            Ab(b, who, AbKey(s, swing, src, who, spell), amount, crit, id)
             if b.def.soak then b.hits[who] = (b.hits[who] or 0) + 1 end
+        end
+    end
+end
+local function Bounce(s, p, target, key, at)
+    local badges = s.badges
+    for i = 1, s.own do
+        local bd = badges[i]
+        if bd.kind == "bounce" and bd.set[target] then
+            local st = p.badges[i]
+            st.n = st.n + 1
+            if st.n == 1 then st.times[1] = at end
+            st.by = st.by or {}
+            st.by[key] = (st.by[key] or 0) + 1
+            s.icons[i] = bd.id
         end
     end
 end
@@ -236,10 +319,10 @@ local function Guard(p, ts, id)
     local n = #t + 1
     t[n], p.guardId[n] = ts, id
 end
-local function Hurt(s, victim, spell, src, amount)
+local function Hurt(s, victim, spell, src, amount, absorbed)
     for i = 1, #s.blocks do
         local b = s.blocks[i]
-        if Listed(b, spell, src) then
+        if Listed(b, spell, src) and (not absorbed or (b.def.kind == "taken" and b.def.absorbed)) then
             if b.def.kind == "taken" then
                 Add(b, victim, spell, amount)
                 b.hits[victim] = (b.hits[victim] or 0) + 1
@@ -248,6 +331,12 @@ local function Hurt(s, victim, spell, src, amount)
                 b.missHits = b.missHits + 1
             end
         end
+    end
+end
+local function Peak(s, victim, spell, stacks)
+    for i = 1, #s.blocks do
+        local b = s.blocks[i]
+        if b.peak and b.spells[spell] and stacks > (b.peak[victim] or 0) then b.peak[victim] = stacks end
     end
 end
 local function EnemyCast(s, spell, src, started)
@@ -278,8 +367,9 @@ local function Unit(b, guid)
     end
     return v
 end
-local function Credit(t, who, key, wave, amount)
+local function Credit(t, who, key, wave, amount, hit)
     Add(t, who, key, amount)
+    Ab(t, who, hit.key, amount, hit.crit, hit.id)
     local w = t.waves[who]
     if not w then
         w = {}
@@ -363,7 +453,7 @@ local function Captor(s, p, ts, guid, key, amount, mine)
     end
     p.hitT, p.hitKey, p.hitGuid = ts, key, guid
 end
-local function UsefulHit(s, b, p, who, own, ts, guid, name, amount, over, key, dot)
+local function UsefulHit(s, b, p, who, own, ts, guid, name, amount, over, key, dot, hit)
     local v = b.names[name] and Unit(b, guid) or nil
     if v then
         local cut = over > 0 and amount - over or amount
@@ -377,9 +467,9 @@ local function UsefulHit(s, b, p, who, own, ts, guid, name, amount, over, key, d
         local held = v.capAt ~= nil and not v.freeAt
             and (not phase or (s.track ~= nil and s.track.key == phase))
         if p then
-            Credit(b.full, who, key, v.wave, amount)
-            if b.limit and got > 0 then Credit(b.hp50, who, key, v.wave, got) end
-            if held and got > 0 then Credit(b, who, key, v.wave, got) end
+            Credit(b.full, who, key, v.wave, amount, hit)
+            if b.limit and got > 0 then Credit(b.hp50, who, key, v.wave, got, hit) end
+            if held and got > 0 then Credit(b, who, key, v.wave, got, hit) end
         end
     end
     if p and own and not dot and s.captor then
@@ -398,9 +488,10 @@ local function UsefulEnd(s)
         b.rule = "hold"
     else
         local f = (heroic and b.limit) and b.hp50 or b.full
-        b.total, b.by, b.split, b.waves = f.total, f.by, f.split, f.waves
+        b.total, b.by, b.split, b.waves, b.ab = f.total, f.by, f.split, f.waves, f.ab
         b.rule = f == b.hp50 and "hp" or "full"
     end
+    b.full.ab, b.hp50.ab = nil, nil
     if b.rule == "full" then
         b.normal = true
         b.label = b.def.plain
@@ -485,9 +576,37 @@ local function DeathFits(s, bd, p, d, spells, srcs)
     return not (bd.skipRide and Unseated(s, p, d.t, bd.skipRide))
 end
 Summary.DeathFits = DeathFits
+local function PoolKilled(bd, d)
+    if d.tail then return false end
+    local sum = {}
+    for k = 1, #(d.recent or {}) do
+        local e = d.recent[k]
+        if e.spell and d.t - e.t <= bd.pool then sum[e.spell] = (sum[e.spell] or 0) + (e.amount or 0) end
+    end
+    local mine = sum[bd.spell]
+    if not mine then return false end
+    if d.killer and d.killer.spell == bd.spell then return true end
+    for spell, v in pairs(sum) do
+        if spell ~= bd.spell and v > mine then return false end
+    end
+    return true
+end
+function Summary.PoolGrade(bd, p)
+    for k = 1, #p.deathInfo do
+        if PoolKilled(bd, p.deathInfo[k]) then return "red" end
+    end
+    return "yellow"
+end
 local function DeathBadges(s)
     for i = 1, #s.badges do
         local bd = s.badges[i]
+        if bd.kind == "hit" and bd.pool then
+            for k = 1, #s.players do
+                local p = s.players[k]
+                local st = p.badges[i]
+                if st.n > 0 then st.grade = Summary.PoolGrade(bd, p) end
+            end
+        end
         if bd.kind == "ticks" then
             for k = 1, #s.players do
                 local st = s.players[k].badges[i]
@@ -542,19 +661,82 @@ local function DeathBadges(s)
         end
     end
 end
+local function TankFeed(s, byName, boss, ts, sub, dstName, a1, a2, a3, a4)
+    if sub == TANK_SUB then
+        local marks = { a1, a2, a3, a4 }
+        for k = 1, #TANK_KINDS do
+            for name in tostring(marks[k] or ""):gmatch("[^,]+") do
+                local p = byName[name]
+                if p then
+                    s.tankSnap = true
+                    if p.tankSnap ~= "mt" and p.tankSnap ~= "strong" then p.tankSnap = TANK_KINDS[k] end
+                end
+            end
+        end
+        return
+    end
+    local p = dstName and byName[dstName]
+    if not p then return end
+    local auras = ns.tankAuras and ns.tankAuras[boss]
+    if auras and auras[a2] then
+        if sub == "SPELL_AURA_REMOVED" then
+            if p.tankAuraAt then p.tankHold = (p.tankHold or 0) + ts - p.tankAuraAt end
+            p.tankAuraAt = nil
+        elseif not p.tankAuraAt then
+            p.tankAuraAt = math.max(ts, s.from)
+        end
+    end
+    local sg = ns.tankSigns and ns.tankSigns[tonumber(a1)]
+    if sg and sub ~= "SPELL_AURA_REMOVED" and p.class == sg.class then
+        if p.tankSign ~= "strong" then p.tankSign = sg.weak and "weak" or "strong" end
+        if sub == "SPELL_AURA_APPLIED" and ts >= s.from then p.tankOn = true end
+    end
+end
+local function IsTank(s, p, melee, taken)
+    local share = melee > 0 and p.bossMelee / melee or 0
+    local took = taken > 0 and p.npcTaken / taken or 0
+    local mark = p.tankSnap
+    if (p.tankHold or 0) >= TANK_HOLD * s.dur then return true end
+    if s.tankSnap then
+        if mark == "strong" or mark == "mt" or (mark == "weak" and (p.tankCasts > 0 or p.bossMelee > 0)) then
+            return true
+        end
+        if p.tankOn and (share >= TANK_SHARE or took >= TAUNT_TAKEN_SHARE) then return true end
+        if mark ~= "unseen" then return false end
+    end
+    if p.tankCasts >= TANK_CASTS or (p.tankSign and share >= TANK_SHARE) then return true end
+    return p.taunts > 0 and (p.tankCasts > 0 or share >= TANK_SHARE_STRICT or took >= TAKEN_SHARE_STRICT)
+end
+local function MoreTank(a, b)
+    if a.bossMelee ~= b.bossMelee then return a.bossMelee > b.bossMelee end
+    if a.tankCasts ~= b.tankCasts then return a.tankCasts > b.tankCasts end
+    return a.npcTaken > b.npcTaken
+end
 local function Roles(s)
     local melee = 0
     local taken = 0
     for i = 1, #s.players do
-        melee = melee + s.players[i].bossMelee
-        taken = taken + s.players[i].npcTaken
+        local p = s.players[i]
+        melee = melee + p.bossMelee
+        taken = taken + p.npcTaken
+        if p.tankAuraAt then
+            p.tankHold = (p.tankHold or 0) + math.max(0, s.from + s.dur - p.tankAuraAt)
+            p.tankAuraAt = nil
+        end
     end
+    local tanks = {}
     for i = 1, #s.players do
         local p = s.players[i]
-        if (melee > 0 and p.bossMelee / melee >= TANK_SHARE)
-            or p.taunts >= TANK_TAUNTS
-            or (p.taunts > 0 and ((taken > 0 and p.npcTaken / taken >= TAUNT_TAKEN_SHARE) or p.tankCasts > 0))
-            or p.tankCasts >= TANK_CASTS then
+        if IsTank(s, p, melee, taken) then
+            tanks[#tanks + 1] = p
+        elseif p.heal > p.dmg then
+            p.role = "heal"
+        end
+    end
+    tsort(tanks, MoreTank)
+    for i = 1, #tanks do
+        local p = tanks[i]
+        if i <= TANK_MAX then
             p.role = "tank"
         elseif p.heal > p.dmg then
             p.role = "heal"
@@ -601,7 +783,29 @@ local function Forgive(list, a, b)
         if list[i] >= a - SHED_RELINK and list[i] <= b + SHED_RELINK then table.remove(list, i) end
     end
 end
+local function Cures(p, h, t, noReset)
+    local DG = ns.DeathGrade
+    if not p.class or not DG then return nil end
+    local immune = ns.immunities or {}
+    local lock = h.lockId and ns.lockouts and ns.lockouts[h.lockId]
+    local seen = DG.Seen(p, t)
+    local out = {}
+    for id, def in pairs(ns.defensives or {}) do
+        if immune[def[1]] == p.class then
+            local left, blocked = DG.Left(seen, id, t, noReset, lock)
+            local wait = blocked and math.max(0, (h.lockOn or t) + (blocked.dur or 0) - t) or 0
+            if wait > left then
+                out[#out + 1] = { id = id, left = wait, lock = blocked.name }
+            else
+                out[#out + 1] = { id = id, left = left }
+            end
+        end
+    end
+    tsort(out, function(a, b) return a.id < b.id end)
+    return out
+end
 local function ShedClose(s, fight)
+    local noReset = ns.DeathGrade and ns.DeathGrade.NoReset(s) or {}
     for i = 1, #s.badges do
         local bd = s.badges[i]
         for k = 1, bd.shed and #s.players or 0 do
@@ -621,7 +825,8 @@ local function ShedClose(s, fight)
                 else
                     h.off = "full"
                 end
-                h.on, h.gone = nil, nil
+                if h.off ~= "shed" then h.cure = Cures(p, h, fight.from + h.t, noReset[p.name]) end
+                h.on, h.gone, h.lockId, h.lockOn = nil, nil, nil, nil
             end
         end
     end
@@ -915,7 +1120,9 @@ local function Build(fight)
     local def = ns.summaries and ns.summaries[fight.boss] or {}
     local s, byName = NewSummary(fight, def)
     local acts = ns.Actions and ns.Actions.Begin(s, fight)
+    local rf = ns.RFury and ns.RFury.Begin(s, fight)
     local shades = ns.Shades and ns.Shades.Begin(s, fight)
+    local pu = ns.Putri and ns.Putri.Begin(s, fight, ns.GetDB().pets or {})
     local badges = s.badges
     local track = s.track
     local guns = s.guns
@@ -924,6 +1131,7 @@ local function Build(fight)
     local gw = s.gw
     local dd = ns.DeathDeps and ns.DeathDeps.Begin(fight, def, s)
     s.dd = dd
+    local stk = ns.StackEps and ns.StackEps.Begin(fight, def, s)
     local immune = ns.immunities or {}
     local owners, lastImmune, chasers, shields, blasts = {}, {}, {}, {}, {}
     local totemNames, cleared = {}, {}
@@ -940,6 +1148,7 @@ local function Build(fight)
     local tankSpells = ns.tankSpells or {}
     local defensives = ns.defensives or {}
     local friendlySpells = {}
+    local abHit = { key = SWING_KEY }
     for i = 1, #(def.blocks or {}) do
         local b = def.blocks[i]
         if b.kind == "friendly" then Fill(friendlySpells, b.spells) end
@@ -962,10 +1171,11 @@ local function Build(fight)
         ns.DeathGrade.Snap(p, d)
         p.deathInfo[#p.deathInfo + 1] = d
     end
-    local function Friendly(who, what, amount)
+    local function Friendly(who, what, amount, crit, id)
         for i = 1, #s.blocks do
             local b = s.blocks[i]
             if b.def.kind == "friendly" then
+                Ab(b, who, what == "#melee" and SWING_KEY or what, amount, crit, id)
                 b.total = b.total + amount
                 b.by[who] = (b.by[who] or 0) + amount
                 local sp = b.split[who]
@@ -978,12 +1188,13 @@ local function Build(fight)
         end
     end
     local pets = ns.GetDB().pets or {}
-    local ctl = watch.ctl and ns.MindCtl.Begin(watch.ctl, byName, owners, pets)
+    local ctl = watch.ctl and ns.MindCtl.Begin(watch.ctl, byName, owners, pets, def.mcDrain)
     local from, to = fight.from - LEAD, fight.to + TAIL
     local scan = fight.from - SHIELD_LEAD
     local segs = ns.Encounters.Segs(fight)
     local hpLines = ns.Encounters.HpLines(scan, to)
     local tt = ns.Totals.Begin(byName, owners, pets, fight, hpLines)
+    local et = ns.EffTime and ns.EffTime.Begin(byName, fight)
     local rp = ns.RaidPart.New(fight, pets, nil)
     local seen = 0
     ns.Jobs.Label("job.summary")
@@ -997,17 +1208,25 @@ local function Build(fight)
         if dstName and sub:find("SPELL_AURA_", 1, true) then
             ns.Totals.Aura(tt, ts, sub, srcGUID, srcName, srcFlags, dstName, a1, a2)
         end
-        if sub == "FW_PULLT" then ns.PullTimer.Feed(s, ts, srcName, a1) end
+        if sub == "FW_PULLT" then ns.PullTimer.Feed(s, ts, srcName, a1, a2) end
+        if sub == "FW_MARK" and ts >= s.lead and ts <= to then
+            s.marks = s.marks or {}
+            s.marks[#s.marks + 1] = { t = ts, key = a1, text = a2 }
+        end
+        if rf and (rf.subs[sub] or rf.dead[srcName or ""]) then ns.RFury.Feed(rf, ts, sub, srcName, dstName, a1, a2, a3) end
+        if SIGN_SUBS[sub] and ts >= from and ts <= fight.to then TankFeed(s, byName, fight.boss, ts, sub, dstName, a1, a2, a3, a4) end
         if sub == "FW_ACH" and ts >= fight.from and ts <= to then
             Earned(s, byName, tonumber(a1), srcName, ts)
             if ts <= fight.to then ns.RaidPart.Got(rp, tonumber(a1), srcName, ts) end
         end
         if ts >= from and ts <= to and sub ~= "FW_HP" then
+            if et then ns.EffTime.Feed(et, ts, sub, srcName, dstName) end
             if track then ns.Phases.Feed(track, ts, sub, a1) end
             if gw.names[a2] and (sub == "SPELL_AURA_APPLIED" or sub == "SPELL_AURA_REMOVED") then
                 ns.DeathGrade.Aura(gw, byName, ts, sub, dstGUID, dstName, a2)
             end
             if dd and dd.subs[sub] then ns.DeathDeps.Feed(dd, ts, sub, srcName, dstName, a1, a2, a5) end
+            if stk and stk.subs[sub] then ns.StackEps.Feed(stk, ts, sub, srcName, dstName, a1, a2, a5) end
             if sub == "FW_EMOTE" and ts >= fight.from and ts <= fight.to and type(a1) == "string" then
                 local ep = dstName and byName[dstName]
                 if ep then
@@ -1108,8 +1327,11 @@ local function Build(fight)
             if acts and (acts.subs[sub] or acts.spells[a2]) then
                 ns.Actions.Feed(acts, ts, sub, who, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a4, a5)
             end
-            if shades and (srcName == shades.npc or dstName == shades.npc) then
-                ns.Shades.Feed(shades, ts, sub, srcGUID, srcName, dstName, a1, a2, a4)
+            if shades and (srcName == shades.npc or dstName == shades.npc or (dst and a2 and shades.ex[a2])) then
+                ns.Shades.Feed(shades, ts, sub, srcGUID, srcName, dstName, a1, a2, a4, mcSrc ~= nil)
+            end
+            if pu and (pu.spells[a2] or pu.npcs[srcName] or pu.npcs[dstName] or sub == "UNIT_DIED") then
+                ns.Putri.Feed(pu, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, a1, a2, a4, a5, who)
             end
             if inFight then
                 if sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CREATE" or sub == "ENCHANT_APPLIED" then
@@ -1119,6 +1341,11 @@ local function Build(fight)
                     ns.MindCtl.Feed(ctl, ts, sub, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a4, a5, a6, a7, a8)
                 end
                 local swing = sub:find("SWING", 1, true) ~= nil
+                if p and not dst and dstName and s.bounce and s.bounce[dstName]
+                    and (sub:find("_DAMAGE", 1, true)
+                        or (sub:find("_MISSED", 1, true) and (swing and a1 or a4) == "ABSORB")) then
+                    Bounce(s, p, dstName, swing and "#swing" or tostring(a2), ts - fight.from)
+                end
                 if sub:find("_DAMAGE", 1, true) then
                     local env = sub == "ENVIRONMENTAL_DAMAGE"
                     local amount = tonumber(swing and a1 or env and a2 or a4) or 0
@@ -1128,15 +1355,20 @@ local function Build(fight)
                     if useful and dstName and (useful.names[dstName] or (who and useful.freed[who]))
                         and not dst and dstGUID and srcFlags and band(srcFlags, F_BY_PLAYER) > 0
                         and dstFlags and band(dstFlags, F_HOSTILE) > 0 then
+                        if p then
+                            abHit.key = AbKey(s, swing, srcName, who, a2)
+                            abHit.crit, abHit.id = swing and a7 or a10, swing and MELEE_ID or a1
+                        end
                         UsefulHit(s, useful, p, who, srcName == who, ts, dstGUID, dstName, amount,
                             tonumber(swing and a2 or a5) or 0, swing and "#swing" or tostring(a2),
-                            sub == "SPELL_PERIODIC_DAMAGE")
+                            sub == "SPELL_PERIODIC_DAMAGE", abHit)
                     end
                     if p and not dst and dstFlags and band(dstFlags, F_HOSTILE) > 0 then
                         p.dmg = p.dmg + amount
                         ns.Totals.Act(tt, ts, sub)
                         ns.Totals.Damage(p, srcName ~= who, srcName, swing, a1, a2, amount, swing and a7 or a10)
-                        DamageTo(s, p, who, dstName, amount)
+                        DamageTo(s, p, who, dstName, amount, srcName, swing, a2, swing and a7 or a10,
+                            swing and MELEE_ID or a1)
                         if IsBoss(fight, dstName) then p.bossDmg = p.bossDmg + amount end
                         if watch.targets[dstName] then
                             p.targetDmg[dstName] = (p.targetDmg[dstName] or 0) + amount
@@ -1167,7 +1399,7 @@ local function Build(fight)
                         dst.hurtT, dst.healIn = ts, 0
                         if not swing and not env and a2 and s.hurt[a2] and srcFlags and band(srcFlags, F_BY_PLAYER) == 0
                             and not (srcName and byName[srcName]) then
-                            Hurt(s, dstName, a2, srcName, amount)
+                            Hurt(s, dstName, a2, srcName, amount, false)
                         end
                         if a2 and watch.hit[a2] then
                             dst.hits[a2] = dst.hits[a2] or {}
@@ -1178,12 +1410,13 @@ local function Build(fight)
                     end
                     if dst and srcName and byName[srcName] and srcName ~= dstName and srcFlags
                         and band(srcFlags, F_PLAYER) == 0 and band(srcFlags, F_BY_PLAYER) == 0 then
-                        Friendly(srcName, swing and "#melee" or tostring(a2), amount)
+                        Friendly(srcName, swing and "#melee" or tostring(a2), amount, swing and a7 or a10,
+                            swing and MELEE_ID or a1)
                     elseif dst and srcGUID and srcName and fixates[srcName] and not swing then
                         blasts[srcGUID] = (blasts[srcGUID] or 0) + amount
                     elseif dst and a2 and friendlySpells[a2] and srcName and byName[srcName]
                         and srcName ~= dstName then
-                        Friendly(srcName, tostring(a2), amount)
+                        Friendly(srcName, tostring(a2), amount, a10, a1)
                     end
                 elseif sub:find("_MISSED", 1, true) then
                     if dst and (swing and a1 or a4) == "ABSORB" then
@@ -1191,7 +1424,12 @@ local function Build(fight)
                     end
                     if dst and swing and IsBoss(fight, srcName) then dst.bossMelee = dst.bossMelee + 1 end
                     if p and not dst and dstName and s.soaked[dstName] and (swing and a1 or a4) == "ABSORB" then
-                        DamageTo(s, p, who, dstName, tonumber(swing and a2 or a5) or 0)
+                        DamageTo(s, p, who, dstName, tonumber(swing and a2 or a5) or 0, srcName, swing, a2, nil,
+                            swing and MELEE_ID or a1)
+                    end
+                    if dst and not swing and a2 and s.hurt[a2] and a4 == "ABSORB" and srcFlags
+                        and band(srcFlags, F_BY_PLAYER) == 0 and not (srcName and byName[srcName]) then
+                        Hurt(s, dstName, a2, srcName, tonumber(a5) or 0, true)
                     end
                 elseif sub:find("_HEAL", 1, true) then
                     if dst then
@@ -1288,6 +1526,10 @@ local function Build(fight)
                     list[#list + 1] = ts
                     s.spellIds[a2] = s.spellIds[a2] or tonumber(a1)
                 end
+                if dst and a2 and s.stacked and s.stacked[a2]
+                    and (sub == "SPELL_AURA_APPLIED" or sub == "SPELL_AURA_APPLIED_DOSE") then
+                    Peak(s, dstName, a2, sub == "SPELL_AURA_APPLIED" and 1 or tonumber(a5) or 0)
+                end
                 if dst and sub == "SPELL_AURA_APPLIED" and a2 and immune[a2] then
                     lastImmune[dstName] = { t = ts, name = a2 }
                     ShedBy(dst, badges, ts, a2)
@@ -1310,6 +1552,10 @@ local function Build(fight)
                         local new = sub == "SPELL_AURA_APPLIED"
                         if bd.shed then
                             new = ShedAura(st, bd, sub, ts, tonumber(a1), fight.from, lastImmune[dstName])
+                            if new then
+                                local h = st.hangs[#st.hangs]
+                                h.lockId, h.lockOn = ns.DeathGrade.LockAt(dst, ts)
+                            end
                         end
                         if new then
                             st.n = st.n + 1
@@ -1369,7 +1615,7 @@ local function Build(fight)
     end
     for guid, amount in pairs(blasts) do
         local ch = chasers[guid]
-        if ch and ch.victim and byName[ch.victim] then Friendly(ch.victim, "#shade", amount) end
+        if ch and ch.victim and byName[ch.victim] then Friendly(ch.victim, "#shade", amount, nil, ch.id) end
     end
     for r = 1, #removals do
         local rm = removals[r]
@@ -1407,14 +1653,19 @@ local function Build(fight)
     DropFake(s, fight, hpLines)
     if acts then ns.Actions.Finish(acts) end
     if shades then ns.Shades.Finish(shades) end
+    if pu then ns.Putri.Finish(pu) end
     RideEnd(s, fight)
     GunEnd(s, fight)
     if track then s.phases = ns.Phases.Done(fight, track) end
+    if stk then ns.StackEps.Finish(stk, s) end
     if ctl then ns.MindCtl.Finish(ctl, s, fight.to) end
     if ns.PullTimer then ns.PullTimer.Judge(s) end
     ns.Totals.Finish(tt, s)
     Finish(s, fight, hpLines)
+    if rf then ns.RFury.Finish(rf) end
+    if et then ns.EffTime.Finish(et, s) end
     s.rp = ns.RaidPart.Close(rp, s.players)
+    for i = 1, #s.blocks do AbTrim(s.blocks[i].ab) end
     return s
 end
 Summary.Build = Build

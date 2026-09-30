@@ -29,6 +29,14 @@ local function cellOf(f)
         f = f:GetParent()
     end
 end
+local function addonVer(name)
+    local V = root.Version
+    return V and V.Of and V.Of(name) or nil
+end
+local function shortVer(v)
+    local s = v:gsub("%-(%a)%a*%.?", "%1")
+    return s
+end
 local function membersByGroup()
     local out = {}
     for g = 1, GROUPS do out[g] = {} end
@@ -225,8 +233,13 @@ local function newCell(box, k)
     c.name:SetPoint("LEFT", c.spec, "RIGHT", 4, 0)
     c.name:SetPoint("RIGHT", c, "RIGHT", -34, 0)
     c.name:SetJustifyH("LEFT")
+    c.ver = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    c.ver:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", -18, 2)
+    c.ver:SetJustifyH("RIGHT")
     c.gs = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     c.gs:SetPoint("BOTTOMLEFT", c, "BOTTOMLEFT", 23, 2)
+    c.gs:SetPoint("RIGHT", c.ver, "LEFT", -3, 0)
+    c.gs:SetJustifyH("LEFT")
     ns.PaintText(c.gs, "text.secondary")
     c.flags = {}
     for i = 1, 3 do
@@ -264,6 +277,7 @@ local function fillCell(c, m)
         c.spec:Hide()
         c.name:SetText("")
         c.gs:SetText("")
+        c.ver:SetText("")
         for _, t in ipairs(c.flags) do t:Hide() end
         c.mark:Hide()
         c.dead:Hide()
@@ -284,6 +298,9 @@ local function fillCell(c, m)
     local il = (r and r.Average) or p.ilvl
     local exp = ns.Bober.ExpText(m.name, m.unit)
     c.gs:SetText((gs or "-") .. "  " .. (il and math.floor(il) or "") .. (exp and ("  " .. exp) or ""))
+    local ver = addonVer(m.name)
+    c.ver:SetText(ver and shortVer(ver) or ns.T("verNone"))
+    ns.PaintText(c.ver, ver and "text.secondary" or "text.muted")
     local flags = {}
     if m.rank == 2 then flags[#flags + 1] = ns.FLAG_TEX.leader end
     if m.rank == 1 then flags[#flags + 1] = ns.FLAG_TEX.assist end
@@ -311,6 +328,7 @@ local function fillCell(c, m)
     if p.spec then lines[#lines + 1] = ns.T("specFull_" .. p.spec) end
     local slot = ns.Session.SlotOf(m.name)
     if slot then lines[#lines + 1] = ns.T("tipInSlot", ns.T("slot_" .. ns.Session.Template().slots[slot].role)) end
+    lines[#lines + 1] = ver and ns.T("tipAddonVer", ver) or ns.T("tipAddonNone")
     c.tip = ns.Bober.Tip(#lines > 0 and table.concat(lines, "\n") or nil, m.name, m.unit)
     c.tipDim = ns.T("tipRaidCell")
 end
@@ -433,6 +451,7 @@ local function build()
     refresh()
 end
 ns.Session.OnChange(refresh)
+if root.Version and root.Version.OnChange then root.Version.OnChange(refresh) end
 ns.window:OnSize(placeBoxes)
 local function predictText()
     return predict and predict:IsShown() and predictFs:GetText() or nil

@@ -39,9 +39,10 @@ function RL.Shift(fight, t, who)
     ns.Tip.Hide()
     return RL.Open(fight, t, who)
 end
-function RL.Line(fight, t)
+function RL.Line(fight, t, who)
     local s = RL.Start(fight, t)
     if not (s and ns.ReplayIso) then return nil end
+    if who then return { kind = "foot", left = format(ns.T("rp.shift.who"), Clock(s), who) } end
     return { kind = "foot", left = format(ns.T("rp.shift"), Clock(s)) }
 end
 function RL.Tag(lines, fight, t)
@@ -58,7 +59,10 @@ function RL.First(list, key)
     return best
 end
 local function HeadClick(b)
-    RL.Open(b.fight, nil)
+    local TL = ns.Timeline
+    local f, who
+    if TL and TL.View then f, who = TL.View() end
+    RL.Open(b.fight, nil, f == b.fight and who or nil)
 end
 function RL.Head(host, anchor)
     local b = Kit.Button(host)

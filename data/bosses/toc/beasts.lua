@@ -12,7 +12,9 @@ ns.summaries[BEASTS] = {
         { kind = "aura", spell = "Паралитический токсин", tip = "sum.b.toc.toxin" },
         { kind = "aura", spell = "Горящая желчь", tip = "sum.b.toc.bile" },
         { kind = "death", spells = { "Огненная бомба", "Лужа жижи" }, id = 66317, tip = "sum.b.toc.beastfire" },
+        { kind = "stack", spell = "Прокалывание", tip = "sum.b.toc.impale" },
     },
+    stacks = { { spell = "Прокалывание" } },
     blocks = {
         { kind = "damageTo", label = "sum.k.toc.snobolds", names = { "Снобольд-вассал" } },
         { kind = "taken", label = "sum.k.toc.beastpools", spells = { "Огненная бомба", "Лужа жижи" } },

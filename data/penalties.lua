@@ -44,7 +44,7 @@ ns.penaltyPresets = {
               by = { DRUID = { id = 2782 }, MAGE = { id = 475 } },
               size = 25, heroic = true, gp = 200, mode = "once" },
             { key = "lady.mccast", boss = LADY, text = "sum.p.lady.mccast", kind = "mccast",
-              spells = { "Психический крик", "Звездопад" }, gp = 200, unverified = true },
+              spells = { "Ментальный крик", "Звездопад" }, gp = 200, unverified = true },
             { key = "gunship.muradin", boss = GUNSHIP, text = "sum.p.gunship.muradin", kind = "death",
               srcs = { "Мурадин Бронзобород", "Верховный правитель Саурфанг" }, gp = 200 },
             { key = "saurfang.swap", boss = SAURFANG, text = "sum.p.saurfang.swap", kind = "manual", gp = 200 },

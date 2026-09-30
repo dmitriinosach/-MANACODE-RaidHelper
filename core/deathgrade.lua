@@ -152,7 +152,7 @@ local function Tail(s, list)
         d.tail, d.mass, d.why, d.grade = true, nil, why, nil
     end
 end
-local function NoReset(s)
+function DG.NoReset(s)
     local n, out = 0, {}
     for i = 1, #s.players do
         if s.players[i].sated then n = n + 1 end
@@ -205,35 +205,55 @@ local function Blocked(lock, id)
     end
     return false
 end
-local function Guards(ctx, p, d)
-    local defs = ns.defensives or {}
-    local reg = ns.Encounters.Pressed and ns.Encounters.Pressed(p.name)
-    local lock = d.lock and ns.lockouts and ns.lockouts[d.lock]
-    local noReset = ctx.noReset[p.name]
-    local has, lastWin, lastAll = {}, {}, {}
-    local used, usedT
-    local times, ids = p.guardT or {}, p.guardId or {}
+function DG.Seen(p, t, defs, times, ids)
+    local reg = not defs and ns.Encounters and ns.Encounters.Pressed and ns.Encounters.Pressed(p.name)
+    defs = defs or ns.defensives or {}
+    local has, win, all = {}, {}, {}
+    times, ids = times or p.guardT or {}, ids or p.guardId or {}
     for k = 1, #times do
-        local t, id = times[k], ids[k]
-        local def = defs[id]
-        if def and t <= d.t then
+        local at, id = times[k], ids[k]
+        if defs[id] and at <= t then
             has[id] = true
-            if not lastWin[id] or t > lastWin[id] then lastWin[id] = t end
-            if not def[3] and d.t - t <= GUARD_WINDOW and (not usedT or t >= usedT) then used, usedT = id, t end
+            if not win[id] or at > win[id] then win[id] = at end
         end
     end
     for k = 1, reg and #reg or 0, 2 do
-        local t, id = reg[k], reg[k + 1]
+        local at, id = reg[k], reg[k + 1]
         has[id] = true
-        if t <= d.t and (not lastAll[id] or t > lastAll[id]) then lastAll[id] = t end
+        if at <= t and (not all[id] or at > all[id]) then all[id] = at end
+    end
+    return { has = has, win = win, all = all }
+end
+function DG.Left(seen, id, t, noReset, lock, defs)
+    local def = (defs or ns.defensives or {})[id]
+    local last = seen.win[id]
+    if noReset then last = seen.all[id] or last end
+    local left = def and last and math.max(0, def[2] - (t - last)) or 0
+    return left, Blocked(lock, id) and lock or nil
+end
+function DG.LockAt(p, ts)
+    if Held(p.lockOn, p.lockOff, ts) then return p.lockId, p.lockOn end
+    return nil, nil
+end
+local function Guards(ctx, p, d)
+    local defs = ns.defensives or {}
+    local lock = d.lock and ns.lockouts and ns.lockouts[d.lock]
+    local noReset = ctx.noReset[p.name]
+    local seen = DG.Seen(p, d.t)
+    local used, usedT
+    local times, ids = p.guardT or {}, p.guardId or {}
+    for k = 1, #times do
+        local t, def = times[k], defs[ids[k]]
+        if def and t <= d.t and not def[3] and d.t - t <= GUARD_WINDOW and (not usedT or t >= usedT) then
+            used, usedT = ids[k], t
+        end
     end
     local best, cd, n = nil, -1, 0
-    for id in pairs(has) do
+    for id in pairs(seen.has) do
         local def = defs[id]
-        if def and not def[3] and not Blocked(lock, id) then
-            local last = lastWin[id]
-            if noReset then last = lastAll[id] or last end
-            if not last or d.t - last >= def[2] then
+        if def and not def[3] then
+            local left, blocked = DG.Left(seen, id, d.t, noReset, lock)
+            if left == 0 and not blocked then
                 n = n + 1
                 if def[2] > cd or (def[2] == cd and id < best) then best, cd = id, def[2] end
             end
@@ -390,7 +410,7 @@ function DG.Run(s, fight, lines)
     tsort(list, Earlier)
     if not fight.killed then Tail(s, list) end
     local ctx = { s = s, gw = gw, lines = lines, rules = Rules(fight), marked = Marked(s),
-                  noReset = NoReset(s) }
+                  noReset = DG.NoReset(s) }
     for i = 1, #list do Judge(ctx, list[i].p, list[i].d) end
     if ns.DeathDeps then ns.DeathDeps.Run(s, fight) end
     s.dd = nil

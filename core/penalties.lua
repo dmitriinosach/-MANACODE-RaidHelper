@@ -420,6 +420,24 @@ function Penalties.ShedText(list, whole)
     if whole and full > 0 then text = text .. format(ns.T("sum.shed.of"), full) end
     return text
 end
+function Penalties.CureText(list)
+    local known, names, seen = false, {}, {}
+    local defs = ns.defensives or {}
+    for i = 1, #list do
+        local cure = list[i].cure
+        if cure then known = true end
+        for k = 1, #(cure or {}) do
+            local name = cure[k].left <= 0 and defs[cure[k].id] and defs[cure[k].id][1]
+            local short = name and (ns.L["sum.shed.by." .. name] or name)
+            if short and not seen[short] then
+                seen[short] = true
+                names[#names + 1] = short
+            end
+        end
+    end
+    if #names > 0 then return format(ns.T("sum.shed.could"), concat(names, ", ")) end
+    return known and ns.T("sum.shed.none") or nil
+end
 function Penalties.Grade(hit)
     for k = 1, #hit.events do
         if hit.events[k].grade ~= "yellow" then return "red" end
@@ -478,7 +496,11 @@ local function Detect(rule, p, s, fight)
         if sheds then tsort(out, function(a, b) return a.t < b.t end) end
     elseif kind == "chased" then
         local list = p.chased[rule.npc] or {}
-        for i = 1, #list do out[i] = { t = list[i] } end
+        for i = 1, #list do
+            if not (ns.Shades and ns.Shades.Excused(s, p, rule.npc, list[i] - fight.from)) then
+                out[#out + 1] = { t = list[i] }
+            end
+        end
     elseif kind == "mccast" then
         local spells = AsSet(nil, rule.spells)
         for i = 1, #p.mcCasts do

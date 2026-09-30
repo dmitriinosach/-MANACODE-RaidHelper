@@ -3,8 +3,8 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 0.2.0-beta.2
-## X-Date: 2026-09-29
+## Version: 0.2.0-beta.3
+## X-Date: 2026-09-30
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
 ## OptionalDeps: Auctionator
@@ -12,6 +12,9 @@
 fw.lua
 locale\ruRU.lua
 locale\flasks.lua
+locale\servercmd.lua
+locale\devtool.lua
+locale\threat.lua
 data\bosses.lua
 data\effect_defaults.lua
 data\phases.lua
@@ -44,12 +47,16 @@ data\bosses\toc\anubarak.lua
 data\penalties.lua
 data\pulltimer.lua
 data\actions.lua
+data\buffsnap.lua
+data\castgcd.lua
 data\raidsummary.lua
 data\achievements\ulduar.lua
 data\achievements\toc.lua
 data\achievements\names.lua
 data\flasks.lua
+data\servercmd.lua
 data\ranging.lua
+data\threat.lua
 core\raid.lua
 core\bober.lua
 core\expect.lua
@@ -57,25 +64,35 @@ core\reccodec.lua
 core\decode.lua
 core\recfilter.lua
 core\store.lua
+core\buffsnap.lua
 core\recorder.lua
 core\meter.lua
 core\effects.lua
 core\deaths.lua
 core\streams.lua
+core\castresult.lua
+core\castgcd.lua
 core\encounters.lua
 core\index.lua
 core\autorec.lua
 core\penalties.lua
 core\comm.lua
+core\version.lua
 core\pulltimer.lua
+core\devmarks.lua
 core\gpguild.lua
 core\proof.lua
 core\mindctl.lua
 core\phases.lua
+core\stackeps.lua
 core\actions.lua
+core\rfury.lua
 core\shades.lua
+core\putri.lua
+core\valkyr.lua
 core\absorbs.lua
 core\totals.lua
+core\efftime.lua
 core\codec.lua
 core\raidpart.lua
 core\summary.lua
@@ -94,6 +111,7 @@ core\replayfeed.lua
 core\replaylayers.lua
 core\npcpos.lua
 core\ranging.lua
+core\threat.lua
 core\deathpreview.lua
 core\share.lua
 core\flasks.lua
@@ -120,6 +138,7 @@ ui\map.lua
 ui\replaylink.lua
 ui\badgetips.lua
 ui\actiontips.lua
+ui\stacktips.lua
 ui\badges.lua
 ui\grid.lua
 ui\expect.lua
@@ -135,6 +154,9 @@ ui\raidsummary.lua
 ui\jobbar.lua
 ui\timeline.lua
 ui\timelinelinks.lua
+ui\timelinecast.lua
+ui\timelinegcd.lua
+ui\timelinethreat.lua
 ui\pages.lua
 ui\settings.lua
 ui\raidcost.lua
@@ -142,14 +164,20 @@ ui\ahscan.lua
 ui\panelacts.lua
 ui\panel.lua
 ui\prof.lua
+ui\replayfigs.lua
 ui\replaylayers.lua
 ui\replayfeed.lua
 ui\replaymodels.lua
+ui\replayfollow.lua
 ui\replayiso.lua
 ui\deathpreview.lua
 ui\share.lua
 ui\settingsitems.lua
+ui\threatview.lua
+ui\sumhide.lua
 ui\flasks.lua
+ui\servercmd.lua
+ui\devtool.lua
 
 lead\compat\wotlk.lua
 lead\rl.lua

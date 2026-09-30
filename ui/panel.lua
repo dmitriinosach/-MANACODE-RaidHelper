@@ -600,7 +600,6 @@ local function FightTip(M)
         { kind = "row", left = ns.T("panel.tip.fight"), right = Short(dps) },
         { kind = "row", left = ns.T("panel.tip.time"), right = format("%d:%02d", floor(t / 60), floor(t % 60)) },
         { kind = "note", left = ns.T(state) },
-        { kind = "foot", left = ns.T("panel.tip.avg") },
     }
 end
 local function NowTip(M, heal)
@@ -611,7 +610,6 @@ local function NowTip(M, heal)
         { kind = "head", left = ns.T(key) },
         { kind = "row", left = format(ns.T("panel.tip.window"), M.Window()), right = Short(heal and wh or wd) },
         { kind = "row", left = ns.T("panel.tip.fight"), right = Short(heal and hps or dps) },
-        { kind = "foot", left = format(ns.T(heal and "panel.tip.heal" or "panel.tip.dmg"), M.Window(), GRAPH_BARS) },
     }
 end
 local function GraphEnter(self)

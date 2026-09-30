@@ -389,6 +389,8 @@ local function RecordEvent(ts, ...)
     end
     if not seg.pull and ns.RecFilter.Pulls(sub, srcFlags, dstName, seg.bosses) and not Spent(dstName, seg.bosses) then
         ns.Trash.Pull(seg, ts)
+        ns.BuffSnap.Take(ts)
+        if ns.PullTimer then ns.PullTimer.OnPull(ts) end
         frameHp, framePos = true, true
     end
     if sub == "UNIT_DIED" and dstFlags and band(dstFlags, F_PLAYER) > 0 then ns.Trash.Died(ts) end
@@ -509,40 +511,59 @@ local function WpnStep(now)
         ownAsk = false
     end
 end
-local function PlayerOnMap()
-    local x, y = GetPlayerMapPosition("player")
-    if (x or 0) > 0 or (y or 0) > 0 then return true end
-    local n = GetNumRaidMembers() or 0
-    for i = 1, n < 8 and n or 8 do
-        x, y = GetPlayerMapPosition(RAID[i])
-        if (x or 0) > 0 or (y or 0) > 0 then return true end
+local function CountOnMap()
+    if rosterDirty then ReadRoster() end
+    local on, alive = 0, 0
+    for k = 1, slots do
+        local unit = slotUnit[k]
+        if slotPlayer[k] and not UnitIsDeadOrGhost(unit) then
+            alive = alive + 1
+            local x, y = GetPlayerMapPosition(unit)
+            if (x or 0) > 0 or (y or 0) > 0 then on = on + 1 end
+        end
     end
-    return false
+    return on, alive
 end
 local function TryLevel(level)
     levelProbes = levelProbes + 1
     SetDungeonMapLevel(level)
-    return PlayerOnMap()
+    return CountOnMap()
 end
-local function FixLevel()
-    local n = GetNumDungeonMapLevels() or 0
-    if n < 2 then return false end
+local function PickLevel()
+    local on, alive = CountOnMap()
     local was = GetCurrentMapDungeonLevel() or 0
     local area = GetCurrentMapAreaID()
-    local first = goodArea == area and goodLevel or nil
-    if first and first ~= was and first <= n and TryLevel(first) then
-        levelFixes = levelFixes + 1
+    if on * 2 > alive then
+        if was > 0 then goodArea, goodLevel = area, was end
         return true
     end
-    for level = 1, n do
-        if level ~= was and level ~= first and TryLevel(level) then
-            goodArea, goodLevel = area, level
-            levelFixes = levelFixes + 1
-            return true
+    local n = GetNumDungeonMapLevels() or 0
+    if n < 2 then return on > 0 end
+    local first = goodLevel and goodArea == area and goodLevel ~= was and goodLevel <= n and goodLevel or nil
+    local best, bestOn = was, on
+    if first then
+        local c = TryLevel(first)
+        if c > bestOn then best, bestOn = first, c end
+    end
+    if bestOn * 2 <= alive then
+        for level = 1, n do
+            if level ~= was and level ~= first then
+                local c = TryLevel(level)
+                if c > bestOn then best, bestOn = level, c end
+                if c * 2 > alive then break end
+            end
         end
     end
-    if was > 0 then SetDungeonMapLevel(was) else SetMapToCurrentZone() end
-    return false
+    if bestOn == 0 then best = first or was end
+    if best == 0 then
+        SetMapToCurrentZone()
+    elseif best ~= GetCurrentMapDungeonLevel() then
+        SetDungeonMapLevel(best)
+    end
+    if bestOn == 0 then return false end
+    if best ~= was then levelFixes = levelFixes + 1 end
+    goodArea, goodLevel = area, best
+    return true
 end
 local function ReadMap()
     local area, level, name = GetCurrentMapAreaID(), GetCurrentMapDungeonLevel(), GetMapInfo() or ""
@@ -750,8 +771,8 @@ local function Snapshot()
                 fresh = true
             end
         end
-        if not busy and (fresh or levelOk) then
-            levelOk = PlayerOnMap() or FixLevel()
+        if not busy and (fresh or (levelOk and CountOnMap() == 0)) then
+            levelOk = PickLevel()
         end
         moved = ReadMap()
     elseif not mapArea then
@@ -818,6 +839,7 @@ frame:SetScript("OnUpdate", function(_, elapsed)
         if live and not live.pull and ns.Store.IsNew(live) then ns.Trash.Step(live, Now()) end
     end
     if wpnGuid or wpnQueue[1] then WpnStep(GetTime()) end
+    if ns.Threat then ns.Threat.Step(elapsed) end
     if (killAt or (hadFight and calmAt)) and ns.Store.Live() then
         CheckClose(GetTime())
     end

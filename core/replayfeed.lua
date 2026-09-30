@@ -75,7 +75,7 @@ function FC.New(fight)
         casts = casts, auras = auras, hits = b.hits or {}, keyDisp = KeyDispels(boss), skipIds = PhaseIds(boss),
         help = FD.help, hero = FD.hero, defs = defs, selfRez = selfRez, stone = acts and acts.stone,
         valkyr = D ~= nil and D.valkyr ~= nil and D.valkyr.boss == boss,
-        veh = {}, dead = {}, stoneT = {}, last = {}, heroAt = -1e9, auraIds = {},
+        veh = {}, dead = {}, stoneT = {}, last = {}, heroAt = -1e9, auraIds = {}, helpIds = {},
         r = { n = 0, t = {}, kind = {}, icon = {}, imp = {}, key = {}, head = {}, obj = {}, who = {}, text = {},
               tip = {} },
     }
@@ -217,6 +217,7 @@ local function OnCast(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, a1, a2)
     if sub ~= "SPELL_CAST_SUCCESS" then return end
     OwnCast(fc, ts, who, a1, a2)
     if fc.help[a2] then
+        fc.helpIds[a2] = fc.helpIds[a2] or tonumber(a1)
         Help(fc, ts, who, dst, a2, a1)
     elseif fc.hero[a2] then
         Hero(fc, ts, who, a2, a1)
@@ -232,7 +233,8 @@ local function OnApplied(fc, ts, srcGUID, src, srcFlags, dst, a1, a2)
     end
     local who = Actor(fc, srcGUID, src, srcFlags)
     if not who then return end
-    if fc.help[a2] == true and who ~= dst then
+    local cast = fc.helpIds[a2]
+    if fc.help[a2] == true and who ~= dst and (not cast or cast == tonumber(a1)) then
         Help(fc, ts, who, dst, a2, a1)
     elseif fc.defs[a2] and who == dst then
         Defensive(fc, ts, who, nil, a2, a1)
@@ -274,6 +276,10 @@ function FC.Event(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a
         if a2 == fc.stone and dst and fc.players[dst] then fc.stoneT[dst] = ts end
     elseif sub == "FW_VEH" then
         OnVehicle(fc, ts, src, tonumber(a1) == 1)
+    elseif sub == "FW_MARK" and ns.DevMarks then
+        local line = ns.DevMarks.Line(a1, a2)
+        Row(fc, ts, "phase", "phase", true, false, line, false, false, line,
+            src and format(ns.T("dev.mark.by"), line, src) or line)
     end
 end
 local function Phases(fc, res)
@@ -323,6 +329,7 @@ local function Merge(L, r, order)
             n = n + 1
             L.fdT[n], L.fdIcon[n], L.fdText[n], L.fdImp[n], L.fdKind[n] = r.t[i], r.icon[i], r.text[i], r.imp[i],
                 r.kind[i]
+            L.fdWho[n] = r.who[i] or false
             cnt[n], names[n], seen[n], tips[n] = 1, {}, {}, { r.tip[i] }
             local who = r.who[i]
             if who then
@@ -342,6 +349,7 @@ local function Merge(L, r, order)
                 L.fdText[g] = format(ns.T("rep.f.on"), head, Names(names[g]))
             end
             L.fdTip[g] = concat(tips[g], "\n")
+            if #names[g] > 1 then L.fdAll[g] = names[g] end
         else
             L.fdTip[g] = tips[g][1]
         end
@@ -366,6 +374,7 @@ function FC.Done(fc, L, res)
         return a < b
     end)
     L.fdT, L.fdIcon, L.fdText, L.fdImp, L.fdKind, L.fdTip = {}, {}, {}, {}, {}, {}
+    L.fdWho, L.fdAll = {}, {}
     Merge(L, r, order)
     L.feedRaw = r.n
 end

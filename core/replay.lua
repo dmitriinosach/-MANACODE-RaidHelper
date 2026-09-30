@@ -53,7 +53,7 @@ Replay.RUN_YPS = RUN_YPS
 Replay.MOVE_YPS = MOVE_YPS
 Replay.ROOMS = {
     lanathel = { boss = "Кровавая королева Лана'тель", floor = 6, tex = "lanathel", cx = 511, cy = 310, r = 160 },
-    lichking = { boss = "Король-лич", floor = 7, tex = "lichking", cx = 500, cy = 330, r = 255 },
+    lichking = { boss = "Король-лич", floor = 7, tex = "lichking", cx = 500, cy = 349, r = 255 },
     marrowgar = { boss = "Лорд Ребрад", floor = 1, tex = "marrowgar", cx = 390, cy = 402, r = 66 },
     deathwhisper = { boss = "Леди Смертный Шепот", floor = 1, tex = "deathwhisper", cx = 390, cy = 540, r = 66 },
     gunship = { boss = "Бой на кораблях", floor = 2, tex = "gunship", cx = 625, cy = 318, r = 100 },
@@ -227,6 +227,8 @@ local function FillTracks(fight, frames, level, byName, tracks, deaths)
             if tr and (lastRef[name] ~= p or valid == (gapped[name] or false)) then
                 lastRef[name] = p
                 local hp = p.hp or 0
+                local top = p.max
+                local pct = hp > 0 and (top and top > 0 and min(1, hp / top) or 1) or 0
                 local x = valid and p.x * AREA_W or -1
                 local y = valid and p.y * AREA_H or -1
                 if hp == 0 and (lastHp[name] or 1) > 0 then
@@ -240,7 +242,7 @@ local function FillTracks(fight, frames, level, byName, tracks, deaths)
                 lastHp[name] = hp
                 if valid then lastX[name], lastY[name] = x, y end
                 gapped[name] = not valid
-                Push(tr, fr.t, x, y, hp, deadAt[name] or 0, valid and p.stale)
+                Push(tr, fr.t, x, y, pct, deadAt[name] or 0, valid and p.stale)
             end
         end
     end
@@ -428,7 +430,7 @@ local function TrackOrder(a, b)
     return a.name < b.name
 end
 local function NewState()
-    return { vis = false, stale = false, x = 0, y = 0, hx = 0, hy = 1, speed = 0, dead = false, deadFor = 0 }
+    return { vis = false, stale = false, x = 0, y = 0, hx = 0, hy = 1, speed = 0, dead = false, deadFor = 0, hp = 1 }
 end
 function Replay.Build(fight, frames)
     ns.Jobs.Band(0, 0.1)
@@ -465,6 +467,7 @@ local function SampleOne(st, tr, t, ppy, boss)
     local dz = tr.dz[i]
     st.dead = dz > 0
     st.deadFor = dz > 0 and (t - dz) or 0
+    st.hp = i > 0 and tr.hp[i] or 1
     st.stale = tr.old[i] == true
     if st.stale then
         st.speed = 0

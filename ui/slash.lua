@@ -86,7 +86,9 @@ function Slash.Diag()
         { "core/proof.lua", ns.Proof },
         { "ui/proof.lua", ns.ProofView },
         { "core/replay.lua", ns.Replay },
+        { "ui/replayfollow.lua", ns.ReplayFollow },
         { "ui/replayiso.lua", ns.ReplayIso },
+        { "ui/devtool.lua", ns.DevTool },
         { "core/bober.lua", ns.Bober },
         { "core/expect.lua", ns.Expect },
         { "ui/expect.lua", ns.ExpectView },
@@ -165,18 +167,20 @@ local function Handler(msg)
     elseif cmd == "dev" then
         local rest
         arg, rest = arg:match("^(%S*)%s*(.-)$")
-        if arg == "iso" then
+        if arg == "" then
+            if ns.DevTool then ns.DevTool.Toggle() else ns.Print(ns.T("slash.diag.restart")) end
+        elseif arg == "check" then
+            ns.AutoRec.DevState()
+        elseif arg == "iso" then
             local far = rest:match("^fog%s+([%d%.]+)$")
             local camera = rest:match("^cam%s*(%-?%d*)$")
-            local persp = rest:match("^persp%s+([%d%.]+)$")
             local mpos = rest:match("^mpos%s*(.-)$")
             local mfit = rest:match("^mfit%s+([%d%.]+)$")
+            if ns.ReplayIso then ns.ReplayIso.dev = true end
             if not ns.ReplayIso then
                 ns.Print(ns.T("slash.diag.restart"))
             elseif far then
                 ns.ReplayIso.SetFog(tonumber(far) or 0)
-            elseif persp then
-                ns.ReplayIso.SetPersp((tonumber(persp) or 0) / 100)
             elseif mfit then
                 ns.ReplayModels.SetFit(tonumber(mfit) or 1)
                 ns.Print(format(ns.T("iso.mfit"), ns.ReplayModels.fit))
@@ -257,6 +261,7 @@ local function Handler(msg)
         else
             ns.Print(ns.T("slash.status.noclose"))
         end
+        if ns.Version then ns.Print(ns.Version.StatusLine()) end
     elseif cmd == "clear" then
         if GetTime() - clearAskedAt <= CLEAR_WINDOW then
             clearAskedAt = 0

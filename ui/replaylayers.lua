@@ -24,7 +24,6 @@ local CHASE_ALPHA = 0.45
 local CHASE_SHIFT = 8
 local BADGE = 12
 local BADGES = 3
-local CLASS_DOT = 9
 local LIFT_PX = 14
 local LINE_W = 3
 local PACT_GAP = 1
@@ -154,39 +153,18 @@ function V.Attach(fig)
     fig.halo:SetPoint("TOPLEFT", fig, "TOPLEFT", -4, 4)
     fig.halo:SetPoint("BOTTOMRIGHT", fig, "BOTTOMRIGHT", 4, -4)
     fig.halo:Hide()
-    fig.clsBg = fig:CreateTexture(nil, "OVERLAY")
-    fig.clsBg:SetTexture(CIRCLE)
-    Kit.Tint(fig.clsBg, "sem.rep.clsBg")
-    fig.clsBg:SetWidth(CLASS_DOT + 3)
-    fig.clsBg:SetHeight(CLASS_DOT + 3)
-    fig.clsBg:SetPoint("CENTER", fig.icon, "BOTTOMRIGHT", -1, 2)
-    fig.clsBg:Hide()
-    fig.cls = fig:CreateTexture(nil, "OVERLAY")
-    fig.cls:SetWidth(CLASS_DOT)
-    fig.cls:SetHeight(CLASS_DOT)
-    fig.cls:SetPoint("CENTER", fig.clsBg, "CENTER", 0, 0)
-    fig.cls:Hide()
 end
-function V.Role(fig, class, role)
+function V.Role(fig)
     fig.bKey, fig.lift, fig.mcOn = nil, nil, nil
     for i = 1, BADGES do fig.bd[i]:Hide() end
     fig.more:Hide()
     fig.box:Hide()
     fig.spike:Hide()
     fig.halo:Hide()
-    if role == "tank" or role == "heal" then
-        Kit.Icon.RoleBig(fig.icon, role)
-        Kit.Icon.Class(fig.cls, class)
-        fig.cls:Show()
-        fig.clsBg:Show()
-    else
-        fig.cls:Hide()
-        fig.clsBg:Hide()
-    end
 end
 function V.Clear(fig)
     if not fig.bd then return end
-    V.Role(fig, nil, nil)
+    V.Role(fig)
 end
 local function SetIcon(tex, icon)
     if type(icon) == "number" then
@@ -450,11 +428,7 @@ local function Decorate(fig, k)
     end
     if flagMc[k] ~= (fig.mcOn or false) then
         fig.mcOn = flagMc[k]
-        if flagMc[k] then
-            fig.ring:SetVertexColor(Kit.Color("sem.rep.mc"))
-        else
-            fig.ring:SetVertexColor(fig.cr, fig.cg, fig.cb, 0.9)
-        end
+        ns.ReplayFigs.Rim(fig)
     end
     local lift = flagLift[k] and LIFT_PX or nil
     if fig.lift ~= lift then

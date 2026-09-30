@@ -39,6 +39,7 @@ local host, scroll, content, bg, hint
 local fight, summary
 local offset = 0
 local stats, panels, heads, tiles = {}, {}, {}, {}
+local wides = {}
 local failPanel
 local laid
 local Render
@@ -78,6 +79,7 @@ local function Head(i)
     return fs
 end
 local function OpenTimeline(name)
+    if fight and ns.ReplayLink and ns.ReplayLink.Shift(fight, fight.from, name) then return end
     if ns.Timeline and ns.Timeline.SelectPlayer then ns.Timeline.SelectPlayer(name) end
 end
 local function OpenManual(name)
@@ -104,6 +106,9 @@ end
 local function Proof(p, test, deaths)
     if not ns.Proof or fight.foreign then return nil end
     return ns.Proof.Ask(fight, p.name, pens[p.name], test, deaths)
+end
+local function Hidden(def)
+    return ns.SumHide ~= nil and fight ~= nil and ns.SumHide.Hidden(fight.boss, def)
 end
 local function DispelMark(d)
     local m = { icon = Icon(d.id), count = tostring(d.n), lines = Tips.Dispel(d) }
@@ -197,7 +202,7 @@ local function Entries(p, s)
     for i = 1, #s.badges do
         local st = p.badges[i]
         local bd = s.badges[i]
-        if st and (st.n > 0 or (st.removed or 0) > 0 or forced[i] ~= nil) then
+        if st and (st.n > 0 or (st.removed or 0) > 0 or forced[i] ~= nil) and not Hidden(bd) then
             local shown = bd.kind == "stack" and st.max or st.n
             local alert = st.cleansed > 0
             local text = alert and format("%d!", shown) or tostring(shown)
@@ -234,7 +239,7 @@ local function Entries(p, s)
                 alert = alert,
                 verdict = Verdict(fired[bd.spell or bd.npc or ""] == "red" or bd.kind == "killer")
                     or (fired[bd.spell or ""] == "yellow" and "yellow") or grade or st.grade or bd.grade,
-                links = linked and st.notes or nil,
+                links = linked and st.notes or (bd.kind == "chased" and st.blasted) or nil,
                 arrow = ARROWS[bd.kind],
                 lines = Tips.Badge(st, bd) }, first and fight.from + first, bd.kind)
         end
@@ -300,6 +305,22 @@ local function WipeTotal(s, m)
     m.lines[#m.lines + 1] = { kind = "text", left = format(ns.T("sum.dd.first"), cause.text, cause.who, at) }
     m.lines[#m.lines + 1] = { kind = "note", left = ns.T("sum.dd.firstnote") }
 end
+local function MarksTotal(s, m)
+    local list = s.marks
+    if not list or #list == 0 or not ns.DevMarks then return end
+    local parts = {}
+    m.lines = m.lines or { { kind = "head", left = m.title, right = m.value .. "  " .. m.sub } }
+    m.lines[#m.lines + 1] = { kind = "text", left = ns.T("sum.marks.head") }
+    for i = 1, #list do
+        local mk = list[i]
+        local at = Clock(max(0, mk.t - fight.from))
+        local label = ns.DevMarks.Label(mk.key, mk.text)
+        parts[i] = format(ns.T("sum.marks.item"), label, at)
+        m.lines[#m.lines + 1] = { kind = "row", left = label, right = at }
+    end
+    m.subs = m.subs or {}
+    m.subs[#m.subs + 1] = format(ns.T("sum.marks.short"), table.concat(parts, ", "))
+end
 local function DrawStats(s, w)
     local sec = ns.Totals.Time(s)
     local cells = {
@@ -323,6 +344,7 @@ local function DrawStats(s, w)
         if c[1] == "sum.s.result" then
             PullTotal(s, m)
             WipeTotal(s, m)
+            MarksTotal(s, m)
         end
         if c[1] == "sum.s.dps" or c[1] == "sum.s.hps" then m.lines = Tips.Combat(s, m.title, m.value) end
         if c[1] == "sum.s.dps" and ns.ExpectView and not fight.foreign then ns.ExpectView.Total(fight, s, m) end
@@ -491,9 +513,9 @@ local function BlockTitle(b)
     local value = (kind == "dispels" or kind == "removed") and tostring(b.total) or Short(b.total)
     return format(ns.T("sum.k.title"), label, value)
 end
-local function BlockPanel(s, i)
+local function BlockPanel(s, i, slot)
     local b = s.blocks[i]
-    local f = Panel(i)
+    local f = Panel(slot)
     f:SetModel({
         title = BlockTitle(b),
         rows = BlockList(b),
@@ -502,11 +524,47 @@ local function BlockPanel(s, i)
     })
     return f
 end
+local function ClassOf(who)
+    local known = summary.byName and summary.byName[who]
+    return ns.Encounters.ClassOf(who) or (known and known.class)
+end
+local function WidePanel(v, slot)
+    local f = wides[slot] or Badges.Wide(content)
+    wides[slot] = f
+    local rows = {}
+    for i = 1, #v.rows do
+        local r = v.rows[i]
+        local marks = {}
+        for k = 1, #r.marks do
+            local mk = r.marks[k]
+            marks[k] = mk and { icon = Icon(mk.id), count = tostring(mk.n) } or false
+        end
+        rows[i] = { who = r.who, class = r.class, sub = r.sub, cells = r.cells, marks = marks, lines = r.lines }
+    end
+    local heads = {}
+    for k = 1, #v.heads do heads[k] = v.heads[k] and Icon(v.heads[k]) or false end
+    f:SetModel({ title = v.title, cols = v.cols, heads = heads, rows = rows, tip = v.tip, span = v.span,
+                 empty = ns.T("sum.k.none"), onWheel = PageWheel })
+    return f
+end
 local function DrawBlocks(s, y, w)
-    local n = #s.blocks
-    for i = n + 1, #panels do panels[i]:Hide() end
     local list = {}
-    for i = 1, n do list[i] = BlockPanel(s, i) end
+    local np, nw = 0, 0
+    for i = 1, #s.blocks do
+        local b = s.blocks[i]
+        if not Hidden(b.def) then
+            local v = (ns.Putri and ns.Putri.View(b, ClassOf)) or (ns.Valkyr and ns.Valkyr.View(b, s, ClassOf))
+            if v then
+                nw = nw + 1
+                list[#list + 1] = WidePanel(v, nw)
+            else
+                np = np + 1
+                list[#list + 1] = BlockPanel(s, i, np)
+            end
+        end
+    end
+    for i = np + 1, #panels do panels[i]:Hide() end
+    for i = nw + 1, #wides do wides[i]:Hide() end
     return Grid.Place(list, MARGIN, y, w, DETAILMIN, GAP, true)
 end
 local function DrawFails(y, w)
@@ -553,6 +611,7 @@ function Render()
     if failPanel then failPanel:Hide() end
     for i = 1, #stats do stats[i]:Hide() end
     for i = 1, #panels do panels[i]:Hide() end
+    for i = 1, #wides do wides[i]:Hide() end
     for i = 1, #heads do heads[i]:Hide() end
     for i = 1, #tiles do tiles[i]:Hide() end
     Badges.ResetLinks()
@@ -630,6 +689,9 @@ function View.Details()
     local out = {}
     for i = 1, #panels do
         if panels[i]:IsShown() then out[#out + 1] = panels[i] end
+    end
+    for i = 1, #wides do
+        if wides[i]:IsShown() then out[#out + 1] = wides[i] end
     end
     return out
 end

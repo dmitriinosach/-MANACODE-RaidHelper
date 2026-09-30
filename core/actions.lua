@@ -1,6 +1,8 @@
 local _, ns = ...
 local band = bit.band
 local abs = math.abs
+local max = math.max
+local min = math.min
 local tsort = table.sort
 local concat = table.concat
 local F_HOSTILE = 0x40
@@ -11,6 +13,7 @@ local CAST_MAX = 10
 local LATE = 1.5
 local PEND = 1
 local WRATH_NEAR = 1.5
+local SUNDER_BOSSES = 3
 local Acts = {}
 ns.Actions = Acts
 local SUBS = { UNIT_DIED = true, SPELL_RESURRECT = true, SPELL_INTERRUPT = true, SPELL_CAST_START = true,
@@ -50,9 +53,149 @@ function Acts.Begin(s, fight)
             st[bd.kind] = k
             if bd.kind == "cc" then Fill(st.ccSet, st.spells, bd.spells) end
             if bd.kind == "wrath" then Fill(st.wrathSet, st.spells, bd.spells) end
+            if bd.kind == "sunder" and data.sunder then
+                local sd = data.sunder
+                local su = { aura = sd.aura, casts = {}, expose = {}, names = {}, need = sd.need, match = sd.match,
+                             units = {}, order = {} }
+                Fill(su.casts, su.names, sd.casts)
+                Fill(su.expose, su.names, sd.expose)
+                su.names[sd.aura] = true
+                for name in pairs(su.names) do st.spells[name] = true end
+                st.sun = su
+            end
         end
     end
     return st
+end
+local function IsBoss(st, name)
+    if not name then return false end
+    return name == st.boss or (ns.bosses[name] == st.boss and not (ns.bossParts and ns.bossParts[name]))
+end
+local function Span(st, a, b)
+    return max(0, min(b, st.to) - max(a, st.from))
+end
+local function Stacks(st, su, u, ts, n)
+    if u.n >= su.need and n < su.need and u.at5 then
+        u.up = u.up + Span(st, u.at5, ts)
+        u.at5 = nil
+    elseif u.n < su.need and n >= su.need then
+        u.at5 = ts
+    end
+    u.n = n
+end
+local function Exposed(st, u, ts, on, by)
+    if on then
+        u.exOn = u.exOn or ts
+        if by then u.exBy[by] = (u.exBy[by] or 0) + 1 end
+    elseif u.exOn then
+        u.ex = u.ex + Span(st, u.exOn, ts)
+        u.exOn = nil
+    end
+end
+local function SunderAura(st, su, u, ts, sub, who, srcName, a5)
+    if sub == "SPELL_AURA_REMOVED" then
+        Stacks(st, su, u, ts, 0)
+        return
+    elseif sub == "SPELL_AURA_REMOVED_DOSE" then
+        Stacks(st, su, u, ts, tonumber(a5) or max(0, u.n - 1))
+        return
+    end
+    local n
+    if sub == "SPELL_AURA_APPLIED" then
+        n = 1
+    elseif sub == "SPELL_AURA_APPLIED_DOSE" then
+        n = tonumber(a5) or u.n + 1
+    elseif sub == "SPELL_AURA_REFRESH" then
+        n = max(u.n, 1)
+    else
+        return
+    end
+    local by
+    if u.last and ts - u.lastT <= su.match then
+        by, u.last = u.last, nil
+    elseif who and srcName == who then
+        by = who
+    end
+    local was = u.n
+    Stacks(st, su, u, ts, n)
+    u.seen = true
+    local five = was < su.need and n >= su.need
+    if five and not u.five then u.five, u.fiveBy = ts, by or false end
+    local p = by and st.byName[by]
+    if not p then return end
+    local i = st.sunder
+    local c = p.badges[i]
+    c.n = c.n + 1
+    if was >= su.need then c.hits = c.hits + 1 end
+    if five then c.made = (c.made or 0) + 1 end
+    if #c.times == 0 then c.times[1] = ts - st.from end
+    st.s.icons[i] = st.s.icons[i] or st.s.badges[i].id
+end
+local function Sunder(st, ts, sub, who, srcName, dstGUID, dstName, a2, a5)
+    local su = st.sun
+    if not dstGUID or ts > st.to or not IsBoss(st, dstName) then return end
+    local u = su.units[dstGUID]
+    if not u then
+        u = { name = dstName, n = 0, up = 0, ex = 0, exBy = {} }
+        su.units[dstGUID] = u
+        su.order[#su.order + 1] = dstGUID
+    end
+    if sub == "SPELL_CAST_SUCCESS" then
+        if su.casts[a2] and who and srcName == who and st.byName[who] then u.last, u.lastT = who, ts end
+    elseif su.expose[a2] then
+        if sub == "SPELL_AURA_APPLIED" or sub == "SPELL_AURA_REFRESH" then
+            Exposed(st, u, ts, true, who and st.byName[who] and who or nil)
+        elseif sub == "SPELL_AURA_REMOVED" then
+            Exposed(st, u, ts, false)
+        end
+    elseif a2 == su.aura then
+        SunderAura(st, su, u, ts, sub, who, srcName, a5)
+    end
+end
+local function SunderStop(st, u, ts)
+    Stacks(st, st.sun, u, ts, 0)
+    Exposed(st, u, ts, false)
+end
+local function Most(map)
+    local best, top = false, 0
+    for name, n in pairs(map) do
+        if n > top or (n == top and best and name < best) then best, top = name, n end
+    end
+    return best
+end
+local function ByUptime(a, b)
+    if a.up + a.ex ~= b.up + b.ex then return a.up + a.ex > b.up + b.ex end
+    return a.name < b.name
+end
+local function SunderEnd(st)
+    local su = st.sun
+    if not su then return end
+    local list, byName = {}, {}
+    for k = 1, #su.order do
+        local u = su.units[su.order[k]]
+        local stop = min(st.to, u.dead or st.to)
+        SunderStop(st, u, stop)
+        if u.seen or u.ex > 0 then
+            local life = max(1, stop - st.from)
+            local e = { name = u.name, up = u.up / life, ex = u.ex / life, five = u.five and u.five - st.from or false,
+                        by = u.fiveBy or false, exBy = Most(u.exBy) }
+            local old = byName[u.name]
+            if not old then
+                byName[u.name] = e
+                list[#list + 1] = e
+            elseif ByUptime(e, old) then
+                for key, v in pairs(e) do old[key] = v end
+            end
+        end
+    end
+    tsort(list, ByUptime)
+    for k = #list, SUNDER_BOSSES + 1, -1 do list[k] = nil end
+    if #list == 0 then return end
+    local s = st.s
+    for k = 1, #s.players do
+        local c = s.players[k].badges[st.sunder]
+        if c.n > 0 then c.bosses = list end
+    end
 end
 local function Rez(st, name, ts, by, spell, id, dead)
     local r = { t = ts, dead = dead, by = by, spell = spell, id = id, back = {}, lastT = {}, lastBy = {},
@@ -190,11 +333,20 @@ function Acts.Feed(st, ts, sub, who, srcGUID, srcName, srcFlags, dstGUID, dstNam
     local inFight = ts >= st.from and ts <= st.to
     local enemy = srcGUID ~= nil and srcFlags ~= nil and band(srcFlags, F_HOSTILE) > 0
         and band(srcFlags, F_BY_PLAYER) == 0
+    if st.sun and st.sun.names[a2] then
+        Sunder(st, ts, sub, who, srcName, dstGUID, dstName, a2, a5)
+        return
+    end
     if sub == "SPELL_CAST_START" then
         if enemy then st.castT[srcGUID], st.castSp[srcGUID] = ts, a2 end
         return
     elseif sub == "UNIT_DIED" then
         if inFight and dstName and byName[dstName] then st.dead[dstName], st.rez[dstName] = ts, nil end
+        local u = st.sun and dstGUID and st.sun.units[dstGUID]
+        if u and not u.dead and ts >= st.from then
+            SunderStop(st, u, ts)
+            u.dead = ts
+        end
         return
     elseif sub == "SPELL_RESURRECT" then
         local d = dstName and st.dead[dstName]
@@ -328,6 +480,7 @@ function Acts.Finish(st)
         end
     end
     CcCasts(st)
+    SunderEnd(st)
 end
 function Acts.Grade(n, hits, forced)
     if hits == 0 and (n > 0 or forced) then return "red" end

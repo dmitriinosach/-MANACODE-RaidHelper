@@ -93,6 +93,7 @@ local function Attempt()
     if not live or not live.pull or not ns.Store.IsNew(live) then return nil end
     return live
 end
+Ranging.Attempt = Attempt
 local function MyRole()
     local _, cls = UnitClass("player")
     local roles = cls and ns.rangingData.roles[cls]

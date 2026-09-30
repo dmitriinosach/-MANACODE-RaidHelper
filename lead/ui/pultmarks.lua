@@ -52,6 +52,8 @@ local function paintIcon(b)
     b.tipTitle = ns.T("mark" .. i)
     b.tip = M.Describe(i)
     b.tipDim = ns.T(can and "marksTipHow" or "tipNeedOfficer")
+    local key = M.KeyOf(i)
+    if key then b.tipDim = b.tipDim .. "\n" .. ns.T("marksTipKey", key) end
 end
 local function expand()
     if mode == "quick" then fly = true else ns.Marks.SetOpen(true) end

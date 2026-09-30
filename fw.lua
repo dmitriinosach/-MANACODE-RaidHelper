@@ -277,6 +277,7 @@ local function AddonVersion()
     if not GetAddOnMetadata then return nil end
     return GetAddOnMetadata(ADDON, "Version")
 end
+ns.AddonVersion = AddonVersion
 local function OldFolder()
     if ADDON ~= SHIP_ADDON or not IsAddOnLoaded then return end
     if IsAddOnLoaded(OLD_ADDON) then ns.Print(ns.T("old.folder")) end

@@ -41,9 +41,9 @@ end
 local function Build(fight)
     local segs = ns.Encounters.Segs(fight)
     local from, to = ns.Encounters.Lead(fight), ns.Encounters.Tail(fight)
-    local common, snaps, swings, who = {}, {}, {}, {}
+    local common, snaps, swings, who, thr = {}, {}, {}, {}, {}
     local idx = { fight = fight, segs = segs, from = from, to = to,
-                  common = common, snaps = snaps, swings = swings, who = who }
+                  common = common, snaps = snaps, swings = swings, who = who, thr = thr }
     local bosses = Index.BossNames(fight)
     local fixates = ns.fixates or {}
     local castSubs = ns.Encounters.BOSS_SUBS
@@ -61,7 +61,8 @@ local function Build(fight)
                 if sub == "FW_HP" then
                     snaps[#snaps + 1] = key
                 else
-                    if sub == "SPELL_SUMMON" or (src and fixates[src])
+                    if sub == "FW_THR" then thr[#thr + 1] = key end
+                    if sub == "SPELL_SUMMON" or sub == "FW_MARK" or (src and fixates[src])
                         or (src and bosses[src] and castSubs[sub]) then
                         common[#common + 1] = key
                     end

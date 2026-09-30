@@ -41,6 +41,10 @@ local RNG_W_WEAK = 0.002
 local RNG_NEAR = 15
 local RNG_FAR = 40
 local RNG_BAD = 4
+local HOME_W = 0.02
+local HOME_M = 0.5
+local HOME_ITER = 30
+local HOME_MIN = 3
 local SWING = { SWING_DAMAGE = true, SWING_MISSED = true }
 local NpcPos = {}
 ns.NpcPos = NpcPos
@@ -58,7 +62,7 @@ function NpcPos.New(scene, c)
         scene = scene, c = c, byK = c.byK, tracks = c.tracks, ppy = scene.ppy, bosses = c.bosses,
         hitT = {}, hitK = {}, hitN = {}, rng = {}, names = {}, witness = scene.boss,
         stats = { steps = 0, melee = 0, target = 0, witness = 0, range = 0, hold = 0, r = 0, rData = 0,
-                  rngLines = 0, addPts = 0, addMoved = 0, addShift = 0, ms = 0 },
+                  rngLines = 0, addPts = 0, addMoved = 0, addShift = 0, home = 0, pin = 0, gone = 0, ms = 0 },
     }
 end
 local function Hit(np, guid, name, ts, k, byPlayer)
@@ -232,6 +236,31 @@ local function MeleeMean(m, lim)
     local cx, cy = 0, 0
     for i = 1, q do cx, cy = cx + qx[i], cy + qy[i] end
     return cx / q, cy / q, q
+end
+local function HomeFit(xs, ys, m, tx, ty, R, hx, hy)
+    local n = m
+    if tx >= 0 then
+        n = n + 1
+        xs[n], ys[n] = tx, ty
+    end
+    local x, y = hx, hy
+    for _ = 1, HOME_ITER do
+        local sx0, sy0, w = hx * HOME_W, hy * HOME_W, HOME_W
+        for i = 1, n do
+            local dx, dy = x - xs[i], y - ys[i]
+            local d = sqrt(dx * dx + dy * dy)
+            if d > R then
+                sx0 = sx0 + (xs[i] + dx / d * R) * HOME_M
+                sy0 = sy0 + (ys[i] + dy / d * R) * HOME_M
+                w = w + HOME_M
+            end
+        end
+        local nx, ny = sx0 / w, sy0 / w
+        local dx, dy = nx - x, ny - y
+        x, y = nx, ny
+        if dx * dx + dy * dy < EPS then break end
+    end
+    return x, y
 end
 local function EstimateR(np, T, K, rData)
     local ppy = np.ppy
@@ -433,12 +462,12 @@ local function PlaceAdds(np)
         end
     end
 end
-local function Settle(tr, soft, stepMax)
+local function Settle(tr, soft, hard, stepMax)
     local ease = NpcPos.EASE
     if ease >= 1 then return end
     local X, Y, T = tr.x, tr.y, tr.t
     for i = tr.n - 1, 1, -1 do
-        if X[i] >= 0 and X[i + 1] >= 0 and T[i + 1] - T[i] <= STEP * 1.5 then
+        if X[i] >= 0 and X[i + 1] >= 0 and T[i + 1] - T[i] <= STEP * 1.5 and not hard[i] and not hard[i + 1] then
             local bx, by = X[i + 1], Y[i + 1]
             if soft[i] then
                 X[i] = bx + (X[i] - bx) * ease
@@ -474,10 +503,13 @@ function NpcPos.Place(np, TargetAt)
     local stepMax = SPEED * ppy * STEP
     local tr = ns.Replay.NewTrack(scene.bossName or scene.fight.boss)
     tr.fx, tr.fy = {}, {}
-    local soft = {}
+    local soft, hard = {}, {}
     local lo = 0
     local ax, ay, at = nil, 0, -1e9
     local lastX, lastY, lastT = nil, 0, 0
+    local home = c.home
+    local reachPx = (rYd + 1) * ppy
+    local Fixed = ns.ReplayLayers.Fixed
     local t = c.from
     while t <= c.to do
         ns.Jobs.Step(4)
@@ -487,47 +519,76 @@ function NpcPos.Place(np, TargetAt)
         local tx, ty = -1, -1
         if k > 0 then tx, ty = ns.Replay.PosAtTime(c.tracks[k], t) end
         local m = sw and Gather(np, sw, t) or 0
-        local cx, cy, src = -1, -1, nil
-        if m >= MELEE_MIN then
-            cx, cy = MeleeFit(m, lim, lim + rYd * ppy, tx, ty)
-            if cx >= 0 then src = "melee" end
-        end
-        if not src then cx, cy, src = AtTarget(np, t, tx, ty) end
-        local hx, hy = cx, cy
-        if hx < 0 and ax and t - at <= STEP * 1.5 then hx, hy = ax, ay end
-        local melee = src == "melee"
-        local rx, ry = NpcPos.Range(np, rs, t, L.hitbox, rYd + 1, hx, hy, melee and m or 0, melee)
-        if rx then cx, cy, src = rx, ry, "range" end
-        if not src and lastX and t - lastT <= HOLD then cx, cy, src = lastX, lastY, "hold" end
-        if src then
-            st[src] = st[src] + 1
-            if src ~= "hold" then lastX, lastY, lastT = cx, cy, t end
-            local eased = (src == "melee" or src == "range") and ax and t - at <= STEP * 1.5
-            if ax and t - at <= STEP * 1.5 then
-                if eased then
-                    cx, cy = ax + (cx - ax) * NpcPos.EASE, ay + (cy - ay) * NpcPos.EASE
-                end
-                local dx, dy = cx - ax, cy - ay
-                local d = sqrt(dx * dx + dy * dy)
-                if d > stepMax then cx, cy = ax + dx / d * stepMax, ay + dy / d * stepMax end
+        local fixed, fixX, fixY, fixFrom = Fixed(c, t, ax and t - at <= STEP * 1.5 and ax or nil, ay)
+        if fixed == "gone" then
+            st.gone = st.gone + 1
+            ax, lastX = nil, nil
+            if tr.n > 0 and tr.x[tr.n] >= 0 then
+                ns.Replay.Push(tr, max(fixFrom, tr.t[tr.n]), -1, -1, 1, 0)
+                tr.fx[tr.n], tr.fy[tr.n] = 0, 1
             end
-            ax, ay, at = cx, cy, t
+        elseif fixed == "pin" then
+            st.pin = st.pin + 1
             local fx, fy = tr.fx[tr.n] or 0, tr.fy[tr.n] or 1
-            if tx >= 0 then
-                local dx, dy = tx - cx, ty - cy
-                local d = sqrt(dx * dx + dy * dy)
-                if d > 0.01 then fx, fy = dx / d, dy / d end
-            end
-            ns.Replay.Push(tr, t, cx, cy, 1, 0)
+            ns.Replay.Push(tr, t, fixX, fixY, 1, 0)
             tr.fx[tr.n], tr.fy[tr.n] = fx, fy
-            if eased then soft[tr.n] = true end
-        elseif tr.n > 0 and tr.x[tr.n] >= 0 then
-            ns.Replay.Push(tr, t, -1, -1, 1, 0)
-            tr.fx[tr.n], tr.fy[tr.n] = 0, 1
+            hard[tr.n] = true
+            ax, ay, at = fixX, fixY, t
+            lastX, lastY, lastT = fixX, fixY, t
+        else
+            local cx, cy, src = -1, -1, nil
+            if home and m >= HOME_MIN then
+                cx, cy = HomeFit(qx, qy, Inliers(m, lim), tx, ty, reachPx, home.x, home.y)
+                src = "melee"
+                st.home = st.home + 1
+            elseif home and lastX then
+                cx, cy, src = lastX, lastY, "hold"
+                st.home = st.home + 1
+            elseif home then
+                cx, cy = HomeFit(px, py, 0, tx, ty, reachPx, home.x, home.y)
+                src = "target"
+                st.home = st.home + 1
+            elseif m >= MELEE_MIN then
+                cx, cy = MeleeFit(m, lim, lim + rYd * ppy, tx, ty)
+                if cx >= 0 then src = "melee" end
+            end
+            if not src then cx, cy, src = AtTarget(np, t, tx, ty) end
+            local hx, hy = cx, cy
+            if hx < 0 and ax and t - at <= STEP * 1.5 then hx, hy = ax, ay end
+            local melee = src == "melee"
+            local rx, ry = NpcPos.Range(np, rs, t, L.hitbox, rYd + 1, hx, hy, melee and m or 0, melee)
+            if rx then cx, cy, src = rx, ry, "range" end
+            if not src and lastX and t - lastT <= HOLD then cx, cy, src = lastX, lastY, "hold" end
+            if src then
+                st[src] = st[src] + 1
+                if src ~= "hold" then lastX, lastY, lastT = cx, cy, t end
+                local eased = (src == "melee" or src == "range") and ax and t - at <= STEP * 1.5
+                if ax and t - at <= STEP * 1.5 then
+                    if eased then
+                        cx, cy = ax + (cx - ax) * NpcPos.EASE, ay + (cy - ay) * NpcPos.EASE
+                    end
+                    local dx, dy = cx - ax, cy - ay
+                    local d = sqrt(dx * dx + dy * dy)
+                    if d > stepMax then cx, cy = ax + dx / d * stepMax, ay + dy / d * stepMax end
+                end
+                ax, ay, at = cx, cy, t
+                local fx, fy = tr.fx[tr.n] or 0, tr.fy[tr.n] or 1
+                if tx >= 0 then
+                    local dx, dy = tx - cx, ty - cy
+                    local d = sqrt(dx * dx + dy * dy)
+                    if d > 0.01 then fx, fy = dx / d, dy / d end
+                end
+                ns.Replay.Push(tr, t, cx, cy, 1, 0)
+                tr.fx[tr.n], tr.fy[tr.n] = fx, fy
+                if eased then soft[tr.n] = true end
+            elseif tr.n > 0 and tr.x[tr.n] >= 0 then
+                ns.Replay.Push(tr, t, -1, -1, 1, 0)
+                tr.fx[tr.n], tr.fy[tr.n] = 0, 1
+            end
         end
         t = t + STEP
     end
-    Settle(tr, soft, stepMax)
+    Settle(tr, soft, hard, stepMax)
     if tr.n > 0 then
         scene.boss = tr
         scene.bossName = scene.bossName or scene.fight.boss

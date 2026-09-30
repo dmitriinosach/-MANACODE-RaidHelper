@@ -125,6 +125,21 @@ function Tips.wrath(st, def)
     Put(out, "note", T("sum.tip.wrathnote"))
     return out
 end
+local function WhyText(why)
+    local Dec = ns.BadgeTips.Dec
+    if why.k == "mc" then
+        if why.left then return format(T("sum.tt.shadewhy.mcleft"), why.sp, Dec(why.left, 1)) end
+        return format(T("sum.tt.shadewhy.mc"), why.sp)
+    end
+    local src = why.src or "?"
+    if why.mc then src = format(T("sum.tt.shadewhy.ctl"), src) end
+    local text = format(T("sum.tt.shadewhy"), T("sum.tt.shadewhy." .. why.k), why.sp, src, Clock(why.at),
+        Dec(why.gap, 1))
+    if why.left and why.left < why.gap - 0.05 then
+        text = text .. format(T("sum.tt.shadewhy.left"), Dec(why.left, 1))
+    end
+    return text
+end
 function Tips.chased(st, def)
     local out = {}
     Head(out, T(def.tip))
@@ -133,6 +148,8 @@ function Tips.chased(st, def)
         local cnt = st.cnt and st.cnt[k]
         Put(out, "sub", Clock(st.times[k]), st.dmgs and st.dmgs[k] and ns.BadgeTips.Short(st.dmgs[k]) or nil,
             cnt and format(T("sum.tt.shadehit"), cnt) or nil)
+        local why = st.why and st.why[k]
+        if why then Put(out, "sub", WhyText(why), nil, nil, "good") end
     end
     More(out, st.n)
     Put(out, "sep")
@@ -151,6 +168,97 @@ function Tips.blast(st, def)
     More(out, st.n)
     Put(out, "sep")
     Put(out, "note", T("sum.tip.blastnote"))
+    return out
+end
+function Tips.bounce(st, def)
+    local out = {}
+    Head(out, T(def.tip))
+    Put(out, "row", T("sum.tt.bounced"), tostring(st.n))
+    local list = {}
+    for key, n in pairs(st.by or {}) do list[#list + 1] = { key = key, n = n } end
+    table.sort(list, function(a, b)
+        if a.n ~= b.n then return a.n > b.n end
+        return a.key < b.key
+    end)
+    for k = 1, #list do
+        local key = list[k].key
+        if key:sub(1, 1) == "#" then key = T("sum.cat." .. key:sub(2)) end
+        Put(out, "sub", key, format("x%d", list[k].n))
+    end
+    Put(out, "sep")
+    Put(out, "note", T("sum.tip.bouncenote"))
+    return out
+end
+local function Pct(v)
+    return format("%d%%", floor(v * 100 + 0.5))
+end
+function Tips.sunder(st, def)
+    local out = {}
+    Head(out, T(def.tip))
+    Put(out, "row", T("sum.tt.sunder.n"), tostring(st.n))
+    if st.hits > 0 then Put(out, "sub", T("sum.tt.sunder.re"), tostring(st.hits), nil, "dim") end
+    if (st.made or 0) > 0 then Put(out, "row", T("sum.tt.sunder.made"), tostring(st.made), nil, "good") end
+    local list = st.bosses or {}
+    local exposed = false
+    for k = 1, #list do
+        local b = list[k]
+        if #list > 1 then Put(out, "row", b.name, nil, nil, "dim") end
+        if b.five then
+            Put(out, "sub", T("sum.tt.sunder.five"), Clock(b.five), b.by or nil)
+        else
+            Put(out, "sub", T("sum.tt.sunder.five"), T("sum.tt.sunder.never"), nil, "bad")
+        end
+        Put(out, "sub", T("sum.tt.sunder.up"), Pct(b.up))
+        if b.ex > 0 then
+            exposed = true
+            Put(out, "sub", T("sum.tt.sunder.ex"), Pct(b.ex), b.exBy or nil, "bad")
+        end
+    end
+    if not exposed and #list > 0 then Put(out, "sub", T("sum.tt.sunder.ex"), T("sum.tt.sunder.noex"), nil, "dim") end
+    Put(out, "sep")
+    Put(out, "note", T("sum.tip.sundernote"))
+    if exposed then Put(out, "note", T("sum.tip.exposenote")) end
+    return out
+end
+local function Spans(out, st, off)
+    local total, unsure = 0, false
+    for k = 1, st.n do
+        local a = st.times[k]
+        local len = max(0, (st.till and st.till[k] or a) - a)
+        local unk = st.unsure and st.unsure[k] or false
+        if unk then unsure = true end
+        if not (off and unk) then total = total + len end
+    end
+    Put(out, "row", T(off and "sum.tt.rfury.off" or "sum.tt.rfury.on"), format(T("sum.tt.sec"), floor(total + 0.5)))
+    for k = 1, min(TIMES, st.n) do
+        local a = st.times[k]
+        local b = st.till and st.till[k] or a
+        local span = Clock(a) .. "–" .. Clock(b)
+        if st.unsure and st.unsure[k] then
+            Put(out, "sub", span, T("sum.tt.rfury.unk"), nil, "dim")
+        else
+            Put(out, "sub", span, format(T("sum.tt.sec"), floor(b - a + 0.5)), nil,
+                off and b - a > (st.lim or 0) and "bad" or nil)
+        end
+    end
+    More(out, st.n)
+    return unsure
+end
+function Tips.rfuryoff(st, def)
+    local out = {}
+    Head(out, T(def.tip))
+    local unsure = Spans(out, st, true)
+    Put(out, "sep")
+    Put(out, "note", format(T("sum.tip.rfuryoffnote"), st.lim or 0))
+    if unsure then Put(out, "note", T("sum.tip.rfuryunknote")) end
+    return out
+end
+function Tips.rfuryon(st, def)
+    local out = {}
+    Head(out, T(def.tip))
+    Spans(out, st, false)
+    Put(out, "sep")
+    Put(out, "note", T("sum.tip.rfuryonnote"))
     return out
 end
 function Tips.Shades(b, who, class)

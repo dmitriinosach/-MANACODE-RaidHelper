@@ -54,6 +54,7 @@ local TRACKS = {
     { key = "healed", rows = "healed", color = "sem.lane.healed" },
     { key = "taken",  rows = "taken",  color = "sem.lane.taken" },
     { key = "hp",     min = 34, want = 80, color = "sem.lane.hp" },
+    { key = "threat", min = 24, want = 48, color = "sem.lane.threat" },
 }
 local TL = {}
 ns.Timeline = TL
@@ -127,10 +128,11 @@ local function GetBlock()
             if self.tip3 then lines[#lines + 1] = { self.tip3 } end
             if self.tip4 then lines[#lines + 1] = { self.tip4 } end
             if self.tip5 then lines[#lines + 1] = { self.tip5, "tip.dim", true } end
+            if self.cast and ns.TimelineCast then ns.TimelineCast.Tip(lines, self.cast, player) end
             if self.jumpTo and fight and fight.players[self.jumpTo] then
                 lines[#lines + 1] = { format(ns.T("tl.jump"), self.jumpTo), "badge.link", true }
             end
-            lines[#lines + 1] = ns.ReplayLink.Line(fight, self.at)
+            lines[#lines + 1] = ns.ReplayLink.Line(fight, self.at, player)
             ns.Tip.Show(self, lines, icon)
         end)
         b:SetScript("OnLeave", function() ns.Tip.Hide() end)
@@ -147,7 +149,7 @@ local function GetBlock()
             if ns.FxDrag then ns.FxDrag.Stop() end
         end)
         b:SetScript("OnMouseUp", function(self)
-            if ns.FxDrag and ns.FxDrag.Busy() or ns.ReplayLink.Shift(fight, self.at) then return end
+            if ns.FxDrag and ns.FxDrag.Busy() or ns.ReplayLink.Shift(fight, self.at, player) then return end
             if self.onClick then
                 ns.Tip.Hide()
                 self.onClick(self)
@@ -165,6 +167,12 @@ local function GetBlock()
     b.tip3, b.at = nil, nil
     b.tip4 = nil
     b.tip5 = nil
+    b.cast = nil
+    b.wide = nil
+    if b.castLabel then
+        b.label:SetPoint("LEFT", 3, 0)
+        b.castLabel = nil
+    end
     ns.Kit.Tone(b.label, "text.bright")
     b.icon:SetDesaturated(false)
     b.dragId = nil
@@ -602,8 +610,11 @@ local function BuildAmountRows()
     healRows = SplitHot(healRows, "healed")
     hitRows = SplitHot(hitRows, "taken")
 end
-local function DrawPoints(items, bound, color)
+local function DrawPoints(items, bound, color, own)
     if not items then return end
+    if own and ns.TimelineGcd
+        and ns.TimelineGcd.Draw(data, bound, color, GetBlock, GetBar, XOf, viewFrom, viewTo) then return end
+    local TC = own and ns.TimelineCast or nil
     local lastX, shown = -100, 0
     local top = bound.y + 3
     local hh = bound.h - 6
@@ -641,6 +652,11 @@ local function DrawPoints(items, bound, color)
                 b.tip, b.at = it.label, it.t
                 b.jumpTo = nil
                 b.spellId = tonumber(it.id)
+                if TC then
+                    b.cast = it
+                    local nx = items[i + 1] and min(XOf(items[i + 1].t), canvas:GetWidth()) or canvas:GetWidth()
+                    lastX = lastX + TC.Label(b, it, max(3, lastX - x), nx - x - iconSize - 2)
+                end
                 b.tip2 = format("%s%s", Clock(it.t - fight.from),
                     it.amount and it.amount > 0
                         and format("  |  %s: %d", it.src or "", it.amount) or "")
@@ -959,6 +975,10 @@ local function DrawPhases()
             end
         end
     end
+    local own = data and data.marks
+    for i = 1, own and #own or 0 do
+        marks[#marks + 1] = { t = own[i].t, label = own[i].label }
+    end
     local used = 0
     for i = 1, #marks do
         local m = marks[i]
@@ -1063,7 +1083,7 @@ local function ShowReadouts(t)
     local b = LastBefore(data.boss, t)
     text[1] = b and b.label or nil
     local c = LastBefore(data.casts, t)
-    text[2] = c and c.label or nil
+    text[2] = c and (ns.TimelineCast and ns.TimelineCast.Readout(c) or c.label) or nil
     local active = 0
     for slot = 1, #auraRows do
         local list = auraRows[slot].items
@@ -1082,6 +1102,7 @@ local function ShowReadouts(t)
         text[6] = h.hp and format("%d%%  (%d)", floor(h.pct * 100 + 0.5), h.hp)
             or format("%d%%", floor(h.pct * 100 + 0.5))
     end
+    text[7] = ns.TimelineThreat and ns.TimelineThreat.Readout(fight, player, t) or nil
     if h and hpDot and not TrackFolded("hp") then
         local b = bounds[6]
         local top = b.y + 4
@@ -1175,7 +1196,7 @@ local function Redraw()
         DrawPoints(data.boss, bounds[1], TRACKS[1].color)
     end
     if not TrackFolded("casts") then
-        DrawPoints(data.casts, bounds[2], TRACKS[2].color)
+        DrawPoints(data.casts, bounds[2], TRACKS[2].color, true)
     end
     if not TrackFolded("healed") then
         DrawAmountRows(healRows, bounds[4], TRACKS[4].color, true)
@@ -1186,6 +1207,9 @@ local function Redraw()
     if not TrackFolded("hp") then
         DrawHp(bounds[6])
     end
+    if ns.TimelineThreat then
+        ns.TimelineThreat.Draw(bounds[7], TrackFolded("threat"), fight, player, GetBlock, GetBar, XOf, viewFrom, viewTo)
+    end
     DrawPhases()
     DrawDeaths()
     local span = max(1, fight.to - fight.from)
@@ -1195,6 +1219,7 @@ local function Redraw()
     if p0 then ns.Prof.Add("tl.draw", debugprofilestop() - p0, usedBlocks + usedBars) end
 end
 function SelectPlayer(name)
+    if ns.ThreatView then ns.ThreatView.Hide() end
     if ns.SummaryView then ns.SummaryView.Hide() end
     if ns.EffectPanel then ns.EffectPanel.SetTimeline(true) end
     ruler:Show()
@@ -1230,6 +1255,7 @@ local function SelectFight(f)
     titleText:SetText(ns.FightList and ns.FightList.Title(f) or f.boss)
     if ns.MapView then ns.MapView.SetFight(f) end
     if ns.RaidSummaryView then ns.RaidSummaryView.Hide() end
+    if ns.ThreatView then ns.ThreatView.Follow(f) end
     TL.RefreshLists()
     if ns.SummaryView then
         ReleaseAll()
@@ -1251,7 +1277,7 @@ local function BuildFrame(host)
     titleText:SetText(ns.T("tl.title"))
     statusText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     statusText:SetPoint("LEFT", titleText, "RIGHT", 16, 0)
-    statusText:SetPoint("RIGHT", frame, "TOPRIGHT", -326, -19)
+    statusText:SetPoint("RIGHT", frame, "TOPRIGHT", -416, -19)
     statusText:SetJustifyH("LEFT")
     statusText:SetHeight(14)
     if ns.FightList then ns.FightList.Attach(frame, MARGIN, SIDETOP, titleText, statusText) end
@@ -1296,6 +1322,7 @@ local function BuildCanvas()
             ns.RaidSummaryView.Attach(raidHost)
         end
     end
+    if ns.ThreatView then ns.ThreatView.Attach(frame, clip, MARGIN, HEADH) end
     overlay = CreateFrame("Frame", nil, canvas)
     overlay:SetAllPoints()
     overlay:SetFrameLevel(canvas:GetFrameLevel() + 20)
@@ -1512,6 +1539,7 @@ local function BuildTools()
             if player then SelectPlayer(player) end
         end
         if ns.EffectPanel then ns.EffectPanel.BindTools(fxBtn, mapBtn, glueBtn) end
+        if ns.ThreatView then ns.ThreatView.Button(frame, glueBtn) end
     end
     if ns.FxDrag then
         ns.FxDrag.SetTargets(TL.DropTargets)
@@ -1624,6 +1652,7 @@ end
 function TL.ShowRaid(raid)
     if not frame or not raid or not ns.RaidSummaryView then return end
     fight, player, data = nil, nil, nil
+    if ns.ThreatView then ns.ThreatView.Hide() end
     if ns.SummaryView then ns.SummaryView.Hide() end
     if ns.EffectPanel then ns.EffectPanel.SetTimeline(false) end
     ReleaseAll()
@@ -1657,6 +1686,7 @@ end
 function TL.ShowForeign(f)
     if not (frame and f and f.foreign and ns.SummaryView) then return end
     fight, player, data = nil, nil, nil
+    if ns.ThreatView then ns.ThreatView.Hide() end
     if ns.RaidSummaryView then ns.RaidSummaryView.Hide() end
     if ns.EffectPanel then ns.EffectPanel.SetTimeline(false) end
     ReleaseAll()

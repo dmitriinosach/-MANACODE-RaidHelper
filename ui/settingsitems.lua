@@ -310,6 +310,14 @@ S.Section("svc", "tools", {
           end },
     },
 })
+S.Section("svc", "version", {
+    label = "set.svc.version",
+    order = 20,
+    items = {
+        { kind = "check", key = "note", label = "set.svc.vernote", tip = "set.svc.vernote.tip", default = true,
+          get = function() return Opt().verNote ~= false end, set = function(on) Opt().verNote = on and true or false end },
+    },
+})
 ns.Shell.Command("adv", function()
     local on = not S.Advanced()
     S.SetAdvanced(on)

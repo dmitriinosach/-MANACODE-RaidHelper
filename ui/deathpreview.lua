@@ -1,4 +1,4 @@
-local _, ns = ...
+local ADDON, ns = ...
 local format = string.format
 local floor = math.floor
 local ceil = math.ceil
@@ -51,12 +51,17 @@ local TRAIL_FADE = 0.2
 local BOSS_RING = 13
 local BOSS_SKULL = 10
 local CROSS = 10
+local STRIPMAX = 40
+local GRID_DOT = 2
+local ISO_ANGLE = math.pi / 4
+local MAP_WAIT = 0.5
+local ROOM_PATH = "Interface\\AddOns\\" .. ADDON .. "\\art\\rooms\\"
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local RAID_ICONS = "Interface\\TargetingFrame\\UI-RaidTargetingIcons"
 local View = {}
 ns.DeathPreviewView = View
 local DP = ns.DeathPreview
-local MapDraw = ns.MapDraw
+local Replay = ns.Replay
 local Short = ns.BadgeTips.Short
 local frame, pump, anchorLine, sumText, font, probe, tagLayer
 local tagBg, tagFs = {}, {}
@@ -69,10 +74,10 @@ local spanN = 0
 local picked = {}
 local want
 local mapBox, mapBg
-local mapTiles, mapPool = {}, {}
-local usedMap = 0
-local plateW, plateH, plateX, plateY = 1, 1, 0, 0
-local mapRoom
+local mapStrips, stripData, mapPool = {}, {}, {}
+local usedMap, usedStrips = 0, 0
+local cam = { angle = ISO_ANGLE, tilt = 1, persp = 0, zoom = 1, lift = 0, r = 1, a = 0, cx = 0, cy = 0,
+              w = MAP, h = MAP, c = 1, s = 0 }
 local function Build()
     frame = CreateFrame("Frame", nil, UIParent)
     frame:SetFrameStrata("TOOLTIP")
@@ -104,9 +109,9 @@ local function Build()
     mapBg:SetPoint("TOPLEFT", mapBox, "TOPLEFT", 0, 0)
     mapBg:SetWidth(MAP)
     mapBg:SetHeight(MAP)
-    for i = 1, MapDraw.TILES do
-        mapTiles[i] = mapBox:CreateTexture(nil, "BORDER")
-        mapTiles[i]:Hide()
+    for i = 1, STRIPMAX do
+        mapStrips[i] = mapBox:CreateTexture(nil, "BORDER")
+        mapStrips[i]:Hide()
     end
     mapBox:Hide()
 end
@@ -426,9 +431,11 @@ local function MapPiece(path, x, y, w, h, token, a, layer)
     return t
 end
 local function Spot(x, y)
-    local px, py = MapDraw.Project(mapRoom, x, y, plateW, plateH)
-    if not px then return nil, nil end
-    return plateX + px, plateY + py
+    local sx, sy, k = Replay.Project(cam, x, y)
+    if k <= 0 then return nil, nil end
+    local px, py = MAP / 2 + sx, MAP / 2 + sy
+    if px < 0 or px > MAP or py < 0 or py > MAP then return nil, nil end
+    return px, py
 end
 local function Dot(path, x, y, size, token, a, layer)
     local cx, cy = Spot(x, y)
@@ -491,40 +498,70 @@ local function DrawMarks(pv, m)
     end
 end
 local function HasSpots(m)
-    return m ~= nil and m.room ~= nil and (#m.trX > 0 or #m.nbX > 0 or m.endX ~= nil)
+    return m ~= nil and not m.none and (#m.trX > 0 or #m.nbX > 0 or m.endX ~= nil)
 end
 local function MapNote(m)
-    if not HasSpots(m) then return ns.T("prev.map.none") end
+    if not m then return ns.T("prev.map.wait") end
     if m.note then return ns.T("prev.map.note." .. m.note) end
+    if m.away then return format(ns.T("prev.map.away"), m.away) end
     if m.lost then
         local sec = max(0, floor(m.lost))
         return format(ns.T("prev.map.lost"), floor(sec / 60), sec % 60)
     end
+    if not HasSpots(m) then return ns.T("prev.map.none") end
     return ""
+end
+local function Angle()
+    local db = ns.GetDB and ns.GetDB()
+    local iso = type(db) == "table" and type(db.settings) == "table" and db.settings.iso
+    return type(iso) == "table" and tonumber(iso.angle) or ISO_ANGLE
+end
+local function DrawRoom(room)
+    local path = ROOM_PATH .. room.tex
+    local n = min(STRIPMAX, Replay.Strips(cam, room, stripData))
+    for k = 1, n do
+        local tex, d = mapStrips[k], stripData[k]
+        if not tex:SetTexture(path) then
+            usedStrips = 0
+            return false
+        end
+        tex:ClearAllPoints()
+        tex:SetPoint("TOPLEFT", mapBox, "TOPLEFT", MAP / 2 + d.l, -(MAP / 2 + d.t))
+        tex:SetWidth(d.w)
+        tex:SetHeight(d.h)
+        tex:SetTexCoord(d[1], d[2], d[3], d[4], d[5], d[6], d[7], d[8])
+        tex:Show()
+    end
+    usedStrips = n
+    return true
+end
+local function DrawGrid(m)
+    for i = 1, #(m.gx or {}) do
+        if usedMap >= MAPTEXMAX / 2 then return end
+        Dot(CIRCLE, m.gx[i], m.gy[i], GRID_DOT, "sem.rep.tick", nil, "BORDER")
+    end
 end
 local function DrawMap(pv, x0, y0)
     local p0 = debugprofilestop()
-    usedMap = 0
+    usedMap, usedStrips = 0, 0
     local m = pv.map
-    mapRoom = m and m.room
-    local shown = false
-    if HasSpots(m) and m.tiles then
+    local shown = HasSpots(m)
+    if shown then
         mapBox:ClearAllPoints()
         mapBox:SetPoint("TOPLEFT", frame, "TOPLEFT", x0, y0)
         mapBg:SetTexture(Rgba("surface.page"))
-        plateW, plateH = MapDraw.Fit(mapRoom, MAP, MAP)
-        plateX, plateY = floor((MAP - plateW) / 2), floor((MAP - plateH) / 2)
-        shown = MapDraw.Tiles(mapTiles, mapBox, mapRoom, plateW, plateH, plateX, plateY)
-        if shown then DrawMarks(pv, m) end
-    else
-        for i = 1, MapDraw.TILES do mapTiles[i]:Hide() end
+        cam.angle, cam.cx, cam.cy, cam.r = Angle(), m.cx, m.cy, m.half
+        cam.zoom = MAP / (2 * max(1, m.half))
+        Replay.Aim(cam)
+        if not (m.room and DrawRoom(m.room)) then DrawGrid(m) end
+        DrawMarks(pv, m)
     end
-    if not shown then usedMap = 0 end
+    for i = usedStrips + 1, STRIPMAX do mapStrips[i]:Hide() end
     for i = usedMap + 1, #mapPool do mapPool[i]:Hide() end
     if shown then mapBox:Show() else mapBox:Hide() end
     local ms = debugprofilestop() - p0
     View.lastMapMs = ms
-    if ns.Prof.on then ns.Prof.Add("prev.map", ms, usedMap) end
+    if ns.Prof.on then ns.Prof.Add("prev.map", ms, usedMap + usedStrips) end
     return shown
 end
 local function SumLine(pv)
@@ -601,7 +638,7 @@ local function Present(w)
     frame:Show()
     w.drawn = true
     local ms = debugprofilestop() - p0
-    View.lastMs, View.lastUsed = ms, usedTex + usedIcon + usedFont + usedTag * 2 + usedMap
+    View.lastMs, View.lastUsed = ms, usedTex + usedIcon + usedFont + usedTag * 2 + usedMap + usedStrips
     if ns.Prof.on then ns.Prof.Add("prev.draw", ms, View.lastUsed) end
 end
 local function Pump()
@@ -610,7 +647,8 @@ local function Pump()
         pump:Hide()
         return
     end
-    if GetTime() >= w.showAt and w.pv then
+    local now = GetTime()
+    if now >= w.showAt and w.pv and (w.mapped or now >= w.showAt + MAP_WAIT) then
         pump:Hide()
         Present(w)
     end
@@ -630,7 +668,13 @@ function View.Enter(mark)
     frame:Hide()
     pump:Show()
     DP.Request(fight, who, anchor, death, function(pv)
-        if want == w and pv and pv.who == who and pv.at == anchor then w.pv = pv end
+        if not (want == w and pv and pv.who == who and pv.at == anchor) then return end
+        w.pv = pv
+        DP.Map(fight, pv, function()
+            if want ~= w then return end
+            w.mapped = true
+            if w.drawn then Present(w) end
+        end)
     end)
 end
 function View.Leave()

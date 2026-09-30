@@ -641,21 +641,21 @@ local function InferNpcs(frames, swings, count, fight, known)
     end
 end
 local HP_BODY = "^%d+,%d+,,,0,,,0,r()"
-local HP_ENTRY = "^%d+%.(%d+):(%d+):%d+:(%d+):(%d+)"
+local HP_ENTRY = "^%d+%.(%d+):(%d+):(%d+):(%d+):(%d+)"
 local ENTRY_END = "[;,\n]"
 local B_SEMI = 59
 local B_COMMA = 44
-local function PutPos(state, seen, unit, hp, x, y, ts)
+local function PutPos(state, seen, unit, hp, top, x, y, ts)
     if x > 0 or y > 0 then
-        state[unit] = { x = x, y = y, hp = hp }
+        state[unit] = { x = x, y = y, hp = hp, max = top }
         seen[unit] = ts
         return
     end
     local prev = state[unit]
     if prev and (prev.x > 0 or prev.y > 0) and ts - (seen[unit] or ts) <= POS_HOLD then
-        state[unit] = { x = prev.x, y = prev.y, hp = hp, stale = true }
+        state[unit] = { x = prev.x, y = prev.y, hp = hp, max = top, stale = true }
     else
-        state[unit] = { x = 0, y = 0, hp = hp }
+        state[unit] = { x = 0, y = 0, hp = hp, max = top }
     end
 end
 local function ReadSnaps(fight, idx, out, from, to)
@@ -676,11 +676,11 @@ local function ReadSnaps(fight, idx, out, from, to)
             local dict = seg.dict
             while true do
                 local stop = find(s, ENTRY_END, p)
-                local nameId, hp, x, y = match(s, HP_ENTRY, p)
+                local nameId, hp, top, x, y = match(s, HP_ENTRY, p)
                 if nameId then
                     local unit = dict[tonumber(nameId)]
                     if unit then
-                        PutPos(state, seen, unit, tonumber(hp), tonumber(x) / 10000, tonumber(y) / 10000, ts)
+                        PutPos(state, seen, unit, tonumber(hp), tonumber(top), tonumber(x) / 10000, tonumber(y) / 10000, ts)
                     end
                 end
                 if not stop or s:byte(stop) ~= B_SEMI then
@@ -699,7 +699,7 @@ local function ReadSnaps(fight, idx, out, from, to)
             local snap, live = {}, 0
             for name, pt in pairs(state) do
                 if pt.stale and ts - (seen[name] or ts) > POS_HOLD then
-                    pt = { x = 0, y = 0, hp = pt.hp }
+                    pt = { x = 0, y = 0, hp = pt.hp, max = pt.max }
                     state[name] = pt
                 end
                 if not pt.stale and (pt.x > 0 or pt.y > 0) then live = live + 1 end
@@ -1006,7 +1006,7 @@ function Encounters.HpTrail(lines, who, from, to)
 end
 local function BuildTimeline(fight, who, idx)
     local out = { boss = {}, casts = {}, auras = {}, taken = {}, healed = {},
-                  hp = {}, deaths = {}, dmgDone = 0, healDone = 0 }
+                  hp = {}, deaths = {}, marks = {}, dmgDone = 0, healDone = 0 }
     if #idx.segs == 0 then return out end
     local from = Encounters.Lead(fight)
     local to = Encounters.Tail(fight)
@@ -1016,6 +1016,8 @@ local function BuildTimeline(fight, who, idx)
     local fixates = ns.fixates or {}
     local chasers = {}
     local owners = {}
+    local cast = ns.CastResult.New(who)
+    local starts = ns.CastGcd.New(who)
     local mine = idx.who[who] or {}
     local common = idx.common
     local i, j = 1, 1
@@ -1034,9 +1036,18 @@ local function BuildTimeline(fight, who, idx)
         end
         ns.Jobs.Step()
         local seg, s, at = ns.Index.Line(idx, key)
-        local ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, _, a1, a2, a3, a4, a5, a6, a7, a8, a9
-            = ns.Store.Decode(seg, s, at, 9)
+        local ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, _, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10
+            = ns.Store.Decode(seg, s, at, 10)
         if ts and ts >= from and ts <= to then
+            if sub == "FW_MARK" and ns.DevMarks then
+                out.marks[#out.marks + 1] = { t = ts, label = ns.DevMarks.Line(a1, a2) }
+            end
+            local done = ns.CastGcd.Feed(starts, ts, sub, srcName, dstName, a1, a2)
+            if done then
+                ns.CastGcd.Insert(out.casts, done)
+                ns.CastResult.Cast(cast, done, dstName)
+            end
+            ns.CastResult.Feed(cast, ts, sub, srcName, dstGUID, dstName, a1, a2, a4, a5, a7, a10)
             if sub == "SPELL_SUMMON" and dstName and fixates[dstName] and dstGUID then
                 chasers[dstGUID] = { t = ts, id = tonumber(a1), name = dstName }
             elseif srcName and fixates[srcName] and srcGUID and chasers[srcGUID] then
@@ -1064,8 +1075,9 @@ local function BuildTimeline(fight, who, idx)
                 end
             elseif srcName == who then
                 if sub == "SPELL_CAST_SUCCESS" then
-                    out.casts[#out.casts + 1] = { t = ts, label = tostring(a2 or a1),
-                                                  kind = "cast", id = a1 }
+                    local it = { t = ts, label = tostring(a2 or a1), kind = "cast", id = a1 }
+                    out.casts[#out.casts + 1] = it
+                    ns.CastResult.Cast(cast, it, dstName)
                 end
             end
             if srcName == who and ts >= fight.from and ts <= fight.to then
@@ -1130,6 +1142,8 @@ local function BuildTimeline(fight, who, idx)
         open.to = to
         out.auras[#out.auras + 1] = open
     end
+    ns.CastResult.Finish(cast, idx)
+    out.cuts = ns.CastGcd.Finish(starts, to)
     for k = 1, #out.taken do
         local hit = out.taken[k]
         local c = hit.chaser and chasers[hit.chaser]

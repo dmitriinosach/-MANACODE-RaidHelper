@@ -32,6 +32,9 @@ local ARROW_SIZE = 16
 local ARROW_EDGE = 4
 local ARROW_DIP = 8
 local MARKGAP = 7
+local WIDE_ICON = 12
+local WIDE_GAP = 6
+local WIDE_INDENT = 16
 local Badges = {}
 ns.Badges = Badges
 Badges.style = ns.Kit.Group("badge")
@@ -674,6 +677,246 @@ function Badges.Personal(parent)
         return h
     end
     return t
+end
+local function WideSlots(row, n, m)
+    for c = #row.cells + 1, n do
+        local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        fs:SetHeight(LINEH)
+        fs:SetJustifyH("RIGHT")
+        fs:SetWordWrap(false)
+        row.cells[c] = fs
+    end
+    for k = #row.icons + 1, m do
+        local tex = row:CreateTexture(nil, "ARTWORK")
+        tex:SetWidth(WIDE_ICON)
+        tex:SetHeight(WIDE_ICON)
+        local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        fs:SetHeight(LINEH)
+        fs:SetJustifyH("LEFT")
+        fs:SetWordWrap(false)
+        fs:SetPoint("LEFT", tex, "RIGHT", 2, 0)
+        row.icons[k], row.counts[k] = tex, fs
+    end
+end
+local function NewWideRow(f, k)
+    local row = CreateFrame("Frame", nil, f)
+    row:SetHeight(LINEH)
+    row:SetPoint("TOPLEFT", 6, -(8 + (k + 1) * LINEH))
+    row:SetPoint("TOPRIGHT", -6, -(8 + (k + 1) * LINEH))
+    row:EnableMouse(k > 0)
+    row:SetScript("OnEnter", ShowLines)
+    row:SetScript("OnLeave", HideTip)
+    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.name:SetHeight(LINEH)
+    row.name:SetJustifyH("LEFT")
+    row.name:SetWordWrap(false)
+    row.cells, row.icons, row.counts = {}, {}, {}
+    return row
+end
+local function WideGrow(f, want)
+    for k = #f.rows + 1, want do f.rows[k] = NewWideRow(f, k) end
+    f.lineCount = want
+end
+local function SlotWidth(f, i)
+    local w, any = 0, f.heads[i] and true or false
+    for r = 1, #f.list do
+        local mk = f.list[r].marks and f.list[r].marks[i]
+        if mk then
+            any = true
+            f.probe:SetText(mk.count or "")
+            w = max(w, f.probe:GetStringWidth() or 0)
+        end
+    end
+    if not any then return 0 end
+    return WIDE_ICON + 2 + ceil(w) + 2
+end
+local function WidePlace(f, row)
+    local nc, ns2 = #f.cols, #f.heads
+    WideSlots(row, nc, ns2)
+    for c = 1, #row.cells do
+        if c <= nc then row.cells[c]:Show() else row.cells[c]:Hide() end
+    end
+    for k = ns2 + 1, #row.icons do
+        row.icons[k]:Hide()
+        row.counts[k]:Hide()
+    end
+    local off = 2
+    for k = ns2, 1, -1 do
+        local sw = f.slotW[k]
+        row.icons[k]:ClearAllPoints()
+        row.icons[k]:SetPoint("LEFT", row, "RIGHT", -(off + sw), 0)
+        row.counts[k]:SetWidth(max(1, sw - WIDE_ICON - 2))
+        if sw > 0 then off = off + sw + WIDE_GAP end
+    end
+    for c = nc, 1, -1 do
+        local fs = row.cells[c]
+        fs:ClearAllPoints()
+        fs:SetPoint("RIGHT", -off, 0)
+        fs:SetWidth(f.colW[c])
+        off = off + f.colW[c] + COLGAP
+    end
+    row.name:ClearAllPoints()
+    row.name:SetPoint("LEFT", 4, 0)
+    row.name:SetPoint("RIGHT", row, "RIGHT", -(off - COLGAP + NAMEGAP), 0)
+    row.nameOff = off - COLGAP + NAMEGAP
+end
+local function WideColumns(f)
+    f.colW, f.slotW = {}, {}
+    for c = 1, #f.cols do
+        f.probe:SetText(f.cols[c])
+        local w = f.probe:GetStringWidth() or 0
+        for r = 1, #f.list do
+            local s = f.list[r].cells and f.list[r].cells[c]
+            if s and s ~= "" then
+                f.probe:SetText(s)
+                w = max(w, f.probe:GetStringWidth() or 0)
+            end
+        end
+        f.colW[c] = ceil(w) + 2
+    end
+    for i = 1, #f.heads do f.slotW[i] = SlotWidth(f, i) end
+    WidePlace(f, f.header)
+    for k = 1, #f.rows do WidePlace(f, f.rows[k]) end
+end
+local function WideRow(row, e, f)
+    row.name:SetPoint("LEFT", (e and e.sub) and WIDE_INDENT or 4, 0)
+    for c = 1, #f.cols do
+        row.cells[c]:SetText(e and e.cells and e.cells[c] or "")
+        ns.Kit.Tone(row.cells[c], "text.bright")
+    end
+    for k = 1, #f.heads do
+        local mk = e and e.marks and e.marks[k]
+        if mk and f.slotW[k] > 0 then
+            row.icons[k]:SetTexture(mk.icon)
+            row.icons[k]:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            row.icons[k]:Show()
+            row.counts[k]:SetText(mk.count or "")
+            ns.Kit.Tone(row.counts[k], "text.bright")
+            row.counts[k]:Show()
+        else
+            row.icons[k]:Hide()
+            row.counts[k]:Hide()
+        end
+    end
+    row.lines = e and e.lines
+    row.tipIcon = nil
+end
+local function DrawWide(f)
+    local list = f.list
+    local lines = f.lineCount
+    local most = max(0, #list - lines)
+    f.offset = max(0, min(most, f.offset or 0))
+    local h = f.header
+    h.name:SetText("")
+    for c = 1, #f.cols do
+        h.cells[c]:SetText(f.cols[c])
+        h.cells[c]:SetTextColor(style.muted[1], style.muted[2], style.muted[3])
+    end
+    for k = 1, #f.heads do
+        local icon = f.heads[k]
+        if icon and f.slotW[k] > 0 then
+            h.icons[k]:SetTexture(icon)
+            h.icons[k]:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            h.icons[k]:Show()
+        else
+            h.icons[k]:Hide()
+        end
+        h.counts[k]:Hide()
+    end
+    for k = 1, #f.rows do
+        local row = f.rows[k]
+        local e = k <= lines and list[k + f.offset]
+        if e then
+            row.name:SetText(e.who)
+            row.name:SetTextColor(ClassRGB(e.class))
+            WideRow(row, e, f)
+            row:Show()
+        else
+            row:Hide()
+        end
+    end
+    if most > 0 then
+        f.more:SetText(format(ns.T("sum.k.more"), f.offset + 1, min(#list, f.offset + lines), #list))
+        f.more:Show()
+        f.title:SetPoint("TOPRIGHT", f.more, "TOPLEFT", -COLGAP, 0)
+    else
+        f.more:Hide()
+        f.title:SetPoint("TOPRIGHT", -8, -6)
+    end
+    if #list == 0 then
+        local row = f.rows[1]
+        WideRow(row, nil, f)
+        row.name:SetText(f.empty or "")
+        row.name:SetTextColor(style.muted[1], style.muted[2], style.muted[3])
+        row:Show()
+    end
+end
+local function WideWheel(self, delta)
+    local most = max(0, #self.list - self.lineCount)
+    local want = (self.offset or 0) - delta
+    if most == 0 or want < 0 or want > most then
+        if self.onWheel then self.onWheel(delta) end
+        return
+    end
+    self.offset = want
+    DrawWide(self)
+end
+function Badges.Wide(parent)
+    local f = CreateFrame("Frame", nil, parent)
+    Badges.Skin(f, style.detail)
+    f:EnableMouseWheel(true)
+    f:SetScript("OnMouseWheel", WideWheel)
+    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    f.title:SetPoint("TOPLEFT", 10, -6)
+    f.title:SetPoint("TOPRIGHT", -8, -6)
+    f.title:SetHeight(LINEH - 2)
+    f.title:SetJustifyH("LEFT")
+    f.title:SetJustifyV("TOP")
+    f.title:SetWordWrap(false)
+    f.more = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    f.more:SetPoint("TOPRIGHT", -8, -6)
+    f.head = CreateFrame("Frame", nil, f)
+    f.head:SetPoint("TOPLEFT", 0, 0)
+    f.head:SetPoint("TOPRIGHT", 0, 0)
+    f.head:SetHeight(8 + LINEH * 2)
+    f.head:SetScript("OnEnter", ShowLines)
+    f.head:SetScript("OnLeave", HideTip)
+    f.head:EnableMouse(false)
+    f.probe = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.probe:Hide()
+    f.header = NewWideRow(f, 0)
+    f.list, f.rows, f.cols, f.heads = {}, {}, {}, {}
+    f.lineCount = 0
+    WideGrow(f, Badges.Lines())
+    function f.SetModel(self, m)
+        Badges.Skin(self, style.detail)
+        self.title:SetText(m.title)
+        self.head.lines = m.tip
+        self.head:EnableMouse(m.tip ~= nil)
+        self.list = m.rows or {}
+        self.cols = m.cols or {}
+        self.heads = m.heads or {}
+        self.empty = m.empty
+        self.onWheel = m.onWheel
+        self.span = m.span
+        self.offset = 0
+        WideGrow(self, Badges.Lines())
+        WideColumns(self)
+        DrawWide(self)
+    end
+    function f.Layout(self, width)
+        local lines = Badges.Lines()
+        if lines ~= self.lineCount then
+            WideGrow(self, lines)
+            WideColumns(self)
+            DrawWide(self)
+        end
+        local h = 14 + (max(1, min(lines, #self.list)) + 2) * LINEH
+        self:SetWidth(width)
+        self:SetHeight(h)
+        return h
+    end
+    return f
 end
 if ns.Tip and ns.Tip.SetAvoid then ns.Tip.SetAvoid(function() return lit end) end
 ns.Kit.OnTheme(function()

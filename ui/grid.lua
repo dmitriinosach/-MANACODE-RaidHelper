@@ -15,20 +15,33 @@ function Grid.Span(col, cols, width, gap)
     local right = floor(col * (cell + gap) - gap + 0.5)
     return x, right - x
 end
-function Grid.Cells(n, width, minW, gap, flow)
+function Grid.Cells(n, width, minW, gap, flow, spans)
     width = floor(width)
     local out = {}
     if n <= 0 then return out end
     local fit = Grid.Fit(width, minW, gap)
-    local rows = ceil(n / fit)
-    local per = flow and ceil(n / rows) or fit
-    local i = 0
-    for r = 1, rows do
-        local count = min(per, n - i)
-        local across = flow and count or per
-        for c = 1, count do
-            local x, w = Grid.Span(c, across, width, gap)
-            out[i + c] = { x = x, w = w, row = r }
+    local units, total = {}, 0
+    for k = 1, n do
+        units[k] = min(fit, max(1, spans and spans[k] or 1))
+        total = total + units[k]
+    end
+    local per = flow and ceil(total / ceil(total / fit)) or fit
+    local i, r = 0, 0
+    while i < n do
+        r = r + 1
+        local used, count = 0, 0
+        while i + count < n and (count == 0 or used + units[i + count + 1] <= per) do
+            count = count + 1
+            used = used + units[i + count]
+        end
+        local across = flow and used or per
+        local c = 1
+        for k = 1, count do
+            local u = units[i + k]
+            local x = Grid.Span(c, across, width, gap)
+            local rx, rw = Grid.Span(c + u - 1, across, width, gap)
+            out[i + k] = { x = x, w = rx + rw - x, row = r }
+            c = c + u
         end
         i = i + count
     end
@@ -36,7 +49,15 @@ function Grid.Cells(n, width, minW, gap, flow)
 end
 function Grid.Place(list, left, top, width, minW, gap, flow, under)
     local n = #list
-    local cells = Grid.Cells(n, width, minW, gap, flow)
+    local spans
+    for k = 1, n do
+        local sp = list[k].span
+        if type(sp) == "number" and sp > 1 then
+            spans = spans or {}
+            spans[k] = sp
+        end
+    end
+    local cells = Grid.Cells(n, width, minW, gap, flow, spans)
     local i = 1
     while i <= n do
         local row, tallest, last = cells[i].row, 0, i

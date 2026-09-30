@@ -11,7 +11,7 @@ ns.summaries["Король-лич"] = {
         { kind = "auras", label = "sum.s.harvest", spells = { "Жатва душ", "Великая жатва душ" }, gap = 10 },
     },
     badges = {
-        { kind = "vehicle", id = 71844, tip = "sum.b.valkyrride", phase = "p2", wave = "valkyr" },
+        { kind = "vehicle", id = 71844, tip = "sum.b.valkyrride", phase = "p2", wave = "valkyr", carry = true },
         { kind = "hit", spell = "Вытягивание жизни", src = "Валь'кира - страж Тьмы",
           gap = 6, tip = "sum.b.valkyr" },
         { kind = "aura", spell = "Осквернение", tip = "sum.b.defile" },

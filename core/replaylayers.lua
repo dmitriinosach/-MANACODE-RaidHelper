@@ -377,6 +377,23 @@ local function OnCast(c, ts, sub, src, dst, spell)
         L.bcT[n], L.bcD[n] = ts, sub == "SPELL_CAST_START" and CAST_SHOW or CAST_INSTANT
     end
 end
+local function OnGone(c, ts, sub, src, id)
+    local defs = c.goneDefs
+    if not defs or not src or not c.bosses[src] then return end
+    local n = tonumber(id)
+    for i = 1, #defs do
+        local def = defs[i]
+        if def.sub == sub then
+            for j = 1, #def.ids do
+                if def.ids[j] == n then
+                    local list = c.goneAt[i]
+                    if #list == 0 or ts - list[#list] > def.min then list[#list + 1] = ts end
+                    return
+                end
+            end
+        end
+    end
+end
 local function OnDied(c, ts, dstGUID, dst)
     local k = dst and c.byK[dst]
     if k then
@@ -416,6 +433,7 @@ local function Dispatch(c, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFla
         OnTarget(c, ts, dst)
     elseif CASTS[sub] then
         OnCast(c, ts, sub, src, dst, a2)
+        OnGone(c, ts, sub, src, a1)
         if sub == "SPELL_CAST_SUCCESS" then OnMelee(c, ts, src, dst, a2) end
     elseif sub == "SPELL_MISSED" then
         OnMelee(c, ts, src, dst, a2)
@@ -439,7 +457,11 @@ local function NewContext(scene)
     for i = 1, cones and #cones or 0 do
         for _, name in ipairs(cones[i].aim or {}) do aimSpells[name] = true end
     end
+    local goneDefs = D.gone[fight.boss]
+    local goneAt = {}
+    for i = 1, goneDefs and #goneDefs or 0 do goneAt[i] = {} end
     return {
+        goneDefs = goneDefs, goneAt = goneAt, home = D.home[fight.boss],
         L = NewLayers(), D = D, byK = byK, tracks = scene.tracks, open = open, from = fight.from, to = fight.to,
         ppy = scene.ppy, stateIdx = StateIndex(D), bosses = ns.Index.BossNames(fight),
         poolDefs = D.pools[fight.boss], coneDefs = cones,
@@ -547,6 +569,86 @@ local function RaidMean(c, t)
     if n == 0 then return nil, 0 end
     return sx / n, sy / n
 end
+local function Anyone(c, t)
+    local tracks = c.tracks
+    for k = 1, #tracks do
+        local tr = tracks[k]
+        local i = ns.Replay.IndexAt(tr, t)
+        if i > 0 and tr.x[i] >= 0 and tr.dz[i] == 0 then return true end
+    end
+    return false
+end
+local function GoneSpan(c, at, def)
+    local swT = c.swT
+    local last, first = nil, nil
+    for i = 1, #swT do
+        local s = swT[i]
+        if s <= at and s >= at - def.look then last = s end
+        if not first and s >= at + def.min and s <= at + def.max then first = s end
+    end
+    return max(c.from, last or (at - def.lead)), first or (at + def.land)
+end
+local function AddFixed(c, kind, from, to)
+    local fx = c.fixed
+    local n = fx.n + 1
+    fx.n = n
+    fx.kind[n], fx.from[n], fx.to[n], fx.empty[n] = kind, from, to, false
+    return n
+end
+local function FeedRow(rows, label, sec)
+    rows[#rows + 1] = { key = "gone", label = label, from = sec, to = sec }
+end
+local function FixSpans(scene, c, res)
+    local fx = { n = 0, kind = {}, from = {}, to = {}, empty = {}, x = {}, y = {}, glide = {}, sx = {}, sy = {} }
+    c.fixed = fx
+    c.L.fixed = fx
+    local rows = nil
+    local defs = c.goneDefs
+    for i = 1, defs and #defs or 0 do
+        local def, list = defs[i], c.goneAt[i]
+        for j = 1, #list do
+            local from, to = GoneSpan(c, list[j], def)
+            local n = AddFixed(c, "gone", from, min(to, c.to))
+            fx.empty[n] = def.empty == true
+            if def.feed then
+                rows = rows or {}
+                FeedRow(rows, "rep.f.takeoff", from - c.from)
+                if to < c.to then FeedRow(rows, "rep.f.landing", to - c.from) end
+            end
+        end
+    end
+    local pin, room = c.D.pin[scene.fight.boss], scene.room
+    if pin and room and res then
+        for k = 1, #res.spans do
+            local sp = res.spans[k]
+            if pin.phases[sp.key] then
+                local n = AddFixed(c, "pin", c.from + sp.from, min(c.to, c.from + sp.to + pin.tail))
+                fx.x[n], fx.y[n], fx.glide[n] = room.cx, room.cy, pin.glide
+            end
+        end
+    end
+    if not rows then return res end
+    local spans = { res and res.spans[1] or { key = "fight", label = "ph.fight", from = 0, to = c.to - c.from } }
+    for k = 2, res and #res.spans or 0 do spans[#spans + 1] = res.spans[k] end
+    for k = 1, #rows do spans[#spans + 1] = rows[k] end
+    return { spans = spans, waves = res and res.waves or {}, ends = res and res.ends or {} }
+end
+function Layers.Fixed(c, t, ax, ay)
+    local fx = c.fixed
+    if not fx then return nil, 0, 0, 0 end
+    for i = 1, fx.n do
+        if t >= fx.from[i] and t < fx.to[i] then
+            if fx.kind[i] == "pin" then
+                local x, y = fx.x[i], fx.y[i]
+                if not fx.sx[i] then fx.sx[i], fx.sy[i] = ax or x, ax and ay or y end
+                local k = fx.glide[i] > 0 and min(1, (t - fx.from[i]) / fx.glide[i]) or 1
+                return "pin", fx.sx[i] + (x - fx.sx[i]) * k, fx.sy[i] + (y - fx.sy[i]) * k, fx.from[i]
+            end
+            if not fx.empty[i] or not Anyone(c, t) then return "gone", 0, 0, fx.from[i] end
+        end
+    end
+    return nil, 0, 0, 0
+end
 local function PlaceBoss(scene, c)
     local L = c.L
     if L.targets < BOSS_MIN_SWINGS then return end
@@ -568,7 +670,18 @@ local function PlaceBoss(scene, c)
         local mx, my = -1, -1
         if old then mx, my = ns.Replay.PosHold(old, t, WITNESS_HOLD) end
         local cx, cy = -1, -1
-        if tx >= 0 then
+        local fixed, px, py, fixFrom = Layers.Fixed(c, t, ax, ay)
+        if fixed == "gone" then
+            ax, lastX = nil, nil
+            if tr.n > 0 and tr.x[tr.n] >= 0 then
+                ns.Replay.Push(tr, max(fixFrom, tr.t[tr.n]), -1, -1, 1, 0)
+                tr.fx[tr.n], tr.fy[tr.n] = 0, 1
+            end
+        elseif fixed == "pin" then
+            cx, cy = px, py
+            lastX, lastY, lastT = px, py, t
+            ax, ay, at = px, py, t
+        elseif tx >= 0 then
             if mx < 0 then mx, my = RaidMean(c, t) end
             cx, cy = tx, ty
             if mx then
@@ -709,8 +822,9 @@ function Layers.Build(scene)
     FinishPools(c)
     FinishAdds(c)
     Tanks(c)
+    local feedRes = FixSpans(scene, c, res)
     local f0 = debugprofilestop()
-    FC.Done(fc, c.L, res)
+    FC.Done(fc, c.L, feedRes)
     c.L.feedMs = debugprofilestop() - f0
     PickTargets(c)
     if not (np and ns.NpcPos.Place(np, TargetAt)) then PlaceBoss(scene, c) end

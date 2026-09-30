@@ -48,7 +48,6 @@ local SHADOW = 22
 local LIFT = 9
 local MODEL_W = 34
 local MODEL_H = 54
-local BOSS_K = 1.5
 local DEPTH_K = 0.12
 local DEPTH_FADE = 0.2
 local FIG_MIN = 0.6
@@ -57,7 +56,7 @@ local SCALE_MIN = 0.35
 local SCALE_MAX = 3
 local LABEL_MIN = 0.8
 local LABEL_MAX = 1.5
-local FOCUS_DIM = 0.25
+local FOCUS_DIM = 0.4
 local CLICK_PX = 4
 local MODES = { "none", "picked", "all" }
 local M3D = { "off", "boss", "all" }
@@ -76,9 +75,8 @@ local TILT_MAX = 1
 local START_ANGLE = pi / 4
 local START_TILT = 0.55
 local START_PERSP = 0.3
-local VIEW_LOW = { tilt = 0.35, persp = 0.6 }
-local VIEW_HIGH = { tilt = 0.8, persp = 0.15 }
-local SLIDER_W = 90
+local VIEW_LOW = 0.35
+local VIEW_HIGH = 0.8
 local NAV_BTN = 24
 local NAV_ICON = 18
 local COMPASS = 34
@@ -92,7 +90,7 @@ local HOVER_PX = 14
 local FOG_FAR = 1
 local HUGE = 1e9
 local STALE_ALPHA = 0.35
-local Iso = {}
+local Iso = { dev = false }
 ns.ReplayIso = Iso
 local Replay = ns.Replay
 local Kit = ns.Kit
@@ -111,6 +109,8 @@ local cam = { angle = START_ANGLE, tilt = START_TILT, persp = START_PERSP, zoom 
 local strips, stripData, dots, figs, deathTex, ticks = {}, {}, {}, {}, {}, {}
 local LayersView = ns.ReplayLayersView
 local Models = ns.ReplayModels
+local Follow = ns.ReplayFollow
+local Figs = ns.ReplayFigs
 local order, depth = {}, {}
 local picked
 local function Clamp(v, lo, hi)
@@ -152,16 +152,11 @@ local function NewFigure(parent)
     local fig = CreateFrame("Frame", nil, parent)
     fig:SetWidth(SHADOW)
     fig:SetHeight(SHADOW * START_TILT)
-    fig.shadow = fig:CreateTexture(nil, "BACKGROUND")
-    fig.shadow:SetTexture(CIRCLE)
-    Kit.Tint(fig.shadow, "sem.rep.drop")
-    fig.shadow:SetAllPoints(fig)
-    fig.ring = fig:CreateTexture(nil, "BORDER")
-    fig.ring:SetTexture(CIRCLE)
-    fig.icon = fig:CreateTexture(nil, "ARTWORK")
+    Figs.Build(fig)
     fig.shown = false
     fig.sx, fig.sy, fig.scale, fig.kz = 0, 0, 1, 1
     LayersView.Attach(fig)
+    Follow.Attach(fig)
     fig:Hide()
     return fig
 end
@@ -170,17 +165,15 @@ local function ConfigFigure(fig, tr, scene)
     fig.sQ, fig.mQ, fig.rank, fig.sDead = nil, nil, nil, nil
     if tr then
         fig.name = tr.name
-        Kit.Icon.Class(fig.icon, tr.class)
         fig.cr, fig.cg, fig.cb = Kit.ClassColor(tr.class)
         LayersView.Role(fig, tr.class, run.roles[tr.name])
+        Figs.Config(fig, tr.class, run.roles[tr.name])
     else
         LayersView.Clear(fig)
         fig.name = format(ns.T("iso.boss"), scene.bossName or scene.fight.boss)
-        fig.icon:SetTexture(MARKS)
-        fig.icon:SetTexCoord(0.75, 1, 0.25, 0.5)
         fig.cr, fig.cg, fig.cb = Kit.Color("sem.lane.boss")
+        Figs.Config(fig, nil, "boss")
     end
-    fig.ring:SetVertexColor(fig.cr, fig.cg, fig.cb, 0.9)
     if fig.model and fig.model:IsShown() then ModelShow(fig.model) end
 end
 local function ApplyFog(m, fig, dead)
@@ -199,48 +192,7 @@ local function ApplyFog(m, fig, dead)
     m:SetFogNear(0)
     m:SetFogFar(run.fogFar)
 end
-local function DrawSprite(fig, s, scale, flat)
-    local lift = fig.lift or 0
-    local q = floor(scale * 50 + 0.5) + floor(flat * 100) * 1000 + lift * 1000000
-    if fig.sQ == q and fig.sDead == s.dead then return end
-    fig.sQ, fig.sDead = q, s.dead
-    local sw = SHADOW * scale
-    local sh = max(2, sw * flat)
-    fig:SetWidth(sw)
-    fig:SetHeight(sh)
-    local ic = ICON * scale * (fig.isBoss and BOSS_K or 1)
-    fig.icon:ClearAllPoints()
-    fig.ring:ClearAllPoints()
-    if s.dead then
-        fig.icon:SetWidth(ic)
-        fig.icon:SetHeight(ic * 0.5)
-        fig.icon:SetPoint("CENTER", fig, "CENTER", 0, 0)
-        if not fig.icon:SetDesaturated(true) then Kit.Hue(fig.icon, "sem.rep.gone") end
-    else
-        fig.icon:SetWidth(ic)
-        fig.icon:SetHeight(ic)
-        fig.icon:SetPoint("BOTTOM", fig, "CENTER", 0, (LIFT + lift) * scale)
-        fig.icon:SetDesaturated(false)
-        Kit.Hue(fig.icon, "sem.rep.icon")
-        fig.ring:SetWidth(ic + 4)
-        fig.ring:SetHeight(ic + 4)
-        fig.ring:SetPoint("CENTER", fig.icon, "CENTER", 0, 0)
-    end
-end
-local function Parts(fig, icon, ring, model)
-    if fig.iconOn ~= icon then
-        fig.iconOn = icon
-        if icon then fig.icon:Show() else fig.icon:Hide() end
-    end
-    if fig.ringOn ~= ring then
-        fig.ringOn = ring
-        if ring then fig.ring:Show() else fig.ring:Hide() end
-    end
-    if fig.model and fig.modelOn ~= model then
-        fig.modelOn = model
-        if model then fig.model:Show() else fig.model:Hide() end
-    end
-end
+local Parts = Figs.Parts
 local function Motion(s, k)
     if s.dead then
         return SEQ_DEATH, min(s.deadFor * 1000, DEATH_HOLD)
@@ -290,12 +242,8 @@ local function ModelFits(fig, s, sx, sy, scale)
     return sx - hw >= -cam.w / 2 and sx + hw <= cam.w / 2 and top >= -cam.h / 2 and sy <= cam.h / 2
 end
 local function DrawFigure(fig, s, sx, sy, scale, flat, elapsed, k)
-    DrawSprite(fig, s, scale, flat)
-    local alpha = (s.stale and STALE_ALPHA or 1) * (run.focusA[k] or 1)
-    if fig.alpha ~= alpha then
-        fig.alpha = alpha
-        fig:SetAlpha(alpha)
-    end
+    Figs.Sprite(fig, s, scale, flat, elapsed)
+    fig.baseA = (s.stale and STALE_ALPHA or 1) * (run.focusA[k] or 1)
     fig:SetPoint("CENTER", ui.view, "CENTER", sx, -sy)
     fig.sx, fig.sy, fig.scale = sx, sy, scale
     if not fig.shown then
@@ -368,6 +316,7 @@ local function PlaceFigures(elapsed)
         end
     end
     SortFigures(n + 1)
+    Figs.Alpha(figs, order, n + 1)
     run.models, run.shown = models, shown
 end
 local function PlaceFloor()
@@ -465,12 +414,7 @@ local function UpdatePlay()
     for i = 1, #MODES do ui.modeBtns[i]:SetActive(MODES[i] == run.mode) end
 end
 local function UpdateCamUi()
-    if not ui.persp then return end
-    local frac = Clamp(run.persp3 / Replay.PERSP_MAX, 0, 1)
-    ui.perspFill:SetWidth(max(1, SLIDER_W * frac))
-    ui.perspThumb:SetPoint("CENTER", ui.persp, "LEFT", SLIDER_W * frac, 0)
-    ui.perspValue:SetText(format(ns.T("iso.pct"), floor(run.persp3 * 100 + 0.5)))
-    ui.persp:SetAlpha(run.flat and 0.45 or 1)
+    if not ui.modeBtn then return end
     ui.modeBtn.text:SetText(ns.T(run.flat and "iso.cam.2d" or "iso.cam.3d"))
     ui.modeBtn.tip = ns.T(run.flat and "iso.tip.to3d" or "iso.tip.to2d")
 end
@@ -482,13 +426,13 @@ end
 local function SaveCamera()
     local saved = Saved()
     saved.angle = cam.angle % (2 * pi)
-    saved.tilt, saved.persp, saved.flat = run.tilt3, run.persp3, run.flat
+    saved.tilt, saved.flat = run.tilt3, run.flat
 end
 local function LoadCamera()
     local saved = Saved()
     cam.angle = Num(saved.angle, START_ANGLE)
     run.tilt3 = Clamp(Num(saved.tilt, START_TILT), TILT_MIN, TILT_MAX)
-    run.persp3 = Clamp(Num(saved.persp, START_PERSP), 0, Replay.PERSP_MAX)
+    run.persp3 = START_PERSP
     run.flat = saved.flat == true
     run.mode = (saved.models == "all" or saved.models == "picked") and saved.models or "none"
     run.focusHeal = saved.focusHeal == true
@@ -507,10 +451,9 @@ local function Reframe()
     run.camDirty = true
     UpdateCamUi()
 end
-local function SetView(tilt, persp)
+local function SetView(tilt)
     run.flat = false
     run.tilt3 = Clamp(tilt, TILT_MIN, TILT_MAX)
-    run.persp3 = Clamp(persp, 0, Replay.PERSP_MAX)
     Reframe()
     SaveCamera()
 end
@@ -524,17 +467,6 @@ local function Turn(delta)
     run.camDirty = true
     SaveCamera()
 end
-local function PerspToCursor()
-    local x = GetCursorPosition() / ui.persp:GetEffectiveScale()
-    local left = ui.persp:GetLeft()
-    if not left then return end
-    local value = Clamp((x - left) / SLIDER_W, 0, 1) * Replay.PERSP_MAX
-    if run.flat or abs(value - run.persp3) > 0.004 then
-        run.flat = false
-        run.persp3 = value
-        Reframe()
-    end
-end
 local function CursorInView()
     local x, y = GetCursorPosition()
     local k = ui.view:GetEffectiveScale()
@@ -547,7 +479,7 @@ local function PlaceLabel(fig)
         run.labelScale = ls
         ui.hoverBox:SetScale(ls)
     end
-    ui.hoverBox:SetPoint("BOTTOM", ui.view, "CENTER", fig.sx / ls, (-fig.sy + (ICON + LIFT + 6) * fig.scale) / ls)
+    ui.hoverBox:SetPoint("BOTTOM", ui.view, "CENTER", fig.sx / ls, (-fig.sy + (fig.top or 0) + 6 * fig.scale) / ls)
 end
 local function Hover()
     if run.drag or not ui.view:IsMouseOver() then
@@ -562,7 +494,7 @@ local function Hover()
     for k = 1, run.figCount do
         local fig = figs[k]
         if fig.shown then
-            local dx, dy = fig.sx - mx, fig.sy - LIFT * fig.scale - my
+            local dx, dy = fig.sx - mx, fig.sy - (fig.hy or 0) - my
             local d = dx * dx + dy * dy
             if d < bestD then best, bestD = k, d end
         end
@@ -620,6 +552,10 @@ local function UpdateGap()
     ui.gap:Show()
 end
 local function Status()
+    if not (ns.Prof.on or Iso.dev) then
+        ui.status:SetText("")
+        return
+    end
     local n = max(1, run.msN)
     local st = LayersView.stats
     ui.status:SetText(format(ns.T("iso.status"), run.msSum / n, run.msMax, run.models + Models.stats.models, run.shown,
@@ -640,8 +576,8 @@ local function Tick(self, elapsed)
         end
     end
     if run.scrubbing then SeekToCursor() end
-    if run.perspDrag then PerspToCursor() end
     if run.drag then Drag() end
+    Follow.Step(elapsed)
     if run.camDirty then ApplyCamera() end
     Replay.Sample(scene, run.t)
     run.bossDrawn = Models.Place(cam, run.t, run.figScale, run.faceSign, elapsed)
@@ -653,6 +589,7 @@ local function Tick(self, elapsed)
     UpdateScrub()
     UpdateGap()
     Hover()
+    Follow.Place(elapsed)
     local ms = debugprofilestop() - p0
     run.msSum = run.msSum + ms
     run.msN = run.msN + 1
@@ -730,6 +667,7 @@ local function ApplyFocus()
         ui.focus:Hide()
     end
     SyncModels()
+    Follow.Apply()
 end
 local function SetFocus(name)
     local scene = run.scene
@@ -792,6 +730,7 @@ local function UseScene(scene)
     run.playing = false
     run.deathShown, run.lastClock = -1, -1
     run.gapKind, run.gapSince, run.gapLevel = "", -1, -1
+    Figs.Bind(figs, ui.view)
     FindRoles(scene)
     LayersView.Use(scene)
     Models.Use(scene)
@@ -887,7 +826,7 @@ end
 local function Wheel(_, delta)
     if not run.scene then return end
     if IsShiftKeyDown() then
-        SetView(run.tilt3 + delta * TILT_STEP, run.persp3)
+        SetView(run.tilt3 + delta * TILT_STEP)
         return
     end
     local z = cam.zoom * (delta > 0 and ZOOM_STEP or 1 / ZOOM_STEP)
@@ -911,7 +850,7 @@ local function ViewUp()
         cam.angle = run.dragAngle
         local fig = run.pressHover and figs[run.pressHover]
         if fig and not fig.isBoss then
-            SetFocus(run.focus ~= fig.name and fig.name or nil)
+            SetFocus(fig.name)
         else
             SetFocus(nil)
         end
@@ -965,10 +904,10 @@ local function BuildNav(top)
     right.onClick = function() Turn(TURN_STEP) end
     local more = NavButton(top, ICONS.more, "iso.tip.tiltmore")
     more:SetPoint("TOP", right, "BOTTOM", 0, -10)
-    more.onClick = function() SetView(run.tilt3 - TILT_STEP, run.persp3) end
+    more.onClick = function() SetView(run.tilt3 - TILT_STEP) end
     local less = NavButton(top, ICONS.less, "iso.tip.tiltless")
     less:SetPoint("TOP", more, "BOTTOM", 0, -4)
-    less.onClick = function() SetView(run.tilt3 + TILT_STEP, run.persp3) end
+    less.onClick = function() SetView(run.tilt3 + TILT_STEP) end
     ui.modeBtn = NavButton(top, nil, "iso.tip.to2d")
     ui.modeBtn:SetWidth(COMPASS)
     ui.modeBtn:SetPoint("TOP", less, "BOTTOM", 0, -10)
@@ -989,10 +928,11 @@ local function BuildView(frame)
     sideBg:SetAllPoints(side)
     Kit.Paint(sideBg, "surface.page", 0.5)
     ui.side = side
-    ns.ReplayFeed.Build(side, FEED_W, VIEW_H, function(sec)
+    ns.ReplayFeed.Build(side, FEED_W, VIEW_H, function(sec, who)
         if not run.scene then return end
         run.t = Clamp(run.scene.from + sec, run.scene.from, run.scene.to)
         run.marksDirty = true
+        if who and run.scene.fight.players[who] then SetFocus(who) end
     end)
     local view = CreateFrame("Frame", nil, frame)
     view:SetWidth(VIEW_W)
@@ -1015,6 +955,7 @@ local function BuildView(frame)
     local top = CreateFrame("Frame", nil, view)
     top:SetAllPoints(view)
     top:SetFrameLevel(min(118, run.levelBase + 2 * 42 + 4))
+    ui.top = top
     ui.hoverBox = CreateFrame("Frame", nil, top)
     ui.hoverBox:SetWidth(240)
     ui.hoverBox:SetHeight(16)
@@ -1037,37 +978,6 @@ local function BuildView(frame)
     ui.focus:Hide()
     BuildNav(top)
 end
-local function BuildSlider(frame, anchor)
-    local s = CreateFrame("Button", nil, frame)
-    s:SetWidth(SLIDER_W)
-    s:SetHeight(10)
-    s:SetPoint("LEFT", anchor, "RIGHT", 6, 0)
-    s:SetScript("OnMouseDown", function() run.perspDrag = true end)
-    s:SetScript("OnMouseUp", function()
-        run.perspDrag = false
-        SaveCamera()
-    end)
-    s.tip = ns.T("iso.tip.persp")
-    s.tipTitle = false
-    s:SetScript("OnEnter", Kit.TipShow)
-    s:SetScript("OnLeave", Kit.TipHide)
-    local bg = s:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints(s)
-    Kit.Paint(bg, "surface.bg")
-    ui.perspFill = s:CreateTexture(nil, "BORDER")
-    ui.perspFill:SetPoint("TOPLEFT", s, "TOPLEFT", 0, 0)
-    ui.perspFill:SetPoint("BOTTOMLEFT", s, "BOTTOMLEFT", 0, 0)
-    Kit.Paint(ui.perspFill, "sem.pick", 0.3)
-    ui.perspThumb = s:CreateTexture(nil, "OVERLAY")
-    ui.perspThumb:SetWidth(3)
-    ui.perspThumb:SetHeight(16)
-    Kit.Paint(ui.perspThumb, "sem.pick")
-    ui.persp = s
-    ui.perspValue = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    ui.perspValue:SetPoint("LEFT", s, "RIGHT", 6, 0)
-    ui.perspValue:SetWidth(36)
-    ui.perspValue:SetJustifyH("LEFT")
-end
 local function BuildTools(frame)
     local modes = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     modes:SetPoint("BOTTOMLEFT", ui.view, "TOPLEFT", 0, 9)
@@ -1084,11 +994,6 @@ local function BuildTools(frame)
         ui.modeBtns[i] = b
         prev, gap = b, 4
     end
-    local label = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    label:SetPoint("LEFT", prev, "RIGHT", 12, 0)
-    label:SetText(ns.T("iso.cam.persp"))
-    Kit.Text(label, "text.secondary")
-    BuildSlider(frame, label)
     ui.resetBtn = Button(frame, 80, "iso.cam.reset")
     ui.resetBtn:SetPoint("BOTTOMRIGHT", ui.view, "TOPRIGHT", 0, 4)
     ui.resetBtn.tip = ns.T("iso.tip.reset")
@@ -1096,11 +1001,12 @@ local function BuildTools(frame)
     local high = Button(frame, 76, "iso.cam.high")
     high:SetPoint("RIGHT", ui.resetBtn, "LEFT", -4, 0)
     high.tip = ns.T("iso.tip.high")
-    high.onClick = function() SetView(VIEW_HIGH.tilt, VIEW_HIGH.persp) end
+    high.onClick = function() SetView(VIEW_HIGH) end
     local low = Button(frame, 64, "iso.cam.low")
     low:SetPoint("RIGHT", high, "LEFT", -4, 0)
     low.tip = ns.T("iso.tip.low")
-    low.onClick = function() SetView(VIEW_LOW.tilt, VIEW_LOW.persp) end
+    low.onClick = function() SetView(VIEW_LOW) end
+    ui.figsBtn = Figs.Button(frame, low, BTN_H)
 end
 local function Toggle(frame, rel, relPoint, x, y, key, on, fn)
     local c = Kit.Check(frame)
@@ -1216,15 +1122,11 @@ local function Build()
     BuildTools(frame)
     BuildPlayer(frame)
     BuildChecks(frame)
+    Follow.Bind(ui, run, cam, figs, SetFocus)
     ui.status = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     ui.status:SetPoint("TOPLEFT", ui.view, "BOTTOMLEFT", 0, -(8 + PLAYER_H + 26))
     ui.status:SetWidth(VIEW_W)
     ui.status:SetJustifyH("LEFT")
-    ui.help = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    ui.help:SetPoint("TOPLEFT", ui.status, "BOTTOMLEFT", 0, -2)
-    ui.help:SetWidth(VIEW_W)
-    ui.help:SetJustifyH("LEFT")
-    ui.help:SetText(ns.T("iso.help"))
     BuildPools()
     UpdateCamUi()
     run.narrow = false
@@ -1233,7 +1135,6 @@ local function Build()
         run.playing = false
         run.drag = nil
         run.scrubbing = false
-        run.perspDrag = false
     end)
 end
 local function SelectedFight()
@@ -1309,6 +1210,9 @@ function Iso.Hide()
         run.fight = nil
     end
 end
+function Iso.Focus(name)
+    SetFocus(name)
+end
 function Iso.Scene()
     return run.scene
 end
@@ -1336,16 +1240,6 @@ function Iso.SetCamera(index)
         if m and figs[k].modelOn then ModelShow(m) end
     end
     ns.Print(format(ns.T("iso.camera"), index or -1))
-end
-function Iso.SetPersp(value)
-    value = Clamp(value, 0, Replay.PERSP_MAX)
-    if ui.frame then
-        SetView(run.tilt3, value)
-    else
-        local saved = Saved()
-        saved.persp, saved.flat = value, false
-    end
-    ns.Print(format(ns.T("iso.persp"), floor(value * 100 + 0.5)))
 end
 if ns.MapView and ns.MapView.SetFight then
     hooksecurefunc(ns.MapView, "SetFight", function(f) picked = f end)

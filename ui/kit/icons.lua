@@ -1,6 +1,8 @@
 local _, ns = ...
 local Kit = ns.Kit
 local CLASSES_TEX = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
+local CIRCLES_TEX = "Interface\\TargetingFrame\\UI-Classes-Circles"
+local CIRCLE_INSET = 3 / 256
 local ROLE_TEX = "Interface\\LFGFrame\\LFGRole"
 local PORTRAIT = "Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES"
 local MARK_TEX = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_%d"
@@ -60,6 +62,17 @@ function Icon.Class(tex, token)
         tex:SetTexture(Kit.QMARK)
         tex:SetTexCoord(0, 1, 0, 1)
     end
+end
+function Icon.ClassCircle(tex, token)
+    local c = token and ((CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[token]) or CLASS_COORD[token])
+    if not c then
+        tex:SetTexture(Kit.QMARK)
+        tex:SetTexCoord(0, 1, 0, 1)
+        return false
+    end
+    tex:SetTexture(CIRCLES_TEX)
+    tex:SetTexCoord(c[1] + CIRCLE_INSET, c[2] - CIRCLE_INSET, c[3] + CIRCLE_INSET, c[4] - CIRCLE_INSET)
+    return true
 end
 function Icon.Role(tex, grp)
     local c = ROLE_COORD[grp or "dd"] or ROLE_COORD.dd

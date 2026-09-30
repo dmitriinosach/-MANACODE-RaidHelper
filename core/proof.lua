@@ -160,7 +160,9 @@ local function HitWhat(rule, p, s, shed)
         local sp = spells[i]
         local n = p and p.hits and p.hits[sp] and #p.hits[sp] or 0
         if hung[sp] then
+            local cure = ns.Penalties.CureText(hung[sp])
             held[#held + 1] = (#spells > 1 and (Link(IdOf(s, sp), sp) .. ": ") or "") .. ns.Penalties.ShedText(hung[sp])
+                .. (cure and (", " .. cure) or "")
         elseif n > 0 then
             parts[#parts + 1] = format(T("proof.xn"), Link(IdOf(s, sp), sp), n)
         end

@@ -1,0 +1,29 @@
+<Bindings>
+	<Binding name="RAIDLEAD_MARK8" header="RAIDLEAD">
+		RaidLeadNS.Marks.Key(8)
+	</Binding>
+	<Binding name="RAIDLEAD_MARK7">
+		RaidLeadNS.Marks.Key(7)
+	</Binding>
+	<Binding name="RAIDLEAD_MARK6">
+		RaidLeadNS.Marks.Key(6)
+	</Binding>
+	<Binding name="RAIDLEAD_MARK5">
+		RaidLeadNS.Marks.Key(5)
+	</Binding>
+	<Binding name="RAIDLEAD_MARK4">
+		RaidLeadNS.Marks.Key(4)
+	</Binding>
+	<Binding name="RAIDLEAD_MARK3">
+		RaidLeadNS.Marks.Key(3)
+	</Binding>
+	<Binding name="RAIDLEAD_MARK2">
+		RaidLeadNS.Marks.Key(2)
+	</Binding>
+	<Binding name="RAIDLEAD_MARK1">
+		RaidLeadNS.Marks.Key(1)
+	</Binding>
+	<Binding name="RAIDLEAD_RELEASE">
+		RaidLeadNS.Marks.KeyRelease()
+	</Binding>
+</Bindings>

@@ -17,11 +17,19 @@ ns.actions = {
     selfRez = { "Перерождение" },
     stone = "Воскрешение камнем души",
     stoneId = 47883,
+    sunder = { aura = "Раскол брони", casts = { "Раскол брони", "Сокрушение" }, expose = { "Ослабление брони" },
+               need = 5, match = 0.5 },
+    rfury = { id = 25780, aura = "Праведное неистовство", class = "PALADIN", red = 10, minGap = 1,
+              badges = {
+                  { kind = "rfuryoff", id = 25780, tip = "sum.b.rfuryoff" },
+                  { kind = "rfuryon", id = 25780, tip = "sum.b.rfuryon" },
+              } },
     badges = {
         { kind = "rebuff", id = 25898, tip = "sum.b.rebuff" },
         { kind = "rebuffed", id = 48477, tip = "sum.b.rebuffed" },
         { kind = "cc", boss = "Леди Смертный Шепот", spells = { "Смерч", "Превращение" }, id = 33786,
           tip = "sum.b.cc" },
         { kind = "wrath", boss = "Король-лич", spells = { "Гнев небес" }, id = 48817, tip = "sum.b.wrath" },
+        { kind = "sunder", id = 7386, tip = "sum.b.sunder" },
     },
 }

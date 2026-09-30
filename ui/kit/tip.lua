@@ -56,7 +56,7 @@ local KINDS = {
             indent = TIP_INDENT, wrap = true },
     text = { font = "GameFontHighlight", left = "tip.body", wrap = true },
     note = { font = "GameFontHighlightSmall", left = "tip.dim", wrap = true },
-    foot = { font = "GameFontHighlightSmall", left = "tip.dim", wrap = true, gap = TIP_SEP },
+    foot = { font = "GameFontHighlightSmall", left = "text.primary", wrap = true, gap = TIP_SEP },
 }
 local TONES = { bad = "text.bad", good = "text.good", warn = "text.warn", dim = "tip.dim" }
 local Tip = {}

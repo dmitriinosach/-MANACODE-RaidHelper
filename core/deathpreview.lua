@@ -27,9 +27,15 @@ local LOCK_SLACK = 1
 local HP_STEP = 0.01
 local HP_CUT = 0.05
 local F_PLAYER = 0x400
-local TRAIL_MAX = 64
-local BOSS_SPAN = 3
-local END_SLACK = 0.3
+local TRAIL_STEP = 0.25
+local TRAIL_MIN_YD = 0.1
+local ADD_HOLD = 4
+local NEAR_YD = 20
+local BOSS_NEAR_YD = 35
+local FRAME_MIN_YD = 15
+local FRAME_PAD_YD = 4
+local FRAME_PASSES = 3
+local SCENE_KEY = {}
 local ENEMY_CASTS = { SPELL_CAST_START = true, SPELL_CAST_SUCCESS = true }
 local PREVIEW_KINDS = { skull = true, death = true, killer = true, hit = true, aura = true, ticks = true,
                         stack = true, chased = true, blast = true, emote = true }
@@ -42,6 +48,8 @@ end
 local cache = setmetatable({}, { __mode = "k" })
 local warmKeys = setmetatable({}, { __mode = "k" })
 local warmed = setmetatable({}, { __mode = "k" })
+local sceneFight = nil
+local sceneReady = nil
 local function New(who, at, death)
     local before = death and ns.Tune("preview") or SPOT_BEFORE
     local after = death and AFTER or SPOT_AFTER
@@ -348,81 +356,172 @@ local function HpMarks(pv)
     end
     if not pv.hpAt then pv.hpAt = pv.hpV[1] end
 end
-local function Trail(m, frames, who, level, from, to)
+local function TrackOf(scene, who)
+    local tracks = scene.tracks
+    for k = 1, #tracks do
+        if tracks[k].name == who then return k end
+    end
+    return 0
+end
+local function Trail(m, tr, from, to)
+    local R = ns.Replay
+    local near = TRAIL_MIN_YD * m.ppy
     local n = 0
-    for i = 1, #frames do
-        local f = frames[i]
-        local u = f.t >= from and f.t <= to and f.floor == level and f.units[who]
-        if u and not u.stale and (u.x > 0 or u.y > 0) then
-            if n > 0 and m.trX[n] == u.x and m.trY[n] == u.y then
-                m.trT[n] = f.t
-            elseif n < TRAIL_MAX then
+    local t = from
+    while t <= to + 1e-6 do
+        local x, y = R.PosAtTime(tr, t)
+        if x >= 0 then
+            if n > 0 and math.abs(m.trX[n] - x) < near and math.abs(m.trY[n] - y) < near then
+                m.trT[n] = t
+            else
                 n = n + 1
-                m.trX[n], m.trY[n], m.trT[n] = u.x, u.y, f.t
+                m.trX[n], m.trY[n], m.trT[n] = x, y, t
+            end
+        end
+        t = t + TRAIL_STEP
+    end
+end
+local function Around(m, scene, k, t)
+    local R = ns.Replay
+    R.Sample(scene, t)
+    local states = scene.states
+    for j = 1, #states do
+        local st = states[j]
+        if st.vis then
+            if j == k then
+                m.endX, m.endY, m.endDead = st.x, st.y, st.dead
+            else
+                local n = #m.nbX + 1
+                m.nbX[n], m.nbY[n], m.nbDead[n], m.nbStale[n] = st.x, st.y, st.dead, st.stale
             end
         end
     end
-end
-local function Boss(m, frames, at)
-    local best
-    for i = 1, #frames do
-        local f = frames[i]
-        local list = f.npcs
-        local dt = math.abs(f.t - at)
-        if list and dt <= BOSS_SPAN and (not best or dt < best) then
-            for k = 1, #list do
-                if list[k].boss then
-                    best = dt
-                    m.bossX, m.bossY, m.bossName, m.bossN, m.bossDt = list[k].x, list[k].y, list[k].name, list[k].n, f.t - at
-                end
+    local boss = scene.bossState
+    if boss.vis then m.bossX, m.bossY, m.bossName = boss.x, boss.y, scene.bossName or scene.fight.boss end
+    local adds = scene.layers and scene.layers.adds or {}
+    for i = 1, #adds do
+        local a = adds[i]
+        if a.from <= t and (a.to or t) > t then
+            local x, y
+            if a.chaseK and a.chaseTo and t < a.chaseTo then
+                x, y = R.PosAtTime(scene.tracks[a.chaseK], t)
+            else
+                x, y = R.PosHold(a, t, ADD_HOLD)
             end
+            if x >= 0 then m.addX[#m.addX + 1], m.addY[#m.addY + 1] = x, y end
         end
     end
 end
-local function Around(m, cur, who)
-    for name, u in pairs(cur.units) do
-        if name ~= who and (u.x > 0 or u.y > 0) then
-            local k = #m.nbX + 1
-            m.nbX[k], m.nbY[k], m.nbDead[k], m.nbStale[k] = u.x, u.y, u.hp == 0, u.stale == true
-        end
+local function Reach(m, cx, cy, px, py)
+    local far = 0
+    for i = 1, #px do
+        local dx, dy = px[i] - cx, py[i] - cy
+        local d = math.sqrt(dx * dx + dy * dy)
+        if d > far then far = d end
     end
-    local list = cur.npcs
-    for k = 1, list and #list or 0 do
-        if not list[k].boss then m.addX[#m.addX + 1], m.addY[#m.addY + 1] = list[k].x, list[k].y end
-    end
+    return far + FRAME_PAD_YD * m.ppy
 end
-local function BuildMap(fight, idx, pv)
+local function Near(m, px, py, x, y, fx, fy, lim)
+    local dx, dy = x - fx, y - fy
+    if dx * dx + dy * dy <= lim * lim then px[#px + 1], py[#py + 1] = x, y end
+end
+local function Frame(m)
+    local ppy = m.ppy
+    local fx, fy = m.endX, m.endY
+    if not fx and #m.trX > 0 then fx, fy = m.trX[#m.trX], m.trY[#m.trY] end
+    if not fx then
+        m.cx, m.cy, m.half = m.dcx, m.dcy, m.dr
+        return
+    end
+    local px, py = { fx }, { fy }
+    for i = 1, #m.trX do px[#px + 1], py[#py + 1] = m.trX[i], m.trY[i] end
+    for i = 1, #m.nbX do Near(m, px, py, m.nbX[i], m.nbY[i], fx, fy, NEAR_YD * ppy) end
+    for i = 1, #m.addX do Near(m, px, py, m.addX[i], m.addY[i], fx, fy, NEAR_YD * ppy) end
+    if m.bossX then Near(m, px, py, m.bossX, m.bossY, fx, fy, BOSS_NEAR_YD * ppy) end
+    local l, r, t, b = fx, fx, fy, fy
+    for i = 1, #px do
+        l, r, t, b = min(l, px[i]), max(r, px[i]), min(t, py[i]), max(b, py[i])
+    end
+    local cx, cy = (l + r) / 2, (t + b) / 2
+    local half = max(FRAME_MIN_YD * ppy, Reach(m, cx, cy, px, py))
+    local ox, oy = fx - m.dcx, fy - m.dcy
+    local inside = ox * ox + oy * oy <= m.dr * m.dr
+    for _ = 1, FRAME_PASSES do
+        if not inside then break end
+        if half >= m.dr then
+            cx, cy, half = m.dcx, m.dcy, m.dr
+            break
+        end
+        local dx, dy = cx - m.dcx, cy - m.dcy
+        local d = math.sqrt(dx * dx + dy * dy)
+        local lim = m.dr - half
+        if d <= lim then break end
+        cx, cy = m.dcx + dx / d * lim, m.dcy + dy / d * lim
+        half = max(half, Reach(m, cx, cy, px, py))
+    end
+    m.cx, m.cy, m.half = cx, cy, half
+end
+local function FillMap(fight, pv, scene)
     local p0 = debugprofilestop()
-    local m = { tiles = false, trX = {}, trY = {}, trT = {}, nbX = {}, nbY = {}, nbDead = {}, nbStale = {},
-                addX = {}, addY = {}, bossN = 0, bossDt = 0, frames = 0, ms = 0 }
+    local m = { level = 0, ppy = 1, dcx = 0, dcy = 0, dr = 1, cx = 0, cy = 0, half = 1,
+                trX = {}, trY = {}, trT = {}, nbX = {}, nbY = {}, nbDead = {}, nbStale = {},
+                addX = {}, addY = {}, endDead = false, tracks = 0, ms = 0 }
     pv.map = m
-    local frames = ns.Encounters.PosWindow(fight, idx, pv.from, pv.to)
-    local cur
-    for i = 1, #frames do
-        if frames[i].t <= pv.at + END_SLACK or not cur then cur = frames[i] end
+    if not scene then
+        m.none = true
+        m.ms = debugprofilestop() - p0
+        return
     end
-    m.frames = #frames
-    if cur then
-        local level = cur.floor
-        m.room = ns.Encounters.Rooms(fight, frames)[level]
-        local known = ns.maps and ns.maps[fight.boss]
-        local preset = known and known.rooms and known.rooms[level]
-        m.tiles = preset ~= nil and preset.crop ~= nil
-        local scale = m.room and m.room.area and ns.mapScale and ns.mapScale[m.room.area]
-        local size = scale and scale[level]
-        m.yardW, m.yardH = size and size.w, size and size.h
+    m.room, m.level, m.ppy, m.tracks = scene.room, scene.floor, scene.ppy, #scene.tracks
+    if m.room then
+        m.dcx, m.dcy, m.dr = m.room.cx, m.room.cy, m.room.r
+    else
+        m.dcx, m.dcy, m.dr = scene.cx, scene.cy, scene.r
+        m.gx, m.gy = scene.gx, scene.gy
+    end
+    local k = TrackOf(scene, pv.who)
+    if k > 0 then Trail(m, scene.tracks[k], pv.from, pv.death and pv.at or pv.to) end
+    Around(m, scene, k, pv.at)
+    local kind, since, level = ns.Replay.GapAt(scene, pv.at)
+    if kind == "away" then
         m.note = ns.Encounters.FloorNote(fight.boss, level)
-        m.lost = cur.lost and cur.lost - fight.from
-        Trail(m, frames, pv.who, level, pv.from, pv.to)
-        for i = 1, #frames do
-            local f = frames[i]
-            local u = f.t <= pv.at + END_SLACK and f.floor == level and f.units[pv.who]
-            if u and (u.x > 0 or u.y > 0) then m.endX, m.endY = u.x, u.y end
-        end
-        Around(m, cur, pv.who)
-        Boss(m, frames, pv.at)
+        m.away = level
+    elseif kind == "lost" then
+        m.lost = since - fight.from
     end
+    Frame(m)
     m.ms = debugprofilestop() - p0
+end
+function DP.Scene(fight, onDone, urgent)
+    if sceneFight == fight and sceneReady ~= nil then return onDone(sceneReady) end
+    if sceneFight ~= fight then
+        ns.Jobs.Cancel(SCENE_KEY)
+        sceneFight, sceneReady = fight, nil
+    end
+    ns.Index.Get(fight, function(idx)
+        if sceneFight ~= fight then return end
+        if not idx then
+            sceneReady = false
+            return onDone(false)
+        end
+        ns.Jobs.Run(SCENE_KEY, function()
+            local frames = ns.Encounters.PosWindow(fight, idx, fight.from, fight.to)
+            if #frames == 0 then return false end
+            local scene = ns.Replay.Build(fight, frames)
+            if ns.ReplayLayers then ns.ReplayLayers.Build(scene) end
+            return scene
+        end, function(scene)
+            if sceneFight == fight then sceneReady = scene or false end
+            onDone(scene or false)
+        end, "prev.map", urgent)
+    end, urgent)
+end
+function DP.Map(fight, pv, onDone)
+    if pv.map then return onDone(pv) end
+    DP.Scene(fight, function(scene)
+        if not pv.map then FillMap(fight, pv, scene) end
+        onDone(pv)
+    end, true)
 end
 local function PickRows(pv)
     local cover = pv.auraCover
@@ -463,7 +562,6 @@ function DP.Build(fight, idx, who, at, death)
     ScanCommon(idx, pv, st)
     ScanHp(idx, pv)
     HpMarks(pv)
-    BuildMap(fight, idx, pv)
     PickRows(pv)
     SortCasts(pv)
     for id, label in pairs(st.locks) do
@@ -532,11 +630,13 @@ function DP.Warm(fight)
                     end
                 end
                 warmed[fight] = true
-            end, nil, "prev.data")
+            end, function() DP.Scene(fight, function() end) end, "prev.data")
         end)
     end)
 end
 function DP.Reset()
     for k in pairs(cache) do cache[k] = nil end
     for k in pairs(warmed) do warmed[k] = nil end
+    ns.Jobs.Cancel(SCENE_KEY)
+    sceneFight, sceneReady = nil, nil
 end

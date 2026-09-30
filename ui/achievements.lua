@@ -269,24 +269,21 @@ function View.PaintRow(row, e)
     ns.Kit.Tone(row.name, on and "ach.name" or "ach.nameOff")
 end
 local function Tally(rows)
-    local done, total, chatOnly = 0, 0, true
+    local done, total = 0, 0
     for i = 1, #rows do
         local row = rows[i]
-        if row.scope ~= "chat" then chatOnly = false end
         if not (row.def and row.def.personal) then
             total = total + 1
             if row.status == "done" then done = done + 1 end
         end
     end
-    return done, total, chatOnly
+    return done, total
 end
 function View.Model(rows, pending, onWheel)
-    local done, total, chatOnly = Tally(rows)
+    local done, total = Tally(rows)
     local title
     if pending > 0 then
         title = T("ach.raid.wait")
-    elseif chatOnly then
-        title = format(T("ach.raid.got"), done)
     else
         title = format(T("ach.raid.title"), done, total)
     end

@@ -90,17 +90,17 @@ local function Tracks(segs, kind, from, to, times)
     end
     return out
 end
-local function PutPos(state, seen, unit, hp, x, y, ts)
+local function PutPos(state, seen, unit, hp, top, x, y, ts)
     if x > 0 or y > 0 then
-        state[unit] = { x = x, y = y, hp = hp }
+        state[unit] = { x = x, y = y, hp = hp, max = top }
         seen[unit] = ts
         return
     end
     local prev = state[unit]
     if prev and (prev.x > 0 or prev.y > 0) and ts - (seen[unit] or ts) <= POS_HOLD then
-        state[unit] = { x = prev.x, y = prev.y, hp = hp, stale = true }
+        state[unit] = { x = prev.x, y = prev.y, hp = hp, max = top, stale = true }
     else
-        state[unit] = { x = 0, y = 0, hp = hp }
+        state[unit] = { x = 0, y = 0, hp = hp, max = top }
     end
 end
 local function MapAt(marks, t, k)
@@ -122,7 +122,7 @@ function Streams.Frames(segs, out, from, to)
         for k = 1, #m do marks[#marks + 1] = m[k] end
     end
     tsort(marks, function(a, b) return a.t < b.t end)
-    local state, seen, hpNow = {}, {}, {}
+    local state, seen, hpNow, maxNow = {}, {}, {}, {}
     local lastFloor, lastLive = nil, nil
     local mk = 0
     local total = #list
@@ -133,9 +133,9 @@ function Streams.Frames(segs, out, from, to)
         for name, tr in pairs(hps) do
             local i = tr.i
             while tr.t[i] and tr.t[i] <= ts do
-                hpNow[name] = tr.a[i]
+                hpNow[name], maxNow[name] = tr.a[i], tr.b[i]
                 local pt = state[name]
-                if pt then state[name] = { x = pt.x, y = pt.y, hp = tr.a[i], stale = pt.stale } end
+                if pt then state[name] = { x = pt.x, y = pt.y, hp = tr.a[i], max = tr.b[i], stale = pt.stale } end
                 i = i + 1
             end
             tr.i = i
@@ -143,7 +143,7 @@ function Streams.Frames(segs, out, from, to)
         for name, tr in pairs(pos) do
             local i = tr.i
             while tr.t[i] and tr.t[i] <= ts do
-                PutPos(state, seen, name, hpNow[name] or 0, tr.a[i] / MAP_UNITS, tr.b[i] / MAP_UNITS, tr.t[i])
+                PutPos(state, seen, name, hpNow[name] or 0, maxNow[name], tr.a[i] / MAP_UNITS, tr.b[i] / MAP_UNITS, tr.t[i])
                 i = i + 1
             end
             tr.i = i
@@ -153,7 +153,7 @@ function Streams.Frames(segs, out, from, to)
         local snap, live = {}, 0
         for name, pt in pairs(state) do
             if pt.stale and ts - (seen[name] or ts) > POS_HOLD then
-                pt = { x = 0, y = 0, hp = pt.hp }
+                pt = { x = 0, y = 0, hp = pt.hp, max = pt.max }
                 state[name] = pt
             end
             if not pt.stale and (pt.x > 0 or pt.y > 0) then live = live + 1 end

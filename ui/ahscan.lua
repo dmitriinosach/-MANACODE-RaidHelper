@@ -69,7 +69,7 @@ S.Section("cost", "ahscan", {
     order = 5,
     items = {
         { kind = "text", key = "state", text = StatusText, token = StatusToken, tick = true },
-        { kind = "button", key = "scan", text = ButtonText, tip = ButtonTip, tick = true,
+        { kind = "button", key = "scan", text = ButtonText, tip = ButtonTip, tick = true, hint = "ah.rule",
           enabled = function() return Scan.IsOpen() end, run = function() Scan.Toggle() end },
     },
 })

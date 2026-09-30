@@ -44,4 +44,5 @@ ns.summaries[HALION] = {
         { kind = "taken", label = "sum.k.rs.cutter", spells = { "Лезвие сумерек", "Сумеречная пульсация" } },
         { kind = "damageTo", label = "sum.k.rs.adds", names = { "Живое адское пламя", "Живой огонь" } },
     },
+    stacks = { { spell = "Метка пылающего огня" }, { spell = "Метка пожирания" } },
 }

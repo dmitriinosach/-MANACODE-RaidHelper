@@ -10,6 +10,7 @@ local DROP = {
     SPELL_AURA_BROKEN = true, SPELL_AURA_BROKEN_SPELL = true, SPELL_DISPEL_FAILED = true,
     SPELL_DURABILITY_DAMAGE = true, SPELL_DURABILITY_DAMAGE_ALL = true,
 }
+local ENERGIZE = { SPELL_ENERGIZE = true, SPELL_PERIODIC_ENERGIZE = true }
 local AURAS = {
     SPELL_AURA_APPLIED = true, SPELL_AURA_REMOVED = true, SPELL_AURA_REFRESH = true,
     SPELL_AURA_APPLIED_DOSE = true, SPELL_AURA_REMOVED_DOSE = true,
@@ -18,6 +19,7 @@ local Filter = {}
 ns.RecFilter = Filter
 Filter.DROP = DROP
 local keepPower = nil
+local powerNpcs = nil
 local function KeepPower()
     if keepPower then return keepPower end
     keepPower = {}
@@ -27,6 +29,16 @@ local function KeepPower()
         end
     end
     return keepPower
+end
+local function PowerNpcs()
+    if powerNpcs then return powerNpcs end
+    powerNpcs = {}
+    for _, def in pairs(ns.summaries or {}) do
+        for _, bd in ipairs(def.blocks or {}) do
+            if bd.power and bd.npc then powerNpcs[bd.npc] = true end
+        end
+    end
+    return powerNpcs
 end
 local function IsBoss(name, auto)
     if name == nil then return false end
@@ -40,6 +52,7 @@ function Filter.Keep(sub, srcGUID, srcName, dstGUID, dstName, spellId, auraType,
     if all then return true end
     if DROP[sub] then
         if spellId ~= nil and KeepPower()[spellId] then return true end
+        if ENERGIZE[sub] and dstName ~= nil and PowerNpcs()[dstName] then return true end
         return IsBoss(srcName, auto) or IsBoss(dstName, auto)
     end
     if AURAS[sub] and auraType == "BUFF" and srcGUID ~= nil and srcGUID == dstGUID

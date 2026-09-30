@@ -35,22 +35,21 @@ local function Source(res, out)
     if not res.kill then out[#out + 1] = { kind = "note", left = ns.T("exp.tt.wipe") } end
 end
 function View.Personal(fight, s, p, m)
+    if p.role ~= "dps" then return end
     local res = Get(fight, s)
     local row = res and res.by[p.name]
     if not row or row.role == "h" then return end
     local tone = Tone(row.got, row.exp, res.kill)
     local key = res.kill and "exp.personal" or "exp.personal.wipe"
     m.sub = (m.sub ~= "" and (m.sub .. "  ") or "") .. ns.Kit.Hex(tone) .. format(ns.T(key), Short(row.exp)) .. "|r"
-    local add = { { kind = "sep" },
-        { kind = "row", left = ns.T("exp.tt.exp"), right = Short(row.exp) },
-        { kind = "sub", left = format(ns.T("exp.tt.kills"), row.n) } }
+    local right = Short(row.exp)
     if res.kill then
-        add[#add + 1] = { kind = "row", left = ns.T("exp.tt.ratio"),
-            right = format("%d%%", floor(row.got * 100 / math.max(1, row.exp) + 0.5)),
-            tone = tone == "badge.green" and "good" or (tone == "badge.red" and "bad" or nil) }
+        right = format(ns.T("exp.tt.expof"), right, floor(row.got * 100 / math.max(1, row.exp) + 0.5))
     end
-    Source(res, add)
-    Insert(m.lines, add)
+    Insert(m.lines, { { kind = "sep" },
+        { kind = "row", left = ns.T("exp.tt.exp"), right = right,
+          tone = res.kill and (tone == "badge.green" and "good" or (tone == "badge.red" and "bad" or nil)) or nil },
+        { kind = "sub", left = format(ns.T("exp.tt.kills"), row.n), tone = "dim" } })
 end
 function View.Total(fight, s, m)
     local res = Get(fight, s)

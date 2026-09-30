@@ -63,17 +63,26 @@ function PullTimer.Note(who, sec)
     local ends = now + sec
     if active and math.abs(ends - active.ends) <= ns.pullTimer.dup then return false end
     if not ns.Recorder.Mark(SUB, nil, who, 0, nil, nil, 0, sec) then return false end
-    active = { ends = ends }
+    active = { ends = ends, start = now, sec = sec, who = who }
     return true
+end
+function PullTimer.OnPull(ts)
+    local a = active
+    if not a or a.pulled or not ns.Store then return false end
+    local ago = GetTime() - a.start
+    if ago < 0 or ago > ns.pullTimer.window then return false end
+    a.pulled = true
+    return ns.Store.Append(ts, SUB, nil, a.who, 0, nil, nil, 0, a.sec, math.floor(ago * 10 + 0.5) / 10) and true or false
 end
 function PullTimer.Forget()
     active = nil
 end
-function PullTimer.Feed(s, ts, who, sec)
+function PullTimer.Feed(s, ts, who, sec, ago)
     sec = tonumber(sec)
     if not who or not sec then return end
+    ago = tonumber(ago)
     s.pullMarks = s.pullMarks or {}
-    s.pullMarks[#s.pullMarks + 1] = { t = ts, who = who, sec = sec }
+    s.pullMarks[#s.pullMarks + 1] = { t = ago and ts - ago or ts, who = who, sec = sec }
 end
 function PullTimer.Puller(pull)
     if not pull then return nil end

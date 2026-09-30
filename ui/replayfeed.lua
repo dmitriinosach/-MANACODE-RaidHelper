@@ -14,6 +14,7 @@ local PAD = 4
 local FOLLOW_AFTER = 4
 local LEAD_ROWS = 3
 local OFF_ALPHA = 0.35
+local MARK_W = 2
 local F = {}
 ns.ReplayFeed = F
 local Kit = ns.Kit
@@ -23,7 +24,7 @@ local kinds = {}
 local vis = {}
 local count = {}
 local st = { n = 0, top = 1, cur = 0, scrolledAt = -1e9, L = nil, onSeek = nil, rows = 0, width = 0, drawnTop = -1,
-             drawnCur = -1 }
+             drawnCur = -1, focus = nil, hi = 0 }
 local function Saved()
     local settings = ns.GetDB().settings
     if type(settings.iso) ~= "table" then settings.iso = {} end
@@ -50,9 +51,22 @@ local function SetIcon(tex, icon)
         Kit.Icon.Spell(tex, id and id > 0 and id or nil)
     end
 end
+local function Mine(L, i, name)
+    if not name or not L.fdWho then return false end
+    if L.fdWho[i] == name then return true end
+    local all = L.fdAll and L.fdAll[i]
+    if not all then return false end
+    for k = 1, #all do
+        if all[k] == name then return true end
+    end
+    return false
+end
 local function RowClick(self)
     local L = st.L
-    if self.idx and L and st.onSeek then st.onSeek(L.fdT[self.idx]) end
+    if not (self.idx and L and st.onSeek) then return end
+    local who = L.fdWho and L.fdWho[self.idx] or nil
+    if self.mine then who = st.focus end
+    st.onSeek(L.fdT[self.idx], who or nil)
 end
 local function Draw()
     local L = st.L
@@ -62,6 +76,7 @@ local function Draw()
     end
     if st.drawnTop == st.top and st.drawnCur == st.cur then return end
     st.drawnTop, st.drawnCur = st.top, st.cur
+    local hi = 0
     for r = 1, st.rows do
         local row = rows[r]
         local pos = st.top + r - 1
@@ -72,15 +87,24 @@ local function Draw()
             row.text:SetText(L.fdText[i])
             row.tip = L.fdTip and L.fdTip[i] or L.fdText[i]
             SetIcon(row.icon, L.fdIcon[i])
-            Kit.Text(row.text, L.fdImp[i] and "sem.rep.important" or "text.secondary")
+            row.mine = Mine(L, i, st.focus)
+            if row.mine then
+                hi = hi + 1
+                row.mark:Show()
+                Kit.Text(row.text, "sem.rep.focusText")
+            else
+                row.mark:Hide()
+                Kit.Text(row.text, L.fdImp[i] and "sem.rep.important" or "text.secondary")
+            end
             row.on = pos == st.cur
             Kit.StyleRow(row)
             row:Show()
         else
-            row.idx = nil
+            row.idx, row.mine = nil, nil
             row:Hide()
         end
     end
+    st.hi = hi
 end
 local function ScrollTo(top)
     st.top = max(1, min(top, st.n - st.rows + 1))
@@ -189,6 +213,12 @@ function F.Build(parent, width, height, onSeek)
         row.text:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
         row.text:SetWidth(width - PAD * 2 - TIME_W - ICON - 10)
         row.text:SetHeight(ROW_H - 4)
+        row.mark = row:CreateTexture(nil, "ARTWORK")
+        row.mark:SetWidth(MARK_W)
+        row.mark:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+        row.mark:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+        Kit.Paint(row.mark, "sem.rep.focus")
+        row.mark:Hide()
         row.onClick = RowClick
         row:Hide()
         rows[r] = row
@@ -216,9 +246,15 @@ function F.Update(sec)
     end
     Draw()
 end
+function F.SetFocus(name)
+    if st.focus == name then return end
+    st.focus = name
+    st.drawnTop = -1
+    Draw()
+end
 function F.Ready()
     return side ~= nil
 end
 function F.Stats()
-    return { shown = st.n, rows = st.rows, kinds = #kinds, count = count }
+    return { shown = st.n, rows = st.rows, kinds = #kinds, count = count, focus = st.focus, hi = st.hi }
 end
