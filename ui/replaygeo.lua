@@ -10,15 +10,21 @@ local AIM_EPS = 0.001
 local MAX_ANGLES = 8
 local SNAP_TIME = 0.25
 local OVER_ALPHA = 0.42
-local Geo = { on = false }
+local LIVE_PERSP = 0.03
+local Geo = { on = false, legacy = false }
 ns.ReplayGeo = Geo
 local Replay = ns.Replay
-local st = { bases = {}, overs = {}, k = 0 }
+local st = { bases = {}, overs = {}, k = 0, live = false }
+local LIVE_ISO = {}
+local function LiveMod()
+    return ns.ReplayLive
+end
 function Geo.Build(view, level)
     st.view = view
     local top = CreateFrame("Frame", nil, view)
     top:SetAllPoints(view)
     top:SetFrameLevel(level)
+    if LiveMod() then LiveMod().Build(view, level) end
     for k = 1, MAX_ANGLES do
         st.bases[k] = view:CreateTexture(nil, "BORDER")
         st.bases[k]:Hide()
@@ -39,12 +45,17 @@ function Geo.Release()
         st.bases[k]:SetTexture(nil)
         st.overs[k]:SetTexture(nil)
     end
-    st.room, st.iso, st.snap = nil, nil, nil
+    if LiveMod() then LiveMod().Release() end
+    st.room, st.iso, st.snap, st.live = nil, nil, nil, false
 end
 function Geo.Use(room)
     if st.room and room == st.room then return end
     Geo.Release()
     st.room, st.iso, st.snap = nil, nil, nil
+    if room and st.view and not Geo.legacy and LiveMod() and LiveMod().Use(room) then
+        st.room, st.live = room, true
+        return
+    end
     local iso = Replay.IsoOf(room)
     if not iso or not st.view then return end
     local n = min(MAX_ANGLES, iso.n or 1)
@@ -63,6 +74,7 @@ function Geo.Has(room)
 end
 function Geo.Iso(room)
     if not Geo.on or not room or room ~= st.room then return nil end
+    if st.live then return LIVE_ISO end
     return st.iso
 end
 local function Step()
@@ -70,7 +82,7 @@ local function Step()
 end
 function Geo.Nearest(angle)
     local iso = st.iso
-    if not iso then return angle end
+    if not iso or st.live then return angle end
     local step = Step()
     return (iso.angle + floor((angle - iso.angle) / step + 0.5) * step) % (2 * pi)
 end
@@ -98,6 +110,18 @@ local function Clip(tex, cam, l, t, w, h)
     tex:Show()
 end
 function Geo.Place(cam, room, ppy)
+    if st.live then
+        local live = LiveMod()
+        if Geo.on and room == st.room and cam.persp <= LIVE_PERSP and live.Place(cam, room, ppy) then
+            st.k = 1
+            return true
+        end
+        if st.k > 0 then
+            live.HideAll()
+            st.k = 0
+        end
+        return false
+    end
     local k = room == st.room and Aimed(cam)
     if not k then
         if st.k > 0 then HideAll() end
@@ -123,6 +147,18 @@ function Geo.Where(cam, scene, x, y)
     return fx, fy, z * scene.ppy * sqrt(max(0, 1 - cam.tilt * cam.tilt)) * cam.zoom
 end
 function Geo.Snap(cam, want, dir, wait)
+    if st.live then
+        if not Geo.on then return false end
+        local a0, a1 = cam.angle, want
+        while a1 - a0 > pi do a1 = a1 - 2 * pi end
+        while a0 - a1 > pi do a1 = a1 + 2 * pi end
+        if abs(a1 - a0) < AIM_EPS and cam.persp <= 0 then
+            cam.angle = a1 % (2 * pi)
+            return true
+        end
+        st.snap = { a0 = a0, a1 = a1, t0 = cam.tilt, t1 = cam.tilt, p0 = cam.persp, t = -(wait or 0) }
+        return true
+    end
     local iso = Geo.on and st.iso
     if not iso then return false end
     local step = Step()
@@ -159,4 +195,7 @@ end
 function Geo.Layers()
     local k = max(1, st.k)
     return st.bases[k], st.overs[k]
+end
+function Geo.Live()
+    return st.live
 end

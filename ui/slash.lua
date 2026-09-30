@@ -192,6 +192,9 @@ local function Handler(msg)
                 ns.ReplayIso.FlipFace()
             elseif rest == "geo" then
                 ns.ReplayIso.SetGeo(not ns.ReplayGeo.on)
+            elseif rest == "live" then
+                ns.ReplayGeo.legacy = not ns.ReplayGeo.legacy
+                ns.Print(ns.T(ns.ReplayGeo.legacy and "iso.live.off" or "iso.live.on"))
             elseif camera then
                 local index = tonumber(camera)
                 ns.ReplayIso.SetCamera(index and index >= 0 and index or nil)

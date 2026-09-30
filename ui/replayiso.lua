@@ -641,7 +641,7 @@ local function ResetCamera(defaults)
         LoadCamera()
     end
     local iso = Geo.Iso(run.scene and run.scene.room)
-    if iso then cam.angle, run.tilt3, run.persp3, run.flat = Geo.Nearest(cam.angle), iso.tilt, 0, false end
+    if iso then cam.angle, run.tilt3, run.persp3, run.flat = Geo.Nearest(cam.angle), iso.tilt or run.tilt3, 0, false end
     if run.flat then
         cam.tilt, cam.persp = 1, 0
     else
@@ -786,7 +786,6 @@ local function UseScene(scene)
         end
     end
     Geo.Use(scene.room)
-    if not run.flat then Geo.Snap(cam, cam.angle, 0, 0) end
     if not scene.room then
         ui.hint:SetText(ns.T("iso.notex"))
         ui.hint:Show()
@@ -1175,6 +1174,11 @@ local function Build()
     UpdateCamUi()
     run.narrow = false
     frame:SetScript("OnUpdate", Tick)
+    frame:SetScript("OnShow", function()
+        if not run.scene then return end
+        Geo.Use(run.scene.room)
+        run.camDirty = true
+    end)
     frame:SetScript("OnHide", function()
         Geo.Release()
         run.playing = false

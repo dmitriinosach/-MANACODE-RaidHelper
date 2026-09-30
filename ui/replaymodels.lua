@@ -580,6 +580,14 @@ if ns.Settings and ns.Settings.Section then
         label = "set.replay",
         order = 30,
         items = {
+            { kind = "choice", key = "room", buttons = true, label = "set.replay.room", tip = "set.replay.room.tip",
+              options = { { key = "flat", label = "set.replay.room.flat" }, { key = "real", label = "set.replay.room.real" } },
+              default = "real",
+              get = function()
+                  local iso = ns.GetDB().settings.iso
+                  return type(iso) == "table" and iso.geo == false and "flat" or "real"
+              end,
+              set = function(k) ns.ReplayIso.SetGeo(k == "real", true) end },
             { kind = "choice", key = "models3d", buttons = true, label = "set.replay.m3d", tip = "set.replay.m3d.tip",
               options = { { key = "off", label = "set.replay.m3d.off" }, { key = "boss", label = "set.replay.m3d.boss" },
                           { key = "all", label = "set.replay.m3d.all" } },
