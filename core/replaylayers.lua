@@ -81,6 +81,7 @@ local function NewLayers()
         tanks = {}, hitbox = 0, bossMoved = false, targets = 0, targetSrc = "", ms = 0,
         switchRaw = 0, switchSmooth = 0, taunts = 0,
         bcT = {}, bcD = {}, nbc = 0, bsT = {},
+        pfQuake = {}, pfWinter = {}, pfMarkT = {}, pfMarkK = {},
     }
 end
 local function Pos(c, name, ts)
@@ -394,6 +395,24 @@ local function OnGone(c, ts, sub, src, id)
         end
     end
 end
+local function OnPlatform(c, ts, sub, src, id, name)
+    local def = c.platform
+    if not def or not src or not c.bosses[src] then return end
+    local kind = ns.ReplayPlatform.Match(def, id, name)
+    if kind == "quake" then
+        ns.ReplayPlatform.AddQuake(c.L.pfQuake, def.quake.gap, ts, sub == "SPELL_CAST_SUCCESS")
+    elseif kind == "winter" then
+        ns.ReplayPlatform.AddWinter(c.L.pfWinter, def.winter.gap, ts)
+    end
+end
+local function OnMark(c, ts, key)
+    local def = c.platform
+    if not def then return end
+    local k = tostring(key)
+    if k ~= def.markFall and k ~= def.markBack then return end
+    local L = c.L
+    L.pfMarkT[#L.pfMarkT + 1], L.pfMarkK[#L.pfMarkK + 1] = ts, k
+end
 local function OnDied(c, ts, dstGUID, dst)
     local k = dst and c.byK[dst]
     if k then
@@ -434,6 +453,7 @@ local function Dispatch(c, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFla
     elseif CASTS[sub] then
         OnCast(c, ts, sub, src, dst, a2)
         OnGone(c, ts, sub, src, a1)
+        OnPlatform(c, ts, sub, src, a1, a2)
         if sub == "SPELL_CAST_SUCCESS" then OnMelee(c, ts, src, dst, a2) end
     elseif sub == "SPELL_MISSED" then
         OnMelee(c, ts, src, dst, a2)
@@ -443,6 +463,8 @@ local function Dispatch(c, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFla
         OnSummon(c, ts, src, dstGUID, dst)
     elseif sub == "FW_VEH" then
         OnVehicle(c, ts, src, tonumber(a1) == 1)
+    elseif sub == "FW_MARK" then
+        OnMark(c, ts, a1)
     end
 end
 local function NewContext(scene)
@@ -461,7 +483,7 @@ local function NewContext(scene)
     local goneAt = {}
     for i = 1, goneDefs and #goneDefs or 0 do goneAt[i] = {} end
     return {
-        goneDefs = goneDefs, goneAt = goneAt, home = D.home[fight.boss],
+        goneDefs = goneDefs, goneAt = goneAt, home = D.home[fight.boss], platform = ns.ReplayPlatform.Def(fight.boss),
         L = NewLayers(), D = D, byK = byK, tracks = scene.tracks, open = open, from = fight.from, to = fight.to,
         ppy = scene.ppy, stateIdx = StateIndex(D), bosses = ns.Index.BossNames(fight),
         poolDefs = D.pools[fight.boss], coneDefs = cones,

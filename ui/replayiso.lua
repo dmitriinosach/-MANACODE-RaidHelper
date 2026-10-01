@@ -1,6 +1,7 @@
 local ADDON, ns = ...
 local format = string.format
 local floor = math.floor
+local ceil = math.ceil
 local max = math.max
 local min = math.min
 local abs = math.abs
@@ -91,6 +92,7 @@ local MODEL_LEVEL = 3
 local HOVER_PX = 14
 local FOG_FAR = 1
 local HUGE = 1e9
+local START = -HUGE
 local STALE_ALPHA = 0.35
 local Iso = { dev = false }
 ns.ReplayIso = Iso
@@ -245,6 +247,7 @@ local function ModelFits(fig, s, sx, sy, scale)
     return sx - hw >= -cam.w / 2 and sx + hw <= cam.w / 2 and top >= -cam.h / 2 and sy <= cam.h / 2
 end
 local function DrawFigure(fig, s, sx, sy, scale, flat, elapsed, k)
+    scale = scale * Figs.Grow(fig, elapsed)
     Figs.Sprite(fig, s, scale, flat, elapsed)
     fig.baseA = (s.stale and STALE_ALPHA or 1) * (run.focusA[k] or 1)
     fig:SetPoint("CENTER", ui.view, "CENTER", sx, -sy)
@@ -413,12 +416,13 @@ local function UpdateScrub()
     local w = ui.scrub:GetWidth()
     ui.fill:SetWidth(max(1, w * frac))
     ui.thumb:SetPoint("CENTER", ui.scrub, "LEFT", w * frac, 0)
-    local sec = floor(run.t - scene.from)
+    local d = run.t - scene.pull
+    local sec = d >= 0 and floor(d) or -ceil(-d)
     if sec ~= run.lastClock then
         run.lastClock = sec
-        local m1, s1 = MinSec(sec)
-        local m2, s2 = MinSec(dur)
-        ui.clock:SetText(format(ns.T("iso.clock"), m1, s1, m2, s2))
+        local m1, s1 = MinSec(sec < 0 and -sec or sec)
+        local m2, s2 = MinSec(scene.to - scene.pull)
+        ui.clock:SetText(format(ns.T("iso.clock"), sec < 0 and "-" or "", m1, s1, m2, s2))
     end
 end
 local function UpdatePlay()
@@ -430,9 +434,14 @@ local function UpdateCamUi()
     if not ui.modeBtn then return end
     ui.modeBtn.text:SetText(ns.T(run.flat and "iso.cam.2d" or "iso.cam.3d"))
     ui.modeBtn.tip = ns.T(run.flat and "iso.tip.to3d" or "iso.tip.to2d")
-    if run.scene and Geo.Has(run.scene.room) then
+    local room = run.scene and run.scene.room
+    if Geo.Has(room) then
         ui.geoBtn.text:SetText(ns.T(Geo.on and "iso.geo.vol" or "iso.geo.flat"))
         ui.geoBtn.tip = ns.T(Geo.on and "iso.tip.geo.vol" or "iso.tip.geo.flat")
+        ui.geoBtn:Show()
+    elseif Geo.Missing(room) then
+        ui.geoBtn.text:SetText(ns.T("iso.geo.flat"))
+        ui.geoBtn.tip = ns.RoomPacks.Hint(room)
         ui.geoBtn:Show()
     else
         ui.geoBtn:Hide()
@@ -567,7 +576,7 @@ local function UpdateGap()
     end
     local text
     if kind == "lost" then
-        text = format(ns.T("iso.gap.lost"), MinSec(since - scene.from))
+        text = format(ns.T("iso.gap.lost"), MinSec(since - scene.pull))
     else
         local note = ns.Encounters.FloorNote(scene.fight.boss, level)
         text = note and ns.T("map.note." .. note) or format(ns.T("iso.gap.away"), level)
@@ -610,12 +619,13 @@ local function Tick(self, elapsed)
         run.camDirty = true
     end
     Follow.Step(elapsed)
+    if Geo.Time(scene, run.t) and not run.camDirty and not run.flat then PlaceFloor() end
     if run.camDirty then ApplyCamera() end
     Replay.Sample(scene, run.t)
     run.bossDrawn = Models.Place(cam, run.t, run.figScale, run.faceSign, elapsed)
     LayersView.Place(scene, cam, run.t, figs, run.figScale)
     PlaceFigures(elapsed)
-    ns.ReplayFeed.Update(run.t - scene.from)
+    ns.ReplayFeed.Update(run.t - scene.pull)
     PlaceDeaths()
     run.marksDirty = false
     UpdateScrub()
@@ -640,8 +650,7 @@ local function ResetCamera(defaults)
     else
         LoadCamera()
     end
-    local iso = Geo.Iso(run.scene and run.scene.room)
-    if iso then cam.angle, run.tilt3, run.persp3, run.flat = Geo.Nearest(cam.angle), iso.tilt or run.tilt3, 0, false end
+    if Geo.Iso(run.scene and run.scene.room) then run.persp3, run.flat = 0, false end
     if run.flat then
         cam.tilt, cam.persp = 1, 0
     else
@@ -738,9 +747,16 @@ end
 local function ApplySeek()
     local scene = run.scene
     if not scene or not run.seek then return end
-    run.t = Clamp(scene.from + run.seek, scene.from, scene.to)
+    run.t = Clamp(scene.pull + run.seek, scene.from, scene.to)
     run.seek = nil
-    run.playing = false
+    run.playing = run.t < scene.to
+    run.marksDirty = true
+    UpdatePlay()
+end
+local function Resume()
+    local scene = run.scene
+    if run.t >= scene.to then run.t = scene.from end
+    run.playing = true
     run.marksDirty = true
     UpdatePlay()
 end
@@ -952,7 +968,14 @@ local function BuildNav(top)
     ui.geoBtn = NavButton(top, nil, "iso.tip.geo.flat")
     ui.geoBtn:SetWidth(GEO_BTN)
     ui.geoBtn:SetPoint("TOP", ui.modeBtn, "BOTTOM", 0, -4)
-    ui.geoBtn.onClick = function() Iso.SetGeo(not Geo.on, true) end
+    ui.geoBtn.onClick = function()
+        local room = run.scene and run.scene.room
+        if Geo.Has(room) then
+            Iso.SetGeo(not Geo.on, true)
+        elseif Geo.Missing(room) then
+            ns.Print(ns.RoomPacks.Hint(room))
+        end
+    end
     ui.geoBtn:Hide()
     local help = NavButton(top, ICONS.help, "iso.tip.help")
     help:SetPoint("TOP", ui.geoBtn, "BOTTOM", 0, -10)
@@ -972,7 +995,7 @@ local function BuildView(frame)
     ui.side = side
     ns.ReplayFeed.Build(side, FEED_W, VIEW_H, function(sec, who)
         if not run.scene then return end
-        run.t = Clamp(run.scene.from + sec, run.scene.from, run.scene.to)
+        run.t = Clamp(run.scene.pull + sec, run.scene.from, run.scene.to)
         run.marksDirty = true
         if who and run.scene.fight.players[who] then SetFocus(who) end
     end)
@@ -1234,15 +1257,20 @@ function Iso.Show()
     end
     if not ui.frame then Build() end
     if auto then ns.Print(format(ns.T("iso.auto"), fight.boss)) end
-    run.seek = nil
     run.want = run.focus
     ui.frame:Show()
-    if run.fight ~= fight or not run.scene then LoadFight(fight) end
+    if run.fight ~= fight or not run.scene then
+        run.seek = START
+        LoadFight(fight)
+    else
+        run.seek = nil
+        Resume()
+    end
 end
 function Iso.Open(fight, t, who)
     if not fight then return end
     if not ui.frame then Build() end
-    run.seek = max(0, tonumber(t) or 0)
+    run.seek = tonumber(t) and max(0, tonumber(t)) or START
     run.want = who
     ui.frame:Show()
     if run.fight ~= fight or (not run.scene and not run.loading) then
@@ -1265,6 +1293,9 @@ function Iso.Focus(name)
 end
 function Iso.Scene()
     return run.scene
+end
+function Iso.Now()
+    return run.t, run.playing
 end
 function Iso.Toggle()
     if ui.frame and ui.frame:IsShown() then Iso.Hide() else Iso.Show() end

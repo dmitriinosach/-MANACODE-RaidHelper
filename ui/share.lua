@@ -16,8 +16,7 @@ local MEMBER = {
 local LINE_ARG = 9
 local HEAD_W = 96
 local HEAD_H = 18
-local HEAD_PAD = 6
-local HEAD_Y = -19
+local HEAD_GAP = 6
 local View = {}
 ns.ShareView = View
 local Share = ns.Share
@@ -82,11 +81,11 @@ function View.SetFight(f)
     head.fight = own
     if own then head:Show() else head:Hide() end
 end
-function View.Head(host)
+function View.Head(host, anchor)
     local b = ns.Kit.Button(host)
     b:SetWidth(HEAD_W)
     b:SetHeight(HEAD_H)
-    b:SetPoint("RIGHT", host, "TOPRIGHT", -HEAD_PAD, HEAD_Y)
+    b:SetPoint("LEFT", anchor, "RIGHT", HEAD_GAP, 0)
     b.text:SetText(T("share.btn"))
     b.tipTitle = T("share.btn")
     b.tip = T("share.btn.tip")

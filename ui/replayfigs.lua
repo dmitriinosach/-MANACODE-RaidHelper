@@ -60,6 +60,11 @@ local NEXT = { disc = "chip", chip = "vol", vol = "disc" }
 local ROLE_TOKEN = { tank = "sem.rep.tank", heal = "sem.rep.heal", boss = "sem.lane.boss" }
 local DD_TOKEN = "sem.rep.dd"
 local DD_ARC = "sem.rep.ddHp"
+local PCT_SIZE = 9
+local PCT_H = 10
+local PCT_GAP = 1
+local GROW_K = 1.15
+local GROW_TIME = 0.2
 local Figs = { KINDS = KINDS, ARC_N = ARC_N }
 ns.ReplayFigs = Figs
 local Kit = ns.Kit
@@ -160,6 +165,15 @@ end
 function Figs.ArcOf(hp)
     return max(1, min(ARC_N, ceil(hp * ARC_N - 1e-6)))
 end
+local pctFont
+local function PctFont()
+    if pctFont then return pctFont end
+    pctFont = CreateFont("HTP_FailWatchFigPct")
+    pctFont:SetFontObject(GameFontHighlightSmall)
+    local path = GameFontHighlightSmall:GetFont()
+    if path then pctFont:SetFont(path, PCT_SIZE, "OUTLINE") end
+    return pctFont
+end
 function Figs.Build(fig)
     fig.shadow = fig:CreateTexture(nil, "BACKGROUND")
     fig.side = fig:CreateTexture(nil, "BORDER")
@@ -174,6 +188,11 @@ function Figs.Build(fig)
     fig.icon = fig:CreateTexture(nil, "ARTWORK")
     fig.dot = fig:CreateTexture(nil, "OVERLAY")
     fig.dot:Hide()
+    fig.pct = fig:CreateFontString(nil, "OVERLAY")
+    fig.pct:SetFontObject(PctFont())
+    fig.pct:SetJustifyH("CENTER")
+    Kit.Text(fig.pct, "sem.rep.pct")
+    fig.pct:Hide()
     fig.rimTok = DD_TOKEN
 end
 function Figs.Config(fig, class, role)
@@ -181,7 +200,44 @@ function Figs.Config(fig, class, role)
     fig.role = role or "dd"
     fig.rimTok = ROLE_TOKEN[role or ""] or DD_TOKEN
     fig.res, fig.skin, fig.hpNow, fig.hpQ = nil, nil, nil, nil
+    fig.pctN, fig.growK = nil, nil
     Figs.Rim(fig)
+end
+function Figs.Grow(fig, elapsed)
+    local want = fig.grow and GROW_K or 1
+    local k = fig.growK or 1
+    if k == want then return k end
+    local step = (GROW_K - 1) / GROW_TIME * max(0, elapsed or 0)
+    if k < want then k = min(want, k + step) else k = max(want, k - step) end
+    fig.growK = k
+    return k
+end
+local function BadgesOver(fig, up)
+    local bd = fig.bd and fig.bd[1]
+    if not bd or fig.pctUp == up then return end
+    fig.pctUp = up
+    bd:ClearAllPoints()
+    if up then
+        bd:SetPoint("BOTTOM", fig.pct, "TOP", 0, PCT_GAP)
+    else
+        bd:SetPoint("BOTTOM", fig.icon, "TOP", 0, 2)
+    end
+end
+local function PlacePct(fig, y, cap)
+    fig.pctWant = st.hp and not fig.isBoss
+    if not fig.pctWant then
+        BadgesOver(fig, false)
+        return
+    end
+    local pct = fig.pct
+    pct:ClearAllPoints()
+    if cap then
+        pct:SetPoint("CENTER", fig, "CENTER", 0, y)
+    else
+        pct:SetPoint("BOTTOM", fig, "CENTER", 0, y + PCT_GAP)
+        fig.top = y + PCT_GAP + PCT_H
+    end
+    BadgesOver(fig, not cap)
 end
 local function Skin(fig)
     local kind = st.kind
@@ -276,6 +332,8 @@ local function Dead(fig, inner, flat)
     Put(fig.icon, fig, inner, inner * flat, 0, 0)
     if not fig.icon:SetDesaturated(true) then Kit.Hue(fig.icon, "sem.rep.gone") end
     fig.top, fig.hy = inner * flat / 2, 0
+    fig.pctWant = false
+    BadgesOver(fig, false)
 end
 local function Alive(fig)
     fig.icon:SetDesaturated(false)
@@ -318,6 +376,7 @@ local function DrawVol(fig, dead, scale, flat, lift, hp)
         end
     end
     fig.top, fig.hy = top, cy
+    PlacePct(fig, top, false)
 end
 local function Draw(fig, dead, scale, flat, lift, hp)
     Skin(fig)
@@ -359,6 +418,7 @@ local function Draw(fig, dead, scale, flat, lift, hp)
     Put(fig.icon, fig, inner, inner * flat, 0, cy)
     Alive(fig)
     fig.top, fig.hy = cy + d * flat / 2, cy
+    PlacePct(fig, chip and cy or fig.top, chip)
 end
 function Figs.Sprite(fig, s, scale, flat, elapsed)
     local want = s.dead and 0 or (s.hp or 1)
@@ -370,6 +430,13 @@ function Figs.Sprite(fig, s, scale, flat, elapsed)
         if abs(want - hp) < HP_EPS then hp = want end
     end
     fig.hpNow = hp
+    if st.hp and not s.dead and not fig.isBoss then
+        local n = max(1, min(100, floor((s.hp or 1) * 100 + 0.5)))
+        if fig.pctN ~= n then
+            fig.pctN = n
+            fig.pct:SetText(tostring(n))
+        end
+    end
     local hq = st.hp and floor(hp * HP_Q + 0.5) or HP_Q
     local lift = fig.lift or 0
     local q = floor(scale * 50 + 0.5) + floor(flat * 100) * 1000 + lift * 1000000
@@ -388,6 +455,7 @@ function Figs.Parts(fig, icon, ring, model)
     Toggle(fig.side, ring and fig.sideWant or false, fig, "sideOn")
     Toggle(fig.trail, ring and fig.trailWant or false, fig, "trailOn")
     Toggle(fig.dot, icon and fig.dotNow or false, fig, "dotOn")
+    Toggle(fig.pct, icon and fig.pctWant or false, fig, "pctOn")
     if fig.model then Toggle(fig.model, model, fig, "modelOn") end
 end
 function Figs.Pulse(fig, extra)
@@ -436,7 +504,8 @@ function Figs.Probe(fig)
     end
     return { kind = st.kind, saved = Saved().figs, textures = n, rim = fig.rimTok, side = fig.sideOn or false,
              res = fig.res, hp = fig.hpNow, arc = fig.ringTex == ARC_TEX and fig.arcF or nil,
-             trail = fig.trailOn or false, tall = fig.tall, arcOk = st.arcOk }
+             trail = fig.trailOn or false, tall = fig.tall, arcOk = st.arcOk,
+             pct = fig.pctOn and fig.pctN or nil, grow = fig.growK or 1 }
 end
 if ns.Settings and ns.Settings.Item then
     ns.Settings.Item("look", "replay", {

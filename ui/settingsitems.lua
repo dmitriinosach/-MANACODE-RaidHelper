@@ -50,6 +50,23 @@ local function Themes()
     end
     return out
 end
+local function Langs()
+    local out = {}
+    local keys = { "auto", "enUS", "ruRU" }
+    for i = 1, #keys do
+        out[i] = { key = keys[i], label = "set.lang." .. keys[i], tip = "set.lang.tip" }
+    end
+    return out
+end
+S.Section("look", "lang", {
+    label = "set.lang",
+    order = 5,
+    items = {
+        { kind = "choice", key = "lang", buttons = true, label = "set.lang.pick", options = Langs, default = "auto",
+          get = function() return ns.LangSetting() end,
+          set = function(k) ns.SetLangSetting(k) end },
+    },
+})
 S.Section("look", "theme", {
     label = "set.theme",
     order = 10,

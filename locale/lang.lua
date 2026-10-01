@@ -1,0 +1,12 @@
+local _, ns = ...
+local L = ns.L
+L["set.lang"] = "Язык / Language"
+L["set.lang.pick"] = "Язык интерфейса"
+L["set.lang.auto"] = "Авто"
+L["set.lang.enUS"] = "English"
+L["set.lang.ruRU"] = "Русский"
+L["set.lang.tip"] = "Авто: русский на клиенте ruRU, английский на остальных. Применяется после /reload."
+L["set.lang.reload"] = "Язык сменится после /reload (language changes after /reload)."
+L["tl.span.fmt"] = "%s — %s  (%.1f с)%s"
+L["slash.diag.loaded"] = "загружен"
+L["slash.diag.missing"] = "НЕТ"

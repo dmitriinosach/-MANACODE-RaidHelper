@@ -12,13 +12,13 @@ local function T(key)
     return ns.T(key)
 end
 function TC.Num(n)
-    if n >= 1e6 then return (format("%.2f", n / 1e6):gsub("%.", ",")) .. T("num.m") end
+    if n >= 1e6 then return ns.Dec(format("%.2f", n / 1e6)) .. T("num.m") end
     if n >= 1e5 then return format("%.0f", n / 1e3) .. T("num.k") end
-    if n >= 1e3 then return (format("%.1f", n / 1e3):gsub("%.", ",")) .. T("num.k") end
+    if n >= 1e3 then return ns.Dec(format("%.1f", n / 1e3)) .. T("num.k") end
     return tostring(floor(n + 0.5))
 end
 function TC.Sec(v)
-    return (format("%.1f", max(0, v)):gsub("%.", ","))
+    return ns.Dec(format("%.1f", max(0, v)))
 end
 local Num, Sec = TC.Num, TC.Sec
 local function MissName(how, short)

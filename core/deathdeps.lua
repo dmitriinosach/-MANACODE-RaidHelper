@@ -319,8 +319,8 @@ function DD.Caused(s, p, rule)
     return out
 end
 local function Dec(v)
-    local s = format("%.1f", v):gsub("%.0$", ""):gsub("%.", ",")
-    return s
+    local s = format("%.1f", v):gsub("%.0$", "")
+    return ns.Dec(s)
 end
 function DD.What(dep)
     local T = ns.T

@@ -13,6 +13,9 @@ local pairs = pairs
 local HUGE = math.huge
 local TWO32 = 4294967296
 local SHORT = 3
+local NET_DEPTH = 40
+local NET_TABLES = 60000
+local EXT_KEY = "&"
 local ESC = { ["~"] = "~t", [";"] = "~s" }
 local UNESC = { t = "~", s = ";" }
 local Codec = {}
@@ -22,6 +25,8 @@ local ids, nid = {}, 0
 local strs, nstr = {}, 0
 local extOf = nil
 local dropKeys = nil
+local flat = false
+local onPath = {}
 local function Esc(s)
     if find(s, "[~;]") then return (gsub(s, "[~;]", ESC)) end
     return s
@@ -49,23 +54,35 @@ local function Storable(v)
     return tv == "string" or tv == "number" or tv == "boolean" or tv == "table"
 end
 local function Table(t)
-    local id = ids[t]
-    if id then
-        n = n + 1
-        out[n] = "^" .. id .. ";"
-        return
+    if flat then
+        if onPath[t] then
+            n = n + 1
+            out[n] = "x;"
+            return
+        end
+    else
+        local id = ids[t]
+        if id then
+            n = n + 1
+            out[n] = "^" .. id .. ";"
+            return
+        end
     end
     local path = extOf and extOf(t)
     if path then
         n = n + 1
-        out[n] = "&;{;"
+        out[n] = flat and ("{;|;q" .. EXT_KEY .. ";{;") or "&;{;"
         for i = 1, #path do Val(path[i]) end
         n = n + 1
-        out[n] = "};"
+        out[n] = flat and "};};" or "};"
         return
     end
-    nid = nid + 1
-    ids[t] = nid
+    if flat then
+        onPath[t] = true
+    else
+        nid = nid + 1
+        ids[t] = nid
+    end
     n = n + 1
     out[n] = "{;"
     local len = #t
@@ -91,6 +108,7 @@ local function Table(t)
     end
     n = n + 1
     out[n] = "};"
+    onPath[t] = nil
 end
 Val = function(v)
     local tv = type(v)
@@ -119,20 +137,23 @@ Val = function(v)
         out[n] = "x;"
     end
 end
-function Codec.Encode(v, ext, drop)
+function Codec.Encode(v, ext, drop, plain)
     n, nid, nstr = 0, 0, 0
-    extOf, dropKeys = ext, drop
+    extOf, dropKeys, flat = ext, drop, plain and true or false
     Val(v)
     local s = concat(out, "", 1, n)
     for i = n, 1, -1 do out[i] = nil end
     for k in pairs(ids) do ids[k] = nil end
     for k in pairs(strs) do strs[k] = nil end
-    extOf, dropKeys = nil, nil
+    for k in pairs(onPath) do onPath[k] = nil end
+    extOf, dropKeys, flat = nil, nil, false
     return s
 end
+Codec.EXT_KEY = EXT_KEY
 local stT, stI, stH, stK, stHK, stE = {}, {}, {}, {}, {}, {}
-function Codec.Decode(s, resolve)
+function Codec.Decode(s, resolve, net)
     if type(s) ~= "string" then return nil, false end
+    if net then resolve = nil end
     local tabs, ntab = {}, 0
     local list, nlist = {}, 0
     local top = 0
@@ -152,6 +173,7 @@ function Codec.Decode(s, resolve)
             nlist = nlist + 1
             list[nlist] = v
         elseif tag == "{" then
+            if net and (top >= NET_DEPTH or ntab >= NET_TABLES) then return nil, false end
             if cur then
                 top = top + 1
                 stT[top], stI[top], stH[top], stK[top], stHK[top], stE[top] = cur, idx, hash, key, hasKey, isExt
@@ -180,6 +202,7 @@ function Codec.Decode(s, resolve)
             hash = true
             put = false
         elseif tag == "^" then
+            if net then return nil, false end
             v = tabs[tonumber(body)]
         elseif tag == "q" then
             v = Unesc(body)
@@ -188,6 +211,7 @@ function Codec.Decode(s, resolve)
         elseif tag == "f" then
             v = false
         elseif tag == "&" then
+            if net then return nil, false end
             ext = true
             put = false
         elseif tag == "N" then
@@ -200,9 +224,10 @@ function Codec.Decode(s, resolve)
                 result, got = v, true
             elseif hash then
                 if hasKey then
-                    if key ~= nil then cur[key] = v end
+                    if key ~= nil and key == key then cur[key] = v end
                     hasKey = false
                 else
+                    if net and v ~= nil and not Keyable(v) and v == v then return nil, false end
                     key, hasKey = v, true
                 end
             else

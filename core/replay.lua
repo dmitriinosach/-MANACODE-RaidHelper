@@ -31,6 +31,7 @@ local DEATH_SNAP = 1
 local SNAP = 0.25
 local BOSS_GAP = 3
 local LEAD_HOLD = 10
+local PRE_PULL = 5
 local LOOK = 0.5
 local MOVE_YPS = 1.5
 local RUN_YPS = 4
@@ -57,18 +58,18 @@ Replay.texOut = 0
 Replay.RUN_YPS = RUN_YPS
 Replay.MOVE_YPS = MOVE_YPS
 Replay.ROOMS = {
-    lanathel = { boss = "Кровавая королева Лана'тель", floor = 6, tex = "lanathel", cx = 511, cy = 310, r = 160 },
-    lichking = { boss = "Король-лич", floor = 7, tex = "lichking", cx = 500, cy = 349, r = 255 },
-    marrowgar = { boss = "Лорд Ребрад", floor = 1, tex = "marrowgar", cx = 390, cy = 402, r = 66 },
-    deathwhisper = { boss = "Леди Смертный Шепот", floor = 1, tex = "deathwhisper", cx = 390, cy = 540, r = 66 },
+    lanathel = { boss = "Кровавая королева Лана'тель", floor = 6, tex = "lanathel", cx = 511, cy = 310, r = 160, pack = "ICC" },
+    lichking = { boss = "Король-лич", floor = 7, tex = "lichking", cx = 500, cy = 349, r = 255, pack = "ICC" },
+    marrowgar = { boss = "Лорд Ребрад", floor = 1, tex = "marrowgar", cx = 390, cy = 402, r = 66, pack = "ICC" },
+    deathwhisper = { boss = "Леди Смертный Шепот", floor = 1, tex = "deathwhisper", cx = 390, cy = 540, r = 66, pack = "ICC" },
     gunship = { boss = "Бой на кораблях", floor = 2, tex = "gunship", cx = 625, cy = 318, r = 100 },
-    deathbringer = { boss = "Саурфанг Смертоносный", floor = 3, tex = "deathbringer", cx = 520, cy = 300, r = 230 },
-    festergut = { boss = "Тухлопуз", floor = 5, tex = "festergut", cx = 199, cy = 440, r = 48 },
-    rotface = { boss = "Гниломорд", floor = 5, tex = "rotface", cx = 199, cy = 270, r = 48 },
-    putricide = { boss = "Профессор Мерзоцид", floor = 5, tex = "putricide", cx = 125, cy = 355, r = 52 },
-    council = { boss = "Совет кровавых принцев", floor = 5, tex = "council", cx = 518, cy = 95, r = 58 },
-    valithria = { boss = "Валитрия Сноходица", floor = 5, tex = "valithria", cx = 769, cy = 475, r = 85 },
-    sindragosa = { boss = "Синдрагоса", floor = 4, tex = "sindragosa", cx = 365, cy = 115, r = 78 },
+    deathbringer = { boss = "Саурфанг Смертоносный", floor = 3, tex = "deathbringer", cx = 520, cy = 300, r = 230, pack = "ICC" },
+    festergut = { boss = "Тухлопуз", floor = 5, tex = "festergut", cx = 199, cy = 440, r = 48, pack = "ICC" },
+    rotface = { boss = "Гниломорд", floor = 5, tex = "rotface", cx = 199, cy = 270, r = 48, pack = "ICC" },
+    putricide = { boss = "Профессор Мерзоцид", floor = 5, tex = "putricide", cx = 125, cy = 355, r = 52, pack = "ICC" },
+    council = { boss = "Совет кровавых принцев", floor = 5, tex = "council", cx = 518, cy = 95, r = 58, pack = "ICC" },
+    valithria = { boss = "Валитрия Сноходица", floor = 5, tex = "valithria", cx = 769, cy = 475, r = 85, pack = "ICC" },
+    sindragosa = { boss = "Синдрагоса", floor = 4, tex = "sindragosa", cx = 365, cy = 115, r = 78, pack = "ICC" },
     frostmourne = { boss = "Король-лич", floor = 8, tex = "frostmourne", cx = 470, cy = 365, r = 130 },
     halion = { boss = "Халион", floor = 0, tex = "halion", cx = 495, cy = 366, r = 80 },
     leviathan = { boss = "Огненный Левиафан", floor = 1, tex = "leviathan", cx = 493, cy = 276, r = 36 },
@@ -184,10 +185,6 @@ function Replay.HeightAt(room, x, y)
     end
     if weight < HEIGHT_MIN_W then return nil end
     return sum / weight
-end
-function Replay.IsoOf(room)
-    local hm = room and ns.roomHeight and ns.roomHeight[room.tex]
-    return hm and hm.iso or nil
 end
 local function PickFloor(fight, frames)
     local count, area = {}, {}
@@ -507,11 +504,26 @@ end
 local function NewState()
     return { vis = false, stale = false, x = 0, y = 0, hx = 0, hy = 1, speed = 0, dead = false, deadFor = 0, hp = 1 }
 end
+local function FirstSeen(fight, frames)
+    local lo, first = fight.from - PRE_PULL, fight.from
+    for i = 1, #frames do
+        local fr = frames[i]
+        if fr.t >= lo and fr.t < first then
+            for _, p in pairs(fr.units) do
+                if p.x > 0 or p.y > 0 then
+                    first = fr.t
+                    break
+                end
+            end
+        end
+    end
+    return first
+end
 function Replay.Build(fight, frames)
     ns.Jobs.Band(0, 0.1)
     local level, area = PickFloor(fight, frames)
     local scene = {
-        fight = fight, from = fight.from, to = fight.to, area = area, floor = level,
+        fight = fight, from = FirstSeen(fight, frames), pull = fight.from, to = fight.to, area = area, floor = level,
         room = Replay.RoomOf(fight.boss, level), ppy = PixelsPerYard(area, level),
         tracks = {}, states = {}, deaths = {}, bossState = NewState(),
     }

@@ -41,16 +41,14 @@ function ns.Num(n)
     local s = tostring(math.floor((n or 0) + 0.5))
     local sign, digits = s:match("^(%-?)(%d+)$")
     if not digits then return s end
-    local grouped = digits:reverse():gsub("(%d%d%d)", "%1 "):reverse()
-    grouped = grouped:gsub("^ ", "")
+    local sep = ns.lang == "enUS" and "," or " "
+    local grouped = digits:reverse():gsub("(%d%d%d)", "%1" .. sep):reverse()
+    grouped = grouped:gsub("^" .. sep, "")
     return sign .. grouped
 end
 function ns.Plural(n, forms)
     local one, few, many = forms:match("^([^|]*)|([^|]*)|([^|]*)$")
     if not one then return forms end
-    local n10, n100 = n % 10, n % 100
-    if n10 == 1 and n100 ~= 11 then return one end
-    if n10 >= 2 and n10 <= 4 and (n100 < 12 or n100 > 14) then return few end
-    return many
+    return ns.PluralPick(n, one, few, many)
 end
 ns.widgetsLoaded = true

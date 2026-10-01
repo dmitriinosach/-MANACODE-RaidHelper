@@ -35,10 +35,10 @@ local function IsBoss(fight, name)
     return name == fight.boss or ns.bosses[name] == fight.boss
         or (fight.names ~= nil and fight.names[name] == true)
 end
-local function Use(st, name, c)
+local function Use(st, name, c, spell)
     local u = st.use[c.item]
     if not u then
-        u = { item = c.item, id = c.id, cat = c.cat, free = c.free, by = {} }
+        u = { item = c.item, id = c.id, cat = c.cat, free = c.free, spell = spell, by = {} }
         st.use[c.item] = u
     end
     u.by[name] = (u.by[name] or 0) + 1
@@ -52,10 +52,15 @@ function RaidPart.Hit(st, who, dstName, dstFlags, amount)
     r.all = r.all + amount
     if IsBoss(st.fight, dstName) then r.boss = r.boss + amount end
 end
-function RaidPart.Consume(st, sub, who, srcName, srcFlags, a1)
-    if sub == "SPELL_CAST_SUCCESS" then
+function RaidPart.Consume(st, sub, who, srcName, srcFlags, a1, dstName, dstFlags)
+    if sub == "SPELL_AURA_APPLIED" then
+        local c = ns.consumeAura[tonumber(a1) or 0]
+        if c and dstName and IsPlayer(dstFlags) and (not srcName or srcName == dstName) then
+            Use(st, dstName, c, tonumber(a1))
+        end
+    elseif sub == "SPELL_CAST_SUCCESS" then
         local c = ns.consumeCast[tonumber(a1) or 0]
-        if c and who and srcName == who then Use(st, who, c) end
+        if c and who and srcName == who then Use(st, who, c, tonumber(a1)) end
     elseif sub == "SPELL_CREATE" then
         local c = ns.consumeCreate[tonumber(a1) or 0]
         if c and srcName and IsPlayer(srcFlags) then Use(st, srcName, c) end
@@ -132,8 +137,9 @@ function RaidPart.Feed(st, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName
         end
     elseif sub == "FW_ACH" then
         RaidPart.Got(st, tonumber(a1), srcName, ts)
-    elseif sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CREATE" or sub == "ENCHANT_APPLIED" then
-        RaidPart.Consume(st, sub, who, srcName, srcFlags, a1)
+    elseif sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CREATE" or sub == "ENCHANT_APPLIED"
+        or sub == "SPELL_AURA_APPLIED" then
+        RaidPart.Consume(st, sub, who, srcName, srcFlags, a1, dstName, dstFlags)
         if sub == "SPELL_CAST_SUCCESS" and tonumber(a1) == FEIGN and srcName and IsPlayer(srcFlags) then
             st.feign[srcName] = ts
         end

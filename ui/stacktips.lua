@@ -14,10 +14,7 @@ local function Plural(n, forms)
     if ns.Plural then return ns.Plural(n, forms) end
     local one, few, many = forms:match("^([^|]*)|([^|]*)|([^|]*)$")
     if not one then return forms end
-    local n10, n100 = n % 10, n % 100
-    if n10 == 1 and n100 ~= 11 then return one end
-    if n10 >= 2 and n10 <= 4 and (n100 < 12 or n100 > 14) then return few end
-    return many
+    return ns.PluralPick(n, one, few, many)
 end
 local function Clock(sec)
     local m = floor(sec / 60)

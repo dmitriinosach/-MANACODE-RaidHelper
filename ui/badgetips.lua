@@ -17,9 +17,9 @@ local function T(key)
     return ns.T(key)
 end
 function Tips.Short(n)
-    if n >= 1e6 then return format("%.2fм", n / 1e6) end
-    if n >= 1e5 then return format("%.0fк", n / 1e3) end
-    if n >= 1e3 then return format("%.1fк", n / 1e3) end
+    if n >= 1e6 then return format("%.2f", n / 1e6) .. ns.T("num.m") end
+    if n >= 1e5 then return format("%.0f", n / 1e3) .. ns.T("num.k") end
+    if n >= 1e3 then return format("%.1f", n / 1e3) .. ns.T("num.k") end
     return tostring(floor(n + 0.5))
 end
 local Short = Tips.Short
@@ -56,7 +56,7 @@ local function Names(out, names)
     if #names > 0 then Put(out, "sub", concat(names, ", ")) end
 end
 local function Dec(v, digits)
-    return (format("%." .. digits .. "f", v):gsub("%.", ","))
+    return ns.Dec(format("%." .. digits .. "f", v))
 end
 Tips.Dec = Dec
 local VERDICT = { red = "sum.mc.on", green = "sum.mc.off", yellow = "sum.mc.maybe" }

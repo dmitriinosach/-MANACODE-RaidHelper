@@ -278,7 +278,7 @@ local function Slider(key, label, lo, hi, step, fmt, order)
              set = function(v) F.Set(key, v) end }
 end
 local function Hours(v)
-    local s = v == floor(v) and format("%d", v) or format("%.1f", v):gsub("%.", ",")
+    local s = v == floor(v) and format("%d", v) or ns.Dec(format("%.1f", v))
     return format(T("flask.unit.hours"), s)
 end
 local function Mins(v)

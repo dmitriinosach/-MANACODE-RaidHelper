@@ -8,6 +8,8 @@ local UTF8 = "[" .. string.char(192) .. "-" .. string.char(255) .. "]["
     .. string.char(128) .. "-" .. string.char(191) .. "]*"
 local ENDING = 4
 local STEM = 6
+local WAIT_MAX = 25
+local TEXT_MAX = 120
 local lowerMap
 local function lower(s)
     if not lowerMap then
@@ -113,15 +115,42 @@ local function learn(name, spec, off)
         p.off, p.offSrc = off, "whisper"
     end
 end
+function W.Clean(text)
+    text = tostring(text or "")
+    text = text:gsub("|H.-|h(.-)|h", "%1"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    text = text:gsub("|T.-|t", ""):gsub("[%c|]", "")
+    if #text <= TEXT_MAX then return text end
+    local i = TEXT_MAX
+    while i > 0 do
+        local c = text:byte(i + 1)
+        if not c or c < 128 or c >= 192 then break end
+        i = i - 1
+    end
+    return text:sub(1, i)
+end
+local function room(list)
+    local n, old, oldAt = 0, nil, nil
+    for name, w in pairs(list) do
+        n = n + 1
+        if not oldAt or (w.at or 0) < oldAt then old, oldAt = name, w.at or 0 end
+    end
+    if n >= WAIT_MAX and old then list[old] = nil end
+end
+local function settle(name, w)
+    learn(name, w.spec, w.off)
+    W.Place(name, w.spec)
+end
 function W.Take(name, text)
-    if not ns.Session.Active() or not name then return end
+    if not ns.Session.Active() or type(name) ~= "string" or name == "" then return end
     local spec, off, gs = W.Parse(text)
     if not spec then return end
-    learn(name, spec, off)
     if ns.Session.Member(name) then
+        learn(name, spec, off)
         W.Place(name, spec)
     else
-        waiting()[name] = { spec = spec, off = off, gs = gs, text = text, at = time() }
+        local list = waiting()
+        if not list[name] then room(list) end
+        list[name] = { spec = spec, off = off, gs = gs, text = W.Clean(text), at = time() }
     end
     ns.Session.Changed()
 end
@@ -156,6 +185,8 @@ function W.Place(name, spec)
     if pick then S.Assign(pick, name) end
 end
 function W.Invite(name)
+    local w = waiting()[name]
+    if w then learn(name, w.spec, w.off) end
     InviteUnit(name)
 end
 local f = ns.NewFrame("Frame")
@@ -173,7 +204,7 @@ f:SetScript("OnEvent", function(self, event, msg, author)
     for name, w in pairs(list) do
         if ns.Session.Member(name) then
             list[name] = nil
-            W.Place(name, w.spec)
+            settle(name, w)
             moved = true
         end
     end

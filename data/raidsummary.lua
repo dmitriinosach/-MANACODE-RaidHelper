@@ -20,19 +20,40 @@ ns.consumeCast = {
     [53908] = { cat = "potion", item = "Зелье быстроты", id = 40211 },
     [53909] = { cat = "potion", item = "Зелье дикой магии", id = 40212 },
     [53762] = { cat = "potion", item = "Зелье несокрушимости", id = 40093 },
-    [53753] = { cat = "potion", item = "Зелье кошмаров", id = 40081 },
+    [53753] = { cat = "potion", item = "Зелье ночных кошмаров", id = 40081 },
     [43186] = { cat = "potion", item = "Рунический флакон с зельем маны", id = 33448 },
     [43185] = { cat = "potion", item = "Рунический флакон с лечебным зельем", id = 33447 },
     [67490] = { cat = "potion", item = "Рунический набор для инъекций маны", id = 42545 },
     [67489] = { cat = "potion", item = "Рунический набор для инъекций лечения", id = 41166 },
     [28499] = { cat = "potion", item = "Сверхмощное зелье маны", id = 22832 },
     [28508] = { cat = "potion", item = "Зелье разрушения", id = 22839 },
+    [67019] = { cat = "flask", item = "Настой севера", id = 47499, free = true },
+    [45543] = { cat = "other", item = "Бинты из ледяной ткани", id = 34721 },
+    [45544] = { cat = "other", item = "Плотные бинты из ледяной ткани", id = 34722 },
+    [53808] = { cat = "other", item = "Карломасло", id = 40195 },
+    [8213] = { cat = "food", item = "Вареная неправильная рыба", id = 6657 },
+    [26681] = { cat = "other", item = "Одеколон" },
+    [26682] = { cat = "other", item = "Духи" },
+    [70233] = { cat = "other", item = "Духи \"Победа\"" },
+    [70234] = { cat = "other", item = "Духи \"Чаровница\"" },
+    [70235] = { cat = "other", item = "Духи \"Вместе навсегда\"" },
+    [70242] = { cat = "other", item = "Одеколон \"Бравада\"" },
+    [70243] = { cat = "other", item = "Одеколон \"ДОБЛЕСТЬ\"" },
+    [70244] = { cat = "other", item = "Одеколон \"Волшебство\"" },
 }
 ns.consumeCreate = {
     [57426] = { cat = "food", item = "Рыбный пир", id = 43015 },
     [57301] = { cat = "food", item = "Великий пир", id = 34753 },
 }
 ns.consumeEnchant = {}
+ns.consumeAura = {
+    [28714] = { cat = "potion", item = "Огненный зев", id = 22788 },
+}
+for spell, c in pairs(ns.consumeGen or {}) do
+    if not ns.consumeCast[spell] and not ns.consumeCreate[spell] and not ns.consumeAura[spell] then
+        ns.consumeCast[spell] = c
+    end
+end
 ns.raidFinal = {
     ["Цитадель Ледяной Короны"] = "Король-лич",
     ["Ульдуар"] = { "Йогг-Сарон", "Алгалон Наблюдатель" },

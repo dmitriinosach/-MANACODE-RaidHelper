@@ -13,6 +13,10 @@ local bar
 local fill
 local label, pct, queue, status
 local lead
+local fades = {}
+local function Fade(a)
+    for i = 1, #fades do fades[i]:SetAlpha(a) end
+end
 local function Update()
     if not bar then return end
     local _, frac, text, queued, age = ns.Jobs.State()
@@ -20,12 +24,12 @@ local function Update()
         if bar:IsShown() then
             bar:Hide()
             status:SetAlpha(1)
-            if lead then lead:SetAlpha(1) end
+            Fade(1)
         end
         return
     end
     status:SetAlpha(0)
-    if lead then lead:SetAlpha(0) end
+    Fade(0)
     local from = (lead or status):GetLeft()
     local to = status:GetRight()
     bar:SetWidth((from and to) and max(BAR_MIN, to - from) or BAR_MIN)
@@ -43,6 +47,12 @@ end
 function JobBar.Attach(host, statusText)
     status = statusText
     lead = ns.ReplayLink and ns.ReplayLink.HeadFrame()
+    fades = {}
+    local heads = { ReplayLink = true, ThreatView = true, ShareView = true }
+    for key in pairs(heads) do
+        local f = ns[key] and ns[key].HeadFrame and ns[key].HeadFrame()
+        if f then fades[#fades + 1] = f end
+    end
     bar = CreateFrame("Frame", nil, host)
     bar:SetHeight(BAR_H)
     bar:SetPoint("RIGHT", statusText, "RIGHT", 0, 0)

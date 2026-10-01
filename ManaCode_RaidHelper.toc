@@ -3,8 +3,8 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 0.2.0-beta.5
-## X-Date: 2026-09-30
+## Version: 0.2.0-beta.6
+## X-Date: 2026-10-01
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
 ## OptionalDeps: Auctionator
@@ -15,6 +15,8 @@ locale\flasks.lua
 locale\servercmd.lua
 locale\devtool.lua
 locale\threat.lua
+locale\lang.lua
+locale\enUS.lua
 data\bosses.lua
 data\effect_defaults.lua
 data\phases.lua
@@ -22,28 +24,8 @@ data\maps.lua
 data\summaries.lua
 data\deathdeps.lua
 data\replay.lua
+data\replayplatform.lua
 data\replayfeed.lua
-data\roomheight\deathwhisper.lua
-data\roomheight\lanathel.lua
-data\roomheight\lichking.lua
-data\roomheight\rotface.lua
-data\roomheight\festergut.lua
-data\roomheight\marrowgar.lua
-data\roomheight\deathbringer.lua
-data\roomheight\putricide.lua
-data\roomheight\council.lua
-data\roomheight\valithria.lua
-data\roomheight\sindragosa.lua
-data\roomlive\lanathel.lua
-data\roomlive\deathwhisper.lua
-data\roomlive\rotface.lua
-data\roomlive\festergut.lua
-data\roomlive\marrowgar.lua
-data\roomlive\deathbringer.lua
-data\roomlive\putricide.lua
-data\roomlive\council.lua
-data\roomlive\valithria.lua
-data\roomlive\sindragosa.lua
 data\defensives.lua
 data\procs.lua
 data\bosses\icc\marrowgar.lua
@@ -70,6 +52,7 @@ data\pulltimer.lua
 data\actions.lua
 data\buffsnap.lua
 data\castgcd.lua
+data\consumables.lua
 data\raidsummary.lua
 data\achievements\ulduar.lua
 data\achievements\toc.lua
@@ -127,7 +110,9 @@ core\trash.lua
 core\raidmodel.lua
 core\raidcost.lua
 core\ahscan.lua
+core\roompacks.lua
 core\replay.lua
+core\replayplatform.lua
 core\replayfeed.lua
 core\replaylayers.lua
 core\npcpos.lua
@@ -185,6 +170,7 @@ ui\ahscan.lua
 ui\panelacts.lua
 ui\panel.lua
 ui\prof.lua
+ui\about.lua
 ui\replayfigs.lua
 ui\replaylayers.lua
 ui\replayfeed.lua
@@ -207,6 +193,7 @@ lead\compat\wotlk.lua
 lead\rl.lua
 lead\core\locale.lua
 lead\locale\ruRU.lua
+lead\locale\enUS.lua
 lead\data\specs.lua
 lead\data\templates.lua
 lead\data\slang.lua

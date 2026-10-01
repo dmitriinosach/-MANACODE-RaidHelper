@@ -3,8 +3,12 @@ root.Lead = root.Lead or {}
 local ns = root.Lead
 ns.locales = ns.locales or {}
 local DEFAULT = "ruRU"
+function ns.Lang()
+    if root.lang then return root.lang end
+    return GetLocale() == "ruRU" and "ruRU" or "enUS"
+end
 function ns.T(key, ...)
-    local own = ns.locales[GetLocale()]
+    local own = ns.locales[ns.Lang()]
     local s = own and own[key]
     if s == nil then
         local base = ns.locales[DEFAULT]

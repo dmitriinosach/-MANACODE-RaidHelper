@@ -28,7 +28,7 @@ local function Clock(sec)
     return format("%s%d:%04.1f", sign, m, a - m * 60)
 end
 local function Sec(v)
-    return (format("%.1f", max(0, v)):gsub("%.", ","))
+    return ns.Dec(format("%.1f", max(0, v)))
 end
 local function PlanOf(data, who)
     if plan and planCasts == data.casts and planCuts == data.cuts and planWho == who then return plan end

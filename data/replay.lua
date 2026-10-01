@@ -67,6 +67,8 @@ ns.replayData = {
         { name = "Длань свободы", icon = 1044, prio = 70, feed = true },
         { name = "Губительный газ", icon = 73020, prio = 65 },
         { name = "Кровавое зеркало", icon = 70838, prio = 60 },
+        { name = "Героизм", icon = 32182, prio = 0, grow = true },
+        { name = "Жажда крови", icon = 2825, prio = 0, grow = true },
     },
     pools = {
         ["Король-лич"] = {

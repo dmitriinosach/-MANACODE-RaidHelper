@@ -1,5 +1,62 @@
 local ADDON, ns = ...
 ns.L = {}
+ns.LEN = {}
+ns.lang = "ruRU"
+ns.langMissing = {}
+local ruKept = {}
+function ns.LangSetting()
+    local db = ns.GetDB and ns.GetDB()
+    local set = db and db.settings and db.settings.lang
+    if set == "enUS" or set == "ruRU" then return set end
+    return "auto"
+end
+function ns.LangResolve(set)
+    set = set or ns.LangSetting()
+    if set == "enUS" or set == "ruRU" then return set end
+    return GetLocale() == "ruRU" and "ruRU" or "enUS"
+end
+function ns.SetLangSetting(set)
+    if set ~= "enUS" and set ~= "ruRU" then set = "auto" end
+    local db = ns.GetDB()
+    if db.settings.lang == set then return end
+    db.settings.lang = set
+    ns.Print(ns.T("set.lang.reload"))
+end
+function ns.ApplyLang(lang)
+    lang = lang or ns.LangResolve()
+    local L = ns.L
+    for k, v in pairs(ruKept) do
+        if v == false then L[k] = nil else L[k] = v end
+        ruKept[k] = nil
+    end
+    local missing = {}
+    ns.langMissing = missing
+    ns.lang = lang
+    if lang ~= "enUS" then return end
+    for k in pairs(L) do
+        if ns.LEN[k] == nil then missing[#missing + 1] = k end
+    end
+    table.sort(missing)
+    for k, v in pairs(ns.LEN) do
+        local was = L[k]
+        ruKept[k] = was == nil and false or was
+        L[k] = v
+    end
+end
+function ns.PluralPick(n, one, few, many)
+    if ns.lang == "enUS" then
+        if n == 1 then return one end
+        return many
+    end
+    local n10, n100 = n % 10, n % 100
+    if n10 == 1 and n100 ~= 11 then return one end
+    if n10 >= 2 and n10 <= 4 and (n100 < 12 or n100 > 14) then return few end
+    return many
+end
+function ns.Dec(s)
+    if ns.lang == "enUS" then return s end
+    return (s:gsub("%.", ","))
+end
 ns.Prof = { on = false, rows = {} }
 function ns.Prof.Add(key, ms, items)
     local r = ns.Prof.rows[key]
@@ -347,6 +404,7 @@ end
 local function ApplyDefaults(db)
     if type(db.settings) ~= "table" then db.settings = {} end
     if type(db.settings.ui) ~= "table" then db.settings.ui = {} end
+    if db.settings.lang ~= "enUS" and db.settings.lang ~= "ruRU" then db.settings.lang = "auto" end
     if type(db.segments) ~= "table" then db.segments = {} end
     local kept = type(db.settings.limitTries) ~= "number" and #db.segments > 0
     if type(db.settings.limitMB) ~= "number" then
@@ -457,6 +515,7 @@ loader:SetScript("OnEvent", function(self, event, name)
         db = scratch
     end
     ApplyDefaults(db)
+    ns.ApplyLang()
     if recLock or ns.TestSet() then
         db.recording = false
         db.settings.autoRaid = false

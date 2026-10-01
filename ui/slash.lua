@@ -97,7 +97,7 @@ function Slash.Diag()
     for i = 1, #parts do
         local ok = parts[i][2] ~= nil
         if not ok then missing = missing + 1 end
-        ns.Print(format("%s %s", ok and (ns.Kit.Hex("sem.win") .. "загружен|r") or (ns.Kit.Hex("sem.wipe") .. "НЕТ|r"), parts[i][1]))
+        ns.Print(format("%s %s", ok and (ns.Kit.Hex("sem.win") .. ns.T("slash.diag.loaded") .. "|r") or (ns.Kit.Hex("sem.wipe") .. ns.T("slash.diag.missing") .. "|r"), parts[i][1]))
     end
     if ns.Panel and not ns.Panel.IsEnabled() then
         ns.Print(ns.T("slash.diag.panelhidden"))
@@ -192,9 +192,6 @@ local function Handler(msg)
                 ns.ReplayIso.FlipFace()
             elseif rest == "geo" then
                 ns.ReplayIso.SetGeo(not ns.ReplayGeo.on)
-            elseif rest == "live" then
-                ns.ReplayGeo.legacy = not ns.ReplayGeo.legacy
-                ns.Print(ns.T(ns.ReplayGeo.legacy and "iso.live.off" or "iso.live.on"))
             elseif camera then
                 local index = tonumber(camera)
                 ns.ReplayIso.SetCamera(index and index >= 0 and index or nil)

@@ -775,7 +775,7 @@ local function DrawAuras(bound)
                 b.tip, b.at = a.label, a.t
                 b.spellId = tonumber(a.id)
                 b.jumpTo = Culprit(a)
-                b.tip2 = format("%s — %s  (%.1f с)%s", Clock(a.t - fight.from),
+                b.tip2 = format(ns.T("tl.span.fmt"), Clock(a.t - fight.from),
                     Clock(to - fight.from), to - a.t,
                     a.src and ("  |  " .. a.src) or "")
             end
@@ -1137,6 +1137,7 @@ local function HideReadouts()
 end
 local function Redraw()
     if not player and ns.SummaryView and ns.SummaryView.IsShown() then return end
+    if ns.ThreatView and ns.ThreatView.IsShown() then return end
     local p0 = ns.Prof.on and debugprofilestop()
     ReleaseAll()
     for i = 1, #trackHeads do trackHeads[i]:Hide() end
@@ -1251,7 +1252,7 @@ local function SelectFight(f)
     titleText:SetText(ns.FightList and ns.FightList.Title(f) or f.boss)
     if ns.MapView then ns.MapView.SetFight(f) end
     if ns.RaidSummaryView then ns.RaidSummaryView.Hide() end
-    if ns.ThreatView then ns.ThreatView.Follow(f) end
+    if ns.ThreatView then ns.ThreatView.Hide() end
     TL.RefreshLists()
     if ns.SummaryView then
         ReleaseAll()
@@ -1273,7 +1274,7 @@ local function BuildFrame(host)
     titleText:SetText(ns.T("tl.title"))
     statusText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     statusText:SetPoint("LEFT", titleText, "RIGHT", 16, 0)
-    statusText:SetPoint("RIGHT", frame, "TOPRIGHT", -416, -19)
+    statusText:SetPoint("RIGHT", frame, "TOPRIGHT", -320, -19)
     statusText:SetJustifyH("LEFT")
     statusText:SetHeight(14)
     if ns.FightList then ns.FightList.Attach(frame, MARGIN, SIDETOP, titleText, statusText) end
@@ -1535,7 +1536,6 @@ local function BuildTools()
             if player then SelectPlayer(player) end
         end
         if ns.EffectPanel then ns.EffectPanel.BindTools(fxBtn, mapBtn, glueBtn) end
-        if ns.ThreatView then ns.ThreatView.Button(frame, glueBtn) end
     end
     if ns.FxDrag then
         ns.FxDrag.SetTargets(TL.DropTargets)
@@ -1678,6 +1678,30 @@ function TL.Overlay()
 end
 function TL.ShowFight(f)
     if frame and f then SelectFight(f) end
+end
+local threatBack
+function TL.ShowThreat(f)
+    if not (frame and f and ns.ThreatView) or f.foreign then return end
+    if fight ~= f then SelectFight(f) end
+    if not ns.ThreatView.IsShown() then threatBack = player end
+    player, data = nil, nil
+    hitRows, healRows = {}, {}
+    if ns.SummaryView then ns.SummaryView.Hide() end
+    if ns.RaidSummaryView then ns.RaidSummaryView.Hide() end
+    if ns.EffectPanel then ns.EffectPanel.SetTimeline(false) end
+    ReleaseAll()
+    ruler:Hide()
+    canvas:GetParent():Hide()
+    statusText:SetText("")
+    titleText:SetText(format(ns.T("thr.view.title"), f.boss))
+    ns.ThreatView.Show(f)
+    TL.RefreshLists()
+end
+function TL.LeaveThreat()
+    if not fight then return end
+    local back = threatBack
+    threatBack = nil
+    if back and fight.players[back] then SelectPlayer(back) else SelectFight(fight) end
 end
 function TL.ShowForeign(f)
     if not (frame and f and f.foreign and ns.SummaryView) then return end

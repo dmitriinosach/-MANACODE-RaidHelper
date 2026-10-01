@@ -21,8 +21,13 @@ local WAIT_LO, WAIT_HI = 10, 40
 local ASK_EVERY = 30
 local ROSTER_GAP = 15
 local STALE = 60
+local ANSWER_GAP = 60
 local INFO_LIMIT = 500
 local ADLER = 65521
+local TWO32 = 4294967296
+local FNV_BASIS = 2166136261
+local FNV_LOW = 403
+local FNV_HIGH = 16777216
 local ORDER = { "on", "mode", "gp", "wipe", "step", "reason" }
 local XORDER = { "boss", "on", "mode", "gp", "wipe", "step", "reason" }
 local RSET = { on = true, mode = true, gp = true, wipe = true, step = true, reason = true }
@@ -32,7 +37,8 @@ local NUMS = { gp = true, wipe = true, step = true }
 local ESC = { ["~"] = "~t", [";"] = "~s", [","] = "~c", ["="] = "~e", [":"] = "~o" }
 local UNESC = { t = "~", s = ";", c = ",", e = "=", o = ":" }
 local BLOCK = "%-FW%-.-%-FW%-"
-local ANCHOR = "%-FW%-%s*@GP:(%d+):(%x+)%s*%-FW%-"
+local ANCHOR = "%-FW%-%s*@GP:(%d+):(%x+):([^%s:]+)%s*%-FW%-"
+local SUM_LEN = 16
 local GPGuild = {}
 ns.GPGuild = GPGuild
 GPGuild.PREFIX = PREFIX
@@ -45,6 +51,7 @@ local state = {
     nextSend = 0,
     askedAt = -1e9,
     rosterLast = -1e9,
+    answeredAt = -1e9,
 }
 local listeners = {}
 local cache, cacheSum, cacheV
@@ -54,13 +61,27 @@ local function Store()
     local db = ns.GetDB()
     return db and db.gp and db.gp.guild
 end
+local function Xor8(x, y)
+    local r, pow = 0, 1
+    for _ = 1, 8 do
+        local a, b = x % 2, y % 2
+        if a ~= b then r = r + pow end
+        x, y, pow = (x - a) / 2, (y - b) / 2, pow * 2
+    end
+    return r
+end
 function GPGuild.Sum(s)
+    local h = FNV_BASIS
     local a, b = 1, 0
-    for i = 1, #s do
-        a = (a + s:byte(i)) % ADLER
+    local n = #s
+    for i = 1, n do
+        local lo = h % 256
+        h = h - lo + Xor8(lo, s:byte(i))
+        h = (h * FNV_LOW + (h % 256) * FNV_HIGH) % TWO32
+        a = (a + s:byte(n - i + 1)) % ADLER
         b = (b + a) % ADLER
     end
-    return b * 65536 + a
+    return format("%04x%04x%04x%04x", floor(h / 65536), h % 65536, b, a)
 end
 local function Cut(s, n)
     if #s <= n then return s end
@@ -138,16 +159,22 @@ local function Record(tag, key, fields, order)
     if #parts == 0 then return nil end
     return tag .. Esc(key) .. ":" .. concat(parts, ",")
 end
-function GPGuild.Serialize(model)
-    local out, keys = {}, {}
-    for key in pairs(model.rules) do keys[#keys + 1] = key end
+local function KeyOk(key)
+    return type(key) == "string" and #key <= MAX_KEY and key:match("^[%w%._]+$") ~= nil
+end
+local function Raw(model)
+    local out, keys, seen = {}, {}, {}
+    for key in pairs(model.rules) do
+        if KeyOk(key) then keys[#keys + 1] = key end
+    end
     tsort(keys)
     for i = 1, #keys do
         out[#out + 1] = Record("R", keys[i], model.rules[keys[i]], ORDER)
     end
     for i = 1, #model.extra do
         local x = model.extra[i]
-        if i <= MAX_EXTRA and x.key and x.boss and x.gp then
+        if i <= MAX_EXTRA and KeyOk(x.key) and not seen[x.key] and Encode("boss", x.boss) and Encode("gp", x.gp) then
+            seen[x.key] = true
             out[#out + 1] = Record("X", x.key, x, XORDER)
         end
     end
@@ -159,7 +186,7 @@ function GPGuild.Parse(data)
     for rec in data:gmatch("[^;]+") do
         local tag, raw, body = rec:match("^([RX])([^:]*):(.*)$")
         local key = raw and Unesc(raw)
-        if key and #key <= MAX_KEY and key:match("^[%w%._]+$") then
+        if KeyOk(key) then
             local allowed = tag == "X" and XSET or RSET
             local fields = {}
             for pair in body:gmatch("[^,]+") do
@@ -177,6 +204,13 @@ function GPGuild.Parse(data)
     end
     return model
 end
+function GPGuild.Serialize(model)
+    return Raw(GPGuild.Parse(Raw(model)))
+end
+function GPGuild.Exact(data)
+    local model = GPGuild.Parse(data)
+    return model ~= nil and Raw(model) == data
+end
 function GPGuild.Overlay()
     local g = Store()
     if not g or type(g.data) ~= "string" or not g.v then return nil end
@@ -185,15 +219,15 @@ function GPGuild.Overlay()
     return cache
 end
 function GPGuild.ReadAnchor(text)
-    local v, sum = (text or ""):match(ANCHOR)
-    if not v then return nil, nil end
-    return tonumber(v), tonumber(sum, 16)
+    local v, sum, by = (text or ""):match(ANCHOR)
+    if not v or #v > 7 or #sum ~= SUM_LEN or #by > 48 then return nil, nil, nil end
+    return tonumber(v), sum:lower(), by
 end
-function GPGuild.Block(v, sum)
-    return format("-FW-\n@GP:%d:%08x\n-FW-", v, sum)
+function GPGuild.Block(v, sum, by)
+    return format("-FW-\n@GP:%d:%s:%s\n-FW-", v, sum, by)
 end
-function GPGuild.WithAnchor(text, v, sum)
-    local block = GPGuild.Block(v, sum)
+function GPGuild.WithAnchor(text, v, sum, by)
+    local block = GPGuild.Block(v, sum, by)
     text = text or ""
     local s, e = text:find(BLOCK)
     if s then return text:sub(1, s - 1) .. block .. text:sub(e + 1) end
@@ -237,6 +271,23 @@ local function Accept(v, sum, data, by)
     state.pending = nil
     Notify()
 end
+local function RankOf(name)
+    if not name then return nil end
+    for i = 1, GetNumGuildMembers(true) or 0 do
+        local n, _, rank = GetGuildRosterInfo(i)
+        if n == name then return rank end
+    end
+    return nil
+end
+function GPGuild.Trusted(sender, by)
+    if not sender or not by then return false end
+    if sender == by then return true end
+    local rs = RankOf(sender)
+    if not rs then return false end
+    local rb = RankOf(by)
+    if rb then return rs <= rb end
+    return rs == 0
+end
 local function Roster()
     if not IsInGuild() then return end
     local now = GetTime()
@@ -273,12 +324,12 @@ local function OnRoster()
     local g = Store()
     if not g or not IsInGuild() then return end
     state.rosterSeen = true
-    local v, sum = GPGuild.ReadAnchor(GetGuildInfoText() or "")
-    local changed = v ~= state.anchorV or sum ~= state.anchorSum
-    state.anchorV, state.anchorSum = v, sum
+    local v, sum, by = GPGuild.ReadAnchor(GetGuildInfoText() or "")
+    local changed = v ~= state.anchorV or sum ~= state.anchorSum or by ~= state.anchorBy
+    state.anchorV, state.anchorSum, state.anchorBy = v, sum, by
     if v and not (g.v == v and g.sum == sum) then
         local p = state.pending
-        if p and p.v == v and GPGuild.Sum(p.data) == sum then
+        if p and p.v == v and GPGuild.Sum(p.data) == sum and GPGuild.Trusted(p.by, by) then
             return Got(v, sum, p.data, p.by)
         end
         Ask(v)
@@ -286,11 +337,12 @@ local function OnRoster()
     if changed then Notify() end
 end
 local function Complete(v, data, sender)
+    if not GPGuild.Exact(data) then return end
     local sum = GPGuild.Sum(data)
     local g = Store()
     if g.v == v and g.sum == sum then return end
     if state.anchorV == v then
-        if state.anchorSum == sum then Got(v, sum, data, sender) end
+        if state.anchorSum == sum and GPGuild.Trusted(sender, state.anchorBy) then Got(v, sum, data, sender) end
         return
     end
     if state.anchorV and state.anchorV > v then return end
@@ -301,14 +353,19 @@ local function OnNeed(v)
     local g = Store()
     if not g or g.v ~= v or type(g.data) ~= "string" then return end
     if state.answer or state.sending == v then return end
-    if state.anchorV == v and state.anchorSum ~= g.sum then return end
-    state.answer = { v = v, at = GetTime() + math.random(WAIT_LO, WAIT_HI) / 10 }
+    if state.anchorV ~= v or state.anchorSum ~= g.sum then return end
+    if not GPGuild.Trusted(UnitName("player"), state.anchorBy) then return end
+    local now = GetTime()
+    if now - state.answeredAt < ANSWER_GAP then return end
+    state.answeredAt = now
+    state.answer = { v = v, at = now + math.random(WAIT_LO, WAIT_HI) / 10 }
     frame:Show()
 end
 local function OnPart(sender, v, i, n, part)
     if v < 1 or v > MAX_VER or n < 1 or n > MAX_PARTS or i < 1 or i > n then return end
     local g = Store()
     if not g then return end
+    if state.anchorV == v and not GPGuild.Trusted(sender, state.anchorBy) then return end
     if state.answer and state.answer.v == v then state.answer = nil end
     if g.v == v and state.anchorV == v and g.sum == state.anchorSum then return end
     local buf = state.bufs[sender]
@@ -432,15 +489,16 @@ function GPGuild.Publish()
     if #GPGuild.Split(data) > MAX_PARTS then return false, "gpg.err.big" end
     local text = GetGuildInfoText() or ""
     local g = Store()
+    local me = UnitName("player")
     local v = max(GPGuild.ReadAnchor(text) or 0, g.v or 0, state.anchorV or 0) + 1
     local sum = GPGuild.Sum(data)
-    local new = GPGuild.WithAnchor(text, v, sum)
+    local new = GPGuild.WithAnchor(text, v, sum, me)
     local limit = InfoLimit()
     if Letters(new) > limit then return false, "gpg.err.long", Letters(new), limit end
     SetGuildInfoText(new)
-    state.anchorV, state.anchorSum = v, sum
+    state.anchorV, state.anchorSum, state.anchorBy = v, sum, me
     local active = ns.Penalties.Active()
-    Accept(v, sum, data, UnitName("player"))
+    Accept(v, sum, data, me)
     ns.Penalties.Prune(active)
     return true, "gpg.done", v, Broadcast(v, data)
 end
@@ -448,6 +506,7 @@ function GPGuild.Status()
     local g = Store() or {}
     return {
         seen = state.rosterSeen,
+        by = state.anchorBy,
         guild = state.anchorV,
         mine = g.v,
         synced = g.v ~= nil and g.v == state.anchorV and g.sum == state.anchorSum,

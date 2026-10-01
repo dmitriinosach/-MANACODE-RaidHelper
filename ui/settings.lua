@@ -412,8 +412,9 @@ local function ItemHeight(it, w)
         r.hint:ClearAllPoints()
         r.hint:SetPoint("TOPLEFT", r, "TOPLEFT", r.indent, -(h + HINT_GAP))
         r.hint:SetWidth(max(1, w - r.indent))
-        r.hint:SetText(Text(it.hint))
-        h = h + HINT_GAP + ceil(r.hint:GetStringHeight()) + 2
+        local hint = Text(it.hint)
+        r.hint:SetText(hint)
+        if hint ~= "" then h = h + HINT_GAP + ceil(r.hint:GetStringHeight()) + 2 end
     end
     return h
 end

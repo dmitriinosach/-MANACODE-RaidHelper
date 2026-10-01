@@ -6,7 +6,6 @@ local min = math.min
 local tsort = table.sort
 local concat = table.concat
 local TOP = 5
-local TIP_TOP = 8
 local HOUR = 3600
 local Model = {}
 ns.RaidModel = Model
@@ -14,14 +13,14 @@ local function T(key)
     return ns.T(key)
 end
 function Model.Short(n)
-    if n >= 1e6 then return format("%.2fм", n / 1e6) end
-    if n >= 1e5 then return format("%.0fк", n / 1e3) end
-    if n >= 1e3 then return format("%.1fк", n / 1e3) end
+    if n >= 1e6 then return format("%.2f", n / 1e6) .. ns.T("num.m") end
+    if n >= 1e5 then return format("%.0f", n / 1e3) .. ns.T("num.k") end
+    if n >= 1e3 then return format("%.1f", n / 1e3) .. ns.T("num.k") end
     return tostring(floor(n + 0.5))
 end
 local Short = Model.Short
 local function Dec(v, digits)
-    return (format("%." .. digits .. "f", v):gsub("%.", ","))
+    return ns.Dec(format("%." .. digits .. "f", v))
 end
 local function Stamp(t)
     return date("%d.%m %H:%M", t)
@@ -172,8 +171,8 @@ end
 local DRUNK = { flask = true, elixir = true, potion = true }
 local ICON_ROW = 15
 local ICON_TIP = 14
-local function Inline(id, size)
-    local tex = ns.RaidCost.Icon(id)
+local function Inline(id, size, spell)
+    local tex = ns.RaidCost.Icon(id, spell)
     if not tex then return "" end
     return format("|T%s:%d:%d:0:0:64:64:5:59:5:59|t", tex, size, size)
 end
@@ -212,7 +211,7 @@ local function UseTip(res, pr, p)
         local sp = pr.by[list[k].k]
         if sp and DRUNK[sp.cat] then
             any = true
-            tip[#tip + 1] = { kind = "row", left = Inline(sp.id, ICON_TIP) .. " " .. list[k].k,
+            tip[#tip + 1] = { kind = "row", left = Inline(sp.id, ICON_TIP, sp.spell) .. " " .. list[k].k,
                               right = format("x%d", list[k].v) }
         end
     end
@@ -231,7 +230,7 @@ local function Drunk(res, pr)
         local parts, list = {}, Pairs(p.used)
         for k = 1, #list do
             local sp = pr.by[list[k].k]
-            if sp and DRUNK[sp.cat] then parts[#parts + 1] = Inline(sp.id, ICON_ROW) .. list[k].v end
+            if sp then parts[#parts + 1] = Inline(sp.id, ICON_ROW, sp.spell) .. list[k].v end
         end
         rows[#rows + 1] = { who = p.name, class = p.class, text = concat(parts, "  "),
                             v = fl * 1000 + po, lines = UseTip(res, pr, p) }
@@ -252,31 +251,54 @@ local function PriceNote(sp, each)
     return format(T(source == "ah" and "rsum.tt.price.ah" or "rsum.tt.price.manual"), ns.RaidCost.Gold(each),
         ns.RaidCost.Date(stamp))
 end
+local function SpentRow(res, pr, sp)
+    local each = not sp.free and pr.c[sp.item] or nil
+    local cost = each and each * sp.n or nil
+    local tip = { { kind = "head", left = sp.item, right = T("rsum.cat." .. sp.cat) } }
+    Put(tip, "note", sp.free and T("rsum.tt.free") or PriceNote(sp, each))
+    Put(tip, "sep")
+    local by = Pairs(sp.by)
+    for k = 1, #by do
+        local p = res.byName[by[k].k]
+        tip[#tip + 1] = { kind = "row", left = by[k].k, mid = format("x%d", by[k].v),
+                          right = each and ns.RaidCost.Gold(each * by[k].v) or nil, class = p and p.class }
+    end
+    local note = (cost and ns.RaidCost.Amount(cost)) or (sp.free and T("rsum.free")) or T("rsum.noprice")
+    return { who = sp.item, icon = ns.RaidCost.Icon(sp.id, sp.spell), text = format("x%d", sp.n), note = note,
+             noteIcon = cost and ns.RaidCost.GOLD_ICON or nil, noteLit = cost ~= nil, v = sp.n, lines = tip }, cost
+end
 local function Spent(res, pr)
     local rows = {}
     local total, gold = 0, 0
+    local groups, order = {}, {}
     for i = 1, #res.spent do
         local sp = res.spent[i]
-        if not sp.free then
-            total = total + sp.n
-            local each = pr.c[sp.item]
-            local cost = each and each * sp.n or nil
-            if cost then gold = gold + cost end
-            local tip = { { kind = "head", left = sp.item, right = T("rsum.cat." .. sp.cat) } }
-            Put(tip, "note", PriceNote(sp, each))
-            Put(tip, "sep")
-            local by = Pairs(sp.by)
-            for k = 1, min(TIP_TOP, #by) do
-                local p = res.byName[by[k].k]
-                tip[#tip + 1] = { kind = "row", left = by[k].k, mid = format("x%d", by[k].v),
-                                  right = each and ns.RaidCost.Gold(each * by[k].v) or nil,
-                                  class = p and p.class }
-            end
-            if #by > TIP_TOP then Put(tip, "note", format(T("rsum.tt.more"), #by - TIP_TOP)) end
-            rows[#rows + 1] = { who = sp.item, icon = ns.RaidCost.Icon(sp.id), text = format("x%d", sp.n),
-                                note = cost and ns.RaidCost.Amount(cost) or T("rsum.noprice"),
-                                noteIcon = cost and ns.RaidCost.GOLD_ICON or nil, noteLit = cost ~= nil,
-                                v = sp.n, lines = tip }
+        local g = groups[sp.cat]
+        if not g then
+            g = { cat = sp.cat, n = 0, list = {} }
+            groups[sp.cat] = g
+            order[#order + 1] = g
+        end
+        g.n = g.n + sp.n
+        g.list[#g.list + 1] = sp
+        if not sp.free then total = total + sp.n end
+    end
+    tsort(order, function(a, b) return ns.RaidCost.CatOrder(a.cat) < ns.RaidCost.CatOrder(b.cat) end)
+    local head = ns.Kit and ns.Kit.Hex("text.title") or ""
+    for i = 1, #order do
+        local g = order[i]
+        local at = #rows + 1
+        rows[at] = { who = head .. T("rsum.grp." .. g.cat) .. (head ~= "" and "|r" or ""), text = format("x%d", g.n),
+                     v = g.n }
+        local sum = 0
+        for k = 1, #g.list do
+            local row, cost = SpentRow(res, pr, g.list[k])
+            rows[#rows + 1] = row
+            if cost then sum = sum + cost end
+        end
+        gold = gold + sum
+        if sum > 0 then
+            rows[at].note, rows[at].noteIcon, rows[at].noteLit = ns.RaidCost.Amount(sum), ns.RaidCost.GOLD_ICON, true
         end
     end
     local title = gold > 0 and format(T("rsum.title.spentgold"), total, ns.RaidCost.GoldIcon(gold))

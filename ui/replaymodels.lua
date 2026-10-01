@@ -583,6 +583,7 @@ if ns.Settings and ns.Settings.Section then
             { kind = "choice", key = "room", buttons = true, label = "set.replay.room", tip = "set.replay.room.tip",
               options = { { key = "flat", label = "set.replay.room.flat" }, { key = "real", label = "set.replay.room.real" } },
               default = "real",
+              hint = function() return ns.RoomPacks and ns.RoomPacks.Hint(nil) or "" end,
               get = function()
                   local iso = ns.GetDB().settings.iso
                   return type(iso) == "table" and iso.geo == false and "flat" or "real"

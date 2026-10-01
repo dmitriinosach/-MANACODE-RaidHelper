@@ -62,6 +62,7 @@ function P.DeleteText()
     P.PickText(1)
 end
 local function plural(n, one, few, many)
+    if ns.Lang() == "enUS" then return n == 1 and one or many end
     local d, h = n % 10, n % 100
     if d == 1 and h ~= 11 then return one end
     if d >= 2 and d <= 4 and (h < 12 or h > 14) then return few end

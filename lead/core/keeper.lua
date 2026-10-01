@@ -7,10 +7,11 @@ K.PREFIX = "MRHMK"
 local GRACE = 2
 local TIE = 2
 local REPLY_GAP = 5
-local MAX_AGE = 86400
+local MAX_AGE = 6 * 3600
 local peers = {}
 local replied = {}
 local since
+local joined
 local function forget()
     for k in pairs(peers) do peers[k] = nil end
     for k in pairs(replied) do replied[k] = nil end
@@ -18,9 +19,25 @@ end
 local function age()
     return math.floor(GetTime() - since)
 end
+local function inRaid()
+    if ns.Compat.GroupSize() == 0 then
+        joined = nil
+        return 0
+    end
+    if not joined then joined = GetTime() end
+    return math.floor(GetTime() - joined)
+end
+function K.Cap()
+    return math.min(MAX_AGE, inRaid() + TIE + 1)
+end
+function K.PeerAge(name)
+    local at = peers[name]
+    return at and math.floor(GetTime() - at + 0.5) or nil
+end
 function K.Update(want)
     if ns.Test.Active() then return end
     local raid = ns.Compat.GroupSize()
+    inRaid()
     if raid == 0 then
         since = nil
         forget()
@@ -70,8 +87,7 @@ ns.Comm.On(K.PREFIX, function(msg, sender, chan)
     if chan ~= "RAID" and chan ~= "PARTY" then return end
     local kind, n = msg:match("^(%u+):?(%d*)$")
     if kind == "ON" or kind == "RE" then
-        n = tonumber(n) or 0
-        if n > MAX_AGE then n = MAX_AGE end
+        n = math.min(tonumber(n) or 0, K.Cap())
         peers[sender] = GetTime() - n
         if kind == "ON" and since then
             local t = replied[sender]

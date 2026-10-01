@@ -725,6 +725,7 @@ end
 local function DrawNav()
     if not nav then return end
     ns.ReplayLink.SetFight(fight)
+    if ns.ThreatView and ns.ThreatView.SetFight then ns.ThreatView.SetFight(fight) end
     local spot = ns.FightTree.Spot(fight)
     if not spot then
         nav:SetWidth(1)
@@ -775,9 +776,10 @@ local function AttachNav(host, title, status)
     navOut:SetPoint("LEFT", navNext, "RIGHT", NAVGAP * 2, 0)
     nav:Hide()
     local play = ns.ReplayLink.Head(host, nav)
-    local share = ns.ShareView and ns.ShareView.Head(host)
-    if share and ns.SumHide then ns.SumHide.Head(host, share) end
-    if status then status:SetPoint("LEFT", play, "RIGHT", NAVGAP * 2, 0) end
+    local last = ns.ThreatView and ns.ThreatView.Head(host, play) or play
+    if ns.ShareView then ns.ShareView.Head(host, last) end
+    if ns.SumHide then ns.SumHide.Head(host) end
+    if status then status:SetPoint("LEFT", last, "RIGHT", NAVGAP * 2, 0) end
 end
 Tips.raid = function(r)
     local raid = r.line.raid

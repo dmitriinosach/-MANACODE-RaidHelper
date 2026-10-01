@@ -5,6 +5,8 @@ local ceil = math.ceil
 local BTN = 18
 local ICON = 14
 local GAP = 4
+local HEAD_PAD = 6
+local HEAD_Y = -19
 local PAD = 8
 local ROW = 22
 local HEAD = 20
@@ -295,11 +297,11 @@ function Hide.SetFight(f)
     if gear.boss then gear:Show() else gear:Hide() end
     if Hide.IsOpen() and popBoss ~= gear.boss then Hide.Close() end
 end
-function Hide.Head(host, anchor)
+function Hide.Head(host)
     local b = Kit.Button(host)
     b:SetWidth(BTN)
     b:SetHeight(BTN)
-    b:SetPoint("RIGHT", anchor, "LEFT", -GAP, 0)
+    b:SetPoint("RIGHT", host, "TOPRIGHT", -HEAD_PAD, HEAD_Y)
     b.icon = b:CreateTexture(nil, "OVERLAY")
     b.icon:SetWidth(ICON)
     b.icon:SetHeight(ICON)

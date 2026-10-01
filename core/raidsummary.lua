@@ -74,7 +74,8 @@ local function IsBoss(fight, name)
 end
 local function NewPlayer(name)
     return { name = name, class = ns.Encounters.ClassOf(name), all = 0, cut = 0, enc = 0, boss = 0, heal = 0,
-             deaths = 0, deathBy = {}, flask = 0, elixir = 0, potion = 0, food = 0, stone = 0, used = {} }
+             deaths = 0, deathBy = {}, flask = 0, elixir = 0, potion = 0, food = 0, scroll = 0, other = 0,
+             stone = 0, used = {} }
 end
 local function NewSum(raid, segs)
     local res = {
@@ -126,7 +127,7 @@ local function AddUse(st, piece)
                 p.used[item] = (p.used[item] or 0) + c
                 local sp = st.spent[item]
                 if not sp then
-                    sp = { item = item, id = u.id, cat = u.cat, n = 0, free = u.free, by = {} }
+                    sp = { item = item, id = u.id, cat = u.cat, n = 0, free = u.free, spell = u.spell, by = {} }
                     st.spent[item] = sp
                     st.res.spent[#st.res.spent + 1] = sp
                 end

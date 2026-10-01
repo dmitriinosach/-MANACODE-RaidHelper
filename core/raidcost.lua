@@ -3,7 +3,7 @@ local floor = math.floor
 local format = string.format
 local tsort = table.sort
 local COPPER = 10000
-local CAT_ORDER = { flask = 1, elixir = 2, potion = 3, food = 4, stone = 5 }
+local CAT_ORDER = { flask = 1, elixir = 2, potion = 3, food = 4, scroll = 5, other = 6, stone = 7 }
 local Cost = {}
 ns.RaidCost = Cost
 Cost.GOLD_ICON = "Interface\\MoneyFrame\\UI-GoldIcon"
@@ -20,7 +20,7 @@ function Cost.Items()
     local seen = {}
     local function Add(map)
         for _, c in pairs(map or {}) do
-            if not c.free and not seen[c.item] then
+            if not c.free and c.id and not seen[c.item] then
                 seen[c.item] = true
                 items[#items + 1] = { item = c.item, id = c.id, cat = c.cat }
             end
@@ -29,16 +29,21 @@ function Cost.Items()
     Add(ns.consumeCast)
     Add(ns.consumeCreate)
     Add(ns.consumeEnchant)
+    Add(ns.consumeAura)
     tsort(items, function(a, b)
-        local ca, cb = CAT_ORDER[a.cat] or 9, CAT_ORDER[b.cat] or 9
+        local ca, cb = Cost.CatOrder(a.cat), Cost.CatOrder(b.cat)
         if ca ~= cb then return ca < cb end
         return a.item < b.item
     end)
     return items
 end
-function Cost.Icon(id)
-    if not id or not GetItemIcon then return nil end
-    return GetItemIcon(id)
+function Cost.Icon(id, spell)
+    local tex = id and GetItemIcon and GetItemIcon(id)
+    if tex then return tex end
+    return spell and ns.Effects and ns.Effects.IconById(spell) or nil
+end
+function Cost.CatOrder(cat)
+    return CAT_ORDER[cat] or 9
 end
 function Cost.HasAH()
     return type(_G.Atr_GetAuctionPrice) == "function"
@@ -88,12 +93,13 @@ function Cost.Price(item)
 end
 local function Spaced(n)
     local s = tostring(floor(n))
-    local out = s:reverse():gsub("(%d%d%d)", "%1 "):reverse()
-    return (out:gsub("^ ", ""))
+    local sep = ns.lang == "enUS" and "," or " "
+    local out = s:reverse():gsub("(%d%d%d)", "%1" .. sep):reverse()
+    return (out:gsub("^" .. sep, ""))
 end
 function Cost.Amount(copper)
     local g = copper / COPPER
-    if g > 0 and g < 10 then return (format("%.1f", g):gsub("%.", ",")) end
+    if g > 0 and g < 10 then return ns.Dec(format("%.1f", g)) end
     return Spaced(g + 0.5)
 end
 function Cost.Gold(copper)

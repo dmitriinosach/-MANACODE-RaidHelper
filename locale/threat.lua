@@ -28,7 +28,5 @@ L["thr.track.old"] = "Угроза не записана (старая запи�
 L["thr.track.loading"] = "Считаю угрозу…"
 L["thr.track.pull"] = "Сорвал агро: %s"
 L["thr.track.prev"] = "Держал %s"
-L["thr.view.replay"] = "Реплей"
-L["thr.view.replay.tip"] = "Реплей этой попытки на середине показанного отрезка."
 L["iso.threat"] = "Угроза"
 L["iso.threat.tip"] = "Вид «Угроза» этой попытки на текущем моменте реплея."

@@ -39,13 +39,13 @@ local function Plain(s)
     return (tostring(s or ""):gsub("[|\r\n]", ""))
 end
 local function Short(n)
-    if n >= 1e6 then return format("%.1fм", n / 1e6) end
-    if n >= 1e4 then return format("%dк", floor(n / 1e3 + 0.5)) end
-    if n >= 1e3 then return format("%.1fк", n / 1e3) end
+    if n >= 1e6 then return format("%.1f", n / 1e6) .. ns.T("num.m") end
+    if n >= 1e4 then return format("%d", floor(n / 1e3 + 0.5)) .. ns.T("num.k") end
+    if n >= 1e3 then return format("%.1f", n / 1e3) .. ns.T("num.k") end
     return tostring(floor(n + 0.5))
 end
 local function Dec(v)
-    return (format("%.1f", v):gsub("%.", ","))
+    return ns.Dec(format("%.1f", v))
 end
 local function Clock(sec)
     if sec < 0 then sec = 0 end

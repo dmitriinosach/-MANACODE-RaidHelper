@@ -28,7 +28,7 @@ ns.Shell = Shell
 local entries = {}
 local order = {}
 local commands = {}
-local frame, strip, close, grip, pageBg, zoomOut, zoomIn
+local frame, strip, close, grip, pageBg, zoomOut, zoomIn, about
 local current
 local sizing, sizedW, sizedH, moving
 local sizeX, sizeY, sizeW, sizeH, sizeMaxW, sizeMaxH
@@ -267,6 +267,10 @@ local function PlaceZoom()
     zoomIn:SetPoint("RIGHT", frame, "TOPRIGHT", -zoomX, Line())
     zoomOut:ClearAllPoints()
     zoomOut:SetPoint("RIGHT", zoomIn, "LEFT", -ZOOMGAP, 0)
+    about:SetWidth(size)
+    about:SetHeight(size)
+    about:ClearAllPoints()
+    about:SetPoint("RIGHT", zoomOut, "LEFT", -ZOOMGAP, 0)
 end
 local function PlaceNote()
     if not frame then return end
@@ -292,7 +296,7 @@ local function PlaceNote()
     b:SetHeight(TabLook().h - TabLook().rim)
     b:ClearAllPoints()
     b:SetPoint("LEFT", frame, "TOPLEFT", note.x + TABPAD, Line())
-    if zoomOut then b:SetPoint("RIGHT", zoomOut, "LEFT", -TABPAD, 0) end
+    if about then b:SetPoint("RIGHT", about, "LEFT", -TABPAD, 0) end
     b:Show()
 end
 local function LayoutTabs()
@@ -453,6 +457,9 @@ local function BuildStrip()
     close:SetScript("OnClick", function() frame:Hide() end)
     zoomOut = MakeZoom("shell.scale.less", "shell.scale.less.tip", -SCALE_STEP)
     zoomIn = MakeZoom("shell.scale.more", "shell.scale.more.tip", SCALE_STEP)
+    about = MakeZoom("shell.about", "shell.about.tip", 0)
+    about.tipTitle, about.tip = ns.T("shell.about.tip"), nil
+    about.onClick = function() if ns.About then ns.About.Toggle() end end
     PaintZoom()
 end
 local function OnTheme()

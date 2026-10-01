@@ -21,13 +21,15 @@ local NEAR = 1.5
 local OTHERS = 8
 local CLICK_SLACK = 3
 local MIN_SPAN = 5
-local REPLAYW = 70
+local BTNW = 84
+local BTNH = 18
+local BTNGAP = 6
 local AT_SPAN = 60
 local STEPS = { 1, 2, 5, 10, 15, 30, 60, 120, 300, 600 }
 local T = ns.T
 local TV = {}
 ns.ThreatView = TV
-local host, head, hint, ruler, plot, overlay, note, cursor, anchor, btn
+local host, hint, ruler, plot, overlay, note, cursor, anchor, btn
 local fight = nil
 local model = nil
 local busy = false
@@ -195,12 +197,9 @@ local function Draw()
     note:Hide()
     if not host:IsShown() then return end
     if not fight then
-        head:SetText("")
         Say(T("thr.view.pick"))
         return
     end
-    head:SetText(format(T("thr.view.title"), ns.FightList and ns.FightList.Title and ns.FightList.Title(fight)
-        or fight.boss))
     if busy then
         Say(T("thr.view.loading"))
         return
@@ -376,22 +375,9 @@ function TV.Attach(frame, clip, margin, headH)
     local bg = host:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     ns.Kit.Paint(bg, "surface.bg")
-    head = host:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    head:SetPoint("TOPLEFT", host, "TOPLEFT", 4, -4)
-    ns.Kit.Text(head, "text.title")
-    local rp = ns.Kit.Button(host)
-    rp:SetWidth(REPLAYW)
-    rp:SetHeight(HEADH - 4)
-    rp:SetPoint("TOPRIGHT", host, "TOPRIGHT", -2, -2)
-    rp.text:SetText(T("thr.view.replay"))
-    rp.tip = T("thr.view.replay.tip")
-    rp.onClick = function()
-        if fight and ns.ReplayLink then ns.ReplayLink.Open(fight, (from + to) / 2) end
-    end
-    if not (ns.ReplayLink and ns.ReplayIso) then rp:Hide() end
     hint = host:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    hint:SetPoint("TOPRIGHT", host, "TOPRIGHT", -(REPLAYW + 8), -6)
-    hint:SetJustifyH("RIGHT")
+    hint:SetPoint("TOPLEFT", host, "TOPLEFT", 4, -6)
+    hint:SetJustifyH("LEFT")
     hint:SetText(T("thr.view.hint"))
     ns.Kit.Text(hint, "text.secondary")
     ruler = CreateFrame("Frame", nil, host)
@@ -441,14 +427,24 @@ function TV.Attach(frame, clip, margin, headH)
     host:SetScript("OnSizeChanged", function() Draw() end)
     host:Hide()
 end
-function TV.Button(frame, left)
-    btn = ns.MakeButton(frame, "HTP_FailWatchThreatToggle")
-    btn:SetWidth(84)
-    btn:SetHeight(20)
-    btn:SetPoint("RIGHT", left, "LEFT", -6, 0)
+function TV.Head(parent, anchor)
+    btn = ns.Kit.Button(parent, "HTP_FailWatchThreatToggle")
+    btn:SetWidth(BTNW)
+    btn:SetHeight(BTNH)
+    btn:SetPoint("LEFT", anchor, "RIGHT", BTNGAP, 0)
+    btn.tipTitle = T("tl.btn.thr")
     btn.tip = T("tl.btn.thr.tip")
     btn.onClick = function() TV.Toggle() end
     SetButton()
+    TV.SetFight(nil)
+    return btn
+end
+function TV.HeadFrame()
+    return btn
+end
+function TV.SetFight(f)
+    if not btn then return end
+    if f and not f.foreign then btn:Show() else btn:Hide() end
 end
 function TV.Show(f)
     if not host or not f then return end
@@ -469,9 +465,8 @@ end
 function TV.OpenAt(f, t)
     if not f or f.foreign then return end
     if ns.Shell then ns.Shell.Open("log") end
-    if ns.Timeline.View() ~= f then ns.Timeline.ShowFight(f) end
-    TV.Show(f)
-    if not (host and t) then return end
+    ns.Timeline.ShowThreat(f)
+    if not (host and t and host:IsShown()) then return end
     local span = min(to - from, AT_SPAN)
     from = max(lead, min(tail - span, t - span / 2))
     to = from + span
@@ -489,7 +484,7 @@ function TV.IsShown()
 end
 function TV.Toggle()
     if TV.IsShown() then
-        TV.Hide()
+        ns.Timeline.LeaveThreat()
         return
     end
     local f = ns.Timeline.View()
@@ -497,10 +492,7 @@ function TV.Toggle()
         ns.Print(T("thr.view.pick"))
         return
     end
-    TV.Show(f)
-end
-function TV.Follow(f)
-    if TV.IsShown() and f ~= fight then TV.Show(f) end
+    ns.Timeline.ShowThreat(f)
 end
 function TV.View()
     return from, to, scroll

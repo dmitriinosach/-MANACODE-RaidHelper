@@ -1,11 +1,10 @@
-local ADDON, ns = ...
+local _, ns = ...
 local abs = math.abs
 local ceil = math.ceil
 local floor = math.floor
 local max = math.max
 local min = math.min
 local sqrt = math.sqrt
-local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\rooms\\live\\"
 local BASE_POOL = 640
 local OVER_POOL = 120
 local FLOOR_N = 4
@@ -22,16 +21,23 @@ local EPS = 1e-6
 local POOL_BASE = 1
 local POOL_OVER = 2
 local POOL_FLOOR = 3
+local POOL_RING = 4
+local RING_POOL = 400
+local RING_ALPHA_MIN = 0.02
+local RING_STONE = "sem.room.stone"
+local RING_ICE = "sem.room.ice"
 local Live = {}
 ns.ReplayLive = Live
 local Replay = ns.Replay
 local Kit = ns.Kit
 local F = { n = 0, cx = {}, cy = {}, cz = {}, ux = {}, uy = {}, uz = {}, vx = {}, vy = {}, vz = {}, nx = {}, ny = {}, nz = {},
             hu = {}, hv = {}, cu = {}, cv = {}, q = {}, du = {}, dv = {}, kind = {}, shell = {}, flat = {}, floor = {},
-            fx = {}, fy = {}, fz = {}, kz = {} }
-local P = { a1 = {}, b1 = {}, a2 = {}, b2 = {}, sx = {}, sy = {}, over = {}, nxt = {} }
+            fx = {}, fy = {}, fz = {}, kz = {}, ringS = {}, ringB = {} }
+local P = { a1 = {}, b1 = {}, a2 = {}, b2 = {}, sx = {}, sy = {}, over = {}, nxt = {}, rkey = {} }
+local ringList = {}
 local head, tail = {}, {}
-local st = { floors = {}, bases = {}, overs = {}, used = { [POOL_BASE] = 0, [POOL_OVER] = 0, [POOL_FLOOR] = 0 }, calls = 0, pieces = 0, hidden = 0 }
+local st = { floors = {}, bases = {}, overs = {}, rings = {}, used = { [POOL_BASE] = 0, [POOL_OVER] = 0, [POOL_FLOOR] = 0, [POOL_RING] = 0 },
+             calls = 0, pieces = 0, hidden = 0, ringOk = false, t = 0, pfDone = -1, texA = {}, texIce = {} }
 function Live.Build(view, level)
     st.view = view
     local top = CreateFrame("Frame", nil, view)
@@ -39,6 +45,10 @@ function Live.Build(view, level)
     top:SetFrameLevel(level)
     top:SetAlpha(OVER_ALPHA)
     st.top = top
+    for k = 1, RING_POOL do
+        st.rings[k] = view:CreateTexture(nil, "BORDER")
+        st.rings[k]:Hide()
+    end
     for k = 1, FLOOR_N * FLOOR_N do
         st.floors[k] = view:CreateTexture(nil, "BORDER")
         st.floors[k]:Hide()
@@ -52,9 +62,9 @@ function Live.Build(view, level)
         st.overs[k]:Hide()
     end
 end
-local pools = { st.bases, st.overs, st.floors }
+local pools = { st.bases, st.overs, st.floors, st.rings }
 function Live.HideAll()
-    for p = 1, 3 do
+    for p = 1, 4 do
         local list, used = pools[p], st.used[p]
         for k = 1, used do list[k]:Hide() end
         st.used[p] = 0
@@ -62,11 +72,11 @@ function Live.HideAll()
 end
 function Live.Release()
     Live.HideAll()
-    for p = 1, 3 do
+    for p = 1, 4 do
         local list = pools[p]
         for k = 1, #list do list[k]:SetTexture(nil) end
     end
-    st.room, st.data = nil, nil
+    st.room, st.data, st.ringOk, st.pf, st.pfScene, st.pfDone = nil, nil, false, nil, nil, -1
 end
 local function SetFace(i, row)
     F.cx[i], F.cy[i], F.cz[i] = row[1], row[2], row[3]
@@ -82,6 +92,7 @@ local function SetFace(i, row)
     F.nx[i], F.ny[i], F.nz[i] = nx, ny, nz
     F.fx[i], F.fy[i], F.fz[i] = row[19] or nx, row[20] or ny, row[21] or nz
     F.kz[i] = row[22] or 0
+    F.ringS[i], F.ringB[i] = row[23], row[24]
     F.flat[i] = nz > NZ_FLAT
     F.floor[i] = false
 end
@@ -91,6 +102,11 @@ local function Load(d)
     for k = 1, #faces do
         n = n + 1
         SetFace(n, faces[k])
+    end
+    local pieces = d.ring and d.ring.pieces or {}
+    for k = 1, #pieces do
+        n = n + 1
+        SetFace(n, pieces[k])
     end
     local w = d.fhalf / FLOOR_FIT
     local q = 1 / (2 * d.fhalf)
@@ -111,7 +127,7 @@ function Live.Use(room)
     Live.Release()
     local d = room and ns.roomLive and ns.roomLive[room.tex]
     if not d or not st.view then return false end
-    local atlas, fl = ART .. room.tex .. "_atlas", ART .. room.tex .. "_floor"
+    local atlas, fl = d.art .. "_atlas", d.art .. "_floor"
     if not st.bases[1]:SetTexture(atlas) or not st.floors[1]:SetTexture(fl) then
         Live.Release()
         return false
@@ -122,9 +138,38 @@ function Live.Use(room)
         st.overs[k]:SetTexture(atlas)
         Kit.Tint(st.overs[k], OVER_TINT)
     end
+    st.ringOk = d.ring ~= nil and st.rings[1]:SetTexture(d.art .. "_ring") and true or false
+    for k = 1, #st.rings do
+        if st.ringOk then st.rings[k]:SetTexture(d.art .. "_ring") end
+        st.texA[st.rings[k]], st.texIce[st.rings[k]] = nil, nil
+    end
     Load(d)
     st.room, st.data = room, d
     return true
+end
+function Live.Time(scene, t)
+    st.t = t
+    local d = st.data
+    if not d or not d.ring or not st.ringOk or not scene then return false end
+    if st.pfScene ~= scene then
+        local Platform = ns.ReplayPlatform
+        local def = Platform and scene.fight and Platform.Def(scene.fight.boss)
+        local L = scene.layers
+        if not def or Replay.ROOMS[def.room] ~= st.room then
+            st.pf, st.pfScene = nil, scene
+        elseif L and L.pfQuake then
+            st.pf = { tl = Platform.Timeline(def, L.pfQuake, L.pfWinter), def = def, ring = d.ring }
+            st.pfScene, st.pfDone = scene, -1
+        else
+            return false
+        end
+    end
+    local pf = st.pf
+    if not pf then return false end
+    local busy, done = ns.ReplayPlatform.State(pf.tl, pf.def, pf.ring, t)
+    local changed = busy or done ~= st.pfDone
+    st.pfDone = done
+    return changed
 end
 function Live.Has(room)
     return room ~= nil and room == st.room
@@ -195,10 +240,47 @@ local function Pieces(i, pool, hw, hh)
         end
     end
 end
+local function Shade(from, to, alpha, ice)
+    local list, texA, texIce = st.rings, st.texA, st.texIce
+    local tok = ice and RING_ICE or RING_STONE
+    for j = from, to do
+        local tex = list[j]
+        if texA[tex] ~= alpha or texIce[tex] ~= ice then
+            Kit.Hue(tex, tok, alpha)
+            texA[tex], texIce[tex] = alpha, ice
+            st.calls = st.calls + 1
+        end
+    end
+end
+local function PlaceRing(n, hw, hh)
+    local key = P.rkey
+    for a = 2, n do
+        local i, kv = ringList[a], key[ringList[a]]
+        local b = a - 1
+        while b >= 1 and key[ringList[b]] > kv do
+            ringList[b + 1] = ringList[b]
+            b = b - 1
+        end
+        ringList[b + 1] = i
+    end
+    local pf = st.pf
+    local Platform = ns.ReplayPlatform
+    for a = 1, n do
+        local i = ringList[a]
+        local alpha, ice = 1, false
+        if pf then
+            local a, _, e = Platform.Piece(pf.tl, pf.def, pf.ring, F.ringS[i], F.ringB[i], st.t)
+            alpha, ice = a, e
+        end
+        local u0 = st.used[POOL_RING]
+        Pieces(i, POOL_RING, hw, hh)
+        Shade(u0 + 1, st.used[POOL_RING], alpha, ice)
+    end
+end
 function Live.Place(cam, room, ppy)
     if room ~= st.room or not st.data then return false end
-    local prevUsed = { st.used[1], st.used[2], st.used[3] }
-    st.used[1], st.used[2], st.used[3] = 0, 0, 0
+    local prevUsed = { st.used[1], st.used[2], st.used[3], st.used[4] }
+    st.used[1], st.used[2], st.used[3], st.used[4] = 0, 0, 0, 0
     st.calls, st.pieces, st.hidden = 0, 0, 0
     local c, s, t = cam.c, cam.s, cam.tilt
     local k = sqrt(max(0, 1 - t * t))
@@ -211,7 +293,33 @@ function Live.Place(cam, room, ppy)
     local pa1, pb1, pa2, pb2, psx, psy, pover, nxt = P.a1, P.b1, P.a2, P.b2, P.sx, P.sy, P.over, P.nxt
     for b = 1, BUCKETS do head[b] = 0 tail[b] = 0 end
     local kscale = BUCKETS / (2 * KEY_MAX)
+    local ringS, pf, nRing = F.ringS, st.pf, 0
+    local Platform = ns.ReplayPlatform
     for i = 1, F.n do
+        if ringS[i] then
+            if st.ringOk then
+                local alpha, dz = 1, 0
+                if pf then alpha, dz = Platform.Piece(pf.tl, pf.def, pf.ring, ringS[i], F.ringB[i], st.t) end
+                if alpha > RING_ALPHA_MIN then
+                    local a1 = (ux[i] * c - uy[i] * s) * zp
+                    local b1 = ((ux[i] * s + uy[i] * c) * t - uz[i] * k) * zp
+                    local a2 = (vx[i] * c - vy[i] * s) * zp
+                    local b2 = ((vx[i] * s + vy[i] * c) * t - vz[i] * k) * zp
+                    local h1, h2 = hu[i], hv[i]
+                    local bx = abs(a1) * h1 + abs(a2) * h2
+                    local by = abs(b1) * h1 + abs(b2) * h2
+                    local z = cz[i] + dz
+                    local sx = ox + (cx[i] * c - cy[i] * s) * zp
+                    local sy = oy + ((cx[i] * s + cy[i] * c) * t - z * k) * zp
+                    if sx + bx > -hw and sx - bx < hw and sy + by > -hh and sy - by < hh then
+                        pa1[i], pb1[i], pa2[i], pb2[i], psx[i], psy[i] = a1, b1, a2, b2, sx, sy
+                        nRing = nRing + 1
+                        ringList[nRing] = i
+                        P.rkey[i] = (cx[i] * s + cy[i] * c) * k + z * t
+                    end
+                end
+            end
+        else
         local nd = fx[i] * vwx + fy[i] * vwy + fz[i] * vwz
         local front = nd > 0
         if front or shell[i] == 1 then
@@ -247,7 +355,9 @@ function Live.Place(cam, room, ppy)
                 end
             end
         end
+        end
     end
+    PlaceRing(nRing, hw, hh)
     for b = 1, BUCKETS do
         local i = head[b]
         while i ~= 0 do
@@ -255,7 +365,7 @@ function Live.Place(cam, room, ppy)
             i = nxt[i]
         end
     end
-    for p = 1, 3 do
+    for p = 1, 4 do
         local list = pools[p]
         for j = st.used[p] + 1, prevUsed[p] do list[j]:Hide() end
     end
@@ -265,5 +375,5 @@ function Live.Stats()
     return st.pieces, st.calls, st.hidden, F.n
 end
 function Live.Textures()
-    return st.bases, st.overs, st.floors, st.used
+    return st.bases, st.overs, st.floors, st.used, st.rings
 end

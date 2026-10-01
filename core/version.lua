@@ -14,6 +14,8 @@ local REPLY_HI = 6
 local REPLY_FRESH = 10
 local MAX_LEN = 24
 local MAX_KNOWN = 2000
+local MAX_RX = 200
+local CHAN = "GUILD"
 local STEP = 0.5
 local Version = {}
 ns.Version = Version
@@ -22,6 +24,7 @@ Version.CHAN_GAP = CHAN_GAP
 local known = {}
 local knownN = 0
 local rxAt = {}
+local rxN = 0
 local sentAt = {}
 local due = {}
 local toldTop = nil
@@ -29,8 +32,7 @@ local newest = nil
 local listeners = {}
 local loginAt = nil
 local started = false
-local groupKind = nil
-local groupSize = 0
+local inGuild = false
 function Version.Parse(text)
     if type(text) ~= "string" or #text > MAX_LEN then return nil end
     local a, b, c, rest = match(text, "^(%d%d?%d?%d?)%.(%d%d?%d?%d?)%.(%d%d?%d?%d?)(.*)$")
@@ -92,15 +94,8 @@ function Version.StatusLine()
     if newest then seen = format(ns.T("ver.seen"), newest.v, newest.from) end
     return format(ns.T("ver.status"), mine, seen)
 end
-local function GroupKind()
-    if GetNumRaidMembers() > 0 then return "RAID", GetNumRaidMembers() end
-    if GetNumPartyMembers() > 0 then return "PARTY", GetNumPartyMembers() + 1 end
-    return nil, 0
-end
 local function ChanOpen(chan)
-    if chan == "GUILD" then return IsInGuild() and true or false end
-    local kind = GroupKind()
-    return kind == chan
+    return chan == CHAN and IsInGuild() and true or false
 end
 local timer = CreateFrame("Frame")
 timer:Hide()
@@ -144,9 +139,7 @@ timer:SetScript("OnUpdate", function(self, dt)
     local now = GetTime()
     if loginAt and now >= loginAt then
         loginAt = nil
-        if IsInGuild() then Schedule("GUILD", 0) end
-        local kind = GroupKind()
-        if kind then Schedule(kind, 0) end
+        if IsInGuild() then Schedule(CHAN, 0) end
     end
     if not Flush(now) and not loginAt then self:Hide() end
 end)
@@ -163,9 +156,33 @@ local function Note(v, from)
     toldTop = v
     ns.Print(format(ns.T("ver.new"), v, mine))
 end
+local function RxRoom(now)
+    for name, at in pairs(rxAt) do
+        if now - at >= RX_GAP then
+            rxAt[name] = nil
+            rxN = rxN - 1
+        end
+    end
+    while rxN >= MAX_RX do
+        local old, oldAt
+        for name, at in pairs(rxAt) do
+            if not oldAt or at < oldAt then old, oldAt = name, at end
+        end
+        rxAt[old] = nil
+        rxN = rxN - 1
+    end
+end
+function Version.RxCount()
+    return rxN
+end
 function Version.OnMessage(body, sender, chan)
+    if chan ~= CHAN then return end
     local now = GetTime()
     if now - (rxAt[sender] or -1e9) < RX_GAP then return end
+    if not rxAt[sender] then
+        if rxN >= MAX_RX then RxRoom(now) end
+        rxN = rxN + 1
+    end
     rxAt[sender] = now
     local v = match(body, "^V:(.+)$")
     if not v or not Version.Parse(v) then return end
@@ -181,30 +198,29 @@ function Version.OnMessage(body, sender, chan)
     local d = due[chan]
     if d and d.reply and cmp and cmp >= 0 then due[chan] = nil end
     local fresh = now - (sentAt[chan] or -1e9) < REPLY_FRESH
-    if cmp == -1 and not fresh and (chan == "GUILD" or chan == "RAID" or chan == "PARTY") then
+    if cmp == -1 and not fresh then
         Schedule(chan, REPLY_LO + random() * (REPLY_HI - REPLY_LO), true)
     end
     if was ~= v then Changed() end
 end
-local function Roster()
-    local kind, size = GroupKind()
-    local grew = kind and (kind ~= groupKind or size > groupSize)
-    groupKind, groupSize = kind, size
-    if grew and started and not loginAt then Schedule(kind, ROSTER_DELAY) end
+local function Joined()
+    local member = IsInGuild() and true or false
+    local grew = member and not inGuild
+    inGuild = member
+    if grew and started and not loginAt then Schedule(CHAN, ROSTER_DELAY) end
 end
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
-events:RegisterEvent("RAID_ROSTER_UPDATE")
-events:RegisterEvent("PARTY_MEMBERS_CHANGED")
+events:RegisterEvent("PLAYER_GUILD_UPDATE")
 events:SetScript("OnEvent", function(self, event)
     if event == "PLAYER_ENTERING_WORLD" then
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
         loginAt = GetTime() + LOGIN_DELAY
         started = true
-        groupKind, groupSize = GroupKind()
+        inGuild = IsInGuild() and true or false
         timer:Show()
         return
     end
-    Roster()
+    Joined()
 end)
 ns.Comm.On(PREFIX, Version.OnMessage)

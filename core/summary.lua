@@ -1334,8 +1334,9 @@ local function Build(fight)
                 ns.Putri.Feed(pu, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, a1, a2, a4, a5, who)
             end
             if inFight then
-                if sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CREATE" or sub == "ENCHANT_APPLIED" then
-                    ns.RaidPart.Consume(rp, sub, rwho, srcName, srcFlags, a1)
+                if sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CREATE" or sub == "ENCHANT_APPLIED"
+                    or sub == "SPELL_AURA_APPLIED" then
+                    ns.RaidPart.Consume(rp, sub, rwho, srcName, srcFlags, a1, dstName, dstFlags)
                 end
                 if ctl then
                     ns.MindCtl.Feed(ctl, ts, sub, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a4, a5, a6, a7, a8)

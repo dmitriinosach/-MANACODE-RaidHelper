@@ -41,7 +41,7 @@ local used = { pool = 0, cone = 0, blast = 0, add = 0, line = 0, hit = 0 }
 local view, marks
 local hw, hh = 0, 0
 local top1, top2, top3, topN = {}, {}, {}, {}
-local flagBox, flagSpike, flagMc, flagLift, flagHalo = {}, {}, {}, {}, {}
+local flagBox, flagSpike, flagMc, flagLift, flagHalo, flagGrow = {}, {}, {}, {}, {}, {}
 local pactK, pactFrom = {}, {}
 local stats = { badges = 0, pools = 0, cones = 0, blasts = 0, adds = 0 }
 V.stats = stats
@@ -155,7 +155,7 @@ function V.Attach(fig)
     fig.halo:Hide()
 end
 function V.Role(fig)
-    fig.bKey, fig.lift, fig.mcOn = nil, nil, nil
+    fig.bKey, fig.lift, fig.mcOn, fig.grow = nil, nil, nil, nil
     for i = 1, BADGES do fig.bd[i]:Hide() end
     fig.more:Hide()
     fig.box:Hide()
@@ -364,13 +364,16 @@ local function Collect(L, n, t)
     for k = 1, n do
         top1[k], top2[k], top3[k], topN[k] = -1, -1, -1, 0
         flagBox[k], flagSpike[k], flagMc[k], flagLift[k], flagHalo[k] = false, false, false, false, false
+        flagGrow[k] = false
     end
     local np = 0
     for i = 1, L.ns do
         if L.stFrom[i] > t then break end
-        if L.stTo[i] > t then
-            local k, s = L.stK[i], L.stS[i]
-            local def = Layers.State(s)
+        local k, s = L.stK[i], L.stS[i]
+        local def = L.stTo[i] > t and Layers.State(s)
+        if def and def.grow then
+            flagGrow[k] = true
+        elseif def then
             topN[k] = topN[k] + 1
             local p = def.prio
             local a, b = top1[k], top2[k]
@@ -435,6 +438,7 @@ local function Decorate(fig, k)
         fig.lift = lift
         fig.sQ = nil
     end
+    fig.grow = flagGrow[k]
     if flagHalo[k] then fig.halo:Show() else fig.halo:Hide() end
     if topN[k] > 0 then stats.badges = stats.badges + min(BADGES, topN[k]) end
 end
