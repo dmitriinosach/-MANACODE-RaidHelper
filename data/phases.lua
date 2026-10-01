@@ -1,27 +1,27 @@
 local _, ns = ...
 ns.phases = {
-    ["Лорд Ребрад"] = {
-        { spell = "Вихрь костей", label = "Вихрь костей", every = true },
+    [ns.ENC.marrowgar] = {
+        { spell = 69076, label = "ph.w.storm", every = true },
     },
-    ["Саурфанг Смертоносный"] = {
-        { spell = "Бешенство", label = "Бешенство" },
+    [ns.ENC.saurfang] = {
+        { spell = 28747, label = "ph.frenzy" },
     },
-    ["Тухлопуз"] = {
-        { spell = "Вдыхание гнилостных испарений", label = "Вдох", every = true },
+    [ns.ENC.festergut] = {
+        { spell = 69165, label = "ph.w.inhale", every = true },
     },
-    ["Кровавая королева Лана'тель"] = {
-        { spell = "Кровавый вихрь", label = "Кровавый вихрь", every = true },
+    [ns.ENC.lanathel] = {
+        { spell = 71772, label = "ph.w.bloodbolt", every = true },
     },
-    ["Валитрия Сноходица"] = {
-        { spell = "Ярость сновидицы", label = "Ярость сновидицы", every = true },
+    [ns.ENC.valithria] = {
+        { spell = 71189, label = "ph.dream", every = true },
     },
-    ["Синдрагоса"] = {
-        { spell = "Ледяной склеп", label = "Ледяной склеп", every = true },
+    [ns.ENC.sindragosa] = {
+        { spell = 69675, label = "ph.w.tomb", every = true },
     },
-    ["Король-лич"] = {
-        { spell = "Беспощадность зимы", label = "Переход" },
-        { spell = "Вызов валь'киры", label = "Фаза 2" },
-        { spell = "Призыв зловещих духов", label = "Фаза 3" },
-        { spell = "Неистовство Ледяной Скорби", label = "Развязка" },
+    [ns.ENC.lichking] = {
+        { spell = 73793, label = "ph.transition" },
+        { spell = 69037, label = "ph.p2" },
+        { spell = 70498, label = "ph.p3" },
+        { spell = 72350, label = "ph.fury" },
     },
 }

@@ -18,10 +18,7 @@ local HIT_SHOW = 6
 local HIT_YD = 3
 local BLAST_SHOW = 1
 local FADE = 1
-local ADD_ICON = 14
 local ADD_HOLD = 4
-local CHASE_ALPHA = 0.45
-local CHASE_SHIFT = 8
 local BADGE = 12
 local BADGES = 3
 local LIFT_PX = 14
@@ -35,13 +32,15 @@ ns.ReplayLayersView = V
 local Kit = ns.Kit
 local Replay = ns.Replay
 local Layers = ns.ReplayLayers
-local pools, cones, blasts, adds, addBg, lines, hits = {}, {}, {}, {}, {}, {}, {}
+local Shield = ns.ReplayShield
+local pools, cones, blasts, lines, hits = {}, {}, {}, {}, {}
 local hitbox
-local used = { pool = 0, cone = 0, blast = 0, add = 0, line = 0, hit = 0 }
+local used = { pool = 0, cone = 0, blast = 0, line = 0, hit = 0 }
 local view, marks
 local hw, hh = 0, 0
 local top1, top2, top3, topN = {}, {}, {}, {}
 local flagBox, flagSpike, flagMc, flagLift, flagHalo, flagGrow = {}, {}, {}, {}, {}, {}
+local flagLook = {}
 local pactK, pactFrom = {}, {}
 local stats = { badges = 0, pools = 0, cones = 0, blasts = 0, adds = 0 }
 V.stats = stats
@@ -114,10 +113,6 @@ function V.Build(v, m)
     for i = 1, LINE_DRAW do lines[i] = Tex(marks, LINE, "BORDER", "sem.rep.pact") end
     for i = 1, CONE_DRAW do cones[i] = Tex(marks, CONE, "ARTWORK", "sem.rep.cone") end
     for i = 1, BLAST_DRAW do blasts[i] = Tex(marks, RIM, "ARTWORK", "sem.rep.blast") end
-    for i = 1, ADD_DRAW do
-        addBg[i] = Tex(marks, CIRCLE, "ARTWORK", "sem.rep.plate")
-        adds[i] = Tex(marks, "", "OVERLAY")
-    end
     hitbox = Tex(marks, RIM, "BACKGROUND", "sem.rep.hitbox")
 end
 function V.Attach(fig)
@@ -155,7 +150,7 @@ function V.Attach(fig)
     fig.halo:Hide()
 end
 function V.Role(fig)
-    fig.bKey, fig.lift, fig.mcOn, fig.grow = nil, nil, nil, nil
+    fig.bKey, fig.lift, fig.mcOn, fig.grow, fig.look = nil, nil, nil, nil, nil
     for i = 1, BADGES do fig.bd[i]:Hide() end
     fig.more:Hide()
     fig.box:Hide()
@@ -166,24 +161,11 @@ function V.Clear(fig)
     if not fig.bd then return end
     V.Role(fig)
 end
-local function SetIcon(tex, icon)
-    if type(icon) == "number" then
-        Kit.Icon.Spell(tex, icon)
-    else
-        tex:SetTexture(icon)
-        tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-    end
-end
 function V.Use(scene)
     if not view then return end
     for i = 1, #pools do pools[i]:Hide() end
     for i = 1, #cones do cones[i]:Hide() end
     for i = 1, #blasts do blasts[i]:Hide() end
-    for i = 1, #adds do
-        adds[i]:Hide()
-        addBg[i]:Hide()
-        adds[i].icon = nil
-    end
     for i = 1, #lines do lines[i]:Hide() end
     for i = 1, #hits do hits[i]:Hide() end
     hitbox:Hide()
@@ -278,50 +260,27 @@ local function PlaceCones(scene, cam, t)
     used.cone = n
     stats.cones = n
 end
-local function PlaceAdds(scene, cam, t, figScale)
+function V.Adds(scene, t, out)
     local list = scene.layers.adds
     local n = 0
     for i = 1, #list do
         if n >= ADD_DRAW then break end
         local a = list[i]
         if a.from <= t and a.to > t and not a.mdl then
-            local x, y, alpha, shift = -1, -1, 1, 0
+            local x, y, chase = -1, -1, false
             if a.chaseK and t < a.chaseTo then
                 x, y = Replay.PosAtTime(scene.tracks[a.chaseK], t)
-                alpha, shift = CHASE_ALPHA, CHASE_SHIFT
+                chase = true
             else
                 x, y = Replay.PosHold(a, t, ADD_HOLD)
             end
             if x >= 0 then
-                local sx, sy, k = Replay.Project(cam, x, y)
-                if k > 0 and sx > -hw and sx < hw and sy > -hh and sy < hh then
-                    n = n + 1
-                    local tex, bg = adds[n], addBg[n]
-                    if tex.icon ~= a.icon then
-                        tex.icon = a.icon
-                        SetIcon(tex, a.icon)
-                    end
-                    local size = max(8, min(32, ADD_ICON * figScale * k))
-                    tex:SetWidth(size)
-                    tex:SetHeight(size)
-                    tex:SetPoint("CENTER", view, "CENTER", sx + shift, -sy + size / 2)
-                    tex:SetAlpha(alpha)
-                    tex:Show()
-                    bg:SetWidth(size + 4)
-                    bg:SetHeight(size + 4)
-                    bg:SetPoint("CENTER", tex, "CENTER", 0, 0)
-                    bg:SetAlpha(alpha)
-                    bg:Show()
-                end
+                n = n + 1
+                out.x[n], out.y[n], out.icon[n], out.chase[n] = x, y, a.icon, chase
             end
         end
     end
-    for i = n + 1, used.add do
-        adds[i]:Hide()
-        addBg[i]:Hide()
-    end
-    used.add = n
-    stats.adds = n
+    return n
 end
 local function PlaceHits(scene, cam, t)
     local L = scene.layers
@@ -365,12 +324,15 @@ local function Collect(L, n, t)
         top1[k], top2[k], top3[k], topN[k] = -1, -1, -1, 0
         flagBox[k], flagSpike[k], flagMc[k], flagLift[k], flagHalo[k] = false, false, false, false, false
         flagGrow[k] = false
+        flagLook[k] = false
     end
     local np = 0
     for i = 1, L.ns do
         if L.stFrom[i] > t then break end
         local k, s = L.stK[i], L.stS[i]
         local def = L.stTo[i] > t and Layers.State(s)
+        local look = def and Shield.Of(s)
+        if look and Shield.Prio(look) > Shield.Prio(flagLook[k] or nil) then flagLook[k] = look end
         if def and def.grow then
             flagGrow[k] = true
         elseif def then
@@ -439,6 +401,7 @@ local function Decorate(fig, k)
         fig.sQ = nil
     end
     fig.grow = flagGrow[k]
+    fig.look = flagLook[k] or nil
     if flagHalo[k] then fig.halo:Show() else fig.halo:Hide() end
     if topN[k] > 0 then stats.badges = stats.badges + min(BADGES, topN[k]) end
 end
@@ -462,7 +425,7 @@ local function PlacePacts(figs, np)
     for i = n + 1, used.line do lines[i]:Hide() end
     used.line = n
 end
-function V.Place(scene, cam, t, figs, figScale)
+function V.Place(scene, cam, t, figs)
     local L = scene.layers
     if not L or not view then return end
     hw, hh = cam.w / 2, cam.h / 2
@@ -470,7 +433,6 @@ function V.Place(scene, cam, t, figs, figScale)
     PlaceHits(scene, cam, t)
     PlaceBlasts(scene, cam, t)
     PlaceCones(scene, cam, t)
-    PlaceAdds(scene, cam, t, figScale)
     PlaceHitbox(scene, cam)
     local n = #scene.tracks
     local np = Collect(L, n, t)

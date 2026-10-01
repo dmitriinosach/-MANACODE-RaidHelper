@@ -22,15 +22,15 @@ local function KeyOf(fight)
     end
     return key
 end
-function Index.BossNames(fight)
-    local names = { [fight.boss] = true }
-    for name, enc in pairs(ns.bosses) do
-        if enc == fight.boss then names[name] = true end
+function Index.BossKeys(fight)
+    local keys = { [fight.boss] = true }
+    for key, enc in pairs(ns.bosses) do
+        if enc == fight.boss then keys[key] = true end
     end
     if fight.names then
-        for name in pairs(fight.names) do names[name] = true end
+        for key in pairs(fight.names) do keys[key] = true end
     end
-    return names
+    return keys
 end
 local function IsPull(seg, s, at, from, to)
     local ts, sub, _, _, srcFlags = ns.Store.Decode(seg, s, at, 0)
@@ -44,15 +44,16 @@ local function Build(fight)
     local common, snaps, swings, who, thr = {}, {}, {}, {}, {}
     local idx = { fight = fight, segs = segs, from = from, to = to,
                   common = common, snaps = snaps, swings = swings, who = who, thr = thr }
-    local bosses = Index.BossNames(fight)
+    local bosses = Index.BossKeys(fight)
     local fixates = ns.fixates or {}
+    local NpcKey = ns.NpcKey
     local castSubs = ns.Encounters.BOSS_SUBS
     for name in pairs(fight.players) do who[name] = {} end
     ns.Jobs.Label("job.index")
     local span, seen = to - from, 0
     for o = 1, #segs do
         local seg = segs[o]
-        for s, at, ci, ts, sub, src, dst in ns.Store.Heads(seg, from, to) do
+        for s, at, ci, ts, sub, src, dst, srcGUID, dstGUID in ns.Store.Heads(seg, from, to) do
             ns.Jobs.Step()
             seen = seen + 1
             if seen % PROGRESS_EVERY == 0 then ns.Jobs.Progress(ts - from, span) end
@@ -62,11 +63,13 @@ local function Build(fight)
                     snaps[#snaps + 1] = key
                 else
                     if sub == "FW_THR" then thr[#thr + 1] = key end
-                    if sub == "SPELL_SUMMON" or sub == "FW_MARK" or (src and fixates[src])
-                        or (src and bosses[src] and castSubs[sub]) then
+                    local srcKey = srcGUID and NpcKey(srcGUID)
+                    if sub == "SPELL_SUMMON" or sub == "FW_MARK" or (srcKey and fixates[srcKey])
+                        or (srcKey and bosses[srcKey] and castSubs[sub]) then
                         common[#common + 1] = key
                     end
-                    if not idx.pull and dst and bosses[dst] and IsPull(seg, s, at, from, to) then
+                    local dstKey = not idx.pull and dstGUID and NpcKey(dstGUID)
+                    if dstKey and bosses[dstKey] and IsPull(seg, s, at, from, to) then
                         idx.pull = key
                     end
                     local list = src and who[src]

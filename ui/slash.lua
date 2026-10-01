@@ -75,7 +75,7 @@ function Slash.Diag()
         { "ui/badges.lua", ns.Badges },
         { "ui/summary.lua", ns.SummaryView },
         { "data/summaries.lua", ns.summaries },
-        { "data/bosses/icc/*.lua", ns.summaries and ns.summaries["Король-лич"] },
+        { "data/bosses/icc/*.lua", ns.summaries and ns.summaries[ns.ENC.lichking] },
         { "data/penalties.lua", ns.penaltyPresets },
         { "core/penalties.lua", ns.Penalties },
         { "core/comm.lua", ns.Comm },

@@ -84,7 +84,8 @@ local function Killer(d, name, boss, bare)
     if not k then return T("proof.nokiller") end
     local out = format(T("proof.killer"), Spell(k))
     if (k.amount or 0) > 0 then out = out .. " " .. Short(k.amount) end
-    if not bare and k.src and k.src ~= name and k.src ~= boss then out = out .. format(T("proof.from"), Plain(k.src)) end
+    local own = k.srcKey and (k.srcKey == boss or ns.bosses[k.srcKey] == boss)
+    if not bare and k.src and k.src ~= name and not own then out = out .. format(T("proof.from"), Plain(k.src)) end
     return out
 end
 local function Before(d)
@@ -117,14 +118,14 @@ local function Guard(p, d)
             last[id] = t
         end
     end
-    if used then return format(T("proof.guard.used"), Link(used.id, list[used.id][1]), Dec(used.ago)) end
+    if used then return format(T("proof.guard.used"), Link(used.id, nil), Dec(used.ago)) end
     local ready = {}
     for id, t in pairs(last) do
-        if t + list[id][2] <= d.t then ready[#ready + 1] = id end
+        if t + list[id].cd <= d.t and (ns.saving or {})[id] then ready[#ready + 1] = id end
     end
     if #ready == 0 then return nil end
     tsort(ready)
-    return format(T("proof.guard.ready"), Link(ready[1], list[ready[1]][1]))
+    return format(T("proof.guard.ready"), Link(ready[1], nil))
 end
 local function DeathChain(fight, p, d, name, bare)
     if not d then return { T("proof.nodeath") } end
@@ -149,29 +150,30 @@ local function Times(fight, events)
     local more = #events > TIMES and format(T("proof.more"), #events - TIMES) or ""
     return format(T("proof.times"), concat(parts, ", ") .. more)
 end
-local function IdOf(s, name)
-    return s and s.spellIds and s.spellIds[name] or nil
+local function IdOf(s, sp)
+    local key = ns.SpellKey(sp)
+    return (s and s.spellIds and key and s.spellIds[key]) or key
 end
 local function HitWhat(rule, p, s, shed)
     local parts, hung, held = {}, {}, {}
-    for i = 1, #(shed or {}) do hung[shed[i].spell] = shed[i].hangs end
+    for i = 1, #(shed or {}) do hung[ns.SpellKey(shed[i].spell)] = shed[i].hangs end
     local spells = rule.spells or {}
     for i = 1, #spells do
-        local sp = spells[i]
+        local sp = ns.SpellKey(spells[i])
         local n = p and p.hits and p.hits[sp] and #p.hits[sp] or 0
         if hung[sp] then
             local cure = ns.Penalties.CureText(hung[sp])
-            held[#held + 1] = (#spells > 1 and (Link(IdOf(s, sp), sp) .. ": ") or "") .. ns.Penalties.ShedText(hung[sp])
+            held[#held + 1] = (#spells > 1 and (Link(IdOf(s, sp), nil) .. ": ") or "") .. ns.Penalties.ShedText(hung[sp])
                 .. (cure and (", " .. cure) or "")
         elseif n > 0 then
-            parts[#parts + 1] = format(T("proof.xn"), Link(IdOf(s, sp), sp), n)
+            parts[#parts + 1] = format(T("proof.xn"), Link(IdOf(s, sp), nil), n)
         end
     end
     if #held > 0 then
         if #parts > 0 then held[#held + 1] = format(T("proof.hit"), concat(parts, ", ")) end
         return concat(held, "; ")
     end
-    if #parts == 0 then parts[1] = Link(IdOf(s, spells[1] or "?"), spells[1]) end
+    if #parts == 0 then parts[1] = Link(IdOf(s, spells[1]), nil) end
     return format(T("proof.hit"), concat(parts, ", "))
 end
 local function Chain(fight, hit, p, s)
@@ -184,22 +186,24 @@ local function Chain(fight, hit, p, s)
     if kind == "hit" then
         out[1] = HitWhat(rule, p, s, hit.shed)
     elseif kind == "chased" then
-        out[1] = format(T("proof.chased"), Plain(rule.npc), #hit.events)
+        out[1] = format(T("proof.chased"), Plain(ns.NpcName(ns.NpcKeyOf(rule.npc))), #hit.events)
     elseif kind == "mccast" then
         local seen, names = {}, {}
         for k = 1, #hit.events do
             local sp = hit.events[k].info and hit.events[k].info.note
             if sp and not seen[sp] then
                 seen[sp] = true
-                names[#names + 1] = Link(IdOf(s, sp), sp)
+                names[#names + 1] = Link(IdOf(s, sp), nil)
             end
         end
         out[1] = format(T("proof.mccast"), concat(names, ", "))
     elseif kind == "expect" then
         local duty = rule.by and p and p.class and rule.by[p.class] or {}
         local what = rule.what == "dispel" and "proof.duty.dispel" or "proof.duty"
-        out[1] = format(T(what), Link(duty.id, duty.spell), info.have or 0, rule.min or 1)
-        if rule.what == "dispel" and rule.removes then out[2] = format(T("proof.removes"), Plain(rule.removes)) end
+        out[1] = format(T(what), Link(duty.id, nil), info.have or 0, rule.min or 1)
+        if rule.what == "dispel" and rule.removes then
+            out[2] = format(T("proof.removes"), Plain(ns.SpellName(ns.SpellKey(rule.removes))))
+        end
         return out
     elseif kind == "mcweapon" then
         for k = 1, min(1, #hit.events) do
@@ -213,7 +217,9 @@ local function Chain(fight, hit, p, s)
         if #out == 0 then out[1] = format(T("proof.ctl.bare"), Link(rule.aura, nil)) end
         return out
     elseif kind == "mindmg" then
-        out[1] = format(T("proof.mindmg"), Plain(concat(rule.targets or {}, ", ")), Short(info.amount or 0),
+        local names = {}
+        for i = 1, #(rule.targets or {}) do names[i] = ns.NpcName(ns.NpcKeyOf(rule.targets[i])) end
+        out[1] = format(T("proof.mindmg"), Plain(concat(names, ", ")), Short(info.amount or 0),
             Short(info.need or 0))
         return out
     elseif kind == "mindps" then
@@ -453,9 +459,9 @@ end
 function Proof.BySpell(what)
     return function(hit)
         local rule = hit.rule
-        if rule.npc == what then return true end
+        if rule.npc and ns.NpcKeyOf(rule.npc) == what then return true end
         for i = 1, #(rule.spells or {}) do
-            if rule.spells[i] == what then return true end
+            if ns.SpellKey(rule.spells[i]) == what then return true end
         end
         return false
     end

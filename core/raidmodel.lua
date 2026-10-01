@@ -53,8 +53,6 @@ local function Totals(res)
     Put(timeTip, "row", T("rsum.tt.to"), Stamp(res.to))
     Put(timeTip, "row", T("rsum.tt.busy"), format(T("rsum.hours"), hours))
     Put(timeTip, "row", T("rsum.tt.sessions"), tostring(res.sessions))
-    Put(timeTip, "sep")
-    Put(timeTip, "note", T("rsum.tt.timenote"))
     local sub = Model.Span(res)
     if res.sessions > 1 then sub = format(T("rsum.t.sessions"), sub, res.sessions) end
     local encTip = { { kind = "head", left = T("rsum.t.encs") } }
@@ -91,8 +89,6 @@ local function DamageTip(res, p, share)
     if res.cut then Put(out, "row", T("rsum.d.cut"), Short(p.cut)) end
     Put(out, "row", T("rsum.d.enc"), Short(p.enc))
     Put(out, "row", T("rsum.d.boss"), Short(p.boss))
-    Put(out, "sep")
-    Put(out, "note", T("rsum.tt.useful"))
     return out
 end
 local function Damage(res, key, label)
@@ -122,10 +118,12 @@ local function Heal(res)
 end
 local function Pairs(map)
     local list = {}
-    for k, v in pairs(map) do list[#list + 1] = { k = k, v = v } end
+    for k, v in pairs(map) do
+        list[#list + 1] = { k = k, v = v, s = type(k) == "number" and ns.EncName(k) or tostring(k) }
+    end
     tsort(list, function(a, b)
         if a.v ~= b.v then return a.v > b.v end
-        return a.k < b.k
+        return a.s < b.s
     end)
     return list
 end
@@ -137,7 +135,7 @@ local function Deaths(res)
         local tip = { { kind = "head", left = p.name, right = tostring(p.deaths), class = p.class } }
         local by = Pairs(p.deathBy)
         for k = 1, #by do
-            local where = by[k].k == ns.RaidSummary.TRASH and T("rsum.trash") or by[k].k
+            local where = by[k].k == ns.RaidSummary.TRASH and T("rsum.trash") or by[k].s
             Put(tip, "row", where, tostring(by[k].v))
         end
         rows[i] = { who = p.name, class = p.class, text = tostring(p.deaths), v = p.deaths, lines = tip }
@@ -217,7 +215,6 @@ local function UseTip(res, pr, p)
     end
     if not any then Put(tip, "note", T("rsum.tt.nodrunk")) end
     CostLines(tip, pr, p)
-    Put(tip, "note", T("rsum.tt.prerec"))
     return tip
 end
 local function Drunk(res, pr)
@@ -254,7 +251,7 @@ end
 local function SpentRow(res, pr, sp)
     local each = not sp.free and pr.c[sp.item] or nil
     local cost = each and each * sp.n or nil
-    local tip = { { kind = "head", left = sp.item, right = T("rsum.cat." .. sp.cat) } }
+    local tip = { { kind = "head", left = ns.ItemName(sp.id, sp.item), right = T("rsum.cat." .. sp.cat) } }
     Put(tip, "note", sp.free and T("rsum.tt.free") or PriceNote(sp, each))
     Put(tip, "sep")
     local by = Pairs(sp.by)
@@ -264,7 +261,7 @@ local function SpentRow(res, pr, sp)
                           right = each and ns.RaidCost.Gold(each * by[k].v) or nil, class = p and p.class }
     end
     local note = (cost and ns.RaidCost.Amount(cost)) or (sp.free and T("rsum.free")) or T("rsum.noprice")
-    return { who = sp.item, icon = ns.RaidCost.Icon(sp.id, sp.spell), text = format("x%d", sp.n), note = note,
+    return { who = ns.ItemName(sp.id, sp.item), icon = ns.RaidCost.Icon(sp.id, sp.spell), text = format("x%d", sp.n), note = note,
              noteIcon = cost and ns.RaidCost.GOLD_ICON or nil, noteLit = cost ~= nil, v = sp.n, lines = tip }, cost
 end
 local function Spent(res, pr)
@@ -327,7 +324,7 @@ function Model.Build(res)
     list[#list + 1] = Damage(res, "boss", "rsum.d.boss")
     if res.cut then
         list[#list + 1] = Tip(Damage(res, "cut", "rsum.d.cut"),
-            format(T("rsum.note.cut"), res.cut, date("%H:%M", res.cutAt)))
+            format(T("rsum.note.cut"), ns.EncName(res.cut), date("%H:%M", res.cutAt)))
     end
     list[#list + 1] = Heal(res)
     list[#list + 1] = Deaths(res)

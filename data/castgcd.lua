@@ -2,12 +2,12 @@ local _, ns = ...
 ns.castGcd = {
     base = 1.5,
     class = { ROGUE = 1.0 },
-    forms = { ["Облик кошки"] = 1.0 },
+    forms = { [768] = 1.0 },
     offGcd = {
-        ["Автоматическая стрельба"] = true,
-        ["Удар героя"] = true,
-        ["Рассекающий удар"] = true,
-        ["Трепка"] = true,
+        [75] = true,
+        [47450] = true,
+        [15284] = true,
+        [48480] = true,
     },
     pair = 0.3,
     castMax = 10,

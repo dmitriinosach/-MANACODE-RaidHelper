@@ -22,8 +22,8 @@ end
 function RL.TryText(f)
     local out = format("%s %s", ns.T(f.killed and "fl.win" or "fl.wipe"), Clock(f.to - f.from))
     local spot = ns.FightTree and ns.FightTree.Spot(f)
-    if spot then return format(ns.T("rp.try"), f.boss, spot.n, out) end
-    return format(ns.T("rp.try.bare"), f.boss, out)
+    if spot then return format(ns.T("rp.try"), ns.EncName(f.boss), spot.n, out) end
+    return format(ns.T("rp.try.bare"), ns.EncName(f.boss), out)
 end
 function RL.Start(fight, t)
     if not (fight and t) then return nil end

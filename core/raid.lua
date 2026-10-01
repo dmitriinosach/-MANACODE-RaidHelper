@@ -53,6 +53,12 @@ function Raid.LockoutId(raid, at, locks)
     end
     return best
 end
+function Raid.MapNow()
+    if not GetMapInfo or (WorldMapFrame and WorldMapFrame:IsShown()) then return nil end
+    local map = GetMapInfo()
+    if map and map ~= "" then return map end
+    return nil
+end
 function Raid.Current()
     local info = { GetInstanceInfo() }
     local name, kind, diff = info[1], info[2], info[3]
@@ -76,12 +82,13 @@ function Raid.Current()
         raidDiff = raidDiff,
         who = UnitName("player"),
         day = date("%Y-%m-%d"),
+        map = Raid.MapNow(),
     }
     raid.id = Raid.LockoutId(raid)
     return raid
 end
-function Raid.IsFinal(name, boss)
-    local final = name and boss and ns.raidFinal and ns.raidFinal[name]
+function Raid.IsFinal(map, boss)
+    local final = map and boss and ns.raidFinal and ns.raidFinal[map]
     if type(final) == "table" then
         for i = 1, #final do
             if final[i] == boss then return true end

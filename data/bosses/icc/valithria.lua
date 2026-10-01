@@ -1,18 +1,18 @@
 local _, ns = ...
-ns.summaries["Валитрия Сноходица"] = {
+ns.summaries[ns.ENC.valithria] = {
     badges = {
-        { kind = "ticks", spell = "Изощренные кошмары", id = 71941, gap = 5, tip = "sum.b.portals" },
-        { kind = "stack", spell = "Изощренные кошмары", id = 71941, tip = "sum.b.dreamstacks" },
-        { kind = "stack", spell = "Изумрудная бодрость", id = 70873, tip = "sum.b.dreamstacks" },
-        { kind = "stack", spell = "Гниение плоти", tip = "sum.b.fleshrot" },
-        { kind = "applied", spells = { "Аура ледяной ловушки" }, names = {
-            "Воскрешенный верховный маг", "Прожорливое поганище", "Волдырный зомби",
-            "Исторгающий пламя скелет", "Подавитель", "Гнилостный червь",
+        { kind = "ticks", spell = 71940, id = 71941, gap = 5, tip = "sum.b.portals" },
+        { kind = "stack", spell = 71940, id = 71941, tip = "sum.b.dreamstacks" },
+        { kind = "stack", spell = 70873, id = 70873, tip = "sum.b.dreamstacks" },
+        { kind = "stack", spell = 72966, tip = "sum.b.fleshrot" },
+        { kind = "applied", spells = { 13810 }, names = {
+            37868, 37886, 37934,
+            36791, 37863, 37907,
         }, id = 13809, tip = "sum.b.frosttrap" },
     },
     stacks = {
-        { spell = "Изощренные кошмары" },
-        { spell = "Изумрудная бодрость" },
-        { spell = "Гниение плоти" },
+        { spell = 71940 },
+        { spell = 70873 },
+        { spell = 72966 },
     },
 }

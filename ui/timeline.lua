@@ -962,8 +962,8 @@ local function DrawPhases()
     if wanted and data and data.boss then
         for i = 1, #wanted do
             for j = 1, #data.boss do
-                if data.boss[j].label == wanted[i].spell then
-                    marks[#marks + 1] = { t = data.boss[j].t, label = wanted[i].label,
+                if ns.SpellKey(data.boss[j].id) == ns.SpellKey(wanted[i].spell) then
+                    marks[#marks + 1] = { t = data.boss[j].t, label = ns.T(wanted[i].label),
                                           dim = true }
                     if not wanted[i].every then break end
                 end
@@ -1224,7 +1224,7 @@ function SelectPlayer(name)
     player, data = name, nil
     hitRows, healRows = {}, {}
     BuildAuraRows()
-    titleText:SetText(format("%s — %s", fight.boss, name))
+    titleText:SetText(format("%s — %s", ns.EncName(fight.boss), name))
     TL.RefreshLists()
     Redraw()
     if ns.Store.Bare(fight) then return end
@@ -1249,7 +1249,7 @@ local function SelectFight(f)
     hitRows, healRows = {}, {}
     if ns.EffectPanel then ns.EffectPanel.SetTimeline(false) end
     BuildAuraRows()
-    titleText:SetText(ns.FightList and ns.FightList.Title(f) or f.boss)
+    titleText:SetText(ns.FightList and ns.FightList.Title(f) or ns.EncName(f.boss))
     if ns.MapView then ns.MapView.SetFight(f) end
     if ns.RaidSummaryView then ns.RaidSummaryView.Hide() end
     if ns.ThreatView then ns.ThreatView.Hide() end
@@ -1693,7 +1693,7 @@ function TL.ShowThreat(f)
     ruler:Hide()
     canvas:GetParent():Hide()
     statusText:SetText("")
-    titleText:SetText(format(ns.T("thr.view.title"), f.boss))
+    titleText:SetText(format(ns.T("thr.view.title"), ns.EncName(f.boss)))
     ns.ThreatView.Show(f)
     TL.RefreshLists()
 end

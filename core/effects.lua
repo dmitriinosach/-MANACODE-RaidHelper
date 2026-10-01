@@ -107,8 +107,7 @@ function Effects.Icon(id)
 end
 local function Default(id)
     local defaults = ns.effectDefaults
-    local e = Effects.Entry(id)
-    local key = e and e.name
+    local key = ns.SpellKey(id)
     return (key and defaults and defaults[key]) or "on"
 end
 function Effects.HasCategory(key)

@@ -3,14 +3,16 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 0.2.0-beta.6
+## Version: 0.2.0-beta.7
 ## X-Date: 2026-10-01
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
 ## OptionalDeps: Auctionator
 
 fw.lua
+core\ids.lua
 locale\ruRU.lua
+locale\names.lua
 locale\flasks.lua
 locale\servercmd.lua
 locale\devtool.lua
@@ -26,6 +28,9 @@ data\deathdeps.lua
 data\replay.lua
 data\replayplatform.lua
 data\replayfeed.lua
+data\replaymarks.lua
+data\replaybars.lua
+data\replaymech.lua
 data\defensives.lua
 data\procs.lua
 data\bosses\icc\marrowgar.lua
@@ -41,6 +46,19 @@ data\bosses\icc\valithria.lua
 data\bosses\icc\sindragosa.lua
 data\bosses\icc\lichking.lua
 data\bosses\icc\phases.lua
+data\bosses\uld\razorscale.lua
+data\bosses\uld\ignis.lua
+data\bosses\uld\xt002.lua
+data\bosses\uld\council.lua
+data\bosses\uld\kologarn.lua
+data\bosses\uld\auriaya.lua
+data\bosses\uld\hodir.lua
+data\bosses\uld\thorim.lua
+data\bosses\uld\freya.lua
+data\bosses\uld\mimiron.lua
+data\bosses\uld\vezax.lua
+data\bosses\uld\yogg.lua
+data\bosses\uld\algalon.lua
 data\bosses\rs\halion.lua
 data\bosses\toc\beasts.lua
 data\bosses\toc\jaraxxus.lua
@@ -56,11 +74,11 @@ data\consumables.lua
 data\raidsummary.lua
 data\achievements\ulduar.lua
 data\achievements\toc.lua
-data\achievements\names.lua
 data\flasks.lua
 data\servercmd.lua
 data\ranging.lua
 data\threat.lua
+data\ids.lua
 core\raid.lua
 core\bober.lua
 core\expect.lua
@@ -94,6 +112,7 @@ core\rfury.lua
 core\shades.lua
 core\putri.lua
 core\valkyr.lua
+core\ulduar.lua
 core\absorbs.lua
 core\totals.lua
 core\efftime.lua
@@ -114,6 +133,9 @@ core\roompacks.lua
 core\replay.lua
 core\replayplatform.lua
 core\replayfeed.lua
+core\replaymarks.lua
+core\replaybars.lua
+core\replaymech.lua
 core\replaylayers.lua
 core\npcpos.lua
 core\ranging.lua
@@ -123,6 +145,7 @@ core\share.lua
 core\flasks.lua
 core\flaskrole.lua
 core\flasktrade.lua
+core\memguard.lua
 ui\kit\themes.lua
 ui\kit\theme.lua
 ui\kit\window.lua
@@ -146,6 +169,7 @@ ui\badgetips.lua
 ui\actiontips.lua
 ui\stacktips.lua
 ui\badges.lua
+ui\widgetmodal.lua
 ui\grid.lua
 ui\expect.lua
 ui\proof.lua
@@ -171,14 +195,20 @@ ui\panelacts.lua
 ui\panel.lua
 ui\prof.lua
 ui\about.lua
+ui\replayshield.lua
 ui\replayfigs.lua
 ui\replaylayers.lua
 ui\replayfeed.lua
 ui\replaymodels.lua
 ui\replayfollow.lua
+ui\replaybar.lua
+ui\replaysize.lua
+ui\replaytour.lua
+ui\replayview.lua
 ui\replaylive.lua
 ui\replaygeo.lua
 ui\replayiso.lua
+ui\replaybars.lua
 ui\deathpreview.lua
 ui\share.lua
 ui\settingsitems.lua

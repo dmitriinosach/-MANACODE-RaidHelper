@@ -172,6 +172,35 @@ local function KindButton(parent, i, def)
     StyleKind(b)
     return b
 end
+local function NewRow(r)
+    local width = st.width
+    local row = Kit.Row(side, width - PAD * 2)
+    row:SetHeight(ROW_H)
+    row:SetPoint("TOPLEFT", side, "TOPLEFT", PAD, -(HEAD_H + KIND_H + (r - 1) * ROW_H))
+    row.time = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.time:SetPoint("LEFT", row, "LEFT", 2, 0)
+    row.time:SetWidth(TIME_W)
+    row.time:SetJustifyH("LEFT")
+    Kit.Text(row.time, "text.secondary")
+    row.icon = row:CreateTexture(nil, "ARTWORK")
+    row.icon:SetWidth(ICON)
+    row.icon:SetHeight(ICON)
+    row.icon:SetPoint("LEFT", row, "LEFT", TIME_W + 2, 0)
+    row.text:ClearAllPoints()
+    row.text:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
+    row.text:SetWidth(width - PAD * 2 - TIME_W - ICON - 10)
+    row.text:SetHeight(ROW_H - 4)
+    row.mark = row:CreateTexture(nil, "ARTWORK")
+    row.mark:SetWidth(MARK_W)
+    row.mark:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+    row.mark:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+    Kit.Paint(row.mark, "sem.rep.focus")
+    row.mark:Hide()
+    row.onClick = RowClick
+    row:Hide()
+    rows[r] = row
+    return row
+end
 function F.Build(parent, width, height, onSeek)
     side = parent
     st.onSeek = onSeek
@@ -194,37 +223,19 @@ function F.Build(parent, width, height, onSeek)
     end
     local defs = ns.replayFeed.kinds
     for i = 1, #defs do kinds[i] = KindButton(parent, i, defs[i]) end
-    local top = HEAD_H + KIND_H
-    st.rows = floor((height - top) / ROW_H)
-    for r = 1, st.rows do
-        local row = Kit.Row(parent, width - PAD * 2)
-        row:SetHeight(ROW_H)
-        row:SetPoint("TOPLEFT", parent, "TOPLEFT", PAD, -(top + (r - 1) * ROW_H))
-        row.time = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        row.time:SetPoint("LEFT", row, "LEFT", 2, 0)
-        row.time:SetWidth(TIME_W)
-        row.time:SetJustifyH("LEFT")
-        Kit.Text(row.time, "text.secondary")
-        row.icon = row:CreateTexture(nil, "ARTWORK")
-        row.icon:SetWidth(ICON)
-        row.icon:SetHeight(ICON)
-        row.icon:SetPoint("LEFT", row, "LEFT", TIME_W + 2, 0)
-        row.text:ClearAllPoints()
-        row.text:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
-        row.text:SetWidth(width - PAD * 2 - TIME_W - ICON - 10)
-        row.text:SetHeight(ROW_H - 4)
-        row.mark = row:CreateTexture(nil, "ARTWORK")
-        row.mark:SetWidth(MARK_W)
-        row.mark:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
-        row.mark:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-        Kit.Paint(row.mark, "sem.rep.focus")
-        row.mark:Hide()
-        row.onClick = RowClick
-        row:Hide()
-        rows[r] = row
-    end
+    st.rows = max(0, floor((height - HEAD_H - KIND_H) / ROW_H))
+    for r = 1, st.rows do NewRow(r) end
     parent:EnableMouseWheel(true)
     parent:SetScript("OnMouseWheel", Wheel)
+end
+function F.SetHeight(height)
+    local n = max(0, floor((height - HEAD_H - KIND_H) / ROW_H))
+    if n == st.rows or not side then return end
+    for r = #rows + 1, n do NewRow(r) end
+    for r = n + 1, #rows do rows[r]:Hide() end
+    st.rows = n
+    st.drawnTop, st.drawnCur = -1, -1
+    ScrollTo(st.top)
 end
 function F.Use(L)
     st.L = L

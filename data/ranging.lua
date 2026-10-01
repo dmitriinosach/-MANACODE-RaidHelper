@@ -16,12 +16,12 @@ ns.rangingData = {
         { yd = 100, items = { 33119 } },
     },
     adds = {
-        [38508] = "Саурфанг Смертоносный",
-        [36899] = "Гниломорд",
-        [37697] = "Профессор Мерзоцид",
-        [37562] = "Профессор Мерзоцид",
-        [36609] = "Король-лич",
-        [36701] = "Король-лич",
+        [38508] = ns.ENC.saurfang,
+        [36899] = ns.ENC.rotface,
+        [37697] = ns.ENC.putricide,
+        [37562] = ns.ENC.putricide,
+        [36609] = ns.ENC.lichking,
+        [36701] = ns.ENC.lichking,
     },
     fuse = { slowMs = 2, slowRun = 3, inSlack = 4, inRun = 3, outMax = 2, fpsMin = 15, fpsFor = 5 },
     roles = {

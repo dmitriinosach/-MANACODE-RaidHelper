@@ -75,8 +75,6 @@ S.Section("look", "theme", {
           get = Kit.Key, set = function(k) Kit.SetTheme(k) end },
     },
 })
-local rowsLo, rowsHi, rowsDef = 3, 15, 5
-if ns.Badges and ns.Badges.LinesRange then rowsLo, rowsHi, rowsDef = ns.Badges.LinesRange() end
 S.Section("look", "window", {
     label = "set.window",
     order = 20,
@@ -85,13 +83,6 @@ S.Section("look", "window", {
           min = 70, max = 130, step = 5, fmt = Pct, default = 100,
           get = function() return Percent((ns.Shell.Scale())) end,
           set = function(v) ns.Shell.SetScale(v / 100) end },
-        { kind = "slider", key = "rows", label = "set.look.rows", tip = "set.look.rows.tip",
-          min = rowsLo, max = rowsHi, step = 1, default = rowsDef,
-          get = function() return ns.Badges.Lines() end,
-          set = function(v)
-              local was = ns.Badges.Lines()
-              if ns.Badges.SetLines(v) ~= was then RefreshViews() end
-          end },
     },
 })
 S.Section("panel", "panel", {

@@ -1,4 +1,4 @@
-local _, ns = ...
+local ADDON, ns = ...
 local format = string.format
 local floor = math.floor
 local ceil = math.ceil
@@ -11,10 +11,15 @@ local TOTAL_L = 10
 local TOTAL_R = 8
 local SUBGAP = 6
 local SUBMIN = 24
-local LINES_DEFAULT = 5
-local LINES_MIN = 3
-local LINES_MAX = 15
+local LINES = 7
 local LINEH = 14
+local EXPAND = 12
+local EXPAND_BOX = 16
+local EXPAND_R = 4
+local HIT = 3
+local RESERVE = 24
+local ROW_R = 6
+local EXPAND_TEX = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\expand.tga"
 local PERSONALH = 58
 local PERSONAL_R = 7
 local CLASS_ICON = 22
@@ -40,30 +45,12 @@ ns.Badges = Badges
 Badges.style = ns.Kit.Group("badge")
 local style = Badges.style
 local named = {}
-local function ClampLines(n)
-    n = tonumber(n)
-    if not n then return LINES_DEFAULT end
-    return max(LINES_MIN, min(LINES_MAX, floor(n + 0.5)))
-end
-local function UiSettings()
-    local db = ns.GetDB and ns.GetDB()
-    local set = db and db.settings
-    if type(set) ~= "table" then return nil end
-    if type(set.ui) ~= "table" then set.ui = {} end
-    return set.ui
-end
 function Badges.Lines()
-    local ui = UiSettings()
-    return ClampLines(ui and ui.detailRows)
+    return LINES
 end
-function Badges.LinesRange()
-    return LINES_MIN, LINES_MAX, LINES_DEFAULT
-end
-function Badges.SetLines(n)
-    local v = ClampLines(n)
-    local ui = UiSettings()
-    if ui then ui.detailRows = v end
-    return v
+function Badges.Reach(f, height)
+    local head = f.wide and 2 or 1
+    return max(1, floor((height - 14) / LINEH) - head), 8 + head * LINEH, LINEH
 end
 local lit = {}
 local dimmed = {}
@@ -282,9 +269,85 @@ local function RowNote(row, e)
         row.coin:Hide()
     end
 end
+local function ExpandOpen(f)
+    if f.over and ns.WidgetModal then ns.WidgetModal.Open(f) end
+end
+local function Hover(f, on)
+    if on and not f.over then return end
+    f.hot = on
+    Edge(f, on and style.link or style.edge)
+    ns.Kit.Tone(f.title, on and "text.bright" or "text.title")
+    local b = f.expand
+    if b then
+        b.hot = on
+        ns.Kit.Paint(b.plate, on and "surface.selected" or "surface.hover")
+        ns.Kit.Tint(b.tex, on and "text.title" or "text.bright")
+    end
+end
+local function HeadEnter(self)
+    ShowLines(self)
+    Hover(self:GetParent(), true)
+end
+local function HeadLeave(self)
+    HideTip()
+    Hover(self:GetParent(), false)
+end
+local function Chrome(f)
+    f.edgeR = f.modal and RESERVE or 8
+    f.head:SetScript("OnEnter", HeadEnter)
+    f.head:SetScript("OnLeave", HeadLeave)
+    f.head:SetScript("OnMouseUp", function() ExpandOpen(f) end)
+    if f.modal then return end
+    local b = CreateFrame("Button", nil, f)
+    b:SetFrameLevel(f:GetFrameLevel() + 6)
+    b:SetWidth(EXPAND_BOX)
+    b:SetHeight(EXPAND_BOX)
+    b:SetHitRectInsets(-HIT, -HIT, -HIT, -HIT)
+    b:SetPoint("TOPRIGHT", -EXPAND_R, -3)
+    b.plate = b:CreateTexture(nil, "BACKGROUND")
+    b.plate:SetAllPoints()
+    ns.Kit.Paint(b.plate, "surface.hover")
+    b.tex = b:CreateTexture(nil, "ARTWORK")
+    b.tex:SetWidth(EXPAND)
+    b.tex:SetHeight(EXPAND)
+    b.tex:SetPoint("CENTER", 0, 0)
+    b.tex:SetTexture(EXPAND_TEX)
+    ns.Kit.Tint(b.tex, "text.bright")
+    b:SetScript("OnEnter", function(self)
+        Hover(f, true)
+        ns.Tip.Dock(self, { { kind = "head", left = ns.T("sum.k.all") } })
+    end)
+    b:SetScript("OnLeave", function()
+        Hover(f, false)
+        HideTip()
+    end)
+    b:SetScript("OnClick", function() ExpandOpen(f) end)
+    b:Hide()
+    f.expand = b
+end
+local function Crown(f, lines)
+    local list = f.list
+    local over = #list > lines
+    f.over = over and not f.modal
+    local right = over and RESERVE or 8
+    if f.modal then right = RESERVE end
+    if over then
+        f.more:SetText(format(ns.T("sum.k.more"), f.offset + 1, min(#list, f.offset + lines), #list))
+        f.more:SetPoint("TOPRIGHT", -right, -6)
+        f.more:Show()
+        f.title:SetPoint("TOPRIGHT", f.more, "TOPLEFT", -COLGAP, 0)
+    else
+        f.more:Hide()
+        f.title:SetPoint("TOPRIGHT", -right, -6)
+    end
+    if f.expand then
+        if f.over then f.expand:Show() else f.expand:Hide() end
+    end
+    f.head:EnableMouse(f.head.lines ~= nil or f.over == true)
+end
 local function DrawRows(f)
     local list = f.list
-    local lines = f.lineCount or LINES_DEFAULT
+    local lines = f.lineCount
     local most = max(0, #list - lines)
     f.offset = max(0, min(most, f.offset or 0))
     for k = 1, #f.rows do
@@ -304,14 +367,7 @@ local function DrawRows(f)
         end
         if f.paint then f.paint(row, e or nil) end
     end
-    if most > 0 then
-        f.more:SetText(format(ns.T("sum.k.more"), f.offset + 1, min(#list, f.offset + lines), #list))
-        f.more:Show()
-        f.title:SetPoint("TOPRIGHT", f.more, "TOPLEFT", -COLGAP, 0)
-    else
-        f.more:Hide()
-        f.title:SetPoint("TOPRIGHT", -8, -6)
-    end
+    Crown(f, lines)
     if #list == 0 then
         local row = f.rows[1]
         RowIcon(row, nil)
@@ -324,9 +380,10 @@ local function DrawRows(f)
         if f.paint then f.paint(row, nil) end
         row:Show()
     end
+    if f.onDraw then f.onDraw(f) end
 end
 local function DetailWheel(self, delta)
-    local most = max(0, #self.list - (self.lineCount or LINES_DEFAULT))
+    local most = max(0, #self.list - self.lineCount)
     local want = (self.offset or 0) - delta
     if most == 0 or want < 0 or want > most then
         if self.onWheel then self.onWheel(delta) end
@@ -339,7 +396,7 @@ local function NewDetailRow(f, k)
     local row = CreateFrame("Frame", nil, f)
     row:SetHeight(LINEH)
     row:SetPoint("TOPLEFT", 6, -(8 + k * LINEH))
-    row:SetPoint("TOPRIGHT", -6, -(8 + k * LINEH))
+    row:SetPoint("TOPRIGHT", -(f.rowR or ROW_R), -(8 + k * LINEH))
     row:EnableMouse(true)
     row:SetScript("OnEnter", ShowLines)
     row:SetScript("OnLeave", HideTip)
@@ -371,11 +428,13 @@ local function NewDetailRow(f, k)
     return row
 end
 local function Grow(f, n)
+    n = f.fixed or n
     for k = #f.rows + 1, n do f.rows[k] = NewDetailRow(f, k) end
     f.lineCount = n
 end
-function Badges.Detail(parent)
+function Badges.Detail(parent, modal)
     local f = CreateFrame("Frame", nil, parent)
+    f.modal, f.rowR = modal, modal and ROW_R + 8 or ROW_R
     Badges.Skin(f, style.detail)
     f:EnableMouseWheel(true)
     f:SetScript("OnMouseWheel", DetailWheel)
@@ -392,31 +451,33 @@ function Badges.Detail(parent)
     f.head:SetPoint("TOPLEFT", 0, 0)
     f.head:SetPoint("TOPRIGHT", 0, 0)
     f.head:SetHeight(8 + LINEH)
-    f.head:SetScript("OnEnter", ShowLines)
-    f.head:SetScript("OnLeave", HideTip)
     f.head:EnableMouse(false)
+    Chrome(f)
     f.probe = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f.probe:Hide()
     f.list = {}
     f.rows = {}
     f.lineCount = 0
-    Grow(f, Badges.Lines())
+    Grow(f, LINES)
     function f.SetModel(self, m)
         Badges.Skin(self, style.detail)
         self.title:SetText(m.title)
+        self.model = m
         self.head.lines = m.tip
-        self.head:EnableMouse(m.tip ~= nil)
         self.list = m.rows or {}
         self.empty = m.empty
         self.onWheel = m.onWheel
         self.paint = m.paint
         self.offset = 0
-        Grow(self, Badges.Lines())
+        Grow(self, LINES)
         Columns(self)
         DrawRows(self)
     end
+    function f.Redraw(self)
+        DrawRows(self)
+    end
     function f.Layout(self, width)
-        local lines = Badges.Lines()
+        local lines = self.fixed or LINES
         if lines ~= self.lineCount then
             Grow(self, lines)
             Columns(self)
@@ -702,7 +763,7 @@ local function NewWideRow(f, k)
     local row = CreateFrame("Frame", nil, f)
     row:SetHeight(LINEH)
     row:SetPoint("TOPLEFT", 6, -(8 + (k + 1) * LINEH))
-    row:SetPoint("TOPRIGHT", -6, -(8 + (k + 1) * LINEH))
+    row:SetPoint("TOPRIGHT", -(f.rowR or ROW_R), -(8 + (k + 1) * LINEH))
     row:EnableMouse(k > 0)
     row:SetScript("OnEnter", ShowLines)
     row:SetScript("OnLeave", HideTip)
@@ -714,6 +775,7 @@ local function NewWideRow(f, k)
     return row
 end
 local function WideGrow(f, want)
+    want = f.fixed or want
     for k = #f.rows + 1, want do f.rows[k] = NewWideRow(f, k) end
     f.lineCount = want
 end
@@ -835,14 +897,7 @@ local function DrawWide(f)
             row:Hide()
         end
     end
-    if most > 0 then
-        f.more:SetText(format(ns.T("sum.k.more"), f.offset + 1, min(#list, f.offset + lines), #list))
-        f.more:Show()
-        f.title:SetPoint("TOPRIGHT", f.more, "TOPLEFT", -COLGAP, 0)
-    else
-        f.more:Hide()
-        f.title:SetPoint("TOPRIGHT", -8, -6)
-    end
+    Crown(f, lines)
     if #list == 0 then
         local row = f.rows[1]
         WideRow(row, nil, f)
@@ -850,6 +905,7 @@ local function DrawWide(f)
         row.name:SetTextColor(style.muted[1], style.muted[2], style.muted[3])
         row:Show()
     end
+    if f.onDraw then f.onDraw(f) end
 end
 local function WideWheel(self, delta)
     local most = max(0, #self.list - self.lineCount)
@@ -861,8 +917,9 @@ local function WideWheel(self, delta)
     self.offset = want
     DrawWide(self)
 end
-function Badges.Wide(parent)
+function Badges.Wide(parent, modal)
     local f = CreateFrame("Frame", nil, parent)
+    f.wide, f.modal, f.rowR = true, modal, modal and ROW_R + 8 or ROW_R
     Badges.Skin(f, style.detail)
     f:EnableMouseWheel(true)
     f:SetScript("OnMouseWheel", WideWheel)
@@ -879,20 +936,19 @@ function Badges.Wide(parent)
     f.head:SetPoint("TOPLEFT", 0, 0)
     f.head:SetPoint("TOPRIGHT", 0, 0)
     f.head:SetHeight(8 + LINEH * 2)
-    f.head:SetScript("OnEnter", ShowLines)
-    f.head:SetScript("OnLeave", HideTip)
     f.head:EnableMouse(false)
+    Chrome(f)
     f.probe = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f.probe:Hide()
     f.header = NewWideRow(f, 0)
     f.list, f.rows, f.cols, f.heads = {}, {}, {}, {}
     f.lineCount = 0
-    WideGrow(f, Badges.Lines())
+    WideGrow(f, LINES)
     function f.SetModel(self, m)
         Badges.Skin(self, style.detail)
         self.title:SetText(m.title)
+        self.model = m
         self.head.lines = m.tip
-        self.head:EnableMouse(m.tip ~= nil)
         self.list = m.rows or {}
         self.cols = m.cols or {}
         self.heads = m.heads or {}
@@ -900,12 +956,15 @@ function Badges.Wide(parent)
         self.onWheel = m.onWheel
         self.span = m.span
         self.offset = 0
-        WideGrow(self, Badges.Lines())
+        WideGrow(self, LINES)
         WideColumns(self)
         DrawWide(self)
     end
+    function f.Redraw(self)
+        DrawWide(self)
+    end
     function f.Layout(self, width)
-        local lines = Badges.Lines()
+        local lines = self.fixed or LINES
         if lines ~= self.lineCount then
             WideGrow(self, lines)
             WideColumns(self)
@@ -923,6 +982,6 @@ ns.Kit.OnTheme(function()
     for i = 1, #skinned do
         local f = skinned[i]
         f:SetBackdropColor(style.bg[1], style.bg[2], style.bg[3], style.bg[4] or 1)
-        Edge(f, f.lit and style.link or style.edge)
+        Edge(f, (f.lit or f.hot) and style.link or style.edge)
     end
 end)

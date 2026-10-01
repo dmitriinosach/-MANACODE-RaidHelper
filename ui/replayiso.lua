@@ -13,14 +13,12 @@ local PAD = 12
 local FEED_W = 220
 local LEFT = PAD + FEED_W + PAD
 local HEAD = 30
-local TOOL = 26
-local VIEW_H = 420
-local VIEW_W = 696
-local W = LEFT + VIEW_W + PAD
-local PLAYER_H = 24
-local FOOT = 72
-local H = HEAD + TOOL + VIEW_H + 8 + PLAYER_H + FOOT
-local BTN_H = 20
+local BAR_GAP = 8
+local PLAYER_H = ns.ReplayBar.ROW_H
+local BARS_GAP = 4
+local FOOT = 22
+local TITLE_BTNS = 70
+local STATUS_GRIP = 24
 local STATUS_PERIOD = 0.5
 local ROOM_PATH = "Interface\\AddOns\\" .. ADDON .. "\\art\\rooms\\"
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
@@ -31,11 +29,15 @@ local ICONS = {
     right = "Interface\\Buttons\\UI-RotationRight-Button-Up",
     more = "Interface\\Buttons\\UI-PlusButton-Up",
     less = "Interface\\Buttons\\UI-MinusButton-Up",
+    zoomin = "Interface\\Minimap\\UI-Minimap-ZoomInButton-Up",
+    zoomout = "Interface\\Minimap\\UI-Minimap-ZoomOutButton-Up",
     help = "Interface\\TutorialFrame\\TutorialFrame-QuestionMark",
+    low = "Interface\\Buttons\\Arrow-Down-Up",
+    high = "Interface\\Buttons\\Arrow-Up-Up",
+    reset = "Interface\\TimeManager\\ResetButton",
     needle = "Interface\\Minimap\\MinimapArrow",
     north = "Interface\\Minimap\\CompassNorthTag",
 }
-local SPEEDS = { 0.5, 1, 2, 4, 8 }
 local SEQ_STAND = 0
 local SEQ_DEATH = 1
 local SEQ_WALK = 4
@@ -59,11 +61,8 @@ local LABEL_MIN = 0.8
 local LABEL_MAX = 1.5
 local FOCUS_DIM = 0.4
 local CLICK_PX = 4
-local MODES = { "none", "picked", "all" }
-local M3D = { "off", "boss", "all" }
 local DEATH_POOL = 64
 local DOT_POOL = 320
-local TICK_POOL = 64
 local DOT = 3
 local TURN = 0.01
 local TURN_STEP = pi / 12
@@ -77,7 +76,18 @@ local START_ANGLE = pi / 4
 local START_TILT = 0.55
 local START_PERSP = 0.3
 local GEO_WAIT = 0.35
-local GEO_BTN = 46
+local TILT_DRAG = 0.004
+local SEEK_STEP = ns.ReplayBar.SEEK_STEP
+local NAV_TOP = 8
+local NAV_RIGHT = 8
+local NAV = {
+    { "zoomin", "iso.tip.zoomin", 6 }, { "zoomout", "iso.tip.zoomout", 4 },
+    { "left", "iso.tip.left", 10 }, { "right", "iso.tip.right", 4 },
+    { "more", "iso.tip.tiltmore", 10 }, { "less", "iso.tip.tiltless", 4 },
+    { "mode", "iso.tip.to2d", 10 },
+    { "low", "iso.tip.low", 10 }, { "high", "iso.tip.high", 4 }, { "reset", "iso.tip.reset", 4 },
+    { "help", "iso.tip.help", 10 },
+}
 local VIEW_LOW = 0.35
 local VIEW_HIGH = 0.8
 local NAV_BTN = 24
@@ -98,6 +108,12 @@ local Iso = { dev = false }
 ns.ReplayIso = Iso
 local Replay = ns.Replay
 local Kit = ns.Kit
+local Size = ns.ReplaySize
+local Tour = ns.ReplayTour
+local dim = { viewW = Size.MIN_W, viewH = Size.MIN_H, k = 1 }
+dim.sideH = dim.viewH + BAR_GAP + PLAYER_H
+dim.barsH = floor(dim.sideH / 3)
+dim.h = HEAD + dim.sideH + FOOT
 local ui = {}
 local run = {
     t = 0, playing = false, speed = 1, mode = "none", camDirty = true, fitZoom = 1, bossDrawn = false,
@@ -109,14 +125,22 @@ local run = {
     lastClock = -1, hover = nil, figCount = 0, hasTex = false, gapKind = "", gapSince = -1, gapLevel = -1,
 }
 local cam = { angle = START_ANGLE, tilt = START_TILT, persp = START_PERSP, zoom = 1, lift = 0, r = 1, a = 0,
-              cx = 0, cy = 0, w = VIEW_W, h = VIEW_H, c = 1, s = 0 }
-local strips, stripData, dots, figs, deathTex, ticks = {}, {}, {}, {}, {}, {}
+              cx = 0, cy = 0, w = dim.viewW, h = dim.viewH, c = 1, s = 0 }
+local strips, stripData, dots, figs, deathTex = {}, {}, {}, {}, {}
+local Bar = ns.ReplayBar
+local ViewMenu = ns.ReplayViewMenu
 local LayersView = ns.ReplayLayersView
 local Models = ns.ReplayModels
 local Follow = ns.ReplayFollow
 local Figs = ns.ReplayFigs
+local Shield = ns.ReplayShield
 local Geo = ns.ReplayGeo
 local order, depth = {}, {}
+local afigs, all = {}, {}
+local addList = { x = {}, y = {}, icon = {}, chase = {} }
+local addState = { dead = false, hp = 1, stale = false, speed = 0, vis = true }
+local ADD_K = 0.85
+Figs.BindAdds(afigs)
 local picked
 local function Clamp(v, lo, hi)
     if v < lo then return lo end
@@ -133,6 +157,7 @@ local function MinSec(sec)
 end
 local function ModelShow(m)
     pcall(m.SetModel, m, BASE_MODEL)
+    m.ready = nil
     m.hold = MODEL_HOLD
     m.facing = nil
     m.fogKey = nil
@@ -175,7 +200,7 @@ local function ConfigFigure(fig, tr, scene)
         Figs.Config(fig, tr.class, run.roles[tr.name])
     else
         LayersView.Clear(fig)
-        fig.name = format(ns.T("iso.boss"), scene.bossName or scene.fight.boss)
+        fig.name = format(ns.T("iso.boss"), scene.bossName or ns.EncName(scene.fight.boss))
         fig.cr, fig.cg, fig.cb = Kit.Color("sem.lane.boss")
         Figs.Config(fig, nil, "boss")
     end
@@ -226,7 +251,13 @@ local function DrawModel(fig, s, scale, elapsed, k)
         m.hold = m.hold - elapsed
         m.facing = nil
     end
+    if not m.ready then
+        local ok, path = pcall(m.GetModel, m)
+        if not ok or type(path) ~= "string" or path == "" then return end
+        m.ready = true
+    end
     local face = run.faceSign * Replay.Facing(cam, s.hx, s.hy)
+    if face ~= face then return end
     if not m.facing or abs(face - m.facing) > FACE_EPS then
         m:SetFacing(face)
         m.facing = face
@@ -287,7 +318,7 @@ local function SortFigures(count)
     end
     local base = run.levelBase
     for r = 1, count do
-        local fig = figs[order[r]]
+        local fig = all[order[r]]
         if fig.rank ~= r then
             fig.rank = r
             fig:SetFrameLevel(base + r * 2)
@@ -300,6 +331,43 @@ local function DepthScale(sy, k)
     local lean = 1 + DEPTH_K * fade * Clamp(sy / (cam.h / 2), -1, 1)
     return Clamp(run.figScale * k * lean, SCALE_MIN, SCALE_MAX)
 end
+local function PlaceAdds(scene, base, elapsed)
+    local na = LayersView.Adds(scene, run.t, addList)
+    local hw, hh = cam.w / 2, cam.h / 2
+    local total, hidden = base, 0
+    for j = 1, max(na, #afigs) do
+        local fig = afigs[j]
+        if not fig and j <= na then
+            fig = NewFigure(ui.view)
+            afigs[j] = fig
+        end
+        if fig then
+            total = total + 1
+            all[total] = fig
+            local sx, sy, kz = 0, 0, 0
+            if j <= na then
+                local x, y, lift = Geo.Where(cam, scene, addList.x[j], addList.y[j])
+                sx, sy, kz = Replay.Project(cam, x, y)
+                sy = sy - lift
+                Figs.ConfigAdd(fig, addList.icon[j])
+                addState.stale = addList.chase[j]
+            end
+            local scale = kz > 0 and DepthScale(sy, kz) * ADD_K or 0
+            if j <= na and kz > 0 and sx > -hw + 2 and sx < hw - 2 and sy < hh - 2 and sy - (ICON + LIFT) * scale > -hh then
+                fig.kz = kz
+                DrawFigure(fig, addState, sx, sy, scale, min(1, cam.tilt * kz), elapsed, total)
+                depth[total] = sy
+            else
+                HideFigure(fig)
+                depth[total] = -HUGE
+                hidden = hidden + 1
+            end
+        end
+    end
+    run.addHidden = hidden
+    LayersView.stats.adds = na
+    return total
+end
 local function PlaceFigures(elapsed)
     local scene = run.scene
     local n = #scene.tracks
@@ -307,6 +375,7 @@ local function PlaceFigures(elapsed)
     local models, shown = 0, 0
     for k = 1, n + 1 do
         local fig = figs[k]
+        all[k] = fig
         local s = k <= n and scene.states[k] or scene.bossState
         local sx, sy, kz = 0, 0, 0
         if s.vis then
@@ -318,6 +387,7 @@ local function PlaceFigures(elapsed)
         if kz > 0 and sx > -hw + 2 and sx < hw - 2 and sy < hh - 2 and sy - (ICON + LIFT) * scale > -hh then
             fig.kz = kz
             if DrawFigure(fig, s, sx, sy, scale, min(1, cam.tilt * kz), elapsed, k) then models = models + 1 end
+            Shield.Place(fig, elapsed)
             shown = shown + 1
             depth[k] = sy
         else
@@ -325,9 +395,15 @@ local function PlaceFigures(elapsed)
             depth[k] = -HUGE
         end
     end
-    SortFigures(n + 1)
-    Figs.Alpha(figs, order, n + 1)
-    run.models, run.shown = models, shown
+    local total = PlaceAdds(scene, n + 1, elapsed)
+    if run.orderN ~= total then
+        run.orderN = total
+        for k = 1, total do order[k] = k end
+        for k = total + 1, #order do order[k] = nil end
+    end
+    SortFigures(total)
+    Figs.Alpha(all, order, total)
+    run.models, run.shown = models, shown + (total - n - 1 - run.addHidden)
 end
 local function PlaceFloor()
     local scene = run.scene
@@ -403,49 +479,18 @@ local function UpdateCompass()
 end
 local function ApplyCamera()
     Replay.Aim(cam)
-    run.figScale = Clamp(sqrt(cam.zoom / run.fitZoom), FIG_MIN, FIG_MAX)
+    run.figScale = Clamp(sqrt(cam.zoom / run.fitZoom * dim.k), FIG_MIN, FIG_MAX)
     PlaceFloor()
     UpdateCompass()
     run.marksDirty = true
     run.camDirty = false
 end
-local function UpdateScrub()
-    local scene = run.scene
-    local dur = max(0.001, scene.to - scene.from)
-    local frac = Clamp((run.t - scene.from) / dur, 0, 1)
-    local w = ui.scrub:GetWidth()
-    ui.fill:SetWidth(max(1, w * frac))
-    ui.thumb:SetPoint("CENTER", ui.scrub, "LEFT", w * frac, 0)
-    local d = run.t - scene.pull
-    local sec = d >= 0 and floor(d) or -ceil(-d)
-    if sec ~= run.lastClock then
-        run.lastClock = sec
-        local m1, s1 = MinSec(sec < 0 and -sec or sec)
-        local m2, s2 = MinSec(scene.to - scene.pull)
-        ui.clock:SetText(format(ns.T("iso.clock"), sec < 0 and "-" or "", m1, s1, m2, s2))
-    end
-end
-local function UpdatePlay()
-    ui.playBtn.text:SetText(ns.T(run.playing and "iso.pause" or "iso.play"))
-    for i = 1, #SPEEDS do ui.speedBtns[i]:SetActive(SPEEDS[i] == run.speed) end
-    for i = 1, #MODES do ui.modeBtns[i]:SetActive(MODES[i] == run.mode) end
-end
+local UpdatePlay = Bar.UpdatePlay
 local function UpdateCamUi()
     if not ui.modeBtn then return end
     ui.modeBtn.text:SetText(ns.T(run.flat and "iso.cam.2d" or "iso.cam.3d"))
     ui.modeBtn.tip = ns.T(run.flat and "iso.tip.to3d" or "iso.tip.to2d")
-    local room = run.scene and run.scene.room
-    if Geo.Has(room) then
-        ui.geoBtn.text:SetText(ns.T(Geo.on and "iso.geo.vol" or "iso.geo.flat"))
-        ui.geoBtn.tip = ns.T(Geo.on and "iso.tip.geo.vol" or "iso.tip.geo.flat")
-        ui.geoBtn:Show()
-    elseif Geo.Missing(room) then
-        ui.geoBtn.text:SetText(ns.T("iso.geo.flat"))
-        ui.geoBtn.tip = ns.RoomPacks.Hint(room)
-        ui.geoBtn:Show()
-    else
-        ui.geoBtn:Hide()
-    end
+    ViewMenu.Refresh()
 end
 local function Saved()
     local settings = ns.GetDB().settings
@@ -549,6 +594,15 @@ local function Drag()
     x, y = x / k, y / k
     if run.drag == "LeftButton" then
         cam.angle = run.dragAngle + (x - run.dragX) * TURN
+        Tour.Note("turn", abs(cam.angle - run.dragAngle))
+        if not run.flat then
+            local tilt = Clamp(run.dragTilt + (y - run.dragY) * TILT_DRAG, TILT_MIN, TILT_MAX)
+            if tilt ~= run.tilt3 then
+                run.tilt3 = tilt
+                Reframe()
+            end
+            Tour.Note("tilt", abs(tilt - run.dragTilt))
+        end
     else
         local rx = -(x - run.dragX) / cam.zoom
         local ry = (y - run.dragY) / (cam.zoom * cam.tilt)
@@ -556,14 +610,6 @@ local function Drag()
         cam.cy = run.dragCy - rx * cam.s + ry * cam.c
     end
     run.camDirty = true
-end
-local function SeekToCursor()
-    local x = GetCursorPosition() / ui.scrub:GetEffectiveScale()
-    local left = ui.scrub:GetLeft()
-    local w = ui.scrub:GetWidth()
-    if not left or w <= 0 then return end
-    local scene = run.scene
-    run.t = scene.from + Clamp((x - left) / w, 0, 1) * (scene.to - scene.from)
 end
 local function UpdateGap()
     local scene = run.scene
@@ -608,7 +654,7 @@ local function Tick(self, elapsed)
             UpdatePlay()
         end
     end
-    if run.scrubbing then SeekToCursor() end
+    Bar.Step()
     if run.drag then Drag() end
     local turned, snapped = Geo.Step(cam, elapsed)
     if snapped then
@@ -623,12 +669,12 @@ local function Tick(self, elapsed)
     if run.camDirty then ApplyCamera() end
     Replay.Sample(scene, run.t)
     run.bossDrawn = Models.Place(cam, run.t, run.figScale, run.faceSign, elapsed)
-    LayersView.Place(scene, cam, run.t, figs, run.figScale)
+    LayersView.Place(scene, cam, run.t, figs)
     PlaceFigures(elapsed)
     ns.ReplayFeed.Update(run.t - scene.pull)
     PlaceDeaths()
     run.marksDirty = false
-    UpdateScrub()
+    Bar.UpdateScrub()
     UpdateGap()
     Hover()
     Follow.Place(elapsed)
@@ -680,15 +726,10 @@ local function SyncModels()
     if not ok then ns.Print(ns.T("iso.nomodel")) end
 end
 local function SetMode(mode)
-    run.mode = mode
-    Saved().models = mode
+    run.mode = (mode == "all" or mode == "picked") and mode or "none"
+    Saved().models = run.mode
     SyncModels()
-    UpdatePlay()
-end
-local function UpdateM3d()
-    if not ui.m3dBtns then return end
-    local mode = Models.Mode()
-    for i = 1, #M3D do ui.m3dBtns[i]:SetActive(M3D[i] == mode) end
+    ViewMenu.Refresh()
 end
 local function ApplyFocus()
     local scene = run.scene
@@ -732,17 +773,10 @@ local function FindRoles(scene)
         for name in pairs(L.tanks) do roles[name] = "tank" end
     end
 end
-local function PlaceTicks()
-    local scene = run.scene
-    local dur = max(0.001, scene.to - scene.from)
-    local w = ui.scrub:GetWidth()
-    local n = min(#scene.deaths, TICK_POOL)
-    for i = 1, n do
-        local tick = ticks[i]
-        tick:SetPoint("TOP", ui.scrub, "TOPLEFT", w * Clamp((scene.deaths[i].t - scene.from) / dur, 0, 1), 0)
-        tick:Show()
-    end
-    for i = n + 1, #ticks do ticks[i]:Hide() end
+local function SetHeal(on)
+    run.focusHeal = on and true or false
+    Saved().focusHeal = run.focusHeal
+    ApplyFocus()
 end
 local function ApplySeek()
     local scene = run.scene
@@ -760,19 +794,60 @@ local function Resume()
     run.marksDirty = true
     UpdatePlay()
 end
+local function Around()
+    return (run.narrow and PAD * 2 or LEFT + PAD), HEAD + BAR_GAP + PLAYER_H + FOOT
+end
+local function FrameWidth()
+    local w = Around() + dim.viewW
+    ui.frame:SetWidth(w)
+    ui.title:SetWidth(w - TITLE_BTNS)
+end
 local function Narrow(narrow)
     if run.narrow == narrow then return end
     run.narrow = narrow
     ui.view:ClearAllPoints()
     if narrow then
         ui.side:Hide()
-        ui.view:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", PAD, -(HEAD + TOOL))
-        ui.frame:SetWidth(W - FEED_W - PAD)
+        ui.view:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", PAD, -HEAD)
     else
         ui.side:Show()
-        ui.view:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", LEFT, -(HEAD + TOOL))
-        ui.frame:SetWidth(W)
+        ui.view:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", LEFT, -HEAD)
     end
+    FrameWidth()
+    Size.Refit()
+end
+local function Relayout()
+    local bars = ui.bars ~= nil and ui.bars:IsShown()
+    ns.ReplayFeed.SetHeight(bars and dim.sideH - dim.barsH - BARS_GAP or dim.sideH)
+    Narrow(not (run.feedHas or bars))
+end
+local function Resize(vw, vh)
+    dim.viewW, dim.viewH = vw, vh
+    dim.sideH = vh + BAR_GAP + PLAYER_H
+    dim.barsH = floor(dim.sideH / 3)
+    dim.h = HEAD + dim.sideH + FOOT
+    dim.k = min(vw / Size.MIN_W, vh / Size.MIN_H)
+    cam.w, cam.h = vw, vh
+    ui.view:SetWidth(vw)
+    ui.view:SetHeight(vh)
+    ui.side:SetHeight(dim.sideH)
+    ui.bars:SetHeight(dim.barsH)
+    if ns.ReplayBarsView then ns.ReplayBarsView.Fit() end
+    ui.hint:SetWidth(vw - 120)
+    ui.gap:SetWidth(vw - 120)
+    ui.focus:SetWidth(vw - 180)
+    for i = 1, #ui.navRects do
+        local r = ui.navRects[i]
+        r.x = vw - r.right - r.w
+    end
+    Bar.Resize(vw)
+    Bar.Use(run.scene)
+    ui.status:SetWidth(vw - STATUS_GRIP)
+    ui.frame:SetHeight(dim.h)
+    FrameWidth()
+    Relayout()
+    Reframe()
+    run.marksDirty = true
 end
 local function UseScene(scene)
     run.scene = scene
@@ -784,7 +859,8 @@ local function UseScene(scene)
     FindRoles(scene)
     LayersView.Use(scene)
     Models.Use(scene)
-    Narrow(not ns.ReplayFeed.Use(scene.layers))
+    run.feedHas = ns.ReplayFeed.Use(scene.layers)
+    Relayout()
     local n = #scene.tracks
     for k = #figs + 1, n + 1 do figs[k] = NewFigure(ui.view) end
     for k = 1, #figs do HideFigure(figs[k]) end
@@ -812,17 +888,11 @@ local function UseScene(scene)
         ui.hint:Hide()
     end
     ResetCamera(false)
-    PlaceTicks()
+    Bar.Use(scene)
     UpdatePlay()
     ApplySeek()
     SetFocus(run.want)
-end
-local function Button(parent, width, key)
-    local b = Kit.Button(parent)
-    b:SetWidth(width)
-    b:SetHeight(BTN_H)
-    if key then b.text:SetText(ns.T(key)) end
-    return b
+    Tour.Auto()
 end
 local function NavButton(parent, icon, tip)
     local b = Kit.Button(parent)
@@ -864,15 +934,14 @@ local function BuildPools()
         tex:Hide()
         deathTex[i] = tex
     end
-    for i = 1, TICK_POOL do
-        local tick = ui.scrub:CreateTexture(nil, "ARTWORK")
-        Kit.Paint(tick, "sem.death")
-        tick:SetWidth(2)
-        tick:SetHeight(6)
-        tick:Hide()
-        ticks[i] = tick
-    end
     for k = 1, 26 do figs[k] = NewFigure(view) end
+end
+local function Zoom(dir)
+    if not run.scene then return end
+    local z = cam.zoom * (dir > 0 and ZOOM_STEP or 1 / ZOOM_STEP)
+    cam.zoom = Clamp(z, run.fitZoom * ZOOM_MIN, run.fitZoom * ZOOM_MAX)
+    run.camDirty = true
+    Tour.Note("zoom", dir)
 end
 local function Wheel(_, delta)
     if not run.scene then return end
@@ -880,19 +949,23 @@ local function Wheel(_, delta)
         SetView(run.tilt3 + delta * TILT_STEP)
         return
     end
-    local z = cam.zoom * (delta > 0 and ZOOM_STEP or 1 / ZOOM_STEP)
-    cam.zoom = Clamp(z, run.fitZoom * ZOOM_MIN, run.fitZoom * ZOOM_MAX)
-    run.camDirty = true
+    if IsControlKeyDown() or IsAltKeyDown() then
+        Bar.Seek(delta * SEEK_STEP)
+        Tour.Note("seek")
+        return
+    end
+    Zoom(delta)
 end
 local function ViewDown(_, button)
-    if not run.scene then return end
+    if not run.scene or button == "MiddleButton" then return end
     local x, y = GetCursorPosition()
     local k = ui.view:GetEffectiveScale()
     run.drag = button
     Geo.Cancel()
+    ViewMenu.Hide()
     run.pressHover = run.hover
     run.dragX, run.dragY = x / k, y / k
-    run.dragAngle, run.dragCx, run.dragCy = cam.angle, cam.cx, cam.cy
+    run.dragAngle, run.dragCx, run.dragCy, run.dragTilt = cam.angle, cam.cx, cam.cy, run.tilt3
 end
 local function ViewUp()
     local x, y = GetCursorPosition()
@@ -903,6 +976,7 @@ local function ViewUp()
         local fig = run.pressHover and figs[run.pressHover]
         if fig and not fig.isBoss then
             SetFocus(fig.name)
+            Tour.Note("pick")
         else
             SetFocus(nil)
         end
@@ -912,11 +986,17 @@ local function ViewUp()
     end
     run.drag = nil
 end
+local function NavPlace(b, name, y, w, h)
+    local right = NAV_RIGHT + (COMPASS - w) / 2
+    b:SetPoint("TOPRIGHT", ui.view, "TOPRIGHT", -right, -y)
+    ui.navRects[#ui.navRects + 1] = { name = name, x = dim.viewW - right - w, y = y, w = w, h = h, right = right }
+    return y + h
+end
 local function BuildCompass(top)
     local b = NavButton(top, nil, "iso.tip.north")
     b:SetWidth(COMPASS)
     b:SetHeight(COMPASS)
-    b:SetPoint("TOPRIGHT", ui.view, "TOPRIGHT", -8, -8)
+    NavPlace(b, "north", NAV_TOP, COMPASS, COMPASS)
     b.onClick = function() Turn(-cam.angle) end
     ui.needle = b:CreateTexture(nil, "OVERLAY")
     ui.needle:SetTexture(ICONS.needle)
@@ -932,7 +1012,7 @@ end
 local function BuildLegend(top)
     local f = CreateFrame("Button", nil, top)
     f:SetWidth(LEGEND_W)
-    f:SetPoint("TOPRIGHT", ui.view, "TOPRIGHT", -(COMPASS + 16), -8)
+    f:SetPoint("TOPRIGHT", ui.view, "TOPRIGHT", -(COMPASS + NAV_RIGHT * 2), -NAV_TOP)
     f:SetFrameLevel(top:GetFrameLevel() + 6)
     local bg = f:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(f)
@@ -948,61 +1028,67 @@ local function BuildLegend(top)
     ui.legend = f
 end
 local function BuildNav(top)
+    ui.navRects = {}
     BuildCompass(top)
-    local left = NavButton(top, ICONS.left, "iso.tip.left")
-    left:SetPoint("TOP", ui.compass, "BOTTOM", 0, -6)
-    left.onClick = function() Turn(-TURN_STEP) end
-    local right = NavButton(top, ICONS.right, "iso.tip.right")
-    right:SetPoint("TOP", left, "BOTTOM", 0, -4)
-    right.onClick = function() Turn(TURN_STEP) end
-    local more = NavButton(top, ICONS.more, "iso.tip.tiltmore")
-    more:SetPoint("TOP", right, "BOTTOM", 0, -10)
-    more.onClick = function() SetView(run.tilt3 - TILT_STEP) end
-    local less = NavButton(top, ICONS.less, "iso.tip.tiltless")
-    less:SetPoint("TOP", more, "BOTTOM", 0, -4)
-    less.onClick = function() SetView(run.tilt3 + TILT_STEP) end
-    ui.modeBtn = NavButton(top, nil, "iso.tip.to2d")
-    ui.modeBtn:SetWidth(COMPASS)
-    ui.modeBtn:SetPoint("TOP", less, "BOTTOM", 0, -10)
-    ui.modeBtn.onClick = function() SetFlat(not run.flat) end
-    ui.geoBtn = NavButton(top, nil, "iso.tip.geo.flat")
-    ui.geoBtn:SetWidth(GEO_BTN)
-    ui.geoBtn:SetPoint("TOP", ui.modeBtn, "BOTTOM", 0, -4)
-    ui.geoBtn.onClick = function()
-        local room = run.scene and run.scene.room
-        if Geo.Has(room) then
-            Iso.SetGeo(not Geo.on, true)
-        elseif Geo.Missing(room) then
-            ns.Print(ns.RoomPacks.Hint(room))
-        end
+    local act = {
+        zoomin = function() Zoom(1) end,
+        zoomout = function() Zoom(-1) end,
+        left = function() Turn(-TURN_STEP) end,
+        right = function() Turn(TURN_STEP) end,
+        more = function() SetView(run.tilt3 - TILT_STEP) end,
+        less = function() SetView(run.tilt3 + TILT_STEP) end,
+        mode = function() SetFlat(not run.flat) end,
+        low = function() SetView(VIEW_LOW) end,
+        high = function() SetView(VIEW_HIGH) end,
+        reset = function() if run.scene then ResetCamera(true) end end,
+        help = function()
+            if ui.legend:IsShown() then ui.legend:Hide() else ui.legend:Show() end
+        end,
+    }
+    local y = NAV_TOP + COMPASS
+    for i = 1, #NAV do
+        local d = NAV[i]
+        local name = d[1]
+        local b = NavButton(top, ICONS[name], d[2])
+        local w = name == "mode" and COMPASS or NAV_BTN
+        b:SetWidth(w)
+        y = NavPlace(b, name, y + d[3], w, NAV_BTN)
+        b.onClick = act[name]
+        ui.nav[name] = b
     end
-    ui.geoBtn:Hide()
-    local help = NavButton(top, ICONS.help, "iso.tip.help")
-    help:SetPoint("TOP", ui.geoBtn, "BOTTOM", 0, -10)
-    help.onClick = function()
-        if ui.legend:IsShown() then ui.legend:Hide() else ui.legend:Show() end
-    end
+    ui.modeBtn = ui.nav.mode
     BuildLegend(top)
+end
+local function BuildBars(side)
+    local bars = CreateFrame("Frame", nil, side)
+    bars:SetPoint("BOTTOMLEFT", side, "BOTTOMLEFT", 0, 0)
+    bars:SetWidth(FEED_W)
+    bars:SetHeight(dim.barsH)
+    bars:Hide()
+    bars:SetScript("OnShow", Relayout)
+    bars:SetScript("OnHide", Relayout)
+    ui.bars = bars
 end
 local function BuildView(frame)
     local side = CreateFrame("Frame", nil, frame)
     side:SetWidth(FEED_W)
-    side:SetHeight(VIEW_H)
-    side:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -(HEAD + TOOL))
+    side:SetHeight(dim.sideH)
+    side:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -HEAD)
     local sideBg = side:CreateTexture(nil, "BACKGROUND")
     sideBg:SetAllPoints(side)
     Kit.Paint(sideBg, "surface.page", 0.5)
     ui.side = side
-    ns.ReplayFeed.Build(side, FEED_W, VIEW_H, function(sec, who)
+    ns.ReplayFeed.Build(side, FEED_W, dim.sideH, function(sec, who)
         if not run.scene then return end
         run.t = Clamp(run.scene.pull + sec, run.scene.from, run.scene.to)
         run.marksDirty = true
         if who and run.scene.fight.players[who] then SetFocus(who) end
     end)
+    BuildBars(side)
     local view = CreateFrame("Frame", nil, frame)
-    view:SetWidth(VIEW_W)
-    view:SetHeight(VIEW_H)
-    view:SetPoint("TOPLEFT", frame, "TOPLEFT", LEFT, -(HEAD + TOOL))
+    view:SetWidth(dim.viewW)
+    view:SetHeight(dim.viewH)
+    view:SetPoint("TOPLEFT", frame, "TOPLEFT", LEFT, -HEAD)
     view:EnableMouse(true)
     view:EnableMouseWheel(true)
     view:SetScript("OnMouseDown", ViewDown)
@@ -1030,180 +1116,96 @@ local function BuildView(frame)
     ui.hoverText:Hide()
     ui.hint = top:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     ui.hint:SetPoint("TOP", view, "TOP", 0, -8)
-    ui.hint:SetWidth(VIEW_W - 120)
+    ui.hint:SetWidth(dim.viewW - 120)
     Kit.Text(ui.hint, "text.secondary")
     ui.gap = top:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     ui.gap:SetPoint("BOTTOM", view, "BOTTOM", 0, 8)
-    ui.gap:SetWidth(VIEW_W - 120)
+    ui.gap:SetWidth(dim.viewW - 120)
     Kit.Text(ui.gap, "text.warn")
     ui.focus = top:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     ui.focus:SetPoint("TOPLEFT", view, "TOPLEFT", 8, -8)
-    ui.focus:SetWidth(VIEW_W - 180)
+    ui.focus:SetWidth(dim.viewW - 180)
     ui.focus:SetJustifyH("LEFT")
     Kit.Text(ui.focus, "text.title")
     ui.focus:Hide()
     BuildNav(top)
 end
-local function BuildTools(frame)
-    local modes = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    modes:SetPoint("BOTTOMLEFT", ui.view, "TOPLEFT", 0, 9)
-    modes:SetText(ns.T("iso.fig.models"))
-    Kit.Text(modes, "text.secondary")
-    ui.modeBtns = {}
-    local prev, gap = modes, 6
-    for i = 1, #MODES do
-        local b = Button(frame, i == 2 and 76 or 40, "iso.fig." .. MODES[i])
-        b:SetPoint("LEFT", prev, "RIGHT", gap, 0)
-        b.tip = ns.T("iso.tip.fig." .. MODES[i])
-        b.mode = MODES[i]
-        b.onClick = function(self) SetMode(self.mode) end
-        ui.modeBtns[i] = b
-        prev, gap = b, 4
-    end
-    ui.resetBtn = Button(frame, 80, "iso.cam.reset")
-    ui.resetBtn:SetPoint("BOTTOMRIGHT", ui.view, "TOPRIGHT", 0, 4)
-    ui.resetBtn.tip = ns.T("iso.tip.reset")
-    ui.resetBtn.onClick = function() if run.scene then ResetCamera(true) end end
-    local high = Button(frame, 76, "iso.cam.high")
-    high:SetPoint("RIGHT", ui.resetBtn, "LEFT", -4, 0)
-    high.tip = ns.T("iso.tip.high")
-    high.onClick = function() SetView(VIEW_HIGH) end
-    local low = Button(frame, 64, "iso.cam.low")
-    low:SetPoint("RIGHT", high, "LEFT", -4, 0)
-    low.tip = ns.T("iso.tip.low")
-    low.onClick = function() SetView(VIEW_LOW) end
-    ui.figsBtn = Figs.Button(frame, low, BTN_H)
-end
-local function Toggle(frame, rel, relPoint, x, y, key, on, fn)
-    local c = Kit.Check(frame)
-    c:SetWidth(20)
-    c:SetHeight(20)
-    c:SetPoint("LEFT", rel, relPoint, x, y)
-    c.label:SetText(ns.T(key))
-    c.tip = ns.T(key .. ".tip")
-    c.tipTitle = false
-    c:SetChecked(on)
-    c.onToggle = fn
-    return c
-end
-local function BuildChecks(frame)
-    local label = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    label:SetPoint("LEFT", ui.view, "BOTTOMLEFT", 0, -(8 + PLAYER_H + 12))
-    label:SetText(ns.T("iso.m3d"))
-    Kit.Text(label, "text.secondary")
-    ui.m3dBtns = {}
-    local prev, gap = label, 6
-    for i = 1, #M3D do
-        local b = Button(frame, i == 3 and 96 or 56, "iso.m3d." .. M3D[i])
-        b:SetPoint("LEFT", prev, "RIGHT", gap, 0)
-        b.tip = ns.T("iso.tip.m3d." .. M3D[i])
-        b.mode = M3D[i]
-        b.onClick = function(self) Models.SetMode(self.mode) end
-        ui.m3dBtns[i] = b
-        prev, gap = b, 4
-    end
+local function BuildBottom()
+    Bar.Build(ui, run, dim.viewW)
+    ui.bar:SetPoint("TOPLEFT", ui.view, "BOTTOMLEFT", 0, -BAR_GAP)
+    ViewMenu.Build(ui, run, {
+        SetModels = SetMode,
+        Models = function() return run.mode end,
+        SetHeal = SetHeal,
+        Heal = function() return run.focusHeal end,
+        SetGeo = function(on) Iso.SetGeo(on, true) end,
+        Room = function() return run.scene and run.scene.room end,
+    })
     Models.onChange = function()
-        UpdateM3d()
+        ViewMenu.Refresh()
         if ns.Settings and ns.Settings.Refresh then ns.Settings.Refresh() end
     end
-    UpdateM3d()
-    ui.healCheck = Toggle(frame, prev, "RIGHT", 14, 0, "iso.focusheal", run.focusHeal, function(on)
-        run.focusHeal = on
-        Saved().focusHeal = on
-        ApplyFocus()
-    end)
+    Figs.Load()
 end
-local function BuildPlayer(frame)
-    ui.playBtn = Button(frame, 64, "iso.play")
-    ui.playBtn:SetPoint("TOPLEFT", ui.view, "BOTTOMLEFT", 0, -8)
-    ui.playBtn.onClick = function()
-        if not run.scene then return end
-        if not run.playing and run.t >= run.scene.to then run.t = run.scene.from end
-        run.playing = not run.playing
-        UpdatePlay()
-    end
-    ui.speedBtns = {}
-    local prev = ui.playBtn
-    for i = 1, #SPEEDS do
-        local b = Button(frame, 40, nil)
-        b.text:SetText(SPEEDS[i] < 1 and ns.T("iso.speed.half") or format(ns.T("iso.speed"), SPEEDS[i]))
-        b:SetPoint("LEFT", prev, "RIGHT", 4, 0)
-        b.speed = SPEEDS[i]
-        b.onClick = function(self)
-            run.speed = self.speed
-            UpdatePlay()
+local function NearFigure()
+    local best, bestD
+    for k = 1, run.figCount do
+        local fig = figs[k]
+        if fig.shown and not fig.isBoss then
+            local d = fig.sx * fig.sx + fig.sy * fig.sy
+            if not bestD or d < bestD then best, bestD = fig, d end
         end
-        ui.speedBtns[i] = b
-        prev = b
     end
-    ui.clock = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    ui.clock:SetPoint("TOPRIGHT", ui.view, "BOTTOMRIGHT", 0, -12)
-    ui.clock:SetWidth(80)
-    ui.clock:SetJustifyH("RIGHT")
-    local scrub = CreateFrame("Button", nil, frame)
-    scrub:SetHeight(14)
-    scrub:SetPoint("LEFT", prev, "RIGHT", 10, 0)
-    scrub:SetPoint("RIGHT", ui.clock, "LEFT", -8, 0)
-    scrub:SetScript("OnMouseDown", function() run.scrubbing = true end)
-    scrub:SetScript("OnMouseUp", function() run.scrubbing = false end)
-    local bg = scrub:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints(scrub)
-    Kit.Paint(bg, "surface.bg")
-    ui.fill = scrub:CreateTexture(nil, "BORDER")
-    ui.fill:SetPoint("TOPLEFT", scrub, "TOPLEFT", 0, 0)
-    ui.fill:SetPoint("BOTTOMLEFT", scrub, "BOTTOMLEFT", 0, 0)
-    Kit.Paint(ui.fill, "sem.pick", 0.18)
-    ui.thumb = scrub:CreateTexture(nil, "OVERLAY")
-    ui.thumb:SetWidth(2)
-    ui.thumb:SetHeight(18)
-    Kit.Paint(ui.thumb, "sem.pick")
-    ui.scrub = scrub
+    return best
 end
 local function Build()
     local frame = CreateFrame("Frame", "HTP_FailWatchReplayIso", UIParent)
-    frame:SetWidth(W)
-    frame:SetHeight(H)
+    frame:SetWidth(LEFT + dim.viewW + PAD)
+    frame:SetHeight(dim.h)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     frame:SetFrameStrata("DIALOG")
     frame:SetClampedToScreen(true)
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
     Kit.Window(frame)
     frame:Hide()
     tinsert(UISpecialFrames, "HTP_FailWatchReplayIso")
     ui.frame = frame
     ui.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     ui.title:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -10)
-    ui.title:SetWidth(W - 60)
+    ui.title:SetWidth(LEFT + dim.viewW + PAD - TITLE_BTNS)
     ui.title:SetJustifyH("LEFT")
     Kit.Title(ui.title)
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 2, 2)
     close:SetScript("OnClick", function() Iso.Hide() end)
+    ui.nav = {}
     BuildView(frame)
     LoadCamera()
-    BuildTools(frame)
-    BuildPlayer(frame)
-    BuildChecks(frame)
+    BuildBottom()
     Follow.Bind(ui, run, cam, figs, SetFocus)
     ui.status = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    ui.status:SetPoint("TOPLEFT", ui.view, "BOTTOMLEFT", 0, -(8 + PLAYER_H + 26))
-    ui.status:SetWidth(VIEW_W)
+    ui.status:SetPoint("TOPLEFT", ui.bar, "BOTTOMLEFT", 0, -4)
+    ui.status:SetWidth(dim.viewW - STATUS_GRIP)
     ui.status:SetJustifyH("LEFT")
     BuildPools()
     UpdateCamUi()
     run.narrow = false
+    Tour.Bind(ui, { Saved = Saved, Figure = NearFigure })
+    Size.Bind(frame, close, HEAD, Resize, Around)
+    Size.Restore()
     frame:SetScript("OnUpdate", Tick)
     frame:SetScript("OnShow", function()
+        Size.Refit()
         if not run.scene then return end
         Geo.Use(run.scene.room)
         run.camDirty = true
     end)
     frame:SetScript("OnHide", function()
         Geo.Release()
+        ViewMenu.Hide()
+        Tour.Stop()
         run.playing = false
         run.drag = nil
         run.scrubbing = false
@@ -1225,6 +1227,8 @@ local function LoadFight(fight)
     run.scene = nil
     run.loading = true
     for k = 1, #figs do HideFigure(figs[k]) end
+    for k = 1, #afigs do HideFigure(afigs[k]) end
+    run.orderN = nil
     for k = 1, #strips do strips[k]:Hide() end
     run.stripUsed = 0
     for k = 1, #dots do dots[k]:Hide() end
@@ -1232,7 +1236,8 @@ local function LoadFight(fight)
     LayersView.Use(nil)
     Models.Use(nil)
     ns.ReplayFeed.Use(nil)
-    ui.title:SetText(format(ns.T("iso.title"), ns.FightList and ns.FightList.Title(fight) or fight.boss))
+    Bar.Use(nil)
+    ui.title:SetText(format(ns.T("iso.title"), ns.FightList and ns.FightList.Title(fight) or ns.EncName(fight.boss)))
     ui.hint:SetText(ns.T("iso.loading"))
     ui.hint:Show()
     ui.gap:Hide()
@@ -1256,7 +1261,7 @@ function Iso.Show()
         return
     end
     if not ui.frame then Build() end
-    if auto then ns.Print(format(ns.T("iso.auto"), fight.boss)) end
+    if auto then ns.Print(format(ns.T("iso.auto"), ns.EncName(fight.boss))) end
     run.want = run.focus
     ui.frame:Show()
     if run.fight ~= fight or not run.scene then
@@ -1265,6 +1270,7 @@ function Iso.Show()
     else
         run.seek = nil
         Resume()
+        Tour.Auto()
     end
 end
 function Iso.Open(fight, t, who)
@@ -1278,7 +1284,11 @@ function Iso.Open(fight, t, who)
     elseif run.scene then
         ApplySeek()
         SetFocus(who)
+        Tour.Auto()
     end
+end
+function Iso.IsShown()
+    return ui.frame ~= nil and ui.frame:IsShown() and true or false
 end
 function Iso.Hide()
     if ui.frame then ui.frame:Hide() end
@@ -1327,6 +1337,23 @@ function Iso.SetGeo(on, quiet)
     end
     UpdateCamUi()
     if not quiet then ns.Print(ns.T(Geo.on and "iso.geo.on" or "iso.geo.off")) end
+end
+function Iso.BarsFrame()
+    if not ui.frame then Build() end
+    return ui.bars
+end
+function Iso.ViewFrame()
+    if not ui.frame then Build() end
+    return ui.view
+end
+function Iso.Layout()
+    if not ui.frame then Build() end
+    local aw, ah = Around()
+    return { w = aw + dim.viewW, h = ah + dim.viewH, viewW = dim.viewW, viewH = dim.viewH, sideH = dim.sideH,
+             barsH = dim.barsH, nav = ui.navRects, navBtns = ui.nav, camW = cam.w, camH = cam.h, fitZoom = run.fitZoom,
+             figScale = run.figScale, size = Size.Probe(), tour = Tour.Probe(), feedRows = ns.ReplayFeed.Stats().rows,
+             bar = Bar.Probe(), menu = ViewMenu.Probe(), narrow = run.narrow, zoom = cam.zoom,
+             tilt = run.tilt3, flat = run.flat, speed = run.speed, mode = run.mode, heal = run.focusHeal }
 end
 function Iso.SetCamera(index)
     run.camIndex = index

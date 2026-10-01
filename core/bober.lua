@@ -16,10 +16,10 @@ Bober.FORMAT = FORMAT
 Bober.ICC_BOSSES = ICC_BOSSES
 Bober.RS_BOSSES = RS_BOSSES
 Bober.CODE = {
-    ["Саурфанг Смертоносный"] = "surf",
-    ["Профессор Мерзоцид"] = "prof",
-    ["Король-лич"] = "lich",
-    ["Халион"] = "hal",
+    [37813] = "surf",
+    [36678] = "prof",
+    [36597] = "lich",
+    [39863] = "hal",
 }
 local recs = {}
 local arch = {}

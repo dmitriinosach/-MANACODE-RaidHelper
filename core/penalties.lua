@@ -216,7 +216,7 @@ function Penalties.IsOwnRule(key)
 end
 function Penalties.AddRule(boss)
     local own = Store().own[Penalties.Active()]
-    if not own or type(boss) ~= "string" or boss == "" then return nil end
+    if not own or (type(boss) ~= "string" and type(boss) ~= "number") or boss == "" then return nil end
     own.extra = own.extra or {}
     local n, key = 0, nil
     repeat
@@ -279,7 +279,11 @@ function Penalties.Rules(boss)
 end
 local function Fill(set, list)
     if not list then return end
-    for i = 1, #list do set[list[i]] = true end
+    for i = 1, #list do set[ns.SpellKey(list[i]) or list[i]] = true end
+end
+local function FillN(set, list)
+    if not list then return end
+    for i = 1, #list do set[ns.NpcKeyOf(list[i]) or list[i]] = true end
 end
 function Penalties.Watch(boss)
     local w = { hit = {}, mc = {}, targets = {}, casts = {}, npcs = {}, deaths = {} }
@@ -291,11 +295,11 @@ function Penalties.Watch(boss)
                 if r.kind == "death" then w.deaths[#w.deaths + 1] = r end
                 if r.kind == "mccast" then Fill(w.mc, r.spells) end
                 if r.kind == "mcweapon" and not w.ctl then w.ctl = r end
-                if r.kind == "mindmg" then Fill(w.targets, r.targets) end
-                if r.kind == "chased" and r.npc then w.npcs[r.npc] = true end
+                if r.kind == "mindmg" then FillN(w.targets, r.targets) end
+                if r.kind == "chased" and r.npc then w.npcs[ns.NpcKeyOf(r.npc)] = true end
                 if r.kind == "expect" and r.by then
                     for _, b in pairs(r.by) do
-                        if b.spell then w.casts[b.spell] = true end
+                        if b.spell then w.casts[ns.SpellKey(b.spell)] = true end
                     end
                 end
             end
@@ -328,14 +332,15 @@ function Penalties.Applies(rule, fight)
 end
 local function DeathMatch(rule, d)
     local spells = AsSet(nil, rule.spells)
-    local srcs = AsSet(nil, rule.srcs)
+    local srcs = {}
+    FillN(srcs, rule.srcs)
     local k = d.killer
-    if k and ((k.spell and spells[k.spell]) or (k.src and srcs[k.src])) then return true end
+    if k and ((k.key and spells[k.key]) or (k.srcKey and srcs[k.srcKey])) then return true end
     if rule.ticks and rule.spells then
         local window, n = rule.window or DEATH_WINDOW, 0
         for i = 1, #d.recent do
             local e = d.recent[i]
-            if d.t - e.t <= window and spells[e.spell] then n = n + 1 end
+            if d.t - e.t <= window and e.key and spells[e.key] then n = n + 1 end
         end
         return n >= rule.ticks
     end
@@ -343,10 +348,11 @@ local function DeathMatch(rule, d)
 end
 Penalties.DeathMatch = DeathMatch
 local function Cleansed(p, spell)
+    local want = ns.SpellKey(spell)
     local n = 0
     for _, d in pairs(p.disp) do
         for _, w in pairs(d.what) do
-            if not w.purge and (not spell or w.name == spell) then n = n + w.n end
+            if not w.purge and (not want or ns.SpellKey(w.id) == want) then n = n + w.n end
         end
     end
     return n
@@ -355,7 +361,7 @@ function Penalties.DutyCount(rule, p, fight)
     local duty = rule.by and p.class and rule.by[p.class]
     if not duty or not Applies(rule, fight) then return nil end
     if rule.what == "dispel" then return Cleansed(p, rule.removes) end
-    return p.casts[duty.spell] or 0
+    return p.casts[ns.SpellKey(duty.spell) or 0] or 0
 end
 function Penalties.Duties(s, fight, p)
     local out = {}
@@ -377,9 +383,10 @@ local function IsMelee(p)
     return p.dmg > 0 and p.swingDmg / p.dmg >= MELEE_SHARE
 end
 function Penalties.Hangs(s, p, spell)
+    local want = ns.SpellKey(spell)
     for i = 1, #(s.badges or {}) do
         local bd = s.badges[i]
-        local st = bd.shed and bd.spell == spell and p.badges and p.badges[i]
+        local st = bd.shed and ns.SpellKey(bd.spell) == want and p.badges and p.badges[i]
         local list = type(st) == "table" and st.hangs
         if list and #list > 0 then return list end
     end
@@ -397,13 +404,18 @@ local function ShedOf(rule, s, p)
     end
     return out
 end
+function Penalties.ShedName(id)
+    local key = ns.SpellKey(id)
+    if not key then return tostring(id) end
+    return rawget(ns.L, "sum.shed.by." .. key) or ns.SpellName(key)
+end
 function Penalties.ShedText(list, whole)
     local shed, full, by, seen, secs = 0, 0, {}, {}, {}
     for i = 1, #list do
         local h = list[i]
         if h.off == "shed" then
             shed = shed + 1
-            local name = h.by and (ns.L["sum.shed.by." .. h.by] or h.by)
+            local name = h.by and Penalties.ShedName(h.by)
             if name and not seen[name] then
                 seen[name] = true
                 by[#by + 1] = name
@@ -427,8 +439,8 @@ function Penalties.CureText(list)
         local cure = list[i].cure
         if cure then known = true end
         for k = 1, #(cure or {}) do
-            local name = cure[k].left <= 0 and defs[cure[k].id] and defs[cure[k].id][1]
-            local short = name and (ns.L["sum.shed.by." .. name] or name)
+            local id = cure[k].left <= 0 and defs[cure[k].id] and cure[k].id
+            local short = id and Penalties.ShedName(id)
             if short and not seen[short] then
                 seen[short] = true
                 names[#names + 1] = short
@@ -465,7 +477,7 @@ local function Detect(rule, p, s, fight)
             for k = 1, #other.deathInfo do
                 local d = other.deathInfo[k]
                 local killer = d.killer
-                if killer and killer.src == p.name and other.name ~= p.name and spells[killer.spell] then
+                if killer and killer.src == p.name and other.name ~= p.name and killer.key and spells[killer.key] then
                     out[#out + 1] = { t = d.t, victim = other.name }
                 end
             end
@@ -477,7 +489,7 @@ local function Detect(rule, p, s, fight)
     elseif kind == "hit" then
         local times = {}
         for i = 1, #(rule.spells or {}) do
-            local list = p.hits[rule.spells[i]]
+            local list = p.hits[ns.SpellKey(rule.spells[i]) or 0]
             if list then
                 for k = 1, #list do times[#times + 1] = list[k] end
             end
@@ -495,7 +507,7 @@ local function Detect(rule, p, s, fight)
         end
         if sheds then tsort(out, function(a, b) return a.t < b.t end) end
     elseif kind == "chased" then
-        local list = p.chased[rule.npc] or {}
+        local list = p.chased[ns.NpcKeyOf(rule.npc) or 0] or {}
         for i = 1, #list do
             if not (ns.Shades and ns.Shades.Excused(s, p, rule.npc, list[i] - fight.from)) then
                 out[#out + 1] = { t = list[i] }
@@ -518,7 +530,7 @@ local function Detect(rule, p, s, fight)
     elseif kind == "mindmg" then
         if p.role == "dps" then
             local sum = 0
-            for i = 1, #(rule.targets or {}) do sum = sum + (p.targetDmg[rule.targets[i]] or 0) end
+            for i = 1, #(rule.targets or {}) do sum = sum + (p.targetDmg[ns.NpcKeyOf(rule.targets[i])] or 0) end
             local melee = IsMelee(p)
             local need = melee and rule.melee or rule.ranged
             if need and sum < need then out[1] = { t = nil, amount = sum, need = need, melee = melee } end
@@ -537,17 +549,17 @@ end
 local function RuleIcon(rule, s, p)
     if rule.kind == "death" or rule.kind == "anydeath" then return SKULL end
     if rule.kind == "killer" and rule.spells then
-        return s.spellIds[rule.spells[1]] or 71340
+        return s.spellIds[ns.SpellKey(rule.spells[1])] or 71340
     end
     if rule.kind == "expect" then
         local duty = rule.by and p and rule.by[p.class]
         return duty and duty.id or ICONS.manual
     end
-    if rule.kind == "chased" then return s.spellIds[rule.npc] or ICONS.manual end
+    if rule.kind == "chased" then return s.spellIds[ns.NpcKeyOf(rule.npc) or 0] or ICONS.manual end
     if rule.kind == "earlypull" then return ns.pullTimer and ns.pullTimer.icon or ICONS.manual end
     if rule.spells then
         for i = 1, #rule.spells do
-            local id = s.spellIds[rule.spells[i]]
+            local id = s.spellIds[ns.SpellKey(rule.spells[i]) or 0]
             if id then return id end
         end
     end

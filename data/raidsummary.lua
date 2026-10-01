@@ -55,27 +55,25 @@ for spell, c in pairs(ns.consumeGen or {}) do
     end
 end
 ns.raidFinal = {
-    ["Цитадель Ледяной Короны"] = "Король-лич",
-    ["Ульдуар"] = { "Йогг-Сарон", "Алгалон Наблюдатель" },
-    ["Рубиновое святилище"] = "Халион",
-    ["Испытание крестоносца"] = "Ануб'арак",
-    ["Испытание великого крестоносца"] = "Ануб'арак",
-    ["Наксрамас"] = "Кел'Тузад",
-    ["Око Вечности"] = "Малигос",
-    ["Логово Ониксии"] = "Ониксия",
-    ["Обсидиановое святилище"] = "Сартарион",
+    IcecrownCitadel = ns.ENC.lichking,
+    Ulduar = { ns.ENC.yogg, ns.ENC.algalon },
+    TheRubySanctum = ns.ENC.halion,
+    TheArgentColiseum = ns.ENC.anubarak,
+    Naxxramas = 15990,
+    TheEyeofEternity = 28859,
+    OnyxiasLair = 10184,
+    TheObsidianSanctum = 28860,
 }
 ns.raidEncounters = {
-    ["Цитадель Ледяной Короны"] = 12,
-    ["Рубиновое святилище"] = 1,
-    ["Испытание крестоносца"] = 5,
-    ["Испытание великого крестоносца"] = 5,
-    ["Ульдуар"] = 14,
-    ["Наксрамас"] = 15,
-    ["Око Вечности"] = 1,
-    ["Логово Ониксии"] = 1,
-    ["Обсидиановое святилище"] = 1,
+    IcecrownCitadel = 12,
+    TheRubySanctum = 1,
+    TheArgentColiseum = 5,
+    Ulduar = 14,
+    Naxxramas = 15,
+    TheEyeofEternity = 1,
+    OnyxiasLair = 1,
+    TheObsidianSanctum = 1,
 }
 ns.raidCut = {
-    ["Король-лич"] = true,
+    [ns.ENC.lichking] = true,
 }

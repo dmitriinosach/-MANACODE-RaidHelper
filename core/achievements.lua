@@ -22,19 +22,18 @@ local raidKeys = setmetatable({}, { __mode = "k" })
 local fightKeys = setmetatable({}, { __mode = "k" })
 local function Set(list)
     local set = {}
-    for i = 1, #(list or {}) do set[list[i]] = true end
+    for i = 1, #(list or {}) do set[ns.NpcKeyOf(list[i])] = true end
     return set
 end
-local function IsBoss(fight, name)
-    if not name then return false end
-    return name == fight.boss or ns.bosses[name] == fight.boss
-        or (fight.names ~= nil and fight.names[name] == true)
+local function IsBoss(fight, guid)
+    return ns.IsBossOf(fight, guid)
 end
-local function Same(name, boss)
-    return name == boss or ns.bosses[name] == boss
+local function Same(key, boss)
+    key = ns.NpcKeyOf(key)
+    return key == boss or ns.bosses[key] == boss
 end
 local function Matches(entry, boss)
-    if type(entry) == "string" then return Same(entry, boss) end
+    if type(entry) ~= "table" then return Same(entry, boss) end
     for i = 1, #entry do
         if Same(entry[i], boss) then return true end
     end
@@ -80,7 +79,7 @@ end
 function Ach.Info(id)
     local _, name, points, desc, icon
     if GetAchievementInfo then _, name, points, _, _, _, _, desc, _, icon = GetAchievementInfo(id) end
-    return name or (ns.achNames and ns.achNames[id]), desc, icon, tonumber(points) or 0
+    return name or ("#" .. tostring(id)), desc, icon, tonumber(points) or 0
 end
 local function Blame(st, name, t, v, note)
     local key = name or "#"
@@ -130,15 +129,15 @@ local function OnStack(st, ctx, ts, sub, _, _, _, _, dstName, dstFlags, _, _, _,
     end
     if st.limit and c > st.limit then Blame(st, dstName, ts - ctx.from, c) end
 end
-local function OnCount(st, ctx, ts, sub, _, srcName, _, _, dstName, dstFlags)
+local function OnCount(st, ctx, ts, sub, srcGUID, _, _, _, dstName, dstFlags)
     if sub ~= "SPELL_AURA_APPLIED" or not dstName or not IsPlayer(dstFlags) then return end
-    if st.def.src and srcName ~= st.def.src then return end
+    if st.def.src and ns.NpcKey(srcGUID) ~= ns.NpcKeyOf(st.def.src) then return end
     st.value = st.value + 1
     if st.value > st.limit then Blame(st, dstName, ts - ctx.from, st.value) end
 end
-local function OnCast(st, ctx, ts, sub, _, srcName, srcFlags)
+local function OnCast(st, ctx, ts, sub, srcGUID, _, srcFlags)
     if sub ~= "SPELL_CAST_SUCCESS" or IsPlayer(srcFlags) then return end
-    if st.def.src and srcName ~= st.def.src then return end
+    if st.def.src and ns.NpcKey(srcGUID) ~= ns.NpcKeyOf(st.def.src) then return end
     st.value = st.value + 1
     Blame(st, st.rider, ts - ctx.from, nil)
 end
@@ -146,10 +145,10 @@ local function OnRider(st, _, _ts, sub, _, _, _, _, dstName, dstFlags)
     if not dstName or not IsPlayer(dstFlags) then return end
     if sub == "SPELL_AURA_APPLIED" then st.rider = dstName end
 end
-local function OnHit(st, ctx, ts, sub, _, srcName, srcFlags, _, dstName, dstFlags, _, _, _, a4)
+local function OnHit(st, ctx, ts, sub, srcGUID, srcName, srcFlags, _, dstName, dstFlags, _, _, _, a4)
     if not dstName or not IsPlayer(dstFlags) or IsPlayer(srcFlags) then return end
     if not find(sub, "_DAMAGE", 1, true) then return end
-    if st.srcs and not (srcName and st.srcs[srcName]) then return end
+    if st.srcs and not (srcName and st.srcs[ns.NpcKey(srcGUID) or 0]) then return end
     st.value = st.value + 1
     Blame(st, dstName, ts - ctx.from, tonumber(a4))
 end
@@ -171,7 +170,7 @@ local function OnBigHit(st, ctx, ts, sub, _, srcName, srcFlags, _, dstName, dstF
     if amount > st.value then st.value = amount end
     if amount > st.limit then Blame(st, dstName, ts - ctx.from, amount, type(a2) == "string" and a2 or nil) end
 end
-local function OnDied(st, ctx, ts, dstName, dstFlags)
+local function OnDied(st, ctx, ts, dstName, dstFlags, dstGUID)
     local kind = st.kind
     if kind == "deathBy" then
         local at = dstName and IsPlayer(dstFlags) and st.on[dstName]
@@ -183,7 +182,7 @@ local function OnDied(st, ctx, ts, dstName, dstFlags)
         return
     end
     if kind == "aliveAt" then
-        if not st.at and IsBoss(ctx.fight, dstName) then
+        if not st.at and IsBoss(ctx.fight, dstGUID) then
             local seen, n = {}, 0
             for guid, u in pairs(st.units) do
                 if not u.dead and ts - u.t <= FRESH then
@@ -204,23 +203,24 @@ local function OnDied(st, ctx, ts, dstName, dstFlags)
         end
         return
     end
-    if not dstName or not st.names[dstName] then return end
+    local key = ns.NpcKey(dstGUID)
+    if not dstName or not key or not st.names[key] then return end
     st.value = st.value + 1
     if kind == "noKill" then
         Blame(st, dstName, ts - ctx.from, nil)
     elseif kind == "lastDied" then
-        st.last = dstName
-        st.dead[dstName] = true
+        st.last = key
+        st.dead[key] = true
     elseif kind == "killSpan" then
         st.first = st.first or ts
         st.lastT = ts
-        st.dead[dstName] = true
+        st.dead[key] = true
     end
 end
 local function Touch(st, guid, name, ts, died)
     local u = st.units[guid]
     if not u then
-        if not (name and st.names[name]) then return end
+        if not (name and st.names[ns.NpcKey(guid) or 0]) then return end
         u = { name = name, t = ts }
         st.units[guid] = u
     end
@@ -325,17 +325,17 @@ local function Close(st, fight)
     elseif kind == "lastDied" then
         local all = true
         for i = 1, #st.def.names do
-            if not st.dead[st.def.names[i]] then all = false end
+            if not st.dead[ns.NpcKeyOf(st.def.names[i])] then all = false end
         end
         if not all then
             status = "open"
         else
-            status = st.last == st.def.last and "done" or "fail"
+            status = st.last == ns.NpcKeyOf(st.def.last) and "done" or "fail"
         end
     elseif kind == "killSpan" then
         local all = true
         for i = 1, #st.def.names do
-            if not st.dead[st.def.names[i]] then all = false end
+            if not st.dead[ns.NpcKeyOf(st.def.names[i])] then all = false end
         end
         st.value = st.first and (st.lastT - st.first) or 0
         if st.first and st.value > st.limit then
@@ -368,6 +368,7 @@ local function NewState(def, size)
     }
 end
 local function Watch(index, spell, st, fn, pre)
+    spell = ns.SpellKey(spell)
     local list = index[spell]
     if not list then
         list = {}
@@ -431,7 +432,8 @@ local function Build(fight)
         for ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a3, a4, a5
             in ns.Store.Events(seg, from, to, skip, MAX_TAIL) do
             ns.Jobs.Step()
-            local list = a2 and bySpell[a2]
+            local sk = ns.SpellOf(sub, a1)
+            local list = sk and bySpell[sk]
             local live = ts >= fight.from
             if list then
                 for k = 1, #list do
@@ -449,7 +451,7 @@ local function Build(fight)
                     if dstGUID then Touch(st, dstGUID, dstName, ts, sub == "UNIT_DIED") end
                 end
                 if sub == "UNIT_DIED" then
-                    for k = 1, #died do OnDied(died[k], ctx, ts, dstName, dstFlags) end
+                    for k = 1, #died do OnDied(died[k], ctx, ts, dstName, dstFlags, dstGUID) end
                 elseif sub == "FW_HP" then
                     if ts <= fight.to then
                         for k = 1, #hp do OnHp(hp[k], ctx, ts, a1) end
@@ -498,8 +500,8 @@ function Ach.Reset()
 end
 local RANK = { done = 1, fail = 2, short = 3, open = 4, nodata = 5 }
 local function Label(entry)
-    if type(entry) == "string" then return entry end
-    return entry[1]
+    if type(entry) ~= "table" then return ns.EncName(ns.NpcKeyOf(entry)) end
+    return ns.EncName(ns.NpcKeyOf(entry[1]))
 end
 local function FightsOf(fights, entry, heroic)
     local kills, all = {}, {}

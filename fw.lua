@@ -386,9 +386,9 @@ function ns.TuneSig()
     return out
 end
 local AVG_LINE = 56
-local LIMIT_MB = 300
+local LIMIT_MB = 150
 local LIMIT_TRIES = 50
-local LIMIT_MB_KEPT = 500
+local LIMIT_MB_KEPT = 300
 local LIMIT_TRIES_KEPT = 100
 local function LimitToMB(db, limit)
     if type(limit) ~= "number" or limit <= 0 or limit == 500000 then return 0 end

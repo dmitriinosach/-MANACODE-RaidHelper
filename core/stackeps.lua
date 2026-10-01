@@ -23,14 +23,15 @@ function StackEps.Begin(fight, def, s)
     local idx, over, any = {}, {}, false
     for k = 1, #list do
         local e = list[k]
+        local key = ns.SpellKey(e.spell)
         for i = 1, s.own do
             local bd = s.badges[i]
-            if bd.kind == "stack" and bd.spell == e.spell and not idx[e.spell] then
-                idx[e.spell] = i
+            if key and bd.kind == "stack" and ns.SpellKey(bd.spell) == key and not idx[key] then
+                idx[key] = i
                 any = true
             end
         end
-        over[e.spell] = e.over
+        if key then over[key] = e.over end
     end
     if not any then return nil end
     return { from = fight.from, to = fight.to, idx = idx, over = over, lap = list.lap, byName = s.byName,
@@ -102,27 +103,29 @@ local function Died(r, ts, who)
     Relabel(r, ts, who, nil, "died")
     for sp in pairs(r.idx) do Close(r, ts, who, sp, "died") end
 end
-function StackEps.Feed(r, ts, sub, src, dst, a1, a2, a5)
+function StackEps.Feed(r, ts, sub, src, dst, a1, a2, a5, sk, a4)
     if ts < r.from or ts > r.to then return end
     if AURA[sub] then
-        if not dst or not r.byName[dst] then return end
-        if r.idx[a2] then
-            Aura(r, ts, sub, dst, a2, tonumber(a5))
-        elseif sub == "SPELL_AURA_APPLIED" and ns.immunities and ns.immunities[a2] then
+        if not dst or not r.byName[dst] or not sk then return end
+        if r.idx[sk] then
+            Aura(r, ts, sub, dst, sk, tonumber(a5))
+        elseif sub == "SPELL_AURA_APPLIED" and ns.immunities and ns.immunities[sk] then
             local im = { t = ts, spell = a2, by = src }
             r.immune[dst] = im
             local how, by = ImmuneHow(im, dst)
             Relabel(r, ts, dst, nil, how, by)
         end
     elseif sub == "FW_STACK" then
-        if src and r.idx[a1] and r.byName[src] then Set(r, ts, src, a1, tonumber(a2) or 0) end
+        local fk = ns.StackKey(a1)
+        if src and fk and r.idx[fk] and r.byName[src] then Set(r, ts, src, fk, tonumber(a2) or 0) end
     elseif sub == "SPELL_DISPEL" or sub == "SPELL_STOLEN" then
-        if dst and r.idx[a5] and r.byName[dst] then
-            local key = dst .. SEP .. a5
+        local xk = ns.SpellKey(a4)
+        if dst and xk and r.idx[xk] and r.byName[dst] then
+            local key = dst .. SEP .. xk
             if r.open[key] then
-                Close(r, ts, dst, a5, "disp", src)
+                Close(r, ts, dst, xk, "disp", src)
             else
-                Relabel(r, ts, dst, a5, "disp", src)
+                Relabel(r, ts, dst, xk, "disp", src)
             end
         end
     elseif sub == "UNIT_DIED" then
@@ -161,11 +164,12 @@ end
 function StackEps.Finish(r, s)
     for key, o in pairs(r.open) do
         local who, spell = key:match("^(.-)" .. SEP .. "(.*)$")
-        if who and o then Close(r, r.to, who, spell, "end") end
+        if who and o then Close(r, r.to, who, tonumber(spell) or spell, "end") end
     end
     local res = s.phases
     for key, list in pairs(r.eps) do
         local who, spell = key:match("^(.-)" .. SEP .. "(.*)$")
+        spell = spell and (tonumber(spell) or spell)
         local p = who and r.byName[who]
         local i = spell and r.idx[spell]
         if p and i and p.badges[i] then

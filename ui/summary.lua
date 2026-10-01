@@ -196,21 +196,25 @@ local function Entries(p, s)
     local fired = {}
     for _, hit in ipairs(pens[p.name] or {}) do
         local grade = ns.Penalties.Grade(hit)
-        for _, sp in ipairs(hit.rule.spells or {}) do fired[sp] = fired[sp] == "red" and "red" or grade end
-        if hit.rule.npc then fired[hit.rule.npc] = "red" end
+        for _, sp in ipairs(hit.rule.spells or {}) do
+            local k = ns.SpellKey(sp)
+            fired[k] = fired[k] == "red" and "red" or grade
+        end
+        if hit.rule.npc then fired[ns.NpcKeyOf(hit.rule.npc)] = "red" end
     end
     for i = 1, #s.badges do
         local st = p.badges[i]
         local bd = s.badges[i]
         if st and (st.n > 0 or (st.removed or 0) > 0 or forced[i] ~= nil) and not Hidden(bd) then
-            local shown = bd.kind == "stack" and st.max or st.n
+            local shown = bd.low and (st.min or 0) or (bd.kind == "stack" and st.max or st.n)
             local alert = st.cleansed > 0
             local text = alert and format("%d!", shown) or tostring(shown)
-            if bd.kind == "stack" and st.max == 0 then
+            if bd.kind == "stack" and (bd.low and st.min == nil or st.max == 0) then
                 text, alert = "—", false
             end
             if bd.kind == "dmgto" then text, alert = Short(st.amount), false end
             local grade
+            if bd.low and st.min == 0 then grade = "red" end
             if bd.kind == "cc" or bd.kind == "wrath" then
                 text = format("%d/%d", st.hits, st.n)
                 grade = ns.Actions.Grade(st.n, st.hits, forced[i])
@@ -226,7 +230,7 @@ local function Entries(p, s)
             local first = First(st.times)
             local linked = bd.kind == "killer" or bd.kind == "given" or bd.kind == "got"
                 or (bd.kind == "applied" and not bd.names) or LINKED[bd.kind] == true
-            local what = bd.spell or bd.npc
+            local what = ns.SpellKey(bd.spell) or ns.NpcKeyOf(bd.npc)
             local ask
             if P and bd.kind == "killer" then
                 ask = Proof(p, P.ByKind("killer"))
@@ -237,8 +241,8 @@ local function Entries(p, s)
                 proof = ask,
                 count = text,
                 alert = alert,
-                verdict = Verdict(fired[bd.spell or bd.npc or ""] == "red" or bd.kind == "killer")
-                    or (fired[bd.spell or ""] == "yellow" and "yellow") or grade or st.grade or bd.grade,
+                verdict = Verdict(fired[what or ""] == "red" or bd.kind == "killer")
+                    or (fired[ns.SpellKey(bd.spell) or ""] == "yellow" and "yellow") or grade or st.grade or bd.grade,
                 links = linked and st.notes or (bd.kind == "chased" and st.blasted) or nil,
                 arrow = ARROWS[bd.kind],
                 lines = Tips.Badge(st, bd) }, first and fight.from + first, bd.kind)
@@ -303,7 +307,6 @@ local function WipeTotal(s, m)
     m.subs[#m.subs + 1] = format(ns.T("sum.dd.firstshort"), cause.who, at)
     m.lines = m.lines or { { kind = "head", left = m.title, right = m.value .. "  " .. m.sub } }
     m.lines[#m.lines + 1] = { kind = "text", left = format(ns.T("sum.dd.first"), cause.text, cause.who, at) }
-    m.lines[#m.lines + 1] = { kind = "note", left = ns.T("sum.dd.firstnote") }
 end
 local function MarksTotal(s, m)
     local list = s.marks
@@ -554,6 +557,7 @@ local function DrawBlocks(s, y, w)
         local b = s.blocks[i]
         if not Hidden(b.def) then
             local v = (ns.Putri and ns.Putri.View(b, ClassOf)) or (ns.Valkyr and ns.Valkyr.View(b, s, ClassOf))
+                or (ns.Uld and ns.Uld.View(b, s, ClassOf))
             if v then
                 nw = nw + 1
                 list[#list + 1] = WidePanel(v, nw)

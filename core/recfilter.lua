@@ -35,14 +35,15 @@ local function PowerNpcs()
     powerNpcs = {}
     for _, def in pairs(ns.summaries or {}) do
         for _, bd in ipairs(def.blocks or {}) do
-            if bd.power and bd.npc then powerNpcs[bd.npc] = true end
+            if bd.power and bd.npc then powerNpcs[ns.NpcKeyOf(bd.npc)] = true end
         end
     end
     return powerNpcs
 end
-local function IsBoss(name, auto)
-    if name == nil then return false end
-    return ns.bosses[name] ~= nil or (auto ~= nil and auto[name] == true)
+local function IsBoss(guid, name, auto)
+    local key = ns.NpcKey(guid)
+    if key == nil then return false end
+    return ns.bosses[key] ~= nil or (auto ~= nil and name ~= nil and auto[name] == true)
 end
 function Filter.All()
     local db = ns.GetDB and ns.GetDB()
@@ -52,8 +53,8 @@ function Filter.Keep(sub, srcGUID, srcName, dstGUID, dstName, spellId, auraType,
     if all then return true end
     if DROP[sub] then
         if spellId ~= nil and KeepPower()[spellId] then return true end
-        if ENERGIZE[sub] and dstName ~= nil and PowerNpcs()[dstName] then return true end
-        return IsBoss(srcName, auto) or IsBoss(dstName, auto)
+        if ENERGIZE[sub] and dstGUID ~= nil and PowerNpcs()[ns.NpcKey(dstGUID) or 0] then return true end
+        return IsBoss(srcGUID, srcName, auto) or IsBoss(dstGUID, dstName, auto)
     end
     if AURAS[sub] and auraType == "BUFF" and srcGUID ~= nil and srcGUID == dstGUID
         and ns.recProcs[spellId] ~= nil then
@@ -61,7 +62,9 @@ function Filter.Keep(sub, srcGUID, srcName, dstGUID, dstName, spellId, auraType,
     end
     return true
 end
-function Filter.Pulls(sub, srcFlags, dstName, auto)
-    if not IsBoss(dstName, auto) or srcFlags == nil or band(srcFlags, F_BY_PLAYER) == 0 then return false end
+function Filter.Pulls(sub, srcFlags, dstGUID, dstName, auto)
+    if not IsBoss(dstGUID, dstName, auto) or srcFlags == nil or band(srcFlags, F_BY_PLAYER) == 0 then
+        return false
+    end
     return find(sub, "_DAMAGE", 1, true) ~= nil or find(sub, "_HEAL", 1, true) ~= nil
 end

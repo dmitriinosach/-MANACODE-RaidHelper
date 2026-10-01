@@ -81,7 +81,7 @@ local function IssueOne(fight, item, issued, epgp)
     if gp <= 0 then return nil end
     if not Member(epgp, item.name) then return false end
     local reason = ns.Penalties.EpgpReason()
-    if reason == "" then reason = format("FailWatch: %s — %s", fight.boss, concat(labels, ", ")) end
+    if reason == "" then reason = format("FailWatch: %s — %s", ns.EncName(fight.boss), concat(labels, ", ")) end
     local ok = pcall(epgp.IncGPBy, epgp, item.name, reason:sub(1, 200), gp)
     if not ok then return false end
     for e = 1, #item.events do

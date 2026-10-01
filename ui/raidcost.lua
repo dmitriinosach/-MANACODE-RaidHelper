@@ -110,7 +110,7 @@ Refresh = function()
             r.item = it
             r.icon:SetTexture(ns.RaidCost.Icon(it.id))
             r.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            r.name:SetText(it.item)
+            r.name:SetText(ns.ItemName(it.id, it.item))
             PaintAH(r, it)
             local c, t = ns.RaidCost.Manual(it.item)
             if not r.edit:HasFocus() then r.edit:SetValue(EditText(c)) end

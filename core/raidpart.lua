@@ -30,10 +30,8 @@ local function Row(st, name)
     return r
 end
 RaidPart.Row = Row
-local function IsBoss(fight, name)
-    if not name then return false end
-    return name == fight.boss or ns.bosses[name] == fight.boss
-        or (fight.names ~= nil and fight.names[name] == true)
+local function IsBoss(fight, guid)
+    return ns.IsBossOf(fight, guid)
 end
 local function Use(st, name, c, spell)
     local u = st.use[c.item]
@@ -46,13 +44,13 @@ end
 local function IsPlayer(flags)
     return flags ~= nil and band(flags, F_PLAYER) > 0
 end
-function RaidPart.Hit(st, who, dstName, dstFlags, amount)
+function RaidPart.Hit(st, who, dstGUID, dstFlags, amount)
     if amount <= 0 or IsPlayer(dstFlags) then return end
     local r = Row(st, who)
     r.all = r.all + amount
-    if IsBoss(st.fight, dstName) then r.boss = r.boss + amount end
+    if IsBoss(st.fight, dstGUID) then r.boss = r.boss + amount end
 end
-function RaidPart.Consume(st, sub, who, srcName, srcFlags, a1, dstName, dstFlags)
+function RaidPart.Consume(st, sub, who, srcName, srcFlags, a1, dstName, dstFlags, a2)
     if sub == "SPELL_AURA_APPLIED" then
         local c = ns.consumeAura[tonumber(a1) or 0]
         if c and dstName and IsPlayer(dstFlags) and (not srcName or srcName == dstName) then
@@ -65,7 +63,7 @@ function RaidPart.Consume(st, sub, who, srcName, srcFlags, a1, dstName, dstFlags
         local c = ns.consumeCreate[tonumber(a1) or 0]
         if c and srcName and IsPlayer(srcFlags) then Use(st, srcName, c) end
     elseif sub == "ENCHANT_APPLIED" then
-        local c = type(a1) == "string" and ns.consumeEnchant[a1]
+        local c = ns.consumeEnchant[tonumber(a2) or 0]
         if c and srcName and IsPlayer(srcFlags) then Use(st, srcName, c) end
     end
 end
@@ -102,7 +100,7 @@ function RaidPart.Feed(st, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName
                 local r = Row(st, who)
                 r.all = r.all + amount
                 if f then
-                    if IsBoss(f, dstName) then r.boss = r.boss + amount end
+                    if IsBoss(f, dstGUID) then r.boss = r.boss + amount end
                 else
                     st.total = st.total + amount
                     local cut = st.cutBy
@@ -139,7 +137,7 @@ function RaidPart.Feed(st, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName
         RaidPart.Got(st, tonumber(a1), srcName, ts)
     elseif sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CREATE" or sub == "ENCHANT_APPLIED"
         or sub == "SPELL_AURA_APPLIED" then
-        RaidPart.Consume(st, sub, who, srcName, srcFlags, a1, dstName, dstFlags)
+        RaidPart.Consume(st, sub, who, srcName, srcFlags, a1, dstName, dstFlags, a2)
         if sub == "SPELL_CAST_SUCCESS" and tonumber(a1) == FEIGN and srcName and IsPlayer(srcFlags) then
             st.feign[srcName] = ts
         end

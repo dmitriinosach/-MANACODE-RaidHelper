@@ -85,9 +85,11 @@ local function Listed(it)
     if not kicks then
         kicks = {}
         local list = ns.actions and ns.actions.kicks or {}
-        for i = 1, #list do kicks[list[i]] = true end
+        for i = 1, #list do kicks[ns.SpellKey(list[i])] = true end
+        for k in pairs(D().offGcd) do kicks[ns.SpellKey(k)] = true end
     end
-    return kicks[it.label] == true or D().offGcd[it.label] == true
+    local key = id and ns.SpellKey(id)
+    return key ~= nil and kicks[key] == true
 end
 local function ByAt(a, b)
     if a.at ~= b.at then return a.at < b.at end
@@ -96,9 +98,11 @@ end
 function CG.Plan(casts, cuts, class, auras)
     local d = D()
     local forms = {}
+    local byKey = {}
+    for k, g in pairs(d.forms) do byKey[ns.SpellKey(k)] = g end
     for i = 1, auras and #auras or 0 do
         local a = auras[i]
-        local g = d.forms[a.label]
+        local g = a.id and byKey[ns.SpellKey(a.id) or 0]
         if g then forms[#forms + 1] = { a.t, a.to or a.t, g } end
     end
     local base = d.class[class or ""] or d.base

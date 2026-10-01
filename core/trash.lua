@@ -3,13 +3,17 @@ local band = bit.band
 local floor = math.floor
 local min = math.min
 local WINDOW = 12
-local RING = 60
+local RING = 65
+local RING_BYTES = 10 * 1048576
+local DICT_BYTES = 262144
+local STEP_CHUNKS = 32
 local F_PLAYER = 0x400
 local MAX_TAIL = 12
 local Trash = {}
 ns.Trash = Trash
 Trash.WINDOW = WINDOW
 Trash.RING = RING
+Trash.RING_BYTES = RING_BYTES
 local live = nil
 local carry = nil
 local function Part(prev)
@@ -137,17 +141,33 @@ local function Trim(seg, cutMs)
     local keep = seg.t0 + (first or cutMs) / 1000 - 2 * WINDOW
     while deaths[1] and deaths[1] < keep do table.remove(deaths, 1) end
 end
-function Trash.Step(seg, now)
+local function Drain(seg)
+    live = live or Trash.Begin(seg.raid, seg.t0)
+    Trash.FeedChunk(live, seg, ns.RecCodec.Shift(seg), deaths)
+end
+function Trash.Step(seg, now, all)
     if seg.pull then return false end
-    local cutMs = floor((now - RING - seg.t0) * 1000)
-    local drained = false
-    if ns.RecCodec.FrontOld(seg, cutMs) then
-        live = live or Trash.Begin(seg.raid, seg.t0)
-        Trash.FeedChunk(live, seg, ns.RecCodec.Shift(seg), deaths)
-        drained = true
+    local Codec = ns.RecCodec
+    local cutMs = floor((now - (all and 0 or RING) - seg.t0) * 1000)
+    if all then Codec.Flush(seg) end
+    local n = 0
+    while (all or n < STEP_CHUNKS) and Codec.FrontOld(seg, cutMs) do
+        Drain(seg)
+        n = n + 1
+    end
+    if all and seg.chunks[1] then
+        Drain(seg)
+        n = n + 1
+    end
+    while n < STEP_CHUNKS and seg.chunks[1] and Codec.Size(seg) > Trash.RING_BYTES do
+        Drain(seg)
+        n = n + 1
+        local first = Codec.Head(seg.chunks[1] or (seg.buf and seg.buf[1]))
+        if first and first > cutMs then cutMs = first end
     end
     Trim(seg, cutMs)
-    return drained
+    if all or Codec.DictBytes(seg) > DICT_BYTES then Codec.Compact(seg) end
+    return n > 0
 end
 function Trash.Pull(seg, ts)
     seg.pull = ts

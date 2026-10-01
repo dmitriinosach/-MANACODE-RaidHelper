@@ -9,7 +9,9 @@ local PARSE = {
     { 100, "parse.p100" }, { 99, "parse.p99" }, { 95, "parse.p95" },
     { 75, "parse.p75" }, { 50, "parse.p50" }, { 25, "parse.p25" },
 }
+local CACHE_MAX = 400
 local cache = {}
+local cached = 0
 local waiting = false
 local function src()
     local b = root.Bober
@@ -21,6 +23,7 @@ function B.Ready()
 end
 function B.Reset()
     cache = {}
+    cached = 0
 end
 local function prefs()
     local db = ns.Store.DB()
@@ -132,6 +135,8 @@ function B.Info(name, unit, spec)
         info.role = roleOf(name, spec)
         info.lines = { ns.T("bbTipHead", ns.T("bbMode_" .. mode)), ns.T("bbTipNone") }
     end
+    if cached >= CACHE_MAX then B.Reset() end
+    cached = cached + 1
     cache[ck] = info
     return info
 end

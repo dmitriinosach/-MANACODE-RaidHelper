@@ -122,7 +122,7 @@ local function Send()
     local it = st.queue[st.i]
     if not it then return Done() end
     sending = true
-    local ok = pcall(QueryAuctionItems, Scan.Query(it.item), nil, nil, nil, nil, nil, st.page, nil, nil)
+    local ok = pcall(QueryAuctionItems, Scan.Query(ns.ItemName(it.id, it.item)), nil, nil, nil, nil, nil, st.page, nil, nil)
     sending = false
     if not ok then
         st.tries = st.tries + 1
@@ -143,7 +143,7 @@ local function Read()
             partial = true
         else
             local id = LinkId(link)
-            local same = id and id == it.id or (not id and name == it.item)
+            local same = id and id == it.id or (not id and name == ns.ItemName(it.id, it.item))
             if same and (buyout or 0) > 0 and (count or 0) > 0 then
                 got[#got + 1] = { u = buyout / count, n = count }
             end

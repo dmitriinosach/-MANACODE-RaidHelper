@@ -119,6 +119,7 @@ end
 local function Encode(f, v)
     if f == "on" then return v and "1" or "0" end
     if f == "mode" then return MODES[v] and v or nil end
+    if f == "boss" and type(v) == "number" then return tostring(floor(v)) end
     if NUMS[f] then
         if type(v) ~= "number" then return nil end
         v = floor(v + 0.5)
@@ -136,6 +137,7 @@ local function Decode(f, s)
         return nil
     end
     if f == "mode" then return MODES[s] and s or nil end
+    if f == "boss" and #s <= 6 and s:match("^%d+$") then return tonumber(s) end
     if NUMS[f] then
         if #s > 6 or not s:match("^%d+$") then return nil end
         local n = tonumber(s)

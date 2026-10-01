@@ -1,52 +1,55 @@
 local _, ns = ...
 local ANY = "*"
-local LADY = "Леди Смертный Шепот"
-local MARROW = "Лорд Ребрад"
-local GUNSHIP = "Бой на кораблях"
-local SAURFANG = "Саурфанг Смертоносный"
-local FESTER = "Тухлопуз"
-local ROT = "Гниломорд"
-local PUTRI = "Профессор Мерзоцид"
-local COUNCIL = "Совет кровавых принцев"
-local LANA = "Кровавая королева Лана'тель"
-local VALI = "Валитрия Сноходица"
-local SINDRA = "Синдрагоса"
-local LICH = "Король-лич"
-local HALION = "Халион"
-local BEASTS = "Звери Нордскола"
-local JARAX = "Лорд Джараксус"
-local CHAMPS = "Чемпионы фракций"
-local TWINS = "Валь'киры-близнецы"
-local ANUB = "Ануб'арак"
+local LADY = ns.ENC.deathwhisper
+local MARROW = ns.ENC.marrowgar
+local GUNSHIP = ns.ENC.gunship
+local SAURFANG = ns.ENC.saurfang
+local FESTER = ns.ENC.festergut
+local ROT = ns.ENC.rotface
+local PUTRI = ns.ENC.putricide
+local COUNCIL = ns.ENC.council
+local LANA = ns.ENC.lanathel
+local VALI = ns.ENC.valithria
+local SINDRA = ns.ENC.sindragosa
+local LICH = ns.ENC.lichking
+local HALION = ns.ENC.halion
+local BEASTS = ns.ENC.beasts
+local JARAX = ns.ENC.jaraxxus
+local CHAMPS = ns.ENC.champions
+local TWINS = ns.ENC.twins
+local ANUB = ns.ENC.anubarak
+local VEZAX = ns.ENC.vezax
+local ALGALON = ns.ENC.algalon
 ns.penaltyPresets = {
     spartans = {
         name = "Spartans",
         rules = {
             { key = "marrow.puddle", boss = MARROW, text = "sum.p.marrow.puddle", kind = "death",
-              spells = { "Холодное пламя" }, ticks = 2, window = 6, gp = 400 },
+              spells = { 69138 }, ticks = 2, window = 6, gp = 400 },
             { key = "marrow.pos", boss = MARROW, text = "sum.p.marrow.pos", kind = "manual", gp = 200 },
             { key = "marrow.posstorm", boss = MARROW, text = "sum.p.marrow.posstorm", kind = "manual", gp = 200 },
             { key = "marrow.cleave", boss = MARROW, text = "sum.p.marrow.cleave", kind = "death",
-              spells = { "Костерез" }, gp = 400 },
+              spells = { 70814 }, gp = 400 },
             { key = "lady.weapon", boss = LADY, text = "sum.p.lady.weapon", kind = "mcweapon", aura = 71289,
               classes = { "DEATHKNIGHT", "WARRIOR", "ROGUE", "PALADIN", "SHAMAN" },
-              procs = { " яд", "Атака неистовства ветра", "Атака языка пламени", "Проклятие хаоса",
-                        "Фрагмент души", "Нечестивая сила" },
+              procs = { 2818, 2819, 3408, 5760, 8679, 8685, 8688, 11335, 11336, 11337, 11353, 11354, 13218, 13222,
+                        13223, 13224, 25349, 26688, 26890, 26967, 27186, 27188, 57964, 57965, 57969, 57970, 57974,
+                        57975, 57981, 25504, 10444, 71904, 71905, 53365 },
               minOwn = 20, hi = 1.3, lo = 0.8, gp = 200 },
             { key = "lady.control", boss = LADY, text = "sum.p.lady.control", kind = "expect", what = "cast",
-              by = { DRUID = { spell = "Смерч", id = 33786 },
-                     MAGE = { spell = "Превращение", id = 118, unverified = true } },
+              by = { DRUID = { spell = 33786, id = 33786 },
+                     MAGE = { spell = 61305, id = 118, unverified = true } },
               size = 25, heroic = true, gp = 200, mode = "once" },
             { key = "lady.shade", boss = LADY, text = "sum.p.lady.shade", kind = "chased",
-              npc = "Мстительный дух", gp = 200, step = 200, mode = "grow" },
+              npc = 38222, gp = 200, step = 200, mode = "grow" },
             { key = "lady.curse", boss = LADY, text = "sum.p.lady.curse", kind = "expect", what = "dispel",
-              removes = "Проклятие оцепенения",
+              removes = 71237,
               by = { DRUID = { id = 2782 }, MAGE = { id = 475 } },
               size = 25, heroic = true, gp = 200, mode = "once" },
             { key = "lady.mccast", boss = LADY, text = "sum.p.lady.mccast", kind = "mccast",
-              spells = { "Ментальный крик", "Звездопад" }, gp = 200, unverified = true },
+              spells = { 10890, 53190 }, gp = 200, unverified = true },
             { key = "gunship.muradin", boss = GUNSHIP, text = "sum.p.gunship.muradin", kind = "death",
-              srcs = { "Мурадин Бронзобород", "Верховный правитель Саурфанг" }, gp = 200 },
+              srcs = { 36948, 36939 }, gp = 200 },
             { key = "saurfang.swap", boss = SAURFANG, text = "sum.p.saurfang.swap", kind = "manual", gp = 200 },
             { key = "saurfang.trash", boss = SAURFANG, text = "sum.p.saurfang.trash", kind = "manual", gp = 200 },
             { key = "saurfang.mark1", boss = SAURFANG, text = "sum.p.saurfang.mark1", kind = "manual", gp = 400 },
@@ -55,105 +58,109 @@ ns.penaltyPresets = {
               dps = 14000, size = 25, heroic = true, gp = 200, mode = "once" },
             { key = "fester.gas", boss = FESTER, text = "sum.p.fester.gas", kind = "manual", gp = 800 },
             { key = "fester.blight", boss = FESTER, text = "sum.p.fester.blight", kind = "death",
-              spells = { "Едкая гниль" }, gp = 400 },
+              spells = { 73032 }, gp = 400 },
             { key = "fester.goo", boss = FESTER, text = "sum.p.fester.goo", kind = "hit",
-              spells = { "Вязкая гадость" }, gp = 200 },
+              spells = { 72550 }, gp = 200 },
             { key = "rot.gas", boss = ROT, text = "sum.p.rot.gas", kind = "manual", gp = 800 },
             { key = "rot.puddle", boss = ROT, text = "sum.p.rot.puddle", kind = "death",
-              spells = { "Липкая жижа", "Поток слизнюков" }, ticks = 2, window = 6, gp = 400 },
+              spells = { 69774, 71588 }, ticks = 2, window = 6, gp = 400 },
             { key = "rot.boom", boss = ROT, text = "sum.p.rot.boom", kind = "death",
-              spells = { "Взрыв нестабильного слизнюка" }, gp = 400, unverified = true },
+              spells = { 69839 }, gp = 400, unverified = true },
             { key = "rot.ooze", boss = ROT, text = "sum.p.rot.ooze", kind = "manual", gp = 200 },
             { key = "rot.infect", boss = ROT, text = "sum.p.rot.infect", kind = "caused", dep = "dispel",
-              spells = { "Мутировавшая инфекция" }, gp = 400 },
+              spells = { 73023 }, gp = 400 },
             { key = "rot.bigooze", boss = ROT, text = "sum.p.rot.bigooze", kind = "caused", dep = "mech",
               mech = "bigooze", gp = 200 },
             { key = "rot.spray", boss = ROT, text = "sum.p.rot.spray", kind = "death",
-              spells = { "Брызги слизи" }, gp = 400 },
+              spells = { 69508 }, gp = 400 },
             { key = "putri.goo", boss = PUTRI, text = "sum.p.putri.goo", kind = "hit",
-              spells = { "Вязкая гадость" }, gp = 200 },
+              spells = { 72550 }, gp = 200 },
             { key = "putri.gas", boss = PUTRI, text = "sum.p.putri.gas", kind = "hit",
-              spells = { "Удушливый газ" }, gp = 200 },
+              spells = { 72620 }, gp = 200 },
             { key = "putri.heal", boss = PUTRI, text = "sum.p.putri.heal", kind = "manual", gp = 200 },
             { key = "putri.death", boss = PUTRI, text = "sum.p.putri.death", kind = "anydeath", gp = 500 },
             { key = "putri.slow", boss = PUTRI, text = "sum.p.putri.slow", kind = "manual", gp = 200 },
             { key = "putri.pos", boss = PUTRI, text = "sum.p.putri.pos", kind = "manual", gp = 200, wipe = 800 },
             { key = "putri.oozedmg", boss = PUTRI, text = "sum.p.putri.oozedmg", kind = "mindmg",
-              targets = { "Неустойчивый слизнюк", "Облако газа" }, melee = 250000, ranged = 500000,
+              targets = { 37697, 37562 }, melee = 250000, ranged = 500000,
               gp = 200, mode = "once" },
             { key = "putri.dps", boss = PUTRI, text = "sum.p.putri.dps", kind = "mindps",
               dps = 11000, size = 25, heroic = true, gp = 200, mode = "once" },
             { key = "council.vortex", boss = COUNCIL, text = "sum.p.council.vortex", kind = "death",
-              spells = { "Сотрясающий вихрь", "Могучий вихрь" }, gp = 400 },
+              spells = { 72037, 72817 }, gp = 400 },
             { key = "council.prison", boss = COUNCIL, text = "sum.p.council.prison", kind = "death",
-              spells = { "Темница Тьмы" }, gp = 400 },
+              spells = { 72999 }, gp = 400 },
             { key = "council.orbs", boss = COUNCIL, text = "sum.p.council.orbs", kind = "manual", gp = 400, wipe = 800 },
             { key = "council.kinetic", boss = COUNCIL, text = "sum.p.council.kinetic", kind = "manual", gp = 200 },
             { key = "council.knock", boss = COUNCIL, text = "sum.p.council.knock", kind = "manual", gp = 200, wipe = 800 },
             { key = "lana.frenzy", boss = LANA, text = "sum.p.lana.frenzy", kind = "hit",
-              spells = { "Неудержимый раж" }, gp = 400, firstGp = 800 },
+              spells = { 53403 }, gp = 400, firstGp = 800 },
             { key = "lana.puddle", boss = LANA, text = "sum.p.lana.puddle", kind = "manual", gp = 200, wipe = 800 },
             { key = "lana.pact", boss = LANA, text = "sum.p.lana.pact", kind = "killer",
-              spells = { "Пакт Омраченных" }, wipeOnly = true, gp = 400, wipe = 800, mode = "once" },
+              spells = { 71340 }, wipeOnly = true, gp = 400, wipe = 800, mode = "once" },
             { key = "lana.quest", boss = LANA, text = "sum.p.quest", kind = "manual", gp = 200 },
             { key = "vali.switch", boss = VALI, text = "sum.p.vali.switch", kind = "manual", gp = 200 },
             { key = "vali.lust", boss = VALI, text = "sum.p.vali.lust", kind = "manual", gp = 800 },
             { key = "sindra.grip", boss = SINDRA, text = "sum.p.sindra.grip", kind = "death",
-              spells = { "Обжигающий холод" }, ticks = 1, window = 3, gp = 400 },
+              spells = { 71049 }, ticks = 1, window = 3, gp = 400 },
             { key = "sindra.tomb", boss = SINDRA, text = "sum.p.sindra.tomb", kind = "death",
-              spells = { "Ледяной склеп" }, gp = 400 },
+              spells = { 69675 }, gp = 400 },
             { key = "sindra.bomb", boss = SINDRA, text = "sum.p.sindra.bomb", kind = "death",
-              spells = { "Ледяная бомба" }, gp = 400 },
+              spells = { 64623 }, gp = 400 },
             { key = "sindra.magic", boss = SINDRA, text = "sum.p.sindra.magic", kind = "manual", gp = 400, wipe = 800 },
             { key = "sindra.backlash", boss = SINDRA, text = "sum.p.sindra.backlash", kind = "death",
-              spells = { "Ответный удар" }, gp = 400 },
+              spells = { 71046 }, gp = 400 },
             { key = "sindra.backlashkill", boss = SINDRA, text = "sum.p.sindra.backlashkill", kind = "killer",
-              spells = { "Ответный удар" }, gp = 400, wipe = 800 },
+              spells = { 71046 }, gp = 400, wipe = 800 },
             { key = "sindra.mark", boss = SINDRA, text = "sum.p.sindra.mark", kind = "manual", gp = 200, wipe = 800 },
             { key = "sindra.frostbite", boss = SINDRA, text = "sum.p.sindra.frostbite", kind = "death",
-              spells = { "Обморожение" }, gp = 400 },
+              spells = { 70106 }, gp = 400 },
             { key = "sindra.quest", boss = SINDRA, text = "sum.p.quest", kind = "manual", gp = 200 },
             { key = "lich.plagueot", boss = LICH, text = "sum.p.lich.plagueot", kind = "manual", gp = 200 },
             { key = "lich.plaguedeath", boss = LICH, text = "sum.p.lich.plaguedeath", kind = "caused", dep = "dispel",
-              spells = { "Мертвящая чума" }, gp = 400 },
+              spells = { 73787 }, gp = 400 },
             { key = "lich.defile", boss = LICH, text = "sum.p.lich.defile", kind = "manual", gp = 200, wipe = 800 },
             { key = "lich.spirit", boss = LICH, text = "sum.p.lich.spirit", kind = "death",
-              spells = { "Импульс духа" }, gp = 400 },
+              spells = { 73808 }, gp = 400 },
             { key = "lich.switch", boss = LICH, text = "sum.p.lich.switch", kind = "manual", gp = 400 },
             { key = "lich.frenzy", boss = LICH, text = "sum.p.lich.frenzy", kind = "manual", gp = 200, wipe = 800 },
             { key = "lich.pull", boss = LICH, text = "sum.p.lich.pull", kind = "manual", gp = 200 },
             { key = "lich.bomb", boss = LICH, text = "sum.p.lich.bomb", kind = "death",
-              srcs = { "Взрывной дух" }, gp = 200 },
+              srcs = { 39189 }, gp = 200 },
             { key = "halion.meteor", boss = HALION, text = "sum.p.halion.meteor", kind = "death",
-              spells = { "Падение метеора" }, gp = 400 },
+              spells = { 75879 }, gp = 400 },
             { key = "halion.breath", boss = HALION, text = "sum.p.halion.breath", kind = "death",
-              spells = { "Огненное дыхание", "Темное дыхание" }, gp = 400 },
+              spells = { 8873, 75956 }, gp = 400 },
             { key = "halion.dark", boss = HALION, text = "sum.p.halion.dark", kind = "manual", gp = 400 },
             { key = "halion.blades", boss = HALION, text = "sum.p.halion.blades", kind = "death",
-              spells = { "Лезвие сумерек" }, gp = 400 },
+              spells = { 77846 }, gp = 400 },
             { key = "halion.marks", boss = HALION, text = "sum.p.halion.marks", kind = "manual", gp = 200, wipe = 800 },
             { key = "halion.fire", boss = HALION, text = "sum.p.halion.fire", kind = "manual", gp = 400 },
             { key = "halion.puddle", boss = HALION, text = "sum.p.halion.puddle", kind = "death",
-              spells = { "Возгорание", "Пожирание" }, ticks = 2, window = 6, gp = 400 },
+              spells = { 75884, 75876 }, ticks = 2, window = 6, gp = 400 },
             { key = "halion.side", boss = HALION, text = "sum.p.halion.side", kind = "manual", gp = 200, wipe = 800 },
             { key = "beasts.bomb", boss = BEASTS, text = "sum.p.toc.beasts.bomb", kind = "death",
-              spells = { "Огненная бомба" }, ticks = 2, window = 6, gp = 400, unverified = true },
+              spells = { 66313 }, ticks = 2, window = 6, gp = 400, unverified = true },
             { key = "beasts.slime", boss = BEASTS, text = "sum.p.toc.beasts.slime", kind = "death",
-              spells = { "Лужа жижи" }, ticks = 2, window = 6, gp = 400, unverified = true },
+              spells = { 67640 }, ticks = 2, window = 6, gp = 400, unverified = true },
             { key = "beasts.charge", boss = BEASTS, text = "sum.p.toc.beasts.charge", kind = "manual", gp = 400 },
             { key = "beasts.rage", boss = BEASTS, text = "sum.p.toc.beasts.rage", kind = "manual", gp = 200, wipe = 800 },
             { key = "jarax.inferno", boss = JARAX, text = "sum.p.toc.jarax.inferno", kind = "death",
-              spells = { "Геенна скверны" }, gp = 400, unverified = true },
+              spells = { 67047 }, gp = 400, unverified = true },
             { key = "jarax.flame", boss = JARAX, text = "sum.p.toc.jarax.flame", kind = "manual", gp = 200 },
             { key = "jarax.kick", boss = JARAX, text = "sum.p.toc.jarax.kick", kind = "manual", gp = 200, wipe = 800 },
             { key = "champ.cc", boss = CHAMPS, text = "sum.p.toc.champ.cc", kind = "manual", gp = 200, wipe = 800 },
             { key = "twins.vortex", boss = TWINS, text = "sum.p.toc.twins.vortex", kind = "hit",
-              spells = { "Светлая воронка", "Темная воронка" }, gap = 3, gp = 200, unverified = true },
+              spells = { 66046, 67157 }, gap = 3, gp = 200, unverified = true },
             { key = "twins.orbs", boss = TWINS, text = "sum.p.toc.twins.orbs", kind = "manual", gp = 200 },
             { key = "twins.pact", boss = TWINS, text = "sum.p.toc.twins.pact", kind = "manual", gp = 400, wipe = 800 },
             { key = "anub.spikes", boss = ANUB, text = "sum.p.toc.anub.spikes", kind = "death",
-              spells = { "Прокалывание" }, gp = 400, unverified = true },
+              spells = { 62418 }, gp = 400, unverified = true },
             { key = "anub.ice", boss = ANUB, text = "sum.p.toc.anub.ice", kind = "manual", gp = 200, wipe = 800 },
+            { key = "vezax.crash", boss = VEZAX, text = "sum.p.uld.vezax.crash", kind = "hit",
+              spells = { 62659 }, gap = 3, gp = 0, on = false },
+            { key = "algalon.bang", boss = ALGALON, text = "sum.p.uld.algalon.bang", kind = "death",
+              spells = { 64584 }, gp = 0, on = false, unverified = true },
             { key = "any.duty", boss = ANY, text = "sum.p.any.duty", kind = "manual", gp = 200, wipe = 400 },
             { key = "any.pull", boss = ANY, text = "sum.p.any.pull", kind = "earlypull", gp = 200 },
             { key = "any.leaveraid", boss = ANY, text = "sum.p.any.leaveraid", kind = "manual", gp = 400 },

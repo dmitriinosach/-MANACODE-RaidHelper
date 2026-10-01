@@ -8,10 +8,6 @@ local ICC = {
     ["Цитадель Ледяной Короны"] = true,
     ["Icecrown Citadel"] = true,
 }
-local LICH = {
-    ["Король-лич"] = true,
-    ["The Lich King"] = true,
-}
 local AutoRec = {}
 ns.AutoRec = AutoRec
 local frame = CreateFrame("Frame")
@@ -22,7 +18,7 @@ local movieSeen = false
 local tick = 0
 local function ZoneState()
     local name, kind = GetInstanceInfo()
-    local icc = kind == "raid" and name ~= nil and ICC[name] == true
+    local icc = kind == "raid" and name ~= nil and (ICC[name] == true or ns.Raid.MapNow() == "IcecrownCitadel")
     return kind == "raid", icc
 end
 local function Disarm()
@@ -42,13 +38,14 @@ local function OnZone()
         frame:UnregisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     end
 end
-local function OnCombat(sub, srcName, dstName)
+local function OnCombat(sub, srcGUID, dstGUID)
+    local lich = ns.ENC.lichking
     if sub == "UNIT_DIED" then
-        if dstName and LICH[dstName] and ns.Recorder.IsOn() then
+        if dstGUID and ns.NpcKey(dstGUID) == lich and ns.Recorder.IsOn() then
             diedAt = GetTime()
             movieSeen = false
         end
-    elseif diedAt and srcName and LICH[srcName] and sub:find("_DAMAGE", 1, true) then
+    elseif diedAt and srcGUID and ns.NpcKey(srcGUID) == lich and sub:find("_DAMAGE", 1, true) then
         Disarm()
     end
 end
@@ -79,8 +76,8 @@ local function CheckStop()
 end
 frame:SetScript("OnEvent", function(_, event, ...)
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
-        local _, sub, _, srcName, _, _, dstName = ...
-        OnCombat(sub, srcName, dstName)
+        local _, sub, srcGUID, _, _, dstGUID = ...
+        OnCombat(sub, srcGUID, dstGUID)
     elseif event == "PLAY_MOVIE" or event == "CINEMATIC_START" then
         if diedAt then
             movieSeen = true
@@ -130,15 +127,16 @@ local function AllFinals(name, enc)
     return true
 end
 function AutoRec.Killed(enc)
-    if not enc or LICH[enc] then return end
+    if not enc or enc == ns.ENC.lichking then return end
     local R = ns.Recorder
     if not R.IsOn() or R.IsPaused() then return end
-    local name, kind = GetInstanceInfo()
-    if kind ~= "raid" or not ns.Raid.IsFinal(name, enc) then return end
-    if not AllFinals(name, enc) then return end
+    local _, kind = GetInstanceInfo()
+    local map = kind == "raid" and ns.Raid.MapNow() or nil
+    if not map or not ns.Raid.IsFinal(map, enc) then return end
+    if not AllFinals(map, enc) then return end
     Disarm()
     R.Pause(true)
-    ns.Print(string.format(ns.T("auto.final"), enc))
+    ns.Print(string.format(ns.T("auto.final"), ns.EncName(enc)))
 end
 function AutoRec.DevAsk()
     ns.Print(ns.T(ns.Recorder.InZone() and "auto.here" or "auto.away"))

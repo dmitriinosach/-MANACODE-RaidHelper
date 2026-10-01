@@ -50,6 +50,16 @@ local SKULL = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8"
 local READY = "Interface\\RAIDFRAME\\ReadyCheck-Ready"
 local NOTREADY = "Interface\\RAIDFRAME\\ReadyCheck-NotReady"
 local CLASS_TEX = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
+local MAP_ICON = {
+    IcecrownCitadel = LFG .. "IcecrownCitadel",
+    TheRubySanctum = LFG .. "RubySanctum",
+    Ulduar = LFG .. "Ulduar",
+    TheArgentColiseum = LFG .. "ArgentRaid",
+    Naxxramas = LFG .. "Naxxramas",
+    TheEyeofEternity = LFG .. "Malygos",
+    TheObsidianSanctum = LFG .. "ChamberOfAspects",
+    OnyxiasLair = LFG .. "OnyxiaEncounter",
+}
 local INST_ICON = {
     ["Цитадель Ледяной Короны"] = LFG .. "IcecrownCitadel",
     ["Рубиновое святилище"] = LFG .. "RubySanctum",
@@ -149,13 +159,13 @@ local function Folded(raid, index)
 end
 function FL.Title(f)
     if not f then return "" end
-    return f.boss
+    return ns.EncName(f.boss)
 end
 local function TryTitle(f)
     if not f then return "" end
     local spot = ns.FightTree.Spot(f)
-    if not spot then return f.boss end
-    return format(ns.T("fl.try.title"), f.boss, spot.n)
+    if not spot then return ns.EncName(f.boss) end
+    return format(ns.T("fl.try.title"), ns.EncName(f.boss), spot.n)
 end
 local function Outcome(f)
     return format(ns.T(f.killed and "fl.tip.try.win" or "fl.tip.try.wipe"), Clock(f.to - f.from))
@@ -382,7 +392,7 @@ end
 local function PaintRaid(r, line)
     local raid = line.raid
     Kit.Fill(r.bg, Kit.Theme().row.raid)
-    r.icon:SetTexture(INST_ICON[raid.name or ""] or (LFG .. "Raid"))
+    r.icon:SetTexture(MAP_ICON[raid.map or ""] or INST_ICON[raid.name or ""] or (LFG .. "Raid"))
     r.size:SetText(raid.size and tostring(raid.size) or "")
     if raid.heroic then r.hc:Show() else r.hc:Hide() end
     Kit.Icon.Fold(r.fold, not Folded(raid, line.index))
@@ -428,7 +438,7 @@ local function PaintEnc(r, line, spot)
     r.play:ClearAllPoints()
     r.play:SetPoint("RIGHT", -(right + DOTGAP), 0)
     r.play.fight = ns.FightTree.Decisive(enc)
-    Fit(r.name, enc.boss, rowW - ENCX - ENCNAME - right - DOTGAP - PLAYW)
+    Fit(r.name, ns.EncName(enc.boss), rowW - ENCX - ENCNAME - right - DOTGAP - PLAYW)
     Tone(r.name, on and "sem.pick" or "text.primary")
 end
 local function PaintWipe(r, line)
@@ -806,7 +816,7 @@ Tips.enc = function(r)
     local enc = r.line.enc
     local n = #enc.fights
     local out = {
-        Line(enc.boss),
+        Line(ns.EncName(enc.boss)),
         Line(format(ns.T(enc.passed and "fl.tip.enc.pass" or "fl.tip.enc.fail"), n, ns.FightTree.Wipes(enc)),
             enc.passed and "sem.win" or "sem.wipe"),
     }
@@ -827,7 +837,7 @@ end
 Tips.wipe = function(r)
     local f, n = r.line.fight, r.line.n
     return {
-        Line(format(ns.T("fl.try.title"), f.boss, n)),
+        Line(format(ns.T("fl.try.title"), ns.EncName(f.boss), n)),
         Line(format(ns.T("fl.tip.enc.line"), n, ns.T("fl.wipe"), Clock(f.to - f.from), f.deaths or 0,
             Hour(f.from)), "sem.wipe"),
         Line(ns.T("fl.tip.wipe.open"), "text.primary", true),
@@ -892,13 +902,13 @@ function Del.Last(raid, list)
 end
 function Del.AskTry(f, n)
     local spot = ns.FightTree.Spot(f)
-    Del.Ask(format(ns.T("fl.del.try.ask"), n, f.boss, ns.T(f.killed and "fl.win" or "fl.wipe"), Clock(f.to - f.from),
+    Del.Ask(format(ns.T("fl.del.try.ask"), n, ns.EncName(f.boss), ns.T(f.killed and "fl.win" or "fl.wipe"), Clock(f.to - f.from),
         date("%d.%m %H:%M", f.from)), { f }, Del.Last(spot and spot.raid, { f }))
 end
 function Del.AskEnc(enc)
     local list = {}
     for i = 1, #enc.fights do list[i] = enc.fights[i] end
-    Del.Ask(format(ns.T("fl.del.enc.ask"), enc.boss, #list), list, Del.Last(enc.raid, list))
+    Del.Ask(format(ns.T("fl.del.enc.ask"), ns.EncName(enc.boss), #list), list, Del.Last(enc.raid, list))
 end
 function Del.AskRaid(raid)
     Del.Ask(format(ns.T("fl.del.raid.ask"), RaidName(raid), date("%d.%m", raid.from), raid.tries),
@@ -918,7 +928,7 @@ function Del.EncMenu(row)
     local enc = row.line.enc
     ns.Tip.Hide()
     Kit.Menu({
-        { text = enc.boss, isTitle = true },
+        { text = ns.EncName(enc.boss), isTitle = true },
         { text = ns.T("fl.menu.enc.del"), func = function() Del.AskEnc(enc) end },
     }, row)
 end
@@ -926,7 +936,7 @@ function Del.WipeMenu(row)
     local f, n = row.line.fight, row.line.n
     ns.Tip.Hide()
     Kit.Menu({
-        { text = format(ns.T("fl.try.title"), f.boss, n), isTitle = true },
+        { text = format(ns.T("fl.try.title"), ns.EncName(f.boss), n), isTitle = true },
         { text = ns.T("fl.menu.wipe.del"), func = function() Del.AskTry(f, n) end },
     }, row)
 end

@@ -1,28 +1,27 @@
 local _, ns = ...
 ns.immunities = {
-    ["Божественный щит"] = "PALADIN",
-    ["Плащ Теней"] = "ROGUE",
-    ["Ледяная глыба"] = "MAGE",
-    ["Длань защиты"] = true,
+    [642] = "PALADIN",
+    [31224] = "ROGUE",
+    [45438] = "MAGE",
+    [10278] = true,
 }
 ns.taunts = {
-    ["Темная власть"] = true,
-    ["Длань возмездия"] = true,
-    ["Провокация"] = true,
-    ["Рык"] = true,
-    ["Праведная защита"] = true,
+    [56222] = true,
+    [62124] = true,
+    [355] = true,
+    [6795] = true,
+    [31789] = true,
 }
-ns.pollAuras = { "Изощренные кошмары", "Изумрудная бодрость" }
+ns.pollAuras = { 71940, 70873, 63050, 63322 }
 ns.tankSpells = {
-    ["Молот праведника"] = true,
-    ["Щит праведности"] = true,
-    ["Мощный удар щитом"] = true,
-    ["Удар рун"] = true,
-    ["Рунический удар"] = true,
-    ["Трепка"] = true,
-    ["Реванш"] = true,
-    ["Щит мстителя"] = true,
-    ["Блок щитом"] = true,
+    [53595] = true,
+    [61411] = true,
+    [47488] = true,
+    [56815] = true,
+    [48480] = true,
+    [57823] = true,
+    [48827] = true,
+    [2565] = true,
 }
 ns.shieldSpells = {
     [48707] = { school = 0x20, dur = 5 },
@@ -190,15 +189,15 @@ ns.shieldPassive = {
     WARLOCK = { ids = { [25228] = 0 }, shares = { 0.2 } },
 }
 ns.buffsGiven = {
-    { kind = "given", spells = { "Маленькие хитрости" }, id = 57934, pull = true, tip = "sum.b.given" },
-    { kind = "given", spells = { "Перенаправление" }, id = 34477, pull = true, tip = "sum.b.given" },
-    { kind = "given", spells = { "Придание сил" }, id = 10060, tip = "sum.b.given" },
-    { kind = "given", spells = { "Истерия" }, id = 49016, tip = "sum.b.given" },
-    { kind = "given", spells = { "Магическая концентрация" }, id = 54646, tip = "sum.b.given" },
-    { kind = "given", spells = { "Длань защиты" }, id = 10278, tip = "sum.b.given" },
-    { kind = "given", spells = { "Длань свободы" }, id = 1044, tip = "sum.b.given" },
-    { kind = "given", spells = { "Длань жертвенности" }, id = 6940, tip = "sum.b.given" },
-    { kind = "given", spells = { "Длань спасения" }, id = 1038, tip = "sum.b.given" },
+    { kind = "given", spells = { 57933 }, id = 57934, pull = true, tip = "sum.b.given" },
+    { kind = "given", spells = { 34477 }, id = 34477, pull = true, tip = "sum.b.given" },
+    { kind = "given", spells = { 10060 }, id = 10060, tip = "sum.b.given" },
+    { kind = "given", spells = { 49016 }, id = 49016, tip = "sum.b.given" },
+    { kind = "given", spells = { 54646 }, id = 54646, tip = "sum.b.given" },
+    { kind = "given", spells = { 10278 }, id = 10278, tip = "sum.b.given" },
+    { kind = "given", spells = { 1044 }, id = 1044, tip = "sum.b.given" },
+    { kind = "given", spells = { 6940 }, id = 6940, tip = "sum.b.given" },
+    { kind = "given", spells = { 1038 }, id = 1038, tip = "sum.b.given" },
 }
 do
     local given = #ns.buffsGiven
@@ -208,14 +207,12 @@ do
     end
 end
 ns.summaries = {}
+local E = ns.ENC
 ns.summaryZones = {
-    { zone = "Цитадель Ледяной Короны", bosses = {
-        "Лорд Ребрад", "Леди Смертный Шепот", "Бой на кораблях", "Саурфанг Смертоносный", "Тухлопуз",
-        "Гниломорд", "Профессор Мерзоцид", "Совет кровавых принцев", "Кровавая королева Лана'тель",
-        "Валитрия Сноходица", "Синдрагоса", "Король-лич",
+    { zone = "zone.IcecrownCitadel", bosses = {
+        E.marrowgar, E.deathwhisper, E.gunship, E.saurfang, E.festergut, E.rotface, E.putricide, E.council,
+        E.lanathel, E.valithria, E.sindragosa, E.lichking,
     } },
-    { zone = "Рубиновое святилище", bosses = { "Халион" } },
-    { zone = "Испытание крестоносца", bosses = {
-        "Звери Нордскола", "Лорд Джараксус", "Чемпионы фракций", "Валь'киры-близнецы", "Ануб'арак",
-    } },
+    { zone = "zone.TheRubySanctum", bosses = { E.halion } },
+    { zone = "zone.TheArgentColiseum", bosses = { E.beasts, E.jaraxxus, E.champions, E.twins, E.anubarak } },
 }

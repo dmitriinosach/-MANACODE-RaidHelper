@@ -20,7 +20,7 @@ function RF.Begin(s, fight)
         end
     end
     if not any then return nil end
-    local st = { s = s, from = fight.from, to = fight.to, id = data.id, aura = data.aura, red = data.red,
+    local st = { s = s, from = fight.from, to = fight.to, id = data.id, aura = ns.SpellKey(data.aura), red = data.red,
                  minGap = data.minGap, units = units, dead = {}, subs = SUBS }
     for k = 1, #data.badges do
         local bd = data.badges[k]
@@ -69,7 +69,7 @@ function RF.Feed(st, ts, sub, srcName, dstName, a1, a2, a3)
         return
     end
     local kind = AURA_KIND[sub]
-    if not kind or (tonumber(a1) ~= st.id and a2 ~= st.aura) then return end
+    if not kind or (tonumber(a1) ~= st.id and ns.SpellKey(a1) ~= st.aura) then return end
     if st.dead[dstName] and kind ~= "rem" then
         st.dead[dstName] = nil
         Mark(u, ts, "alive")

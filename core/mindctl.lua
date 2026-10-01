@@ -66,13 +66,14 @@ function Ctl.Begin(rule, byName, owners, pets, drain)
     local st = { rule = rule, aura = tonumber(rule.aura), byName = byName, owners = owners, pets = pets,
                  who = {}, procOf = {}, open = 0, lastEnd = -AFTER - 1, n = 0,
                  lt = {}, ld = {}, lm = {}, la = {}, lsp = {} }
+    for _, id in ipairs(rule.procs or {}) do st.procOf[ns.SpellKey(id)] = true end
     if drain then
         st.drain, st.drainId, st.drainName, st.drainCls = drain, {}, {}, {}
         for cls, list in pairs(drain) do
             for i = 1, #list do
                 local e = list[i]
                 st.drainCls[e] = cls
-                st.drainName[e.spell] = true
+                st.drainName[ns.SpellKey(e.spell)] = true
                 for k = 1, #e.ids do st.drainId[e.ids[k]] = e end
             end
         end
@@ -87,20 +88,8 @@ local function Who(st, name)
     end
     return w
 end
-local function IsProc(st, spell)
-    local v = st.procOf[spell]
-    if v == nil then
-        v = false
-        local list = st.rule.procs or {}
-        for i = 1, #list do
-            if find(spell, list[i], 1, true) then
-                v = true
-                break
-            end
-        end
-        st.procOf[spell] = v
-    end
-    return v
+local function IsProc(st, sk)
+    return sk ~= nil and st.procOf[sk] == true
 end
 local function Toggle(st, ts, name, on)
     local w = Who(st, name)
@@ -127,7 +116,7 @@ local function Weapon(st, ts, name, mh, oh, why)
         c.wpn, c.why = "none", why and tostring(why) or nil
     end
 end
-local function Struck(st, c, w, ts, sub, swing, hurt, a1, a2, a4, a5, a6, a7)
+local function Struck(st, c, w, ts, sub, swing, hurt, a1, a2, a4, a5, a6, a7, sk)
     if swing then
         c.ht[#c.ht + 1] = ts
         if hurt then
@@ -139,9 +128,9 @@ local function Struck(st, c, w, ts, sub, swing, hurt, a1, a2, a4, a5, a6, a7)
         return
     end
     if hurt then c.abil = c.abil + (tonumber(a4) or 0) end
-    if type(a2) ~= "string" or not (hurt or GAINED[sub]) then return end
-    if IsProc(st, a2) then c.procs = c.procs + 1 end
-    if GAINED[sub] then w.dots[a2] = true end
+    if not sk or not (hurt or GAINED[sub]) then return end
+    if IsProc(st, sk) then c.procs = c.procs + 1 end
+    if GAINED[sub] then w.dots[sk] = true end
 end
 local function Use(st, ts, name, e)
     local p = st.byName[name]
@@ -152,11 +141,11 @@ local function Use(st, ts, name, e)
     w.last[e] = ts
     if last and ts - last <= MERGE then return end
     w.useT[#w.useT + 1] = ts
-    w.useN[#w.useN + 1] = e.spell
+    w.useN[#w.useN + 1] = ns.SpellKey(e.spell)
     local c = w.cur
     if c then
         c.used = c.used or {}
-        c.used[e.spell] = true
+        c.used[ns.SpellKey(e.spell)] = true
     end
 end
 local function Harm(c, sub, dstName, spell, amount)
@@ -180,6 +169,7 @@ function Ctl.Feed(st, ts, sub, srcName, srcFlags, dstGUID, dstName, dstFlags, a1
         Weapon(st, ts, srcName, a1, a2, a4)
         return
     end
+    local sk = ns.SpellOf(sub, a1)
     local dst = dstName and byName[dstName]
     if dst and (sub == "SPELL_AURA_APPLIED" or sub == "SPELL_AURA_REMOVED") and tonumber(a1) == st.aura then
         Toggle(st, ts, dstName, sub == "SPELL_AURA_APPLIED")
@@ -197,11 +187,11 @@ function Ctl.Feed(st, ts, sub, srcName, srcFlags, dstGUID, dstName, dstFlags, a1
         or (dstFlags ~= nil and band(dstFlags, F_PETS) > 0 and band(dstFlags, F_BY_PLAYER) > 0
             and band(dstFlags, F_OURS) > 0)
     if c and ally and dstName ~= srcName then
-        if st.drainName and HARM[sub] and type(a2) == "string" and st.drainName[a2] then
-            Harm(c, sub, dstName, a2, a4)
+        if st.drainName and HARM[sub] and sk and st.drainName[sk] then
+            Harm(c, sub, dstName, sk, a4)
         end
-        Struck(st, c, w, ts, sub, swing, hurt, a1, a2, a4, a5, a6, a7)
-    elseif c and dstName == srcName and GAINED[sub] and type(a2) == "string" and IsProc(st, a2) then
+        Struck(st, c, w, ts, sub, swing, hurt, a1, a2, a4, a5, a6, a7, sk)
+    elseif c and dstName == srcName and GAINED[sub] and IsProc(st, sk) then
         c.procs = c.procs + 1
     elseif swing and not c and not ally and srcName and byName[srcName] and srcFlags
         and band(srcFlags, F_PLAYER) > 0 and dstFlags and band(dstFlags, F_HOSTILE) > 0 then
@@ -213,7 +203,7 @@ function Ctl.Feed(st, ts, sub, srcName, srcFlags, dstGUID, dstName, dstFlags, a1
     local mc = false
     if c and srcName ~= dstName then
         mc = srcName
-    elseif w and not swing and type(a2) == "string" and w.dots[a2] and #w.list > 0
+    elseif w and not swing and sk and w.dots[sk] and #w.list > 0
         and ts - (w.list[#w.list].to or ts) <= AFTER then
         mc = srcName
     end
@@ -319,10 +309,11 @@ local function DrainDefs(w, list)
     local defs, has = {}, {}
     for i = 1, #list do
         local e = list[i]
+        local key = ns.SpellKey(e.spell)
         local prev, gap = nil, nil
         for k = 1, #w.useT do
-            if w.useN[k] == e.spell then
-                has[e.spell] = true
+            if w.useN[k] == key then
+                has[key] = true
                 local at = w.useT[k]
                 if prev and (not gap or at - prev < gap) then gap = at - prev end
                 prev = at
@@ -330,7 +321,7 @@ local function DrainDefs(w, list)
         end
         local cd = e.cd
         if gap then cd = math.max(cd * CD_FLOOR, math.min(cd, gap)) end
-        defs[e.spell] = { e.spell, cd }
+        defs[key] = { cd = cd }
     end
     return defs, has
 end
@@ -345,12 +336,13 @@ local function Drain(st, w, p)
         local out = {}
         for k = 1, #list do
             local e = list[k]
-            if has[e.spell] then
-                local ready = DG.Left(seen, e.spell, c.t, nil, nil, defs) == 0
-                local used = c.used ~= nil and c.used[e.spell] == true
-                out[#out + 1] = { spell = e.spell, id = e.id, ready = ready, used = used,
-                                  dmg = used and c.dd and c.dd[e.spell] or 0,
-                                  allies = used and Count(c.da and c.da[e.spell]) or 0 }
+            local key = ns.SpellKey(e.spell)
+            if has[key] then
+                local ready = DG.Left(seen, key, c.t, nil, nil, defs) == 0
+                local used = c.used ~= nil and c.used[key] == true
+                out[#out + 1] = { spell = key, id = e.id, ready = ready, used = used,
+                                  dmg = used and c.dd and c.dd[key] or 0,
+                                  allies = used and Count(c.da and c.da[key]) or 0 }
                 if ready and used then c.miss = true end
             end
         end

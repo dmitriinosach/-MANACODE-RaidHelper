@@ -296,14 +296,14 @@ end
 local function Primary(np)
     local best, bestN = nil, MIN_HITS - 1
     for guid, n in pairs(np.hitN) do
-        local name = np.names[guid]
-        if name and np.bosses[name] and n > bestN then best, bestN = guid, n end
+        local key = ns.NpcKey(guid)
+        if key and np.bosses[key] and n > bestN then best, bestN = guid, n end
     end
     if best then return best end
     bestN = MIN_HITS - 1
     for guid, r in pairs(np.rng) do
-        local name = np.names[guid]
-        if (not name or np.bosses[name]) and #r.T > bestN then best, bestN = guid, #r.T end
+        local key = ns.NpcKey(guid)
+        if (not key or np.bosses[key]) and #r.T > bestN then best, bestN = guid, #r.T end
     end
     return best
 end
@@ -501,7 +501,7 @@ function NpcPos.Place(np, TargetAt)
     local rs = np.rng[guid]
     local useTarget = L.targets >= TARGET_MIN
     local stepMax = SPEED * ppy * STEP
-    local tr = ns.Replay.NewTrack(scene.bossName or scene.fight.boss)
+    local tr = ns.Replay.NewTrack(scene.bossName or ns.EncName(scene.fight.boss))
     tr.fx, tr.fy = {}, {}
     local soft, hard = {}, {}
     local lo = 0
@@ -591,7 +591,7 @@ function NpcPos.Place(np, TargetAt)
     Settle(tr, soft, hard, stepMax)
     if tr.n > 0 then
         scene.boss = tr
-        scene.bossName = scene.bossName or scene.fight.boss
+        scene.bossName = scene.bossName or ns.EncName(scene.fight.boss)
         L.bossMoved = true
     end
     PlaceAdds(np)

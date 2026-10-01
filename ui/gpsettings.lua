@@ -35,7 +35,7 @@ local function BuildItems()
         local r = all[i]
         if r.boss ~= lastBoss then
             lastBoss = r.boss
-            items[#items + 1] = { head = r.boss == ns.penaltyAny and ns.T("gpset.any") or r.boss }
+            items[#items + 1] = { head = r.boss == ns.penaltyAny and ns.T("gpset.any") or ns.EncName(r.boss) }
         end
         items[#items + 1] = { rule = r }
     end
@@ -358,7 +358,7 @@ local function AddMenu()
             seen[rule.boss] = true
             local boss = rule.boss
             menu[#menu + 1] = {
-                text = boss == ns.penaltyAny and ns.T("gpset.any") or boss,
+                text = boss == ns.penaltyAny and ns.T("gpset.any") or ns.EncName(boss),
                 func = function() AddRule(boss) end,
             }
         end

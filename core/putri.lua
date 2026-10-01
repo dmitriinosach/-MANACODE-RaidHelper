@@ -14,7 +14,7 @@ local ONLY = { ov = "green", gv = "red" }
 local Putri = {}
 ns.Putri = Putri
 local function Fill(set, list)
-    for i = 1, #(list or {}) do set[list[i]] = true end
+    for i = 1, #(list or {}) do set[ns.NpcKeyOf(list[i])] = true end
 end
 function Putri.Begin(s, fight, pets)
     local st
@@ -29,14 +29,16 @@ function Putri.Begin(s, fight, pets)
                 st.oz = b
                 b.abom, b.eps = {}, {}
                 for k, spell in pairs(b.def.auras or {}) do
-                    st.aura[spell] = k
-                    st.spells[spell] = true
+                    st.aura[ns.SpellKey(spell)] = k
+                    st.spells[ns.SpellKey(spell)] = true
                 end
             else
                 st.ab = b
                 b.drv, b.hsp, b.heals = {}, {}, {}
-                st.npcs[b.def.npc] = true
-                st.spells[b.def.enter] = true
+                st.npcKey = ns.NpcKeyOf(b.def.npc)
+                st.enter, st.slow, st.eat = ns.SpellKey(b.def.enter), ns.SpellKey(b.def.slow), ns.SpellKey(b.def.eat)
+                st.npcs[st.npcKey] = true
+                st.spells[st.enter] = true
                 st.targets = {}
                 Fill(st.targets, b.def.names)
             end
@@ -73,7 +75,7 @@ local function Close(st, who, k, ts)
         end
     end
 end
-local function AddDmg(b, who, target, amount)
+local function AddDmg(b, who, target, tkey, amount)
     b.total = b.total + amount
     b.by[who] = (b.by[who] or 0) + amount
     local sp = b.split[who]
@@ -82,6 +84,7 @@ local function AddDmg(b, who, target, amount)
         b.split[who] = sp
     end
     sp[target] = (sp[target] or 0) + amount
+    ns.Summary.Color(b, who, tkey, amount)
 end
 local function Stint(st, g, ts)
     local d = st.guids[g]
@@ -96,43 +99,43 @@ local function Stint(st, g, ts)
     st.order[#st.order + 1] = g
     return d
 end
-local function Abom(st, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, a1, a2, a4, a5, who)
+local function Abom(st, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, a1, a2, a4, a5, who, sk)
     local ab = st.ab
-    local def = ab.def
-    if a2 == def.enter and sub == "SPELL_AURA_REMOVED" and dstName and st.byName[dstName] then
+    if sk and sk == st.enter and sub == "SPELL_AURA_REMOVED" and dstName and st.byName[dstName] then
         st.pend, st.pendT = dstName, ts
         return
     end
-    local npc = def.npc
-    local g = (srcName == npc and srcGUID) or (dstName == npc and dstGUID) or nil
+    local npc = st.npcKey
+    local srcKey, dstKey = ns.NpcKey(srcGUID), ns.NpcKey(dstGUID)
+    local g = (srcKey == npc and srcGUID) or (dstKey == npc and dstGUID) or nil
     if not g then return end
     local d = Stint(st, g, ts)
-    if srcName == npc then
+    if srcKey == npc then
         local driven = srcFlags ~= nil and band(srcFlags, F_BY_PLAYER) > 0
         if driven and ts > d.z then d.z = min(ts, st.to) end
-        if a2 == def.slow and sub == "SPELL_AURA_APPLIED" and dstName and st.targets[dstName] then
+        if sk and sk == st.slow and sub == "SPELL_AURA_APPLIED" and dstKey and st.targets[dstKey] then
             d.slows = d.slows + 1
             ab.ids.slow = ab.ids.slow or tonumber(a1)
-        elseif a2 == def.slow and sub == "SPELL_CAST_SUCCESS" then
+        elseif sk and sk == st.slow and sub == "SPELL_CAST_SUCCESS" then
             d.casts = d.casts + 1
-        elseif a2 == def.eat and sub == "SPELL_CAST_SUCCESS" then
+        elseif sk and sk == st.eat and sub == "SPELL_CAST_SUCCESS" then
             d.eats = d.eats + 1
             ab.ids.eat = ab.ids.eat or tonumber(a1)
         end
         local oz = st.oz
-        if driven and oz and dstName and oz.names[dstName] and find(sub, "_DAMAGE", 1, true) then
+        if driven and oz and dstKey and oz.names[dstKey] and find(sub, "_DAMAGE", 1, true) then
             local amount = tonumber(sub == "SWING_DAMAGE" and a1 or a4) or 0
             d.dmg = d.dmg + amount
             if d.who ~= "?" then
                 oz.abom[d.who] = (oz.abom[d.who] or 0) + amount
                 if not who then
-                    AddDmg(oz, d.who, dstName, amount)
+                    AddDmg(oz, d.who, dstName, dstKey, amount)
                     local swing = sub == "SWING_DAMAGE"
                     ns.Summary.Ab(oz, d.who, swing and "#swing" or tostring(a2), amount, nil, swing and 6603 or a1)
                 end
             end
         end
-    elseif dstName == npc then
+    elseif dstKey == npc then
         if sub == "SPELL_ENERGIZE" or sub == "SPELL_PERIODIC_ENERGIZE" then
             local amount = tonumber(a4) or 0
             d.energy = d.energy + amount
@@ -160,7 +163,8 @@ function Putri.Feed(st, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, a
         if dstName and st.open[dstName] then Close(st, dstName, nil, ts) end
         return
     end
-    local k = st.oz and a2 and st.aura[a2]
+    local sk = ns.SpellOf(sub, a1)
+    local k = st.oz and sk and st.aura[sk]
     if k and dstName and st.byName[dstName] then
         if sub == "SPELL_AURA_APPLIED" then
             Open(st, dstName, k, ts, a1)
@@ -169,7 +173,7 @@ function Putri.Feed(st, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, a
         end
         return
     end
-    if st.ab then Abom(st, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, a1, a2, a4, a5, who) end
+    if st.ab then Abom(st, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, a1, a2, a4, a5, who, sk) end
 end
 function Putri.Finish(st)
     for who in pairs(st.open) do Close(st, who, nil, st.to) end
@@ -235,10 +239,10 @@ local function Could(out, eps)
 end
 local function OozeTip(b, who, eps, class)
     local out = {}
-    local sp = b.split[who] or {}
+    local sp = b.col and b.col[who] or {}
     out[1] = { kind = "head", left = who, right = Short(b.by[who] or 0), class = class }
-    Put(out, "row", T("sum.oz.colgreen"), Short(sp[b.def.green] or 0))
-    Put(out, "row", T("sum.oz.colred"), Short(sp[b.def.red] or 0))
+    Put(out, "row", T("sum.oz.colgreen"), Short(sp[ns.NpcKeyOf(b.def.green)] or 0))
+    Put(out, "row", T("sum.oz.colred"), Short(sp[ns.NpcKeyOf(b.def.red)] or 0))
     if (b.abom[who] or 0) > 0 then Put(out, "sub", T("sum.oz.fromabom"), Short(b.abom[who]), nil, "dim") end
     ns.BadgeTips.Abil(out, b.ab and b.ab[who], true)
     if b.vars then
@@ -280,7 +284,7 @@ local function OozeView(b, classOf)
     local rows = {}
     for i = 1, #names do
         local who = names[i]
-        local sp = b.split[who] or {}
+        local sp = b.col and b.col[who] or {}
         local eps = b.eps[who] or {}
         local marks = {}
         for k = 1, #slots do
@@ -289,11 +293,11 @@ local function OozeView(b, classOf)
         end
         local class = classOf and classOf(who) or nil
         rows[i] = { who = who, class = class, marks = marks,
-                    cells = { Cell(b.by[who] or 0), Cell(sp[b.def.green] or 0), Cell(sp[b.def.red] or 0) },
+                    cells = { Cell(b.by[who] or 0), Cell(sp[ns.NpcKeyOf(b.def.green)] or 0),
+                              Cell(sp[ns.NpcKeyOf(b.def.red)] or 0) },
                     lines = OozeTip(b, who, eps, class) }
     end
     local tip = { { kind = "head", left = T(b.def.label), right = Short(b.total) } }
-    Put(tip, "note", T("sum.oz.note"))
     return { title = format(T("sum.k.title"), T(b.def.label), Short(b.total)),
              cols = { T("sum.oz.colall"), T("sum.oz.colgreen"), T("sum.oz.colred") },
              heads = Heads(b, slots, b.def.icons), rows = rows, tip = tip, span = 1 }
@@ -380,8 +384,6 @@ local function AbomView(b, classOf)
         end
     end
     local tip = { { kind = "head", left = T(b.def.label), right = Short(b.total) } }
-    Put(tip, "note", T("sum.ab.note"))
-    if not b.power then Put(tip, "note", T("sum.ab.powernote")) end
     return { title = format(T("sum.ab.title"), T(b.def.label), #list, Short(b.total)),
              cols = b.power and { T("sum.ab.coltime"), T("sum.ab.colenergy"), T("sum.ab.colheal") }
                  or { T("sum.ab.coltime"), T("sum.ab.colheal") },

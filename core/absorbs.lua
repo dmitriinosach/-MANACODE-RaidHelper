@@ -11,6 +11,7 @@ local AEGIS_SHARE = 0.3
 local KINGS_SHARE = 0.15
 local KINGS_CAP = 20000
 local HEAL_FRESH = 0.2
+local SWEEP = 60
 local GONE = 0.1
 local MAX_HP_GUESS = 45000
 local DEFAULT_AMOUNT = 1000
@@ -168,8 +169,28 @@ function Absorbs.Aura(m, ts, removed, src, dst, id, name)
     end
     sh.amount, sh.ts, sh.at, sh.full = floor(amount), ts + S.dur + GONE, ts + GONE, true
 end
+local function Sweep(m, ts)
+    m.swept = ts
+    local heals, shields = m.heals, m.shields
+    for dst, byDst in pairs(heals) do
+        for src, h in pairs(byDst) do
+            if h.ts <= ts - HEAL_FRESH then byDst[src] = nil end
+        end
+        if not next(byDst) then heals[dst] = nil end
+    end
+    for dst, byDst in pairs(shields) do
+        for id, byId in pairs(byDst) do
+            for src, sh in pairs(byId) do
+                if sh.ts <= ts and not sh.points then byId[src] = nil end
+            end
+            if not next(byId) then byDst[id] = nil end
+        end
+        if not next(byDst) then shields[dst] = nil end
+    end
+end
 function Absorbs.Heal(m, ts, src, dst, amount)
     m.now = ts
+    if ts - (m.swept or ts) >= SWEEP then Sweep(m, ts) elseif not m.swept then m.swept = ts end
     local byDst = m.heals[dst]
     if not byDst then
         byDst = {}

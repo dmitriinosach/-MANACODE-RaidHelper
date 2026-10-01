@@ -123,7 +123,7 @@ local function Texts()
     if not frame then return end
     local room = Room()
     if room then
-        roomText:SetText(format(T("dev.cal.room"), room.boss, roomKey, room.floor, auto and "" or T("dev.cal.manual")))
+        roomText:SetText(format(T("dev.cal.room"), ns.EncName(room.boss), roomKey, room.floor, auto and "" or T("dev.cal.manual")))
     else
         roomText:SetText(T("dev.cal.none"))
     end

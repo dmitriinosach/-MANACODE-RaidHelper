@@ -117,7 +117,8 @@ local function Outcome(killed)
 end
 function Share.Inner(fight, off)
     local t = date("*t", floor(fight.from + (off or Share.Offset())))
-    return format("%s, %s %02d:%02d, %02d.%02d", fight.boss, Outcome(fight.killed), t.hour, t.min, t.day, t.month)
+    return format("%s, %s %02d:%02d, %02d.%02d", ns.EncName(fight.boss), Outcome(fight.killed), t.hour, t.min, t.day,
+        t.month)
 end
 function Share.Text(fight, off)
     return "[" .. TAG .. Share.Inner(fight, off) .. "]"
@@ -146,7 +147,7 @@ function Share.Find(fights, key, off)
     local best, bestD
     for i = 1, #fights do
         local f = fights[i]
-        if f.boss == key.boss and (f.killed and true or false) == key.killed then
+        if ns.EncName(f.boss) == key.boss and (f.killed and true or false) == key.killed then
             local w = floor(f.from + off)
             local t = date("*t", w)
             local cand = time({ year = t.year, month = key.month, day = key.day, hour = key.hour, min = key.min,
@@ -309,7 +310,7 @@ local function Foreign(a, s)
         local p = s.players[i]
         players[p.name] = p.deaths or 0
     end
-    return { boss = key.boss, from = a.from, to = a.to, killed = key.killed, deaths = s.deaths or 0,
+    return { boss = ns.EncByName(key.boss), from = a.from, to = a.to, killed = key.killed, deaths = s.deaths or 0,
         players = players, won = key.killed, wipe = not key.killed, sum = s,
         foreign = { who = a.who, inner = a.entry.inner, tver = a.tver } }
 end

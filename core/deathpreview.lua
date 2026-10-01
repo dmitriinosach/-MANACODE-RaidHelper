@@ -397,7 +397,7 @@ local function Around(m, scene, k, t)
         end
     end
     local boss = scene.bossState
-    if boss.vis then m.bossX, m.bossY, m.bossName = boss.x, boss.y, scene.bossName or scene.fight.boss end
+    if boss.vis then m.bossX, m.bossY, m.bossName = boss.x, boss.y, scene.bossName or ns.EncName(scene.fight.boss) end
     local adds = scene.layers and scene.layers.adds or {}
     for i = 1, #adds do
         local a = adds[i]

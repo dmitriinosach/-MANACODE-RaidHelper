@@ -57,7 +57,7 @@ local function Collect(out, list, kind)
     end
     for i = from, #out do
         local it = out[i]
-        if seen[it.label] > 1 and it.spell then it.label = format("%s (%s)", it.label, it.spell) end
+        if seen[it.label] > 1 and it.spell then it.label = format("%s (%s)", it.label, ns.SpellName(it.spell)) end
         it.spell = nil
     end
 end
@@ -358,13 +358,16 @@ local function ZoneOptions()
     local out, list = {}, AllZones()
     for i = 1, #list do
         local z = list[i]
-        out[i] = { key = z, label = z == ZONE_OTHER and "set.show.other" or Plain(z) }
+        out[i] = { key = z, label = z == ZONE_OTHER and "set.show.other" or z }
     end
     return out
 end
 local function BossOptions()
     local out, list = {}, Hide.Bosses(Zone())
-    for i = 1, #list do out[i] = { key = list[i], label = Plain(list[i]) } end
+    for i = 1, #list do
+        local key = list[i]
+        out[i] = { key = key, label = function() return ns.EncName(key) end }
+    end
     return out
 end
 local items = {

@@ -78,6 +78,11 @@ end
 function Ranging.Session()
     return session
 end
+function Ranging.Working()
+    local s = session
+    if not s or not s.decided or not s.active then return nil end
+    return s.count
+end
 function Ranging.Status()
     local n = 0
     for _ in pairs(foreign) do n = n + 1 end
@@ -112,8 +117,8 @@ local function NpcOf(unit)
     if not UnitCanAttack("player", unit) or UnitIsDeadOrGhost(unit) then return nil, nil, false end
     local guid = UnitGUID(unit)
     if not guid or #guid ~= GUID_HEX + 2 then return nil, nil, false end
-    local name = UnitName(unit)
-    local enc = name and ns.bosses[name]
+    local key = ns.NpcKey(guid)
+    local enc = key and ns.bosses[key]
     if enc then return guid, enc, true end
     local id = tonumber(sub(guid, 7, 12), 16)
     enc = id and ns.rangingData.adds[id]

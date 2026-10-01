@@ -64,7 +64,7 @@ function View.Progress(r)
     if k == "hitOver" then return format(T("ach.p.big"), Short(r.value), Short(r.limit)) end
     if k == "noKill" then return format(T("ach.p.nokill"), r.value) end
     if k == "killed" then return T(r.value > 0 and "ach.p.killed" or "ach.p.notkilled") end
-    if k == "lastDied" then return r.last and format(T("ach.p.last"), r.last) or "" end
+    if k == "lastDied" then return r.last and format(T("ach.p.last"), ns.NpcName(r.last)) or "" end
     if k == "killSpan" then return format(T("ach.p.span"), floor(r.value), r.limit) end
     if k == "timeLimit" then return format(T("ach.p.time"), Clock(r.value), Clock(r.limit)) end
     if k == "aliveAt" then

@@ -18,33 +18,38 @@ local ENRAGE_HOLD = 3
 local WAVE_SHARE = 0.6
 local TRANQ_CD = 8
 local HUNTER = "HUNTER"
-local SATED = { ["Изнеможение"] = true, ["Пресыщение"] = true }
+local SATED = { 57723, 57724 }
 local RANK = { red = 3, yellow = 2, green = 1 }
 local SCRAP = { "healIn", "hurtT", "burstT", "burstGap", "burstHeal", "lockId", "lockOn", "lockOff",
                 "linkOn", "linkOff", "sated", "tranq" }
 local DG = {}
 ns.DeathGrade = DG
 function DG.Watch(def)
-    local gw = { names = {}, locks = {}, host = {} }
+    local SK = ns.SpellKey
+    local gw = { names = {}, locks = {}, sated = {}, host = {} }
     for id, lock in pairs(ns.lockouts or {}) do
-        if type(lock) == "table" and lock.name then
-            gw.names[lock.name] = true
-            gw.locks[lock.name] = id
+        if type(lock) == "table" then
+            gw.names[SK(id)] = true
+            gw.locks[SK(id)] = id
         end
     end
-    for name in pairs(SATED) do gw.names[name] = true end
+    for i = 1, #SATED do
+        gw.names[SK(SATED[i])] = true
+        gw.sated[SK(SATED[i])] = true
+    end
     local g = def.death
     if g then
-        gw.link, gw.npc, gw.wave, gw.frenzy, gw.enrage, gw.tranq = g.link, g.npc, g.wave, g.frenzy, g.enrage, g.tranq
-        if g.link then gw.names[g.link] = true end
-        if g.frenzy then gw.names[g.frenzy] = true end
-        if g.enrage then gw.names[g.enrage] = true end
+        gw.link, gw.wave, gw.frenzy = SK(g.link), SK(g.wave), SK(g.frenzy)
+        gw.enrage, gw.tranq, gw.npc = SK(g.enrage), SK(g.tranq), ns.NpcKeyOf(g.npc)
+        if gw.link then gw.names[gw.link] = true end
+        if gw.frenzy then gw.names[gw.frenzy] = true end
+        if gw.enrage then gw.names[gw.enrage] = true end
     end
     return gw
 end
 function DG.Aura(gw, byName, ts, sub, guid, name, spell)
     local on = sub == "SPELL_AURA_APPLIED"
-    if gw.npc and name == gw.npc then
+    if gw.npc and ns.NpcKey(guid) == gw.npc then
         if not guid or (spell ~= gw.frenzy and spell ~= gw.enrage) then return end
         local h = gw.host[guid]
         if not h then
@@ -56,7 +61,7 @@ function DG.Aura(gw, byName, ts, sub, guid, name, spell)
     end
     local p = name and byName[name]
     if not p then return end
-    if SATED[spell] then
+    if gw.sated[spell] then
         if on then p.sated = true end
         return
     end
@@ -102,7 +107,7 @@ local function Earlier(a, b)
 end
 local function IsFall(s, e, fall)
     local k = e.d.killer
-    if not (k and k.spell == fall) then return false end
+    if not (k and k.key == fall) then return false end
     return not (ns.Summary.Unseated and ns.Summary.Unseated(s, e.p, e.d.t, RIDE_GAP))
 end
 local function Jumped(s, list)
@@ -228,7 +233,7 @@ function DG.Left(seen, id, t, noReset, lock, defs)
     local def = (defs or ns.defensives or {})[id]
     local last = seen.win[id]
     if noReset then last = seen.all[id] or last end
-    local left = def and last and math.max(0, def[2] - (t - last)) or 0
+    local left = def and last and math.max(0, def.cd - (t - last)) or 0
     return left, Blocked(lock, id) and lock or nil
 end
 function DG.LockAt(p, ts)
@@ -237,6 +242,7 @@ function DG.LockAt(p, ts)
 end
 local function Guards(ctx, p, d)
     local defs = ns.defensives or {}
+    local saving = ns.saving or {}
     local lock = d.lock and ns.lockouts and ns.lockouts[d.lock]
     local noReset = ctx.noReset[p.name]
     local seen = DG.Seen(p, d.t)
@@ -244,18 +250,18 @@ local function Guards(ctx, p, d)
     local times, ids = p.guardT or {}, p.guardId or {}
     for k = 1, #times do
         local t, def = times[k], defs[ids[k]]
-        if def and t <= d.t and not def[3] and d.t - t <= GUARD_WINDOW and (not usedT or t >= usedT) then
+        if def and t <= d.t and not def.item and d.t - t <= GUARD_WINDOW and (not usedT or t >= usedT) then
             used, usedT = ids[k], t
         end
     end
     local best, cd, n = nil, -1, 0
     for id in pairs(seen.has) do
-        local def = defs[id]
-        if def and not def[3] then
+        local def = saving[id] and defs[id]
+        if def and not def.item then
             local left, blocked = DG.Left(seen, id, d.t, noReset, lock)
             if left == 0 and not blocked then
                 n = n + 1
-                if def[2] > cd or (def[2] == cd and id < best) then best, cd = id, def[2] end
+                if def.cd > cd or (def.cd == cd and id < best) then best, cd = id, def.cd end
             end
         end
     end
@@ -276,8 +282,8 @@ local function Marked(s)
         local bd = s.badges[i]
         if bd.kind == "death" and not bd.neutral then
             local spells, srcs = {}, {}
-            for k = 1, #(bd.spells or {}) do spells[bd.spells[k]] = true end
-            for k = 1, #(bd.srcs or {}) do srcs[bd.srcs[k]] = true end
+            for k = 1, #(bd.spells or {}) do spells[ns.SpellKey(bd.spells[k]) or bd.spells[k]] = true end
+            for k = 1, #(bd.srcs or {}) do srcs[ns.NpcKeyOf(bd.srcs[k]) or bd.srcs[k]] = true end
             out[#out + 1] = { bd = bd, spells = spells, srcs = srcs }
         end
     end
@@ -324,9 +330,9 @@ local function Hunters(ctx, p, d, k)
 end
 local function Tank(ctx, p, d, k, most, react, ready, n)
     local gw = ctx.gw
-    if not gw.npc or k.src ~= gw.npc then return false end
+    if not gw.npc or k.srcKey ~= gw.npc then return false end
     local enraged = k.en ~= nil and k.t - k.en >= ENRAGE_HOLD
-    if enraged and ready and k.spell == gw.wave and most > 0 and (k.amount or 0) >= WAVE_SHARE * most then
+    if enraged and ready and k.key == gw.wave and most > 0 and (k.amount or 0) >= WAVE_SHARE * most then
         Set(d, "red", "horror")
         Ready(d, ready, n, false)
         return true

@@ -77,7 +77,7 @@ local function Take(unit, n)
     local name = UnitName(unit)
     slot[guid] = n
     units[n], guids[n], mobNames[n], hits[n] = unit, guid, name, 1
-    rank[n] = name and ns.bosses[name] and 1 or 0
+    rank[n] = ns.bosses[ns.NpcKey(guid) or 0] and 1 or 0
     return n
 end
 local function Before(a, b)
@@ -96,7 +96,7 @@ local function Collect()
     tsort(order, Before)
     local enc = nil
     for i = 1, n do
-        if rank[i] == 1 and not enc then enc = ns.bosses[mobNames[i]] end
+        if rank[i] == 1 and not enc then enc = ns.bosses[ns.NpcKey(guids[i]) or 0] end
     end
     return min(n, D.mobs), enc
 end
@@ -336,7 +336,7 @@ function Threat.Finish(b, from, to, bosses, players)
     end
     for i = 1, #b.mobs do
         local m = b.mobs[i]
-        m.boss = (bosses and bosses[m.name]) and true or false
+        m.boss = (bosses and bosses[ns.NpcKey(m.guid) or 0]) and true or false
         Spans(m, to)
         if m.boss then BossTanks(m, tanks) end
     end
@@ -463,25 +463,26 @@ local function KeyOf(fight)
 end
 local function ReadMarks(fight, idx, b)
     local wanted = ns.phases and ns.phases[fight.boss]
-    local bosses = ns.Index.BossNames(fight)
+    local bosses = ns.Index.BossKeys(fight)
     local seen, taken = {}, {}
     local list = idx.common
     for i = 1, #list do
         ns.Jobs.Step()
         local seg, s, at = ns.Index.Line(idx, list[i])
-        local ts, what, _, srcName, _, _, _, _, a1, a2 = ns.Store.Decode(seg, s, at, 2)
+        local ts, what, srcGUID, _, _, _, _, _, a1, a2 = ns.Store.Decode(seg, s, at, 2)
         if ts and ts >= idx.from and ts <= idx.to then
             if what == "FW_MARK" and ns.DevMarks then
                 b.marks[#b.marks + 1] = { t = ts, label = ns.DevMarks.Line(a1, a2) }
-            elseif wanted and srcName and bosses[srcName] and ns.Encounters.BOSS_SUBS[what] then
+            elseif wanted and srcGUID and bosses[ns.NpcKey(srcGUID) or 0] and ns.Encounters.BOSS_SUBS[what] then
                 local label = tostring(a2 or a1)
+                local sk = ns.SpellOf(what, a1)
                 if not seen[label] or ts - seen[label] > 3 then
                     seen[label] = ts
                     for k = 1, #wanted do
                         local w = wanted[k]
-                        if w.spell == label and (w.every or not taken[k]) then
+                        if sk and ns.SpellKey(w.spell) == sk and (w.every or not taken[k]) then
                             taken[k] = true
-                            b.marks[#b.marks + 1] = { t = ts, label = w.label, dim = true }
+                            b.marks[#b.marks + 1] = { t = ts, label = ns.T(w.label), dim = true }
                         end
                     end
                 end
@@ -504,8 +505,9 @@ local function ReadTaunts(idx, b)
         for i = 1, list and #list or 0 do
             ns.Jobs.Step()
             local seg, s, at = ns.Index.Line(idx, list[i])
-            local ts, what, _, srcName, _, _, _, _, _, a2 = ns.Store.Decode(seg, s, at, 2)
-            if what == CAST and srcName == who and a2 and taunts[a2] then Threat.Taunt(b, who, ts) end
+            local ts, what, _, srcName, _, _, _, _, a1 = ns.Store.Decode(seg, s, at, 2)
+            local sk = ns.SpellOf(what, a1)
+            if what == CAST and srcName == who and sk and taunts[sk] then Threat.Taunt(b, who, ts) end
         end
     end
 end
@@ -524,7 +526,7 @@ local function Build(fight, idx)
         ReadTaunts(idx, b)
         ReadMarks(fight, idx, b)
     end
-    return Threat.Finish(b, idx.from, idx.to, ns.Index.BossNames(fight), fight.players)
+    return Threat.Finish(b, idx.from, idx.to, ns.Index.BossKeys(fight), fight.players)
 end
 function Threat.Peek(fight)
     return fight and models[fight] or nil

@@ -51,6 +51,7 @@ function Decode.Tables(seg)
         if e then g, n, f = match(e, "^([^\31]*)\31([^\31]*)\31(%-?%d*)$") end
         rawset(AG, k, g ~= "" and g or false)
         rawset(AN, k, n ~= "" and n or false)
+        if g ~= "" and n ~= "" then ns.NoteNpc(g, n) end
         rawset(AF, k, (c and tonumber(strsub(k, c + 1))) or tonumber(f) or 0)
     end)
     local PI, PN, PS = T.PI, T.PN, T.PS
@@ -60,6 +61,7 @@ function Decode.Tables(seg)
         if e then i, n, s = match(e, "^([^\31]*)\31([^\31]*)\31([^\31]*)$") end
         rawset(PI, k, tonumber(i) or false)
         rawset(PN, k, (n and n ~= "") and n or false)
+        if n and n ~= "" then ns.NoteSpell(i, n) end
         rawset(PS, k, tonumber(s) or false)
     end)
     local STR = T.STR
@@ -301,7 +303,7 @@ function Decode.Events(seg, from, to, skip, maxTail)
 end
 function Decode.Heads(seg, from, to)
     local T = Decode.Tables(seg)
-    local STR, AN = T.STR, T.AN
+    local STR, AN, AG = T.STR, T.AN, T.AG
     local w = Walk(seg, from, to)
     local t0 = seg.t0
     local fromMs = from and (from - t0) * 1000 - 1 or nil
@@ -314,7 +316,8 @@ function Decode.Heads(seg, from, to)
                 local _, _, subId, src, dst = match(s, HEAD, at)
                 if subId then
                     curSeg, curS, curAt, curMs = seg, s, at, ms
-                    return s, at, ci, t0 + ms / 1000, STR[subId] or nil, AN[src] or nil, AN[dst] or nil
+                    return s, at, ci, t0 + ms / 1000, STR[subId] or nil, AN[src] or nil, AN[dst] or nil,
+                        AG[src] or nil, AG[dst] or nil
                 end
             end
         end

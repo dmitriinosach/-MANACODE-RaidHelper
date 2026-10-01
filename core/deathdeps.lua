@@ -14,18 +14,23 @@ local DD = {}
 ns.DeathDeps = DD
 local function Set(list)
     local out = {}
-    for i = 1, #(list or {}) do out[list[i]] = true end
+    for i = 1, #(list or {}) do out[ns.SpellKey(list[i]) or list[i]] = true end
+    return out
+end
+local function SetN(list)
+    local out = {}
+    for i = 1, #(list or {}) do out[ns.NpcKeyOf(list[i]) or list[i]] = true end
     return out
 end
 function DD.Begin(fight, def, s)
     local dd = def.deps or {}
     local w = { s = s, def = dd, subs = SUBS, debuffs = {}, auras = {}, cured = {}, srcs = {}, swings = {},
-                tanked = Set(dd.tanked), tankHits = Set(dd.tankHits), mechs = {} }
-    for i = 1, #(dd.dispel or {}) do w.debuffs[dd.dispel[i].spell] = dd.dispel[i] end
+                tanked = SetN(dd.tanked), tankHits = Set(dd.tankHits), mechs = {} }
+    for i = 1, #(dd.dispel or {}) do w.debuffs[ns.SpellKey(dd.dispel[i].spell)] = dd.dispel[i] end
     for i = 1, #(dd.mechs or {}) do
         local m = dd.mechs[i]
-        w.mechs[i] = { def = m, spells = Set(m.spells), srcs = Set(m.srcs) }
-        for k = 1, #(m.srcs or {}) do w.srcs[m.srcs[k]] = true end
+        w.mechs[i] = { def = m, spells = Set(m.spells), srcs = SetN(m.srcs) }
+        for k = 1, #(m.srcs or {}) do w.srcs[ns.NpcKeyOf(m.srcs[k])] = true end
     end
     return w
 end
@@ -42,29 +47,30 @@ local function Mark(w, who, spell, ts, on)
         list[n] = ts
     end
 end
-function DD.Feed(w, ts, sub, srcName, dstName, a1, a2, a5)
+function DD.Feed(w, ts, sub, srcKey, srcName, dstName, a1, sk, a4)
     local byName = w.s.byName
     if sub == "SWING_DAMAGE" or sub == "SWING_MISSED" then
-        if not (srcName and w.srcs[srcName] and dstName and byName[dstName]) then return end
-        local by = w.swings[srcName] or {}
-        w.swings[srcName] = by
+        if not (srcKey and w.srcs[srcKey] and dstName and byName[dstName]) then return end
+        local by = w.swings[srcKey] or {}
+        w.swings[srcKey] = by
         by[dstName] = (by[dstName] or 0) + 1
         return
     end
     if sub == "SPELL_DISPEL" then
-        if not (a5 and w.debuffs[a5]) then return end
+        local xk = ns.SpellKey(a4)
+        if not (xk and w.debuffs[xk]) then return end
         if srcName and byName[srcName] then
-            local by = w.cured[a5] or {}
-            w.cured[a5] = by
+            local by = w.cured[xk] or {}
+            w.cured[xk] = by
             by[srcName] = (by[srcName] or 0) + 1
         end
-        if dstName and byName[dstName] then Mark(w, dstName, a5, ts, false) end
+        if dstName and byName[dstName] then Mark(w, dstName, xk, ts, false) end
         return
     end
-    if not (a2 and w.debuffs[a2] and dstName and byName[dstName]) then return end
+    if not (sk and w.debuffs[sk] and dstName and byName[dstName]) then return end
     if sub == "SPELL_CAST_SUCCESS" and srcName and byName[srcName] then return end
-    w.s.spellIds[a2] = w.s.spellIds[a2] or tonumber(a1)
-    Mark(w, dstName, a2, ts, sub ~= "SPELL_AURA_REMOVED")
+    w.s.spellIds[sk] = w.s.spellIds[sk] or tonumber(a1)
+    Mark(w, dstName, sk, ts, sub ~= "SPELL_AURA_REMOVED")
 end
 local function Marks(w, fight)
     if w.marks then return w.marks end
@@ -174,14 +180,15 @@ local function AppliedAt(w, name, spell, t)
 end
 local function Dispel(w, fight, p, d)
     local k = d.killer
-    local deb = k and k.spell and w.debuffs[k.spell]
+    local dk = k and k.key
+    local deb = dk and w.debuffs[dk]
     if not deb then return nil end
-    local on = AppliedAt(w, p.name, deb.spell, d.t)
+    local on = AppliedAt(w, p.name, dk, d.t)
     local data = ns.deathDeps
     local hold = deb.hold or data.hold
     if not on or d.t - on < hold then return nil end
     local classes = data.by[deb.type] or {}
-    local cured = w.cured[deb.spell] or {}
+    local cured = w.cured[dk] or {}
     local best, bestRank, bestDist
     local players = w.s.players
     for i = 1, #players do
@@ -195,11 +202,11 @@ local function Dispel(w, fight, p, d)
             end
         end
     end
-    return { kind = "dispel", by = best, spell = deb.spell, held = floor((d.t - on) * 10 + 0.5) / 10,
+    return { kind = "dispel", by = best, spell = dk, held = floor((d.t - on) * 10 + 0.5) / 10,
              near = bestDist and floor(bestDist + 0.5) or nil }
 end
-local function IsBoss(fight, src)
-    return src == fight.boss or ns.bosses[src] == fight.boss or (fight.names ~= nil and fight.names[src] == true)
+local function IsBoss(fight, key)
+    return ns.IsBossKey(fight, key)
 end
 local function HitBy(d, src)
     for i = 1, #(d.recent or {}) do
@@ -210,8 +217,8 @@ end
 local function Tank(w, fight, list, p, d)
     local k = d.killer
     if p.role == "tank" or not k.src or w.s.byName[k.src] then return nil end
-    if not (w.tanked[k.src] or IsBoss(fight, k.src)) then return nil end
-    if k.spell ~= MELEE and not w.tankHits[k.spell or ""] then return nil end
+    if not ((k.srcKey and w.tanked[k.srcKey]) or IsBoss(fight, k.srcKey)) then return nil end
+    if k.key ~= MELEE and not w.tankHits[k.key or ""] then return nil end
     local best
     for i = 1, #list do
         local e = list[i]
@@ -231,7 +238,7 @@ local function Holder(w, p, d, srcs)
         local q = players[i]
         if q ~= p and q.role == "tank" and AliveIn(q, d.t) then
             local n = 0
-            for k = 1, #srcs do n = n + ((w.swings[srcs[k]] or {})[q.name] or 0) end
+            for k = 1, #srcs do n = n + ((w.swings[ns.NpcKeyOf(srcs[k])] or {})[q.name] or 0) end
             if n > most then best, most = q.name, n end
         end
     end
@@ -242,7 +249,7 @@ local function Mech(w, p, d)
     for i = 1, #w.mechs do
         local m = w.mechs[i]
         local def = m.def
-        local hit = (k.spell and m.spells[k.spell]) or (k.src and m.srcs[k.src] and (not def.melee or k.spell == MELEE))
+        local hit = (k.key and m.spells[k.key]) or (k.srcKey and m.srcs[k.srcKey] and (not def.melee or k.key == MELEE))
         if hit and (not def.ride or (ns.Summary.Unseated and ns.Summary.Unseated(w.s, p, d.t, def.ride))) then
             local by = def.by == "tank" and Holder(w, p, d, def.srcs or {}) or nil
             return { kind = "mech", key = def.key, text = def.text, by = by, src = k.src }
@@ -297,7 +304,7 @@ local function Fits(dep, rule)
     if rule.mech and rule.mech ~= dep.key then return false end
     if rule.spells then
         for i = 1, #rule.spells do
-            if rule.spells[i] == dep.spell then return true end
+            if ns.SpellKey(rule.spells[i]) == dep.spell then return true end
         end
         return false
     end
@@ -325,9 +332,11 @@ end
 function DD.What(dep)
     local T = ns.T
     if dep.kind == "dispel" and dep.near then
-        return format(T("sum.dd.dispelnear"), dep.spell or "?", Dec(dep.held or 0), dep.near)
+        return format(T("sum.dd.dispelnear"), dep.spell and ns.SpellName(dep.spell) or "?", Dec(dep.held or 0), dep.near)
     end
-    if dep.kind == "dispel" then return format(T("sum.dd.dispel"), dep.spell or "?", Dec(dep.held or 0)) end
+    if dep.kind == "dispel" then
+        return format(T("sum.dd.dispel"), dep.spell and ns.SpellName(dep.spell) or "?", Dec(dep.held or 0))
+    end
     if dep.kind == "tank" then return format(T("sum.dd.tank"), dep.by or "?") end
     if dep.kind == "mc" then return format(T("sum.dg.mc"), dep.by or "?") end
     return T(dep.text or "sum.dd.m.none")
@@ -339,7 +348,7 @@ function DD.Text(d)
     if dep.kind == "tank" or dep.kind == "mc" then return DD.What(dep) end
     if dep.by and not dep.weak then return format(T("sum.dd.by"), dep.by, DD.What(dep)) end
     if dep.kind == "dispel" and not dep.by then
-        return format(T("sum.dd.nodispel"), dep.spell or "?", Dec(dep.held or 0))
+        return format(T("sum.dd.nodispel"), dep.spell and ns.SpellName(dep.spell) or "?", Dec(dep.held or 0))
     end
     if dep.weak then return format(T("sum.dd.weak"), dep.by or "?", DD.What(dep)) end
     return format(T("sum.dd.mech"), DD.What(dep))

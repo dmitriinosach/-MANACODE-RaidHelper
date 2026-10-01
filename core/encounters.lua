@@ -8,11 +8,12 @@ local sqrt = math.sqrt
 local band = bit.band
 local find = string.find
 local match = string.match
+local NpcKey = ns.NpcKey
 local IDLE_GAP = 15
 local RESUME_GAP = 180
 local MIN_FIGHT = 20
 local FX_VERSION = 5
-local SCAN_VERSION = 11
+local SCAN_VERSION = 12
 local CLS_VERSION = 1
 local CAST_WINDOW = 3
 local DEATH_WINDOW = 1.5
@@ -46,54 +47,85 @@ Encounters.BOSS_SUBS = BOSS_SUBS
 local fights = nil
 local stale = false
 local pressed = {}
-local function EncounterIn(name, auto, alias)
-    if name == nil then return nil end
-    local enc = ns.bosses[name] or (alias ~= nil and alias[name]) or nil
+local function EncounterIn(guid, name, auto, alias)
+    local key = NpcKey(guid)
+    if key == nil then return nil end
+    local enc = ns.bosses[key] or (alias ~= nil and alias[key]) or nil
     if enc then return enc end
-    if auto and auto[name] then return name end
+    if auto and name and auto[name] then
+        ns.NoteNpcKey(key, name)
+        return key
+    end
     return nil
 end
-local function Yielded(name, flags, seen)
-    local enc = name ~= nil and ns.bosses[name] or nil
+local function Yielded(guid, flags, seen)
+    local key = NpcKey(guid)
+    local enc = key ~= nil and ns.bosses[key] or nil
     if enc == nil or flags == nil or not (ns.bossYield and ns.bossYield[enc]) then return nil end
     if band(flags, F_HOSTILE) > 0 then
-        if seen then seen[name] = true end
+        if seen then seen[key] = true end
         return nil
     end
-    if band(flags, F_FRIENDLY) > 0 and (seen == nil or seen[name]) then return enc end
+    if band(flags, F_FRIENDLY) > 0 and (seen == nil or seen[key]) then return enc end
     return nil
 end
-local function EndOf(sub, srcName, srcFlags, dstName, dstFlags, spell, auto, alias, seen)
+local function EndOf(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, auto, alias, seen)
     if sub == "UNIT_DIED" or sub == "PARTY_KILL" then
-        if dstName == nil or (ns.bossParts and ns.bossParts[dstName]) then return nil, nil, false end
-        local enc = EncounterIn(dstName, auto, alias)
+        local key = NpcKey(dstGUID)
+        if key == nil or (ns.bossParts and ns.bossParts[key]) then return nil, nil, false end
+        local enc = EncounterIn(dstGUID, dstName, auto, alias)
         if enc == nil then return nil, nil, false end
         local last = ns.bossLast and ns.bossLast[enc]
-        if last ~= nil and not last[dstName] then return nil, nil, false end
-        return enc, dstName, true
+        if last ~= nil and not last[key] then return nil, nil, false end
+        return enc, key, true
     end
-    local enc = Yielded(srcName, srcFlags, seen)
-    if enc then return enc, srcName, false end
-    enc = Yielded(dstName, dstFlags, seen)
-    if enc then return enc, dstName, false end
-    if srcName == nil or spell == nil or sub == "SPELL_CAST_START" then return nil, nil, false end
-    enc = EncounterIn(srcName, auto, alias)
+    local enc = Yielded(srcGUID, srcFlags, seen)
+    if enc then return enc, NpcKey(srcGUID), false end
+    enc = Yielded(dstGUID, dstFlags, seen)
+    if enc then return enc, NpcKey(dstGUID), false end
+    if srcGUID == nil or spellId == nil or sub == "SPELL_CAST_START" then return nil, nil, false end
+    enc = EncounterIn(srcGUID, srcName, auto, alias)
     local win = enc and ns.bossWin[enc]
-    if win ~= nil and spell == win then return enc, srcName, false end
+    if win ~= nil and ns.SpellKey(spellId) == ns.SpellKey(win) then return enc, NpcKey(srcGUID), false end
     return nil, nil, false
 end
-function Encounters.Of(name, auto)
-    return EncounterIn(name, auto, nil)
+function Encounters.Of(guid, name, auto)
+    return EncounterIn(guid, name, auto, nil)
 end
-function Encounters.Ending(sub, srcName, srcFlags, dstName, dstFlags, spell, auto, seen)
-    local enc, who, died = EndOf(sub, srcName, srcFlags, dstName, dstFlags, spell, auto, nil, seen)
+function Encounters.Ending(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, auto, seen)
+    local enc, who, died = EndOf(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, auto, nil,
+        seen)
     if enc == nil then return nil, nil, false end
     return enc, who, not died or ns.bosses[who] ~= nil
 end
-local function IsBossOf(fight, name)
-    if name == nil then return false end
-    return name == fight.boss or ns.bosses[name] == fight.boss
-        or (fight.names ~= nil and fight.names[name] == true)
+local function IsBossKey(fight, key)
+    if key == nil then return false end
+    return key == fight.boss or ns.bosses[key] == fight.boss
+        or (fight.names ~= nil and fight.names[key] == true)
+end
+local function IsBossOf(fight, guid)
+    return IsBossKey(fight, NpcKey(guid))
+end
+Encounters.IsBossOf = IsBossOf
+Encounters.IsBossKey = IsBossKey
+local RAID_MAPS = {
+    IcecrownCitadel = true, Ulduar = true, TheArgentColiseum = true, TheRubySanctum = true, Naxxramas = true,
+    TheObsidianSanctum = true, TheEyeofEternity = true, OnyxiasLair = true, VaultofArchavon = true,
+}
+function Encounters.MapOf(seg)
+    if not seg then return nil end
+    local raid = seg.raid
+    if raid and raid.map and RAID_MAPS[raid.map] then return raid.map end
+    local maps = seg.maps
+    if type(maps) == "table" then maps = table.concat(maps, ";") end
+    if type(maps) ~= "string" then return nil end
+    for name in string.gmatch(maps, "%-?%d+:%d+:(%a+)") do
+        if RAID_MAPS[name] then
+            if raid then raid.map = name end
+            return name
+        end
+    end
+    return nil
 end
 local function Busy(open, ts)
     local best = nil
@@ -181,6 +213,7 @@ local function ScanAll()
     end
     local function Push(f)
         Settle(f)
+        ns.NoteNpcKey(f.boss, f.title)
         if listed[f] then return end
         listed[f] = true
         if not f.killed and ns.bossSurvive and ns.bossSurvive[f.boss] then
@@ -222,7 +255,7 @@ local function ScanAll()
             ns.Jobs.Yield()
         else
         local auto = seg.bosses
-        local full = seg.raid and ns.fullRegistry and ns.fullRegistry[seg.raid.name]
+        local full = ns.fullRegistry and ns.fullRegistry[Encounters.MapOf(seg) or ""]
         local own = not full and auto or nil
         local bossSeen = {}
         local segAlias = {}
@@ -232,7 +265,7 @@ local function ScanAll()
         local classes, asked = ns.GetDB().classes, {}
         local guards = {}
         local seen, perEvent = 0, 1 / max(1, tonumber(seg.n) or 1)
-        for ts, sub, srcGUID, srcName, srcFlags, _, dstName, dstFlags, a1, a2, _, a4
+        for ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, _, a4
             in ns.Store.Events(seg, nil, nil, SKIP_HP, 4) do
             ns.Jobs.Step()
             seen = seen + 1
@@ -279,8 +312,8 @@ local function ScanAll()
                         end
                     end
                 end
-                local asSrc = EncounterIn(srcName, own, alias)
-                local asDst = EncounterIn(dstName, own, alias)
+                local asSrc = EncounterIn(srcGUID, srcName, own, alias)
+                local asDst = EncounterIn(dstGUID, dstName, own, alias)
                 local hurt = sub:find("_DAMAGE", 1, true) ~= nil
                 local touched = hurt or sub:find("_HEAL", 1, true) ~= nil
                 if (hurt or sub == "SPELL_INSTAKILL") and dstName and dstFlags
@@ -290,14 +323,14 @@ local function ScanAll()
                 end
                 local byPlayer = touched and srcFlags ~= nil
                     and bit.band(srcFlags, F_BY_PLAYER) > 0
-                if byPlayer and auto ~= nil and dstName ~= nil and auto[dstName]
-                    and not ns.bosses[dstName] and not alias[dstName] and not open[dstName] then
+                local dstKey = byPlayer and auto ~= nil and dstName ~= nil and auto[dstName] and NpcKey(dstGUID)
+                if dstKey and not ns.bosses[dstKey] and not alias[dstKey] and not open[dstKey] then
                     local host = Busy(open, ts)
                     if host then
-                        alias[dstName] = host.boss
-                        segAlias[dstName] = host.boss
+                        alias[dstKey] = host.boss
+                        segAlias[dstKey] = host.boss
                         host.names = host.names or {}
-                        host.names[dstName] = true
+                        host.names[dstKey] = true
                         asDst = host.boss
                     end
                 end
@@ -322,7 +355,7 @@ local function ScanAll()
                             f.last = ts
                         else
                             f = { boss = enc, from = ts, to = ts, last = ts, killed = false,
-                                  deaths = 0, seg = segIndex, players = {}, raid = seg.raid }
+                                  deaths = 0, seg = segIndex, players = {}, raid = seg.raid, title = dstName }
                         end
                         open[enc] = f
                     end
@@ -333,8 +366,8 @@ local function ScanAll()
                             and ts - (f.diedAt or ts) > REVIVE_GAP then
                             f.killed = false
                         end
-                        local ended, _, died = EndOf(sub, srcName, srcFlags, dstName, dstFlags, a2,
-                            own, alias, bossSeen)
+                        local ended, _, died = EndOf(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags,
+                            a1, own, alias, bossSeen)
                         if ended == enc then
                             f.killed = true
                             if died then f.diedAt = ts else f.won = true end
@@ -589,7 +622,7 @@ local function YardSize(area, floor)
 end
 local function InferNpcs(frames, swings, count, fight, known)
     if count == 0 then return end
-    local slotOf, slotName, slotWho = {}, {}, {}
+    local slotOf, slotName, slotWho, slotGuid = {}, {}, {}, {}
     local lo, hi = 1, 1
     local total = #frames
     for i = 1, total do
@@ -607,6 +640,7 @@ local function InferNpcs(frames, swings, count, fight, known)
                 slot = slots
                 slotOf[swing.id] = slot
                 slotName[slot] = swing.name
+                slotGuid[slot] = swing.id
                 slotWho[slot] = slotWho[slot] or {}
                 wipe(slotWho[slot])
             end
@@ -626,7 +660,7 @@ local function InferNpcs(frames, swings, count, fight, known)
                         sortX[witnesses], sortY[witnesses] = p.x, p.y
                     end
                 end
-                local isBoss = IsBossOf(fight, slotName[slot])
+                local isBoss = IsBossOf(fight, slotGuid[slot])
                 local need = isBoss and BOSS_WITNESSES or ADD_WITNESSES
                 if witnesses >= need then
                     local mx, my = MedianXY(witnesses)
@@ -1062,9 +1096,9 @@ local function BuildTimeline(fight, who, idx)
                 ns.CastResult.Cast(cast, done, dstName)
             end
             ns.CastResult.Feed(cast, ts, sub, srcName, dstGUID, dstName, a1, a2, a4, a5, a7, a10)
-            if sub == "SPELL_SUMMON" and dstName and fixates[dstName] and dstGUID then
-                chasers[dstGUID] = { t = ts, id = tonumber(a1), name = dstName }
-            elseif srcName and fixates[srcName] and srcGUID and chasers[srcGUID] then
+            if sub == "SPELL_SUMMON" and dstName and dstGUID and fixates[NpcKey(dstGUID) or 0] then
+                chasers[dstGUID] = { t = ts, id = tonumber(a1), name = dstName, key = NpcKey(dstGUID) }
+            elseif srcGUID and chasers[srcGUID] and fixates[NpcKey(srcGUID) or 0] then
                 local c = chasers[srcGUID]
                 if sub:find("SWING", 1, true) then
                     if not c.victim then
@@ -1081,7 +1115,7 @@ local function BuildTimeline(fight, who, idx)
                 and band(srcFlags, F_PLAYER) > 0 then
                 owners[dstGUID] = srcName
             end
-            if IsBossOf(fight, srcName) and BOSS_SUBS[sub] then
+            if IsBossOf(fight, srcGUID) and BOSS_SUBS[sub] then
                 local label = tostring(a2 or a1)
                 if not bossSeen[label] or ts - bossSeen[label] > 3 then
                     bossSeen[label] = ts
@@ -1144,7 +1178,7 @@ local function BuildTimeline(fight, who, idx)
                                                   kind = "hit", src = srcName,
                                                   tick = sub:find("PERIODIC", 1, true) ~= nil,
                                                   id = (not swing) and a1 or nil,
-                                                  chaser = fixates[srcName] and srcGUID or nil,
+                                                  chaser = fixates[NpcKey(srcGUID) or 0] and srcGUID or nil,
                                                   mc = ByMc(fight, srcName, srcFlags) }
                 elseif MISSED_SUBS[sub] then
                     local how = tostring((swing and a1 or a4) or "MISS")
@@ -1157,7 +1191,7 @@ local function BuildTimeline(fight, who, idx)
                                                   kind = "hit", src = srcName,
                                                   tick = sub:find("PERIODIC", 1, true) ~= nil,
                                                   id = (not swing) and a1 or nil,
-                                                  chaser = fixates[srcName] and srcGUID or nil,
+                                                  chaser = fixates[NpcKey(srcGUID) or 0] and srcGUID or nil,
                                                   mc = ByMc(fight, srcName, srcFlags) }
                 elseif sub:find("_HEAL", 1, true) then
                     local amount = tonumber(a4) or 0
@@ -1191,8 +1225,9 @@ local function BuildTimeline(fight, who, idx)
     end
     for _, c in pairs(chasers) do
         if c.victim == who and c.id then
-            ns.Effects.Synthetic(c.id, fixates[c.name], "debuff")
-            out.auras[#out.auras + 1] = { t = c.t, to = c.hit or c.t, label = fixates[c.name],
+            local label = ns.T(fixates[c.key])
+            ns.Effects.Synthetic(c.id, label, "debuff")
+            out.auras[#out.auras + 1] = { t = c.t, to = c.hit or c.t, label = label,
                                           id = c.id, src = c.name, kind = "debuff" }
         end
     end

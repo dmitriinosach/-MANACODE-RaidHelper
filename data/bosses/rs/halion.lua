@@ -1,14 +1,14 @@
 local _, ns = ...
-local HALION = "Халион"
-local MARKS = { "Пылающий огонь", "Метка пылающего огня", "Пожирание души", "Метка пожирания" }
+local HALION = ns.ENC.halion
+local MARKS = { 74562, 74567, 74792, 74795 }
 local SIDE = {
-    ["Пылающий огонь"] = "sum.b.rs.fire",
-    ["Метка пылающего огня"] = "sum.b.rs.fire",
-    ["Пожирание души"] = "sum.b.rs.dark",
-    ["Метка пожирания"] = "sum.b.rs.dark",
+    [74562] = "sum.b.rs.fire",
+    [74567] = "sum.b.rs.fire",
+    [74792] = "sum.b.rs.dark",
+    [74795] = "sum.b.rs.dark",
 }
-ns.bosses["Халион"] = HALION
-ns.bosses["Halion Controller"] = HALION
+ns.bosses[39863] = HALION
+ns.bosses[40146] = HALION
 ns.bossPhases = ns.bossPhases or {}
 ns.bossPhases[HALION] = {
     steps = {
@@ -21,28 +21,26 @@ ns.bossPhases[HALION] = {
     },
 }
 ns.summaries[HALION] = {
-    deps = { tankHits = { "Рассекающий удар" } },
+    deps = { tankHits = { 15284 } },
     cureLabels = SIDE,
-    cureNote = "sum.b.rs.curednote",
     badges = {
-        { kind = "aura", spell = "Пылающий огонь", tip = "sum.b.rs.combust" },
-        { kind = "aura", spell = "Пожирание души", tip = "sum.b.rs.consume" },
-        { kind = "stack", spell = "Метка пылающего огня", id = 74567, tip = "sum.b.rs.combustmark" },
-        { kind = "stack", spell = "Метка пожирания", id = 74795, tip = "sum.b.rs.consumemark" },
-        { kind = "death", spells = { "Падение метеора" }, id = 75879, tip = "sum.b.rs.meteordeath" },
-        { kind = "death", spells = { "Лезвие сумерек", "Сумеречная пульсация" }, id = 77846,
+        { kind = "aura", spell = 74562, tip = "sum.b.rs.combust" },
+        { kind = "aura", spell = 74792, tip = "sum.b.rs.consume" },
+        { kind = "stack", spell = 74567, id = 74567, tip = "sum.b.rs.combustmark" },
+        { kind = "stack", spell = 74795, id = 74795, tip = "sum.b.rs.consumemark" },
+        { kind = "death", spells = { 75879 }, id = 75879, tip = "sum.b.rs.meteordeath" },
+        { kind = "death", spells = { 77846, 78862 }, id = 77846,
           tip = "sum.b.rs.cutterdeath" },
-        { kind = "death", spells = { "Возгорание", "Пожирание" }, id = 75884, tip = "sum.b.rs.puddledeath" },
-        { kind = "death", srcs = { "Живое адское пламя", "Живой огонь" }, id = 75887, neutral = true,
-          note = "sum.b.nograde", tip = "sum.b.rs.adddeath" },
+        { kind = "death", spells = { 75884, 75876 }, id = 75884, tip = "sum.b.rs.puddledeath" },
+        { kind = "death", srcs = { 40681, 40683 }, id = 75887, neutral = true, tip = "sum.b.rs.adddeath" },
     },
     blocks = {
         { kind = "removed", label = "sum.k.rs.marks", spells = MARKS },
-        { kind = "taken", label = "sum.k.rs.marktaken", spells = { "Пылающий огонь", "Пожирание души" } },
-        { kind = "taken", label = "sum.k.rs.puddles", spells = { "Возгорание", "Пожирание" } },
-        { kind = "taken", label = "sum.k.rs.meteor", spells = { "Падение метеора" } },
-        { kind = "taken", label = "sum.k.rs.cutter", spells = { "Лезвие сумерек", "Сумеречная пульсация" } },
-        { kind = "damageTo", label = "sum.k.rs.adds", names = { "Живое адское пламя", "Живой огонь" } },
+        { kind = "taken", label = "sum.k.rs.marktaken", spells = { 74562, 74792 } },
+        { kind = "taken", label = "sum.k.rs.puddles", spells = { 75884, 75876 } },
+        { kind = "taken", label = "sum.k.rs.meteor", spells = { 75879 } },
+        { kind = "taken", label = "sum.k.rs.cutter", spells = { 77846, 78862 } },
+        { kind = "damageTo", label = "sum.k.rs.adds", names = { 40681, 40683 } },
     },
-    stacks = { { spell = "Метка пылающего огня" }, { spell = "Метка пожирания" } },
+    stacks = { { spell = 74567 }, { spell = 74795 } },
 }

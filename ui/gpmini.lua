@@ -88,7 +88,7 @@ local function TitleTip()
     if not current then return end
     local fights = RaidFights()
     local n, total = TryNumber(fights, current)
-    local lines = { { current.boss, "tip.body" } }
+    local lines = { { ns.EncName(current.boss), "tip.body" } }
     lines[#lines + 1] = { format(ns.T("gpmini.tip.try"), n, total, Outcome(current), Clock(current.to - current.from)),
         "tip.title" }
     lines[#lines + 1] = { format(ns.T("sum.gp.preset"), ns.Penalties.Label(ns.Penalties.Active())), "text.secondary" }
@@ -267,7 +267,7 @@ local function PaintHead(fights)
         return
     end
     local n = TryNumber(fights, current)
-    titleText:SetText(format(ns.T("gpmini.title"), n, Outcome(current), current.boss))
+    titleText:SetText(format(ns.T("gpmini.title"), n, Outcome(current), ns.EncName(current.boss)))
 end
 local function PaintList()
     local width = W - PADX * 2 - BAR - 4
@@ -371,7 +371,7 @@ local function Announce(f, s)
         if Mini.IsShown() and follow then Mini.Refresh() end
         return
     end
-    ns.Print(format(ns.T("gp.signal"), #m.items, ns.Plural(#m.items, ns.T("gp.players")), m.pending, f.boss))
+    ns.Print(format(ns.T("gp.signal"), #m.items, ns.Plural(#m.items, ns.T("gp.players")), m.pending, ns.EncName(f.boss)))
     if Mini.IsShown() and follow then Mini.Refresh() end
 end
 local function Check(seg)

@@ -44,6 +44,8 @@ local HEIGHT_MIN_W = 0.3
 local FIT_LO = 0.01
 local FIT_HI = 0.99
 local FIT_PAD = 1.15
+local OUT_K = 1.1
+local OUT_SHARE = 0.1
 local MIN_R = 60
 local GRID_YD = 10
 local SEEK_STEPS = 8
@@ -58,38 +60,38 @@ Replay.texOut = 0
 Replay.RUN_YPS = RUN_YPS
 Replay.MOVE_YPS = MOVE_YPS
 Replay.ROOMS = {
-    lanathel = { boss = "Кровавая королева Лана'тель", floor = 6, tex = "lanathel", cx = 511, cy = 310, r = 160, pack = "ICC" },
-    lichking = { boss = "Король-лич", floor = 7, tex = "lichking", cx = 500, cy = 349, r = 255, pack = "ICC" },
-    marrowgar = { boss = "Лорд Ребрад", floor = 1, tex = "marrowgar", cx = 390, cy = 402, r = 66, pack = "ICC" },
-    deathwhisper = { boss = "Леди Смертный Шепот", floor = 1, tex = "deathwhisper", cx = 390, cy = 540, r = 66, pack = "ICC" },
-    gunship = { boss = "Бой на кораблях", floor = 2, tex = "gunship", cx = 625, cy = 318, r = 100 },
-    deathbringer = { boss = "Саурфанг Смертоносный", floor = 3, tex = "deathbringer", cx = 520, cy = 300, r = 230, pack = "ICC" },
-    festergut = { boss = "Тухлопуз", floor = 5, tex = "festergut", cx = 199, cy = 440, r = 48, pack = "ICC" },
-    rotface = { boss = "Гниломорд", floor = 5, tex = "rotface", cx = 199, cy = 270, r = 48, pack = "ICC" },
-    putricide = { boss = "Профессор Мерзоцид", floor = 5, tex = "putricide", cx = 125, cy = 355, r = 52, pack = "ICC" },
-    council = { boss = "Совет кровавых принцев", floor = 5, tex = "council", cx = 518, cy = 95, r = 58, pack = "ICC" },
-    valithria = { boss = "Валитрия Сноходица", floor = 5, tex = "valithria", cx = 769, cy = 475, r = 85, pack = "ICC" },
-    sindragosa = { boss = "Синдрагоса", floor = 4, tex = "sindragosa", cx = 365, cy = 115, r = 78, pack = "ICC" },
-    frostmourne = { boss = "Король-лич", floor = 8, tex = "frostmourne", cx = 470, cy = 365, r = 130 },
-    halion = { boss = "Халион", floor = 0, tex = "halion", cx = 495, cy = 366, r = 80 },
-    leviathan = { boss = "Огненный Левиафан", floor = 1, tex = "leviathan", cx = 493, cy = 276, r = 36 },
-    razorscale = { boss = "Острокрылая", floor = 1, tex = "razorscale", cx = 537, cy = 175, r = 14 },
-    ignis = { boss = "Повелитель Горнов Игнис", floor = 1, tex = "ignis", cx = 387, cy = 173, r = 14 },
-    xt002 = { boss = "Разрушитель XT-002", floor = 1, tex = "xt002", cx = 487, cy = 97, r = 13 },
-    ironcouncil = { boss = "Железное собрание", floor = 2, tex = "ironcouncil", cx = 165, cy = 366, r = 70 },
-    kologarn = { boss = "Кологарн", floor = 2, tex = "kologarn", cx = 372, cy = 91, r = 48 },
-    algalon = { boss = "Алгалон Наблюдатель", floor = 2, tex = "algalon", cx = 796, cy = 307, r = 54 },
-    hodir = { boss = "Ходир", floor = 3, tex = "hodir", cx = 674, cy = 425, r = 21 },
-    auriaya = { boss = "Ауриайя", floor = 3, tex = "auriaya", cx = 570, cy = 441, r = 25 },
-    thorim = { boss = "Торим", floor = 3, tex = "thorim", cx = 691, cy = 322, r = 47 },
-    freya = { boss = "Фрейя", floor = 3, tex = "freya", cx = 521, cy = 160, r = 40 },
-    vezax = { boss = "Генерал Везакс", floor = 4, tex = "vezax", cx = 541, cy = 411, r = 68 },
-    yogg = { boss = "Йогг-Сарон", floor = 4, tex = "yogg", cx = 694, cy = 294, r = 70 },
-    mimiron = { boss = "Мимирон", floor = 5, tex = "mimiron", cx = 439, cy = 271, r = 38 },
-    tocBeasts = { boss = "Звери Нордскола", floor = 1, tex = "toc_arena", cx = 505, cy = 356, r = 165 },
-    tocChampions = { boss = "Чемпионы фракций", floor = 1, tex = "toc_arena", cx = 505, cy = 356, r = 165 },
-    tocTwins = { boss = "Валь'киры-близнецы", floor = 1, tex = "toc_arena", cx = 505, cy = 356, r = 165 },
-    tocAnubarak = { boss = "Ануб'арак", floor = 2, tex = "toc_anubarak", cx = 514, cy = 219, r = 85 },
+    lanathel = { boss = ns.ENC.lanathel, floor = 6, tex = "lanathel", cx = 511, cy = 310, r = 160, pack = "ICC" },
+    lichking = { boss = ns.ENC.lichking, floor = 7, tex = "lichking", cx = 500, cy = 349, r = 255, pack = "ICC" },
+    marrowgar = { boss = ns.ENC.marrowgar, floor = 1, tex = "marrowgar", cx = 390, cy = 402, r = 66, pack = "ICC" },
+    deathwhisper = { boss = ns.ENC.deathwhisper, floor = 1, tex = "deathwhisper", cx = 390, cy = 540, r = 66, pack = "ICC" },
+    gunship = { boss = ns.ENC.gunship, floor = 2, tex = "gunship", cx = 625, cy = 318, r = 100 },
+    deathbringer = { boss = ns.ENC.saurfang, floor = 3, tex = "deathbringer", cx = 520, cy = 300, r = 230, pack = "ICC" },
+    festergut = { boss = ns.ENC.festergut, floor = 5, tex = "festergut", cx = 199, cy = 440, r = 48, pack = "ICC" },
+    rotface = { boss = ns.ENC.rotface, floor = 5, tex = "rotface", cx = 199, cy = 270, r = 48, pack = "ICC" },
+    putricide = { boss = ns.ENC.putricide, floor = 5, tex = "putricide", cx = 125, cy = 355, r = 52, pack = "ICC" },
+    council = { boss = ns.ENC.council, floor = 5, tex = "council", cx = 518, cy = 95, r = 58, pack = "ICC" },
+    valithria = { boss = ns.ENC.valithria, floor = 5, tex = "valithria", cx = 769, cy = 475, r = 85, pack = "ICC" },
+    sindragosa = { boss = ns.ENC.sindragosa, floor = 4, tex = "sindragosa", cx = 365, cy = 115, r = 78, pack = "ICC" },
+    frostmourne = { boss = ns.ENC.lichking, floor = 8, tex = "frostmourne", cx = 470, cy = 365, r = 130 },
+    halion = { boss = ns.ENC.halion, floor = 0, tex = "halion", cx = 495, cy = 366, r = 80 },
+    leviathan = { boss = ns.ENC.leviathan, floor = 1, tex = "leviathan", cx = 493, cy = 276, r = 36 },
+    razorscale = { boss = ns.ENC.razorscale, floor = 1, tex = "razorscale", cx = 537, cy = 175, r = 14 },
+    ignis = { boss = ns.ENC.ignis, floor = 1, tex = "ignis", cx = 387, cy = 173, r = 14 },
+    xt002 = { boss = ns.ENC.xt002, floor = 1, tex = "xt002", cx = 487, cy = 97, r = 13 },
+    ironcouncil = { boss = ns.ENC.ironcouncil, floor = 2, tex = "ironcouncil", cx = 165, cy = 366, r = 70 },
+    kologarn = { boss = ns.ENC.kologarn, floor = 2, tex = "kologarn", cx = 372, cy = 91, r = 48 },
+    algalon = { boss = ns.ENC.algalon, floor = 2, tex = "algalon", cx = 796, cy = 307, r = 54 },
+    hodir = { boss = ns.ENC.hodir, floor = 3, tex = "hodir", cx = 674, cy = 425, r = 21 },
+    auriaya = { boss = ns.ENC.auriaya, floor = 3, tex = "auriaya", cx = 570, cy = 441, r = 25 },
+    thorim = { boss = ns.ENC.thorim, floor = 3, tex = "thorim", cx = 691, cy = 322, r = 47 },
+    freya = { boss = ns.ENC.freya, floor = 3, tex = "freya", cx = 521, cy = 160, r = 40 },
+    vezax = { boss = ns.ENC.vezax, floor = 4, tex = "vezax", cx = 541, cy = 411, r = 68 },
+    yogg = { boss = ns.ENC.yogg, floor = 4, tex = "yogg", cx = 694, cy = 294, r = 70 },
+    mimiron = { boss = ns.ENC.mimiron, floor = 5, tex = "mimiron", cx = 439, cy = 271, r = 38 },
+    tocBeasts = { boss = ns.ENC.beasts, floor = 1, tex = "toc_arena", cx = 505, cy = 356, r = 165 },
+    tocChampions = { boss = ns.ENC.champions, floor = 1, tex = "toc_arena", cx = 505, cy = 356, r = 165 },
+    tocTwins = { boss = ns.ENC.twins, floor = 1, tex = "toc_arena", cx = 505, cy = 356, r = 165 },
+    tocAnubarak = { boss = ns.ENC.anubarak, floor = 2, tex = "toc_anubarak", cx = 514, cy = 219, r = 85 },
 }
 function Replay.NpcOf(guid)
     if type(guid) ~= "string" or #guid < 12 or strsub(guid, 1, 2) ~= "0x" then return nil end
@@ -166,9 +168,9 @@ end
 function Replay.HeightAt(room, x, y)
     local hm = room and ns.roomHeight and ns.roomHeight[room.tex]
     if not hm then return nil end
-    local n, span = hm.n, room.r / RIM
-    local gx = ((x - room.cx) / span + 0.5) * n + 0.5
-    local gy = ((y - room.cy) / span + 0.5) * n + 0.5
+    local n, span = hm.n, hm.side or room.r / RIM
+    local gx = ((x - room.cx - (hm.ox or 0)) / span + 0.5) * n + 0.5
+    local gy = ((y - room.cy - (hm.oy or 0)) / span + 0.5) * n + 0.5
     local i, j = floor(gx), floor(gy)
     local fx, fy = gx - i, gy - j
     local sum, weight = 0, 0
@@ -439,8 +441,32 @@ local function Pick(list, k)
     return list[max(1, min(n, floor((n - 1) * k + 1.5)))]
 end
 local function FitCircle(scene)
-    if scene.room then
-        scene.cx, scene.cy, scene.r = scene.room.cx, scene.room.cy, scene.room.r
+    local room = scene.room
+    if room then
+        scene.cx, scene.cy, scene.r = room.cx, room.cy, room.r
+        local out, all = 0, 0
+        local l, r, t, b = room.cx - room.r, room.cx + room.r, room.cy - room.r, room.cy + room.r
+        local tracks = scene.tracks
+        for k = 1, #tracks do
+            local tr = tracks[k]
+            for i = 1, tr.n, 4 do
+                ns.Jobs.Step()
+                local x, y = tr.x[i], tr.y[i]
+                if x >= 0 then
+                    all = all + 1
+                    local dx, dy = x - room.cx, y - room.cy
+                    if dx * dx + dy * dy > room.r * room.r * OUT_K then
+                        out = out + 1
+                        if x < l then l = x elseif x > r then r = x end
+                        if y < t then t = y elseif y > b then b = y end
+                    end
+                end
+            end
+        end
+        if all > 0 and out >= all * OUT_SHARE then
+            scene.cx, scene.cy = (l + r) / 2, (t + b) / 2
+            scene.r = sqrt((r - l) * (r - l) + (b - t) * (b - t)) / 2
+        end
         return
     end
     local xs, ys = {}, {}

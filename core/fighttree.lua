@@ -18,6 +18,7 @@ local function NewRaid(key, f)
     return {
         key = key,
         name = r and r.name or nil,
+        map = r and r.map or nil,
         size = r and r.size or nil,
         heroic = false,
         id = r and r.id or nil,
@@ -117,7 +118,7 @@ function Tree.Build(fights)
     for i = 1, #out do
         local raid = out[i]
         tsort(raid.encs, Fresher)
-        local known = raid.name and ns.raidEncounters and ns.raidEncounters[raid.name] or 0
+        local known = raid.map and ns.raidEncounters and ns.raidEncounters[raid.map] or 0
         raid.total = known > #raid.encs and known or #raid.encs
         for k = 1, #raid.encs do
             local enc = raid.encs[k]

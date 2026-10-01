@@ -1,18 +1,18 @@
 local _, ns = ...
-local JARAXXUS = "Лорд Джараксус"
-ns.bosses["Лорд Джараксус"] = JARAXXUS
+local JARAXXUS = ns.ENC.jaraxxus
+ns.bosses[34780] = JARAXXUS
 ns.summaries[JARAXXUS] = {
     badges = {
-        { kind = "aura", spell = "Испепеление плоти", tip = "sum.b.toc.flesh" },
-        { kind = "aura", spell = "Пламя Легиона", tip = "sum.b.toc.legion" },
-        { kind = "hit", spell = "Геенна скверны", gap = 3, tip = "sum.b.toc.inferno" },
-        { kind = "death", spells = { "Геенна скверны" }, id = 68718, tip = "sum.b.toc.infernodeath" },
+        { kind = "aura", spell = 67051, tip = "sum.b.toc.flesh" },
+        { kind = "aura", spell = 66200, tip = "sum.b.toc.legion" },
+        { kind = "hit", spell = 67047, gap = 3, tip = "sum.b.toc.inferno" },
+        { kind = "death", spells = { 67047 }, id = 68718, tip = "sum.b.toc.infernodeath" },
     },
     blocks = {
-        { kind = "casts", label = "sum.k.toc.fireball", spells = { "Огненный шар Скверны" }, srcs = { JARAXXUS } },
-        { kind = "dispels", label = "sum.k.toc.netherpower", spell = "Сила Пустоты" },
-        { kind = "removed", label = "sum.k.toc.jaracleanse", spells = { "Огненный шар Скверны" } },
-        { kind = "damageTo", label = "sum.k.toc.jaradds", names = { "Госпожа Боли", "Врата Пустоты", "Адский вулкан" } },
-        { kind = "taken", label = "sum.k.toc.jarafire", spells = { "Пламя Легиона", "Геенна скверны" } },
+        { kind = "casts", label = "sum.k.toc.fireball", spells = { 66965 }, srcs = { JARAXXUS } },
+        { kind = "dispels", label = "sum.k.toc.netherpower", spell = 67009 },
+        { kind = "removed", label = "sum.k.toc.jaracleanse", spells = { 66965 } },
+        { kind = "damageTo", label = "sum.k.toc.jaradds", names = { 34826, 34825, 34813 } },
+        { kind = "taken", label = "sum.k.toc.jarafire", spells = { 66200, 67047 } },
     },
 }

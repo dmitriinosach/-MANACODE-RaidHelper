@@ -60,13 +60,25 @@ Codec.LAYOUTS = LAYOUTS
 Codec.ITEM = ITEM
 Codec.FIELD = FIELD
 local states = setmetatable({}, { __mode = "k" })
+local function ListBytes(list)
+    local n = 0
+    if type(list) ~= "table" then return n end
+    for i = 1, #list do n = n + #list[i] + 1 end
+    return n
+end
+local function NewDicts(st)
+    st.ag, st.ak, st.an, st.af = {}, {}, {}, {}
+    st.sp, st.sk, st.spn, st.sps, st.si = {}, {}, {}, {}, {}
+    st.lastMs, st.dict = 0, 0
+end
 local function State(seg)
     local st = states[seg]
     if st then return st end
-    st = { ag = {}, ak = {}, an = {}, af = {}, sp = {}, sk = {}, spn = {}, sps = {}, si = {}, lastMs = 0,
-           hpLast = {}, hpMax = {}, hpBuf = {}, hpMs = {}, hpOut = {},
+    st = { hpLast = {}, hpMax = {}, hpBuf = {}, hpMs = {}, hpOut = {},
            px = {}, py = {}, posBuf = {}, posMs = {}, posX = {}, posY = {},
            yw = 1 / UNITS_PER_YARD, yh = 1 / UNITS_PER_YARD }
+    NewDicts(st)
+    st.dict = ListBytes(seg.actors) + ListBytes(seg.spells) + ListBytes(seg.strs)
     states[seg] = st
     return st
 end
@@ -89,6 +101,7 @@ local function Str(seg, st, s)
     id = #list + 1
     list[id] = s
     st.si[s] = id
+    st.dict = st.dict + #s + 1
     return id
 end
 local function NewActor(seg, st, g, n, f)
@@ -98,6 +111,7 @@ local function NewActor(seg, st, g, n, f)
     local list = seg.actors
     id = #list + 1
     list[id] = key .. FIELD .. f
+    st.dict = st.dict + #list[id] + 1
     st.ak[key] = id
     st.an[id] = n
     st.af[id] = f
@@ -125,6 +139,7 @@ local function Spell(seg, st, id, name, school)
     local list = seg.spells
     k = #list + 1
     list[k] = key
+    st.dict = st.dict + #key + 1
     st.sk[key] = k
     st.spn[k] = n
     st.sps[k] = c
@@ -539,4 +554,39 @@ function Codec.Rebase(seg, t0)
     end
     seg.t0 = seg.t0 + delta / 1000
     if ns.Decode then ns.Decode.Forget() end
+end
+function Codec.DictBytes(seg)
+    local st = states[seg]
+    return st and st.dict or 0
+end
+function Codec.Size(seg)
+    return (seg.bytes or 0) + Codec.DictBytes(seg)
+end
+local function Pack(...)
+    return { n = select("#", ...), ... }
+end
+function Codec.Compact(seg)
+    local st = states[seg]
+    if not st or not ns.Decode then return false end
+    Codec.Flush(seg)
+    local evs, chunks = {}, seg.chunks
+    for i = 1, #chunks do
+        local s = chunks[i]
+        seg.bytes = seg.bytes - #s - 1
+        local it = ns.Decode.Chunk(seg, s, TAIL_SLOTS)
+        while true do
+            local e = Pack(it())
+            if e[1] == nil then break end
+            if e[2] ~= nil then evs[#evs + 1] = e end
+        end
+    end
+    ns.Decode.Drop(seg)
+    for i = #chunks, 1, -1 do chunks[i] = nil end
+    seg.actors, seg.spells, seg.strs, seg.n = {}, {}, {}, 0
+    NewDicts(st)
+    for i = 1, #evs do
+        local e = evs[i]
+        Codec.Append(seg, unpack(e, 1, e.n))
+    end
+    return true
 end

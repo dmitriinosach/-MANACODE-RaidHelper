@@ -18,10 +18,6 @@ local function RideIndex(b, s)
     end
     return nil
 end
-local function Note(b)
-    if b.normal then return T(b.heroic and "sum.tt.nohp" or "sum.tt.normal") end
-    return T(b.rule == "hold" and "sum.tt.holdnote" or "sum.tt.usefulnote")
-end
 local function RowTip(b, who, st, class)
     local Tips = ns.BadgeTips
     local v = b.by[who] or 0
@@ -51,8 +47,6 @@ local function RowTip(b, who, st, class)
             Put(out, "sub", left, z and format(T("sum.vk.held"), z - a) or nil)
         end
     end
-    Put(out, "sep")
-    Put(out, "note", Note(b))
     return out
 end
 function Valkyr.View(b, s, classOf)
@@ -92,8 +86,6 @@ function Valkyr.View(b, s, classOf)
     end
     local label = T(b.label or b.def.label)
     local tip = { { kind = "head", left = label, right = Short(b.total) } }
-    Put(tip, "note", T("sum.vk.note"))
-    Put(tip, "note", Note(b))
     return { title = format(T("sum.k.title"), label, Short(b.total)),
              cols = { T(b.normal and "sum.tt.total" or "sum.vk.col"), T("sum.vk.share") },
              heads = { icon }, rows = rows, tip = tip, span = 1 }

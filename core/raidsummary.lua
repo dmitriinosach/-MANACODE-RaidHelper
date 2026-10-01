@@ -67,10 +67,8 @@ local function Attempts(raid)
     tsort(out, function(a, b) return a.from < b.from end)
     return out
 end
-local function IsBoss(fight, name)
-    if not name then return false end
-    return name == fight.boss or ns.bosses[name] == fight.boss
-        or (fight.names ~= nil and fight.names[name] == true)
+local function IsBoss(fight, npc)
+    return ns.IsBossKey(fight, ns.NpcKeyOf(npc))
 end
 local function NewPlayer(name)
     return { name = name, class = ns.Encounters.ClassOf(name), all = 0, cut = 0, enc = 0, boss = 0, heal = 0,
@@ -81,8 +79,8 @@ local function NewSum(raid, segs)
     local res = {
         key = raid.key, name = raid.name, size = raid.size, heroic = raid.heroic, id = raid.id,
         from = raid.from, to = raid.to, busy = 0, sessions = 0, tries = raid.tries, wipes = 0,
-        passed = raid.passed, encs = #raid.encs, known = raid.name and ns.raidEncounters
-            and ns.raidEncounters[raid.name] or nil,
+        passed = raid.passed, encs = #raid.encs, known = raid.map and ns.raidEncounters
+            and ns.raidEncounters[raid.map] or nil,
         trash = 0, segs = #segs, players = {}, byName = {}, spent = {}, earned = {}, sums = {},
         sig = Signature(raid, segs),
     }
@@ -374,7 +372,7 @@ function RaidSum.Finished(raid)
     if raids[1] and raids[1].key ~= raid.key then return true, "newer" end
     for k = 1, #raid.encs do
         local enc = raid.encs[k]
-        if enc.passed and ns.Raid.IsFinal(raid.name, enc.boss) then return true, "final" end
+        if enc.passed and ns.Raid.IsFinal(raid.map, enc.boss) then return true, "final" end
     end
     if LockGone(raid) then return true, "reset" end
     local quiet = time() - LastRecord(raid)

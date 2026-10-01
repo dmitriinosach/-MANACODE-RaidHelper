@@ -43,28 +43,13 @@ function Tips.rebuff(st, def)
     local out = {}
     Head(out, T(def.tip))
     Put(out, "row", T("sum.tt.count"), tostring(st.n))
-    local dups = 0
     for k = 1, min(TIMES, st.n) do
         local dup = st.dups and st.dups[k]
-        if dup then dups = dups + 1 end
         Put(out, "sub", Clock(st.times[k]) .. " " .. Spell(st.ids and st.ids[k], st.spells[k]), st.notes[k],
             dup and format(T("sum.tt.dupof"), dup) or nil, dup and "bad" or nil)
     end
     More(out, st.n)
-    Put(out, "sep")
-    Put(out, "note", T("sum.tip.rebuffnote"))
-    if dups > 0 then Put(out, "note", T("sum.tip.dupnote")) end
     return out
-end
-local function Icons(ids, names)
-    local parts, k, plain = {}, 0, false
-    for name in tostring(names or ""):gmatch("[^,]+") do
-        k = k + 1
-        local glyph = Tips.Glyph(ids and ids[k])
-        if not glyph then plain = true end
-        parts[k] = glyph or (name:gsub("^%s+", ""))
-    end
-    return table.concat(parts, plain and ", " or " ")
 end
 function Tips.rebuffed(st, def)
     local out = {}
@@ -84,11 +69,15 @@ function Tips.rebuffed(st, def)
         end
         if not any then Put(out, "sub", T("sum.tt.norebuff"), nil, nil, "dim") end
         if st.miss[k] then
-            Put(out, "row", T("sum.tt.missing"), Icons(st.missId and st.missId[k], st.miss[k]), nil, "bad")
+            Put(out, "row", T("sum.tt.missing"), nil, nil, "bad")
+            local m = 0
+            for name in tostring(st.miss[k]):gmatch("[^,]+") do
+                m = m + 1
+                local glyph = Tips.Glyph(st.missId and st.missId[k] and st.missId[k][m])
+                Put(out, "sub", (glyph and (glyph .. " ") or "") .. (name:gsub("^%s+", "")))
+            end
         end
     end
-    Put(out, "sep")
-    Put(out, "note", T("sum.tip.rebuffednote"))
     return out
 end
 function Tips.cc(st, def)
@@ -106,8 +95,6 @@ function Tips.cc(st, def)
         Put(out, "sub", Clock(st.times[k]), st.notes[k], st.spells[k] .. " — " .. what, ok and "good" or "dim")
     end
     More(out, st.n)
-    Put(out, "sep")
-    Put(out, "note", T("sum.tip.ccnote"))
     return out
 end
 function Tips.wrath(st, def)
@@ -121,8 +108,6 @@ function Tips.wrath(st, def)
             c > 0 and "good" or "dim")
     end
     More(out, st.n)
-    Put(out, "sep")
-    Put(out, "note", T("sum.tip.wrathnote"))
     return out
 end
 local function WhyText(why)
@@ -152,8 +137,6 @@ function Tips.chased(st, def)
         if why then Put(out, "sub", WhyText(why), nil, nil, "good") end
     end
     More(out, st.n)
-    Put(out, "sep")
-    Put(out, "note", T("sum.tip.shadenote"))
     return out
 end
 function Tips.blast(st, def)
@@ -166,8 +149,6 @@ function Tips.blast(st, def)
             format(T("sum.tt.shadeof"), st.notes[k]))
     end
     More(out, st.n)
-    Put(out, "sep")
-    Put(out, "note", T("sum.tip.blastnote"))
     return out
 end
 function Tips.bounce(st, def)
@@ -185,8 +166,6 @@ function Tips.bounce(st, def)
         if key:sub(1, 1) == "#" then key = T("sum.cat." .. key:sub(2)) end
         Put(out, "sub", key, format("x%d", list[k].n))
     end
-    Put(out, "sep")
-    Put(out, "note", T("sum.tip.bouncenote"))
     return out
 end
 local function Pct(v)
@@ -215,9 +194,6 @@ function Tips.sunder(st, def)
         end
     end
     if not exposed and #list > 0 then Put(out, "sub", T("sum.tt.sunder.ex"), T("sum.tt.sunder.noex"), nil, "dim") end
-    Put(out, "sep")
-    Put(out, "note", T("sum.tip.sundernote"))
-    if exposed then Put(out, "note", T("sum.tip.exposenote")) end
     return out
 end
 local function Spans(out, st, off)
@@ -247,18 +223,13 @@ end
 function Tips.rfuryoff(st, def)
     local out = {}
     Head(out, T(def.tip))
-    local unsure = Spans(out, st, true)
-    Put(out, "sep")
-    Put(out, "note", format(T("sum.tip.rfuryoffnote"), st.lim or 0))
-    if unsure then Put(out, "note", T("sum.tip.rfuryunknote")) end
+    Spans(out, st, true)
     return out
 end
 function Tips.rfuryon(st, def)
     local out = {}
     Head(out, T(def.tip))
     Spans(out, st, false)
-    Put(out, "sep")
-    Put(out, "note", T("sum.tip.rfuryonnote"))
     return out
 end
 function Tips.Shades(b, who, class)
@@ -285,8 +256,6 @@ function Tips.Shades(b, who, class)
     if shown > KICK_TIMES then
         Put(out, "sub", (format(T("sum.tip.more"), shown - KICK_TIMES):gsub("^%s+", "")))
     end
-    Put(out, "sep")
-    Put(out, "note", T("sum.tip.shadesnote"))
     return out
 end
 local function KickResult(k, i)
@@ -307,7 +276,5 @@ function Tips.Kick(k)
     if k.all > KICK_TIMES then
         Put(out, "sub", (format(T("sum.tip.more"), k.all - KICK_TIMES):gsub("^%s+", "")))
     end
-    Put(out, "sep")
-    Put(out, "note", T("sum.tip.kicknote"))
     return out
 end

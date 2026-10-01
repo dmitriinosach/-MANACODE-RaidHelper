@@ -135,6 +135,10 @@ local function Start(slot, i)
         slot.state = "bad"
         return
     end
+    local v = s.v
+    if (s.kind == "npc" and not (type(v) == "number" and v > 0)) or (s.kind ~= "npc" and not (type(v) == "string" and v ~= "")) then
+        return Start(slot, i + 1)
+    end
     local key = s.kind .. ":" .. tostring(s.v)
     local have = ModelPath(slot)
     if key == slot.key and have and s.from ~= "retry" then
@@ -336,7 +340,7 @@ local function Frame(slot, cam, sx, sy, k, figScale)
     if sy > hh - EDGE then return false end
     local room = min(sy + hh - EDGE, (min(sx + hw, hw - sx) - EDGE) * 2 / aspect)
     if room < h then h = room end
-    if h < least * FIT_MIN then return false end
+    if h ~= h or sx ~= sx or sy ~= sy or h < least * FIT_MIN then return false end
     local w = h * aspect
     local m = slot.m
     if abs(w - slot.w) >= 1 or abs(h - slot.h) >= 1 then
@@ -363,7 +367,7 @@ local function Pose(slot, cam, head, faceSign, seq, ms)
         if pos then m:SetPosition(pos[1], pos[2], pos[3]) end
     end
     local face = faceSign * Replay.Facing(cam, cos(head), sin(head))
-    if not slot.facing or abs(face - slot.facing) > FACE_EPS then
+    if face == face and (not slot.facing or abs(face - slot.facing) > FACE_EPS) then
         m:SetFacing(face)
         slot.facing = face
     end
@@ -425,9 +429,9 @@ end
 function M.AddAlive(a, t)
     return a.npc ~= nil and a.from <= t and a.to > t and a.n > 0 and (not a.chaseK or t >= a.chaseTo)
 end
-local function AddDef(name)
+local function AddDef(npc)
     local D = ns.replayData
-    local def = D.addModels[name]
+    local def = npc and D.addModels[ns.NpcKeyOf(npc)]
     if def == nil then return D.addModelDefault end
     return def
 end
@@ -436,7 +440,7 @@ local function NextAdd(t, list)
     for i = 1, #list do
         local a = list[i]
         if not a.mdlOwn and not a.mdlBad and M.AddAlive(a, t) then
-            local def = AddDef(a.name)
+            local def = AddDef(a.npc)
             if def and (not bestP or def.prio > bestP) then best, bestP = a, def.prio end
         end
     end
@@ -482,7 +486,7 @@ local function PlaceAdds(cam, t, figScale, faceSign, elapsed)
         if not slot.owner then
             local a = NextAdd(t, list)
             if not a then break end
-            local def = AddDef(a.name)
+            local def = AddDef(a.npc)
             a.mdlOwn = true
             local src = { { kind = "npc", v = a.npc, from = "guid" } }
             AddRetry(src)

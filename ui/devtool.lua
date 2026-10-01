@@ -42,8 +42,8 @@ local queue = {}
 local function Bosses()
     local out = {}
     local models = ns.replayData and ns.replayData.models or {}
-    for name, m in pairs(models) do
-        if m and tonumber(m.npc) then out[#out + 1] = { name = name, npc = tonumber(m.npc), seq = m.seq } end
+    for key, m in pairs(models) do
+        if m and tonumber(m.npc) then out[#out + 1] = { name = ns.EncName(key), npc = tonumber(m.npc), seq = m.seq } end
     end
     tsort(out, function(a, b) return a.name < b.name end)
     return out
@@ -171,13 +171,18 @@ local function AnimList()
     end
     return out
 end
+local function HasModel(m)
+    if not m then return false end
+    local ok, p = pcall(m.GetModel, m)
+    return ok and type(p) == "string" and p ~= ""
+end
 local function SeqShow()
     if not seqText then return end
     local b = anim[bi]
     local name = ns.L["dev.seq." .. seq] or T("dev.anim.unknown")
     local ms = b and b.seq and b.seq[seq]
     seqText:SetText(ms and format(T("dev.anim.len"), seq, name, ms / 1000) or format(T("dev.anim.seq"), seq, name))
-    if model and b then pcall(model.SetSequence, model, seq) end
+    if b and HasModel(model) then pcall(model.SetSequence, model, seq) end
     animLeft, animTries = ANIM_RETRY, ANIM_TRIES
 end
 local function BossShow()
@@ -212,8 +217,9 @@ local function AnimTick(_, elapsed)
     if animTries <= 0 or not anim[bi] then return end
     animLeft = animLeft - elapsed
     if animLeft > 0 then return end
-    animTries = animTries - 1
     animLeft = ANIM_RETRY
+    if not HasModel(model) then return end
+    animTries = animTries - 1
     pcall(model.SetSequence, model, seq)
 end
 local function ProbeDone()

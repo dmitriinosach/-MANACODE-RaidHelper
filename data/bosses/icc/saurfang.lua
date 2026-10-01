@@ -1,16 +1,15 @@
 local _, ns = ...
-ns.summaries["Саурфанг Смертоносный"] = {
+ns.summaries[ns.ENC.saurfang] = {
     badges = {
-        { kind = "aura", spell = "Метка падшего воителя", tip = "sum.b.mark" },
-        { kind = "aura", spell = "Кипящая кровь", tip = "sum.b.boil" },
+        { kind = "aura", spell = 72293, tip = "sum.b.mark" },
+        { kind = "aura", spell = 72443, tip = "sum.b.boil" },
         { kind = "applied", spells = {
-            "Молот правосудия", "Оглушение", "Гнев небес", "Оглушить", "Калечение",
-            "Наскок", "Подлый трюк", "Отгрызть", "Ударная волна",
-        }, names = { "Кровавое чудовище" }, id = 10308, tip = "sum.b.beaststun" },
-        { kind = "death", srcs = { "Кровавое чудовище" }, id = 72172, neutral = true,
-          note = "sum.b.nograde", tip = "sum.b.beastdeath" },
+            10308, 25, 48817, 8983, 49802,
+            49803, 1833, 47481, 46968,
+        }, names = { 38508 }, id = 10308, tip = "sum.b.beaststun" },
+        { kind = "death", srcs = { 38508 }, id = 72172, neutral = true, tip = "sum.b.beastdeath" },
     },
     blocks = {
-        { kind = "damageTo", label = "sum.k.beasts", names = { "Кровавое чудовище" } },
+        { kind = "damageTo", label = "sum.k.beasts", names = { 38508 } },
     },
 }

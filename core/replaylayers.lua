@@ -7,6 +7,7 @@ local cos = math.cos
 local sin = math.sin
 local rad = math.rad
 local band = bit.band
+local SpellKey = ns.SpellKey
 local SKIP_HP = { "FW_HP" }
 local MAX_TAIL = 5
 local F_PLAYER = 0x400
@@ -54,7 +55,7 @@ local function StateIndex(D)
     local idx = stateOf[D]
     if idx then return idx end
     idx = {}
-    for i = 1, #D.states do idx[D.states[i].name] = i end
+    for i = 1, #D.states do idx[ns.SpellKey(D.states[i].name)] = i end
     stateOf[D] = idx
     return idx
 end
@@ -130,8 +131,9 @@ end
 local function AddOf(c, guid, name, ts)
     local add = c.addBy[guid]
     if add then return add end
-    local icon = c.D.adds[name]
-    if icon == false or c.bosses[name] or c.addN >= ADD_LIMIT then return nil end
+    local key = ns.NpcKey(guid) or 0
+    local icon = c.adds[key]
+    if icon == false or c.bosses[key] or c.addN >= ADD_LIMIT then return nil end
     add = ns.Replay.NewTrack(name)
     add.icon = icon or c.D.addDefault
     add.npc = ns.Replay.NpcOf(guid)
@@ -148,9 +150,9 @@ local function AddSeen(c, guid, name, ts, x, y)
     add.last = ts
     ns.Replay.Push(add, ts, x, y, 1, 0)
 end
-local function OnSwing(c, ts, srcGUID, src, srcFlags, dstGUID, dst, dstFlags)
+local function OnSwing(c, ts, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, srcKey, dstKey)
     local kd = dst and c.byK[dst]
-    if src and c.bosses[src] then
+    if srcKey and c.bosses[srcKey] then
         if kd then
             local n = #c.swT + 1
             c.swT[n], c.swK[n] = ts, kd
@@ -170,7 +172,7 @@ local function OnSwing(c, ts, srcGUID, src, srcFlags, dstGUID, dst, dstFlags)
     end
     local ks = src and c.byK[src]
     if ks and dstGUID and dst and dstFlags and band(dstFlags, F_NPC) > 0 and band(dstFlags, F_HOSTILE) > 0
-        and not c.bosses[dst] then
+        and not c.bosses[dstKey or 0] then
         local x, y = Pos(c, src, ts)
         if x then AddSeen(c, dstGUID, dst, ts, x, y) end
     end
@@ -240,7 +242,7 @@ local function OnPool(c, ts, sub, srcGUID, src, dst, spell)
     if not defs or not spell or not dst or not c.byK[dst] then return end
     for i = 1, #defs do
         local def = defs[i]
-        if def.spell == spell and not def.follow then
+        if SpellKey(def.spell) == spell and not def.follow then
             local x, y = Pos(c, dst, ts)
             if not x then return end
             local key = ""
@@ -251,14 +253,14 @@ local function OnPool(c, ts, sub, srcGUID, src, dst, spell)
         end
     end
 end
-local function OnBlast(c, ts, srcGUID, src, dst, spell, amount, srcFlags)
+local function OnBlast(c, ts, srcGUID, src, dst, spell, amount, srcFlags, srcKey)
     local defs = c.blastDefs
     local k = dst and c.byK[dst]
     if not defs or not spell or not k then return end
     local npc = srcFlags and band(srcFlags, F_NPC) > 0 and band(srcFlags, F_PLAYER) == 0
     for i = 1, #defs do
         local def = defs[i]
-        if def.spell == spell then
+        if SpellKey(def.spell) == spell then
             local x, y = Pos(c, dst, ts)
             if not x then return end
             local L = c.L
@@ -266,7 +268,7 @@ local function OnBlast(c, ts, srcGUID, src, dst, spell, amount, srcFlags)
                 L.nv = L.nv + 1
                 L.vT[L.nv], L.vK[L.nv] = ts, k
             end
-            local key = (srcGUID and src ~= dst and not c.bosses[src or ""]) and srcGUID or spell
+            local key = (srcGUID and src ~= dst and not c.bosses[srcKey or 0]) and srcGUID or spell
             local j = c.blastOpen[key]
             if j and ts - L.bT[j] <= BLAST_JOIN then
                 local n = L.bN[j] + 1
@@ -295,16 +297,16 @@ local function OnBlast(c, ts, srcGUID, src, dst, spell, amount, srcFlags)
         end
     end
 end
-local function OnMelee(c, ts, src, dst, spell)
+local function OnMelee(c, ts, srcKey, dst, spell)
     local kd = dst and c.byK[dst]
-    if not kd or not spell or not c.melee or not c.melee[spell] or not src or not c.bosses[src] then return end
+    if not kd or not spell or not c.melee or not c.melee[spell] or not srcKey or not c.bosses[srcKey] then return end
     local n = #c.swT + 1
     c.swT[n], c.swK[n] = ts, kd
     c.tankHits[kd] = (c.tankHits[kd] or 0) + 1
 end
-local function OnTaunt(c, ts, src, dst, spell)
+local function OnTaunt(c, ts, src, dstKey, spell)
     local ks = src and c.byK[src]
-    if not ks or not dst or not c.bosses[dst] or not spell or not c.D.taunts[spell] then return end
+    if not ks or not dstKey or not c.bosses[dstKey] or not spell or not c.taunts[spell] then return end
     local n = #c.tauT + 1
     c.tauT[n], c.tauK[n] = ts, ks
 end
@@ -312,12 +314,12 @@ local function OnTarget(c, ts, dst)
     local n = #c.btT + 1
     c.btT[n], c.btK[n] = ts, dst and c.byK[dst] or 0
 end
-local function OnFollow(c, ts, sub, src, dst, spell)
+local function OnFollow(c, ts, sub, src, dst, spell, srcKey)
     local defs = c.poolDefs
-    if not defs or not src or src ~= dst or not c.bosses[src] then return end
+    if not defs or not src or src ~= dst or not c.bosses[srcKey or 0] then return end
     for i = 1, #defs do
         local def = defs[i]
-        if def.follow and def.spell == spell then
+        if def.follow and SpellKey(def.spell) == spell then
             local L = c.L
             if sub == "SPELL_AURA_APPLIED" and L.np < POOL_LIMIT then
                 local j = L.np + 1
@@ -333,12 +335,13 @@ local function OnFollow(c, ts, sub, src, dst, spell)
         end
     end
 end
-local function OnCone(c, ts, sub, src, dst, spell)
+local function OnCone(c, ts, sub, src, dst, spell, srcKey)
     local defs = c.coneDefs
     if not defs or not spell or not src then return end
     for i = 1, #defs do
         local def = defs[i]
-        if def.spell == spell and def.sub == sub and (def.src == src or (not def.src and c.bosses[src])) then
+        if SpellKey(def.spell) == spell and def.sub == sub
+            and ((def.src and ns.NpcKeyOf(def.src) == srcKey) or (not def.src and c.bosses[srcKey or 0])) then
             local L = c.L
             if L.nc >= CONE_LIMIT then return end
             local n = L.nc + 1
@@ -369,18 +372,18 @@ local function OnAim(c, ts, dst, spell)
         end
     end
 end
-local function OnCast(c, ts, sub, src, dst, spell)
-    OnCone(c, ts, sub, src, dst, spell)
+local function OnCast(c, ts, sub, src, dst, spell, srcKey)
+    OnCone(c, ts, sub, src, dst, spell, srcKey)
     local L = c.L
-    if src and c.bosses[src] and L.nbc < CAST_LIMIT then
+    if srcKey and c.bosses[srcKey] and L.nbc < CAST_LIMIT then
         local n = L.nbc + 1
         L.nbc = n
         L.bcT[n], L.bcD[n] = ts, sub == "SPELL_CAST_START" and CAST_SHOW or CAST_INSTANT
     end
 end
-local function OnGone(c, ts, sub, src, id)
+local function OnGone(c, ts, sub, srcKey, id)
     local defs = c.goneDefs
-    if not defs or not src or not c.bosses[src] then return end
+    if not defs or not srcKey or not c.bosses[srcKey] then return end
     local n = tonumber(id)
     for i = 1, #defs do
         local def = defs[i]
@@ -395,10 +398,10 @@ local function OnGone(c, ts, sub, src, id)
         end
     end
 end
-local function OnPlatform(c, ts, sub, src, id, name)
+local function OnPlatform(c, ts, sub, srcKey, id)
     local def = c.platform
-    if not def or not src or not c.bosses[src] then return end
-    local kind = ns.ReplayPlatform.Match(def, id, name)
+    if not def or not srcKey or not c.bosses[srcKey] then return end
+    local kind = ns.ReplayPlatform.Match(def, id)
     if kind == "quake" then
         ns.ReplayPlatform.AddQuake(c.L.pfQuake, def.quake.gap, ts, sub == "SPELL_CAST_SUCCESS")
     elseif kind == "winter" then
@@ -413,54 +416,56 @@ local function OnMark(c, ts, key)
     local L = c.L
     L.pfMarkT[#L.pfMarkT + 1], L.pfMarkK[#L.pfMarkK + 1] = ts, k
 end
-local function OnDied(c, ts, dstGUID, dst)
+local function OnDied(c, ts, dstGUID, dst, dstKey)
     local k = dst and c.byK[dst]
     if k then
         for s in pairs(c.open[k]) do Close(c, k, s, ts) end
         c.diedK[#c.diedK + 1], c.diedT[#c.diedT + 1] = k, ts
         return
     end
-    if dst and c.bosses[dst] then c.L.bossDied = ts end
+    if dstKey and c.bosses[dstKey] then c.L.bossDied = ts end
     local add = dstGUID and c.addBy[dstGUID]
     if add and not add.to then add.to = ts end
 end
-local function OnSummon(c, ts, src, dstGUID, dst)
+local function OnSummon(c, ts, srcKey, dstGUID, dst)
     if not dstGUID or not dst then return end
     c.born[dstGUID] = ts
-    if src and c.bosses[src] then AddOf(c, dstGUID, dst, ts) end
+    if srcKey and c.bosses[srcKey] then AddOf(c, dstGUID, dst, ts) end
 end
 local function Dispatch(c, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4)
-    if src and srcGUID and c.npcOf[src] == nil and c.bosses[src] then
-        c.npcOf[src] = ns.Replay.NpcOf(srcGUID) or false
-        if c.npcOf[src] and not c.firstNpc then c.firstNpc = c.npcOf[src] end
+    local srcKey, dstKey = ns.NpcKey(srcGUID), ns.NpcKey(dstGUID)
+    local sk = ns.SpellOf(sub, a1)
+    if srcKey and c.npcOf[srcKey] == nil and c.bosses[srcKey] then
+        c.npcOf[srcKey] = ns.NpcEntry(srcGUID) or false
+        if c.npcOf[srcKey] and not c.firstNpc then c.firstNpc = c.npcOf[srcKey] end
     end
     if SWING[sub] then
-        OnSwing(c, ts, srcGUID, src, srcFlags, dstGUID, dst, dstFlags)
+        OnSwing(c, ts, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, srcKey, dstKey)
     elseif sub == "SPELL_AURA_APPLIED" or REMOVED[sub] then
-        OnAura(c, ts, sub, dst, a2)
-        OnFollow(c, ts, sub, src, dst, a2)
+        OnAura(c, ts, sub, dst, sk)
+        OnFollow(c, ts, sub, src, dst, sk, srcKey)
         if sub == "SPELL_AURA_APPLIED" then
-            OnPool(c, ts, sub, srcGUID, src, dst, a2)
-            OnTaunt(c, ts, src, dst, a2)
+            OnPool(c, ts, sub, srcGUID, src, dst, sk)
+            OnTaunt(c, ts, src, dstKey, sk)
         end
     elseif DAMAGE[sub] then
-        OnPool(c, ts, sub, srcGUID, src, dst, a2)
-        OnAim(c, ts, dst, a2)
-        OnBlast(c, ts, srcGUID, src, dst, a2, tonumber(a4), srcFlags)
-        OnMelee(c, ts, src, dst, a2)
+        OnPool(c, ts, sub, srcGUID, src, dst, sk)
+        OnAim(c, ts, dst, sk)
+        OnBlast(c, ts, srcGUID, src, dst, sk, tonumber(a4), srcFlags, srcKey)
+        OnMelee(c, ts, srcKey, dst, sk)
     elseif sub == BTGT then
         OnTarget(c, ts, dst)
     elseif CASTS[sub] then
-        OnCast(c, ts, sub, src, dst, a2)
-        OnGone(c, ts, sub, src, a1)
-        OnPlatform(c, ts, sub, src, a1, a2)
-        if sub == "SPELL_CAST_SUCCESS" then OnMelee(c, ts, src, dst, a2) end
+        OnCast(c, ts, sub, src, dst, sk, srcKey)
+        OnGone(c, ts, sub, srcKey, a1)
+        OnPlatform(c, ts, sub, srcKey, a1)
+        if sub == "SPELL_CAST_SUCCESS" then OnMelee(c, ts, srcKey, dst, sk) end
     elseif sub == "SPELL_MISSED" then
-        OnMelee(c, ts, src, dst, a2)
+        OnMelee(c, ts, srcKey, dst, sk)
     elseif sub == "UNIT_DIED" then
-        OnDied(c, ts, dstGUID, dst)
+        OnDied(c, ts, dstGUID, dst, dstKey)
     elseif sub == "SPELL_SUMMON" then
-        OnSummon(c, ts, src, dstGUID, dst)
+        OnSummon(c, ts, srcKey, dstGUID, dst)
     elseif sub == "FW_VEH" then
         OnVehicle(c, ts, src, tonumber(a1) == 1)
     elseif sub == "FW_MARK" then
@@ -477,17 +482,24 @@ local function NewContext(scene)
     local aimSpells = {}
     local cones = D.cones[fight.boss]
     for i = 1, cones and #cones or 0 do
-        for _, name in ipairs(cones[i].aim or {}) do aimSpells[name] = true end
+        for _, id in ipairs(cones[i].aim or {}) do aimSpells[SpellKey(id)] = true end
     end
+    local melee, taunts, adds = nil, {}, {}
+    if D.melee[fight.boss] then
+        melee = {}
+        for id in pairs(D.melee[fight.boss]) do melee[SpellKey(id)] = true end
+    end
+    for id in pairs(D.taunts) do taunts[SpellKey(id)] = true end
+    for id, icon in pairs(D.adds) do adds[ns.NpcKeyOf(id)] = icon end
     local goneDefs = D.gone[fight.boss]
     local goneAt = {}
     for i = 1, goneDefs and #goneDefs or 0 do goneAt[i] = {} end
     return {
         goneDefs = goneDefs, goneAt = goneAt, home = D.home[fight.boss], platform = ns.ReplayPlatform.Def(fight.boss),
         L = NewLayers(), D = D, byK = byK, tracks = scene.tracks, open = open, from = fight.from, to = fight.to,
-        ppy = scene.ppy, stateIdx = StateIndex(D), bosses = ns.Index.BossNames(fight),
-        poolDefs = D.pools[fight.boss], coneDefs = cones,
-        blastDefs = D.blasts[fight.boss], blastOpen = {}, blastMax = {}, melee = D.melee[fight.boss],
+        ppy = scene.ppy, stateIdx = StateIndex(D), bosses = ns.Index.BossKeys(fight),
+        poolDefs = D.pools[fight.boss], coneDefs = cones, taunts = taunts, adds = adds,
+        blastDefs = D.blasts[fight.boss], blastOpen = {}, blastMax = {}, melee = melee,
         valkyr = D.valkyr.boss == fight.boss,
         swT = {}, swK = {}, btT = {}, btK = {}, tgT = {}, tgK = {}, hold = TARGET_HOLD, tauT = {}, tauK = {},
         tankHits = {}, addBy = {}, addN = 0, pools = {}, born = {}, follow = {},
@@ -824,6 +836,12 @@ function Layers.Build(scene)
     c.L.hitbox = Layers.Hitbox(fight.boss)
     local FC = ns.ReplayFeedCore
     local fc = FC.New(fight)
+    local MK = ns.ReplayMarks
+    local mc = MK.New(fight)
+    local RB = ns.ReplayBars
+    local rb = RB and RB.New(fight)
+    local RM = ns.ReplayMech
+    local rm = RM and RM.New(fight)
     local np = ns.NpcPos and ns.NpcPos.New(scene, c)
     local ph = ns.Phases.New(fight)
     local segs = ns.Encounters.Segs(fight)
@@ -836,6 +854,9 @@ function Layers.Build(scene)
             if ph then ns.Phases.Feed(ph, ts, sub, a1) end
             Dispatch(c, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4)
             FC.Event(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4, a5)
+            MK.Event(mc, ts, sub, src, dst, a1)
+            if rb then RB.Event(rb, ts, sub, src, dst, a1) end
+            if rm then RM.Event(rm, ts, sub, srcGUID, src, dstGUID, dst, a1, a4) end
             if np then ns.NpcPos.Feed(np, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2) end
         end
     end
@@ -846,13 +867,17 @@ function Layers.Build(scene)
     Tanks(c)
     local feedRes = FixSpans(scene, c, res)
     local f0 = debugprofilestop()
+    if rm then RM.Done(rm, c.L, function(name, t) return Pos(c, name, t) end, c.ppy, fc) end
     FC.Done(fc, c.L, feedRes)
+    MK.Done(mc, c.L, feedRes)
+    if rm and #rm.marks > 0 then c.L.marks = MK.Merge(c.L.marks, rm.marks) end
+    if rb then RB.Done(rb, c.L, feedRes, fight) end
     c.L.feedMs = debugprofilestop() - f0
     PickTargets(c)
     if not (np and ns.NpcPos.Place(np, TargetAt)) then PlaceBoss(scene, c) end
     PlaceCones(scene, c)
     c.L.bsT = c.swT
-    c.L.bossNpc = c.npcOf[scene.bossName or ""] or c.npcOf[fight.boss] or c.firstNpc
+    c.L.bossNpc = c.npcOf[fight.boss] or c.firstNpc
     c.L.ms = debugprofilestop() - p0
     scene.layers = c.L
     return c.L

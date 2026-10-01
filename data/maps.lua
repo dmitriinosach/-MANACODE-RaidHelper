@@ -38,67 +38,67 @@ ns.mapScale = {
     },
 }
 ns.maps = {
-    ["Лорд Ребрад"] = {
+    [ns.ENC.marrowgar] = {
         area = "IcecrownCitadel",
         rooms = {
             [1] = { flip = true, crop = { 0.3085, 0.4534, 0.4501, 0.6381 } },
         },
     },
-    ["Леди Смертный Шепот"] = {
+    [ns.ENC.deathwhisper] = {
         area = "IcecrownCitadel",
         rooms = {
             [1] = { flip = true, crop = { 0.3292, 0.4337, 0.6450, 0.8863 } },
         },
     },
-    ["Саурфанг Смертоносный"] = {
+    [ns.ENC.saurfang] = {
         area = "IcecrownCitadel",
         rooms = {
             [3] = { crop = { 0.3105, 0.7539, 0.1864, 0.8651 } },
         },
     },
-    ["Тухлопуз"] = {
+    [ns.ENC.festergut] = {
         area = "IcecrownCitadel",
         rooms = {
             [5] = { crop = { 0.1558, 0.2422, 0.5997, 0.7113 } },
         },
     },
-    ["Гниломорд"] = {
+    [ns.ENC.rotface] = {
         area = "IcecrownCitadel",
         rooms = {
             [5] = { crop = { 0.1516, 0.2409, 0.3560, 0.4957 } },
         },
     },
-    ["Профессор Мерзоцид"] = {
+    [ns.ENC.putricide] = {
         area = "IcecrownCitadel",
         rooms = {
             [5] = { crop = { 0.0516, 0.1560, 0.4674, 0.6240 } },
         },
     },
-    ["Совет кровавых принцев"] = {
+    [ns.ENC.council] = {
         area = "IcecrownCitadel",
         rooms = {
             [5] = { crop = { 0.4428, 0.5772, 0.0548, 0.2187 } },
         },
     },
-    ["Кровавая королева Лана'тель"] = {
+    [ns.ENC.lanathel] = {
         area = "IcecrownCitadel",
         rooms = {
             [6] = { crop = { 0.3870, 0.6082, 0.2165, 0.6579 } },
         },
     },
-    ["Валитрия Сноходица"] = {
+    [ns.ENC.valithria] = {
         area = "IcecrownCitadel",
         rooms = {
             [5] = { crop = { 0.7208, 0.8119, 0.6434, 0.8395 } },
         },
     },
-    ["Синдрагоса"] = {
+    [ns.ENC.sindragosa] = {
         area = "IcecrownCitadel",
         rooms = {
             [4] = { crop = { 0.3071, 0.4421, 0.0799, 0.2581 } },
         },
     },
-    ["Король-лич"] = {
+    [ns.ENC.lichking] = {
         area = "IcecrownCitadel",
         rooms = {
             [7] = { crop = { 0.3452, 0.7955, 0.1062, 0.8227 } },

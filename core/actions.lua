@@ -20,8 +20,9 @@ local SUBS = { UNIT_DIED = true, SPELL_RESURRECT = true, SPELL_INTERRUPT = true,
                SPELL_CAST_SUCCESS = true }
 local function Fill(set, all, list)
     for i = 1, #(list or {}) do
-        set[list[i]] = true
-        all[list[i]] = true
+        local k = ns.SpellKey(list[i])
+        set[k] = true
+        all[k] = true
     end
 end
 function Acts.Begin(s, fight)
@@ -35,13 +36,15 @@ function Acts.Begin(s, fight)
                  rebuff = ns.Tune("rebuff") }
     for fam, list in pairs(data.rebuffs) do
         for i = 1, #list do
-            st.fam[list[i]] = fam
-            st.spells[list[i]] = true
+            local k = ns.SpellKey(list[i])
+            st.fam[k] = fam
+            st.spells[k] = true
         end
     end
     Fill(st.kicks, st.spells, data.kicks)
     Fill(st.selfRez, st.spells, data.selfRez)
-    st.spells[data.stone] = true
+    st.stone = ns.SpellKey(data.stone)
+    st.spells[st.stone] = true
     for i = 1, #data.badges do
         local bd = data.badges[i]
         if not bd.boss or bd.boss == fight.boss then
@@ -55,21 +58,22 @@ function Acts.Begin(s, fight)
             if bd.kind == "wrath" then Fill(st.wrathSet, st.spells, bd.spells) end
             if bd.kind == "sunder" and data.sunder then
                 local sd = data.sunder
-                local su = { aura = sd.aura, casts = {}, expose = {}, names = {}, need = sd.need, match = sd.match,
-                             units = {}, order = {} }
+                local su = { aura = ns.SpellKey(sd.aura), casts = {}, expose = {}, names = {}, need = sd.need,
+                             match = sd.match, units = {}, order = {} }
                 Fill(su.casts, su.names, sd.casts)
                 Fill(su.expose, su.names, sd.expose)
-                su.names[sd.aura] = true
-                for name in pairs(su.names) do st.spells[name] = true end
+                su.names[su.aura] = true
+                for key in pairs(su.names) do st.spells[key] = true end
                 st.sun = su
             end
         end
     end
     return st
 end
-local function IsBoss(st, name)
-    if not name then return false end
-    return name == st.boss or (ns.bosses[name] == st.boss and not (ns.bossParts and ns.bossParts[name]))
+local function IsBoss(st, guid)
+    local key = ns.NpcKey(guid)
+    if not key then return false end
+    return key == st.boss or (ns.bosses[key] == st.boss and not (ns.bossParts and ns.bossParts[key]))
 end
 local function Span(st, a, b)
     return max(0, min(b, st.to) - max(a, st.from))
@@ -133,10 +137,10 @@ local function SunderAura(st, su, u, ts, sub, who, srcName, a5)
 end
 local function Sunder(st, ts, sub, who, srcName, dstGUID, dstName, a2, a5)
     local su = st.sun
-    if not dstGUID or ts > st.to or not IsBoss(st, dstName) then return end
+    if not dstGUID or ts > st.to or not IsBoss(st, dstGUID) then return end
     local u = su.units[dstGUID]
     if not u then
-        u = { name = dstName, n = 0, up = 0, ex = 0, exBy = {} }
+        u = { name = dstName, npc = ns.NpcKey(dstGUID) or 0, n = 0, up = 0, ex = 0, exBy = {} }
         su.units[dstGUID] = u
         su.order[#su.order + 1] = dstGUID
     end
@@ -165,6 +169,7 @@ local function Most(map)
 end
 local function ByUptime(a, b)
     if a.up + a.ex ~= b.up + b.ex then return a.up + a.ex > b.up + b.ex end
+    if a.npc ~= b.npc then return a.npc < b.npc end
     return a.name < b.name
 end
 local function SunderEnd(st)
@@ -177,7 +182,7 @@ local function SunderEnd(st)
         SunderStop(st, u, stop)
         if u.seen or u.ex > 0 then
             local life = max(1, stop - st.from)
-            local e = { name = u.name, up = u.up / life, ex = u.ex / life, five = u.five and u.five - st.from or false,
+            local e = { name = u.name, npc = u.npc, up = u.up / life, ex = u.ex / life, five = u.five and u.five - st.from or false,
                         by = u.fiveBy or false, exBy = Most(u.exBy) }
             local old = byName[u.name]
             if not old then
@@ -205,8 +210,8 @@ local function Rez(st, name, ts, by, spell, id, dead)
     local k = #st.rezzes + 1
     st.rezzes[k], st.rezWho[k] = r, name
 end
-local function Buff(st, ts, sub, who, srcName, dstName, a1, a2)
-    local fam = st.fam[a2]
+local function Buff(st, ts, sub, who, srcName, dstName, a1, a2, sk)
+    local fam = st.fam[sk]
     if sub == "SPELL_AURA_REMOVED" then
         local lt = st.lostT[dstName]
         if not lt then
@@ -276,7 +281,7 @@ local function KickEnd(st, p, who, ts, dstName, a1, a2, res, what)
     end
     k.res[i], k.sp[i] = res, type(what) == "string" and what or false
 end
-local function Cc(st, p, ts, sub, dstName, a2, a4)
+local function Cc(st, p, ts, sub, dstName, a2, a4, sk)
     local i = st.cc
     local c = p.badges[i]
     if sub == "SPELL_AURA_REMOVED" then
@@ -293,10 +298,11 @@ local function Cc(st, p, ts, sub, dstName, a2, a4)
     c.n = n
     c.times[n], c.notes[n] = ts - st.from, dstName
     c.spells = c.spells or {}
+    c.keys = c.keys or {}
     c.res = c.res or {}
     c.outs = c.outs or {}
     c.open = c.open or {}
-    c.spells[n], c.res[n], c.outs[n] = a2, ok and "ok" or tostring(a4), false
+    c.spells[n], c.keys[n], c.res[n], c.outs[n] = a2, sk, ok and "ok" or tostring(a4), false
     if ok then
         c.hits = c.hits + 1
         c.open[dstName] = n
@@ -333,8 +339,9 @@ function Acts.Feed(st, ts, sub, who, srcGUID, srcName, srcFlags, dstGUID, dstNam
     local inFight = ts >= st.from and ts <= st.to
     local enemy = srcGUID ~= nil and srcFlags ~= nil and band(srcFlags, F_HOSTILE) > 0
         and band(srcFlags, F_BY_PLAYER) == 0
-    if st.sun and st.sun.names[a2] then
-        Sunder(st, ts, sub, who, srcName, dstGUID, dstName, a2, a5)
+    local sk = ns.SpellOf(sub, a1)
+    if st.sun and sk and st.sun.names[sk] then
+        Sunder(st, ts, sub, who, srcName, dstGUID, dstName, sk, a5)
         return
     end
     if sub == "SPELL_CAST_START" then
@@ -354,7 +361,7 @@ function Acts.Feed(st, ts, sub, who, srcGUID, srcName, srcFlags, dstGUID, dstNam
         return
     elseif sub == "SPELL_INTERRUPT" then
         if dstGUID then st.castT[dstGUID], st.kickT[dstGUID], st.kickBy[dstGUID] = nil, ts, who or srcName end
-        if p and inFight and st.kicks[a2] then KickEnd(st, p, who, ts, dstName, a1, a2, "ok", a5) end
+        if p and inFight and sk and st.kicks[sk] then KickEnd(st, p, who, ts, dstName, a1, a2, "ok", a5) end
         return
     elseif sub == "SPELL_CAST_SUCCESS" then
         if enemy then
@@ -363,39 +370,40 @@ function Acts.Feed(st, ts, sub, who, srcGUID, srcName, srcFlags, dstGUID, dstNam
         end
         if not p then return end
         local d = srcName == who and st.dead[who]
-        if d and ts <= st.to and (st.selfRez[a2] or (st.stoneT[who] and abs(st.stoneT[who] - d) <= DEATH_NEAR)) then
-            if st.selfRez[a2] then
+        local own = sk and st.selfRez[sk]
+        if d and ts <= st.to and (own or (st.stoneT[who] and abs(st.stoneT[who] - d) <= DEATH_NEAR)) then
+            if own then
                 Rez(st, who, ts, who, a2, tonumber(a1), d)
             else
-                Rez(st, who, ts, who, st.stone, st.stoneId, d)
+                Rez(st, who, ts, who, ns.SpellName(st.stoneId), st.stoneId, d)
             end
         end
-        if not inFight or type(a2) ~= "string" then return end
-        if st.kicks[a2] and dstFlags and band(dstFlags, F_HOSTILE) > 0 then
+        if not inFight or not sk or type(a2) ~= "string" then return end
+        if st.kicks[sk] and dstFlags and band(dstFlags, F_HOSTILE) > 0 then
             KickCast(st, p, who, ts, dstGUID, dstName, a1, a2)
-        elseif st.wrath and st.wrathSet[a2] and srcName == who then
+        elseif st.wrath and st.wrathSet[sk] and srcName == who then
             Wrath(st, p, ts, sub)
         end
         return
     end
-    if type(a2) ~= "string" then return end
-    if st.fam[a2] then
-        if dstName and byName[dstName] then Buff(st, ts, sub, who, srcName, dstName, a1, a2) end
+    if not sk or type(a2) ~= "string" then return end
+    if st.fam[sk] then
+        if dstName and byName[dstName] then Buff(st, ts, sub, who, srcName, dstName, a1, a2, sk) end
         return
     end
-    if a2 == st.stone then
+    if sk == st.stone then
         if sub == "SPELL_AURA_REMOVED" and dstName and byName[dstName] then st.stoneT[dstName] = ts end
         return
     end
     if not p or not inFight then return end
-    if st.kicks[a2] then
+    if st.kicks[sk] then
         if sub == "SPELL_MISSED" or sub == "DAMAGE_SHIELD_MISSED" then
             KickEnd(st, p, who, ts, dstName, a1, a2, "miss", a4)
         end
-    elseif st.cc and st.ccSet[a2] then
-        if srcName == who and dstName and byName[dstName] then Cc(st, p, ts, sub, dstName, a2, a4) end
-    elseif st.wrath and st.wrathSet[a2] then
-        if srcName == who and dstName ~= st.boss and dstFlags and band(dstFlags, F_HOSTILE) > 0 then
+    elseif st.cc and st.ccSet[sk] then
+        if srcName == who and dstName and byName[dstName] then Cc(st, p, ts, sub, dstName, a2, a4, sk) end
+    elseif st.wrath and st.wrathSet[sk] then
+        if srcName == who and ns.NpcKey(dstGUID) ~= st.boss and dstFlags and band(dstFlags, F_HOSTILE) > 0 then
             Wrath(st, p, ts, sub)
         end
     end
@@ -417,9 +425,14 @@ local function Missing(st, name, r)
         end
     end
     if not out then return false, false end
-    tsort(out)
+    local sid = st.spellId
+    tsort(out, function(a, b)
+        local ia, ib = sid[a] or 0, sid[b] or 0
+        if ia ~= ib then return ia < ib end
+        return a < b
+    end)
     local ids = {}
-    for k = 1, #out do ids[k] = st.spellId[out[k]] or false end
+    for k = 1, #out do ids[k] = sid[out[k]] or false end
     return concat(out, ", "), ids
 end
 local function Recipient(st, p, r, name)
@@ -466,7 +479,10 @@ local function CcCasts(st)
         local p = s.players[k]
         local c = p.badges[i]
         local tries = {}
-        for n = 1, c.n do tries[c.spells[n]] = (tries[c.spells[n]] or 0) + 1 end
+        for n = 1, c.n do
+            local sk = c.keys and c.keys[n] or c.spells[n]
+            tries[sk] = (tries[sk] or 0) + 1
+        end
         for sp, v in pairs(tries) do p.casts[sp] = math.max(p.casts[sp] or 0, v) end
     end
 end

@@ -17,7 +17,6 @@ local FOLLOW_RATE = 5
 local FOLLOW_EPS = 0.02
 local LABEL_GAP = 8
 local ICON_LIFT = 27
-local THREAT_W = 64
 local Follow = {}
 ns.ReplayFollow = Follow
 local Kit = ns.Kit
@@ -30,6 +29,9 @@ local function Saved()
 end
 function Follow.On()
     return Saved().follow ~= false
+end
+function Follow.SetOn(on)
+    Saved().follow = on and true or false
 end
 function Follow.Attach(fig)
     local pin = fig:CreateTexture(nil, "BORDER")
@@ -62,7 +64,7 @@ local function WindowHide()
     if st.catcher then st.catcher:Hide() end
     st.quiet = false
 end
-local function ThreatClick()
+function Follow.Threat()
     local run = st.run
     local f = run and run.fight
     if not (f and ns.ThreatView) then return end
@@ -76,25 +78,6 @@ function Follow.Bind(ui, run, cam, figs, clear)
     Kit.Text(label, "sem.rep.focus")
     label:Hide()
     st.label = label
-    local c = Kit.Check(ui.frame)
-    c:SetWidth(20)
-    c:SetHeight(20)
-    c:SetPoint("LEFT", ui.healCheck.label, "RIGHT", 14, 0)
-    c.label:SetText(ns.T("iso.follow"))
-    c.tip = ns.T("iso.follow.tip")
-    c.tipTitle = false
-    c:SetChecked(Follow.On())
-    c.onToggle = function(on) Saved().follow = on and true or false end
-    st.check = c
-    if ns.ThreatView and ui.figsBtn then
-        local thr = Kit.Button(ui.frame)
-        thr:SetWidth(THREAT_W)
-        thr:SetHeight(ui.figsBtn:GetHeight())
-        thr:SetPoint("RIGHT", ui.figsBtn, "LEFT", -6, 0)
-        thr.text:SetText(ns.T("iso.threat"))
-        thr.tip = ns.T("iso.threat.tip")
-        thr.onClick = ThreatClick
-    end
     local catcher = CreateFrame("Frame", CATCHER, UIParent)
     catcher:Hide()
     catcher:SetScript("OnHide", CatcherHide)

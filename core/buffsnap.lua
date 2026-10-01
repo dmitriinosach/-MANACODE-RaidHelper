@@ -26,15 +26,16 @@ local function Units()
     for i = 1, GetNumPartyMembers() do units[i + 1] = PARTY[i] end
     return units
 end
-local function Has(unit, def, alias)
+local function Has(unit, def)
+    local want = ns.SpellKey(def.id)
     for i = 1, MAX_AURAS do
         local name, _, _, _, _, _, _, _, _, _, id = UnitAura(unit, i, "HELPFUL")
         if not name then return false end
-        if id == def.id or name == def.name or name == alias then return true end
+        if id == def.id or (id and ns.SpellKey(id) == want) then return true end
     end
     return false
 end
-local signByName
+local signByKey
 local signClass
 local function Classes(signs)
     if signClass then return signClass end
@@ -42,23 +43,19 @@ local function Classes(signs)
     for _, sg in pairs(signs) do signClass[sg.class] = true end
     return signClass
 end
-local function ByName(signs)
-    if signByName then return signByName end
-    signByName = {}
-    for id, sg in pairs(signs) do
-        signByName[sg.name] = sg
-        local loc = GetSpellInfo(id)
-        if loc then signByName[loc] = sg end
-    end
-    return signByName
+local function ByKey(signs)
+    if signByKey then return signByKey end
+    signByKey = {}
+    for id, sg in pairs(signs) do signByKey[ns.SpellKey(id)] = sg end
+    return signByKey
 end
 local function Sign(unit, cls)
     local signs = ns.tankSigns
-    local byName = ByName(signs)
+    local byKey = ByKey(signs)
     for i = 1, MAX_AURAS do
         local name, _, _, _, _, _, _, _, _, _, id = UnitAura(unit, i, "HELPFUL")
         if not name then return nil end
-        local sg = signs[id] or byName[name]
+        local sg = signs[id] or (id and byKey[ns.SpellKey(id)])
         if sg and sg.class == cls then return sg end
     end
     return nil
@@ -97,15 +94,13 @@ function Snap.Take(ts)
     if not list then return end
     for k = 1, #list do
         local def = list[k]
-        local alias
         local on, off = {}, {}
         for i = 1, #us do
             local u = us[i]
             local name = UnitName(u)
             local _, cls = UnitClass(u)
             if name and (not def.class or cls == def.class) and UnitIsVisible(u) then
-                alias = alias or GetSpellInfo(def.id)
-                if Has(u, def, alias) then on[#on + 1] = name else off[#off + 1] = name end
+                if Has(u, def) then on[#on + 1] = name else off[#off + 1] = name end
             end
         end
         if #on + #off > 0 then

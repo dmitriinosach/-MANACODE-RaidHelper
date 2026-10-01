@@ -1,14 +1,14 @@
 local _, ns = ...
 ns.bossPhases = ns.bossPhases or {}
 local FIGHT = { key = "fight", label = "ph.fight" }
-ns.bossPhases["Лорд Ребрад"] = {
+ns.bossPhases[ns.ENC.marrowgar] = {
     steps = { FIGHT },
     waves = {
         storm = { label = "ph.w.storm", on = { "SPELL_AURA_APPLIED", 69076 }, stop = { "SPELL_AURA_REMOVED", 69076 } },
         spike = { label = "ph.w.spike", on = { "SPELL_CAST_START", 69057, 70826, 72088, 72089 } },
     },
 }
-ns.bossPhases["Леди Смертный Шепот"] = {
+ns.bossPhases[ns.ENC.deathwhisper] = {
     steps = {
         { key = "p1", label = "ph.p1" },
         { key = "p2", label = "ph.p2", on = { { "SPELL_AURA_REMOVED", 70842 } } },
@@ -17,13 +17,13 @@ ns.bossPhases["Леди Смертный Шепот"] = {
         mc = { label = "ph.w.mc", on = { "SPELL_CAST_SUCCESS", 71289 } },
     },
 }
-ns.bossPhases["Бой на кораблях"] = {
+ns.bossPhases[ns.ENC.gunship] = {
     steps = { FIGHT },
     waves = {
         freeze = { label = "ph.w.freeze", on = { "SPELL_CAST_START", 69705 } },
     },
 }
-ns.bossPhases["Саурфанг Смертоносный"] = {
+ns.bossPhases[ns.ENC.saurfang] = {
     steps = {
         { key = "p1", label = "ph.p1" },
         { key = "frenzy", label = "ph.frenzy", on = { { "SPELL_AURA_APPLIED", 72737 } } },
@@ -33,7 +33,7 @@ ns.bossPhases["Саурфанг Смертоносный"] = {
         mark = { label = "ph.w.mark", on = { "SPELL_AURA_APPLIED", 72293 } },
     },
 }
-ns.bossPhases["Тухлопуз"] = {
+ns.bossPhases[ns.ENC.festergut] = {
     steps = { FIGHT },
     waves = {
         inhale = { label = "ph.w.inhale", on = { "SPELL_CAST_START", 69165 } },
@@ -41,7 +41,7 @@ ns.bossPhases["Тухлопуз"] = {
         spores = { label = "ph.w.spores", on = { "SPELL_AURA_APPLIED", 69279 } },
     },
 }
-ns.bossPhases["Гниломорд"] = {
+ns.bossPhases[ns.ENC.rotface] = {
     steps = { FIGHT },
     waves = {
         spray = { label = "ph.w.spray", on = { "SPELL_CAST_START", 69508 } },
@@ -52,7 +52,7 @@ local PUTRICIDE_T = {
     { "SPELL_CAST_START", 71617, 72842, 72843 },
     { "SPELL_AURA_APPLIED", 70352, 74118, 70353, 74119 },
 }
-ns.bossPhases["Профессор Мерзоцид"] = {
+ns.bossPhases[ns.ENC.putricide] = {
     steps = {
         { key = "p1", label = "ph.p1" },
         { key = "t1", label = "ph.t1", on = PUTRICIDE_T },
@@ -72,13 +72,13 @@ ns.bossPhases["Профессор Мерзоцид"] = {
         bomb = { label = "ph.w.bomb", on = { "SPELL_CAST_SUCCESS", 71255 } },
     },
 }
-ns.bossPhases["Совет кровавых принцев"] = {
+ns.bossPhases[ns.ENC.council] = {
     steps = { FIGHT },
     waves = {
         invocation = { label = "ph.w.invocation", on = { "SPELL_AURA_APPLIED", 70952, 70981, 70982 } },
     },
 }
-ns.bossPhases["Кровавая королева Лана'тель"] = {
+ns.bossPhases[ns.ENC.lanathel] = {
     steps = { FIGHT },
     waves = {
         air = { label = "ph.w.air", on = { "SPELL_CAST_SUCCESS", 73070 }, stop = { "SPELL_AURA_REMOVED", 71772 } },
@@ -86,7 +86,7 @@ ns.bossPhases["Кровавая королева Лана'тель"] = {
         shadows = { label = "ph.w.shadows", on = { "SPELL_CAST_SUCCESS", 71264 } },
     },
 }
-ns.bossPhases["Валитрия Сноходица"] = {
+ns.bossPhases[ns.ENC.valithria] = {
     steps = {
         FIGHT,
         { key = "dream", label = "ph.dream", on = { { "SPELL_CAST_START", 71189 } } },
@@ -95,7 +95,7 @@ ns.bossPhases["Валитрия Сноходица"] = {
         suppress = { label = "ph.w.suppress", on = { "SPELL_CAST_SUCCESS", 70588 }, gap = 15 },
     },
 }
-ns.bossPhases["Синдрагоса"] = {
+ns.bossPhases[ns.ENC.sindragosa] = {
     steps = {
         { key = "p1", label = "ph.p1" },
         { key = "p2", label = "ph.p2", on = { { "SPELL_AURA_APPLIED", 70127, 72528, 72529, 72530 } } },
@@ -106,7 +106,7 @@ ns.bossPhases["Синдрагоса"] = {
         unchained = { label = "ph.w.unchained", on = { "SPELL_CAST_SUCCESS", 69762 } },
     },
 }
-ns.bossPhases["Король-лич"] = {
+ns.bossPhases[ns.ENC.lichking] = {
     steps = {
         { key = "p1", label = "ph.p1" },
         { key = "t1", label = "ph.t1", on = { { "SPELL_CAST_START", 68981, 74270, 74271, 74272 } } },

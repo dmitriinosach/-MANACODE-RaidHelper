@@ -57,7 +57,9 @@ local CROWD_A = 0.8
 local CROWD_OVER = 0.7
 local KINDS = { "disc", "chip", "vol" }
 local NEXT = { disc = "chip", chip = "vol", vol = "disc" }
-local ROLE_TOKEN = { tank = "sem.rep.tank", heal = "sem.rep.heal", boss = "sem.lane.boss" }
+local ROLE_TOKEN = { tank = "sem.rep.tank", heal = "sem.rep.heal", boss = "sem.lane.boss", add = "sem.rep.add" }
+local ADD_FIT = 0.74
+local ADD_TOKEN = "sem.rep.add"
 local DD_TOKEN = "sem.rep.dd"
 local DD_ARC = "sem.rep.ddHp"
 local PCT_SIZE = 9
@@ -81,10 +83,7 @@ function Figs.HpOn()
     return Saved().figHp ~= false
 end
 local function UpdateButton()
-    local b = st.btn
-    if not b then return end
-    b.text:SetText(ns.T("iso.figs." .. st.kind))
-    b.tip = ns.T("iso.tip.figs." .. st.kind)
+    if Figs.onChange then Figs.onChange(st.kind) end
 end
 function Figs.Load()
     local v = Saved().figs
@@ -94,8 +93,11 @@ function Figs.Load()
     UpdateButton()
     if was ~= st.kind and Figs.Refresh then Figs.Refresh() end
 end
+local function NoHp(fig)
+    return fig.isBoss or fig.isAdd or false
+end
 local function Arc(fig)
-    return st.hp and st.arcOk and not fig.isBoss and st.kind ~= "chip"
+    return st.hp and st.arcOk and not NoHp(fig) and st.kind ~= "chip"
 end
 function Figs.ArcOk()
     return st.arcOk
@@ -118,15 +120,17 @@ function Figs.Rim(fig, over)
     Kit.Hue(fig.trail, tok, a * TRAIL_A)
     if st.kind == "vol" and fig.cr then Plate(fig) end
 end
-local function Refresh()
-    local figs = st.figs
-    if not figs then return end
+local function RefreshList(figs)
     for k = 1, #figs do
         local fig = figs[k]
         fig.sQ = nil
         fig.alpha = nil
         if fig.rimTok then Figs.Rim(fig) end
     end
+end
+local function Refresh()
+    if st.figs then RefreshList(st.figs) end
+    if st.adds then RefreshList(st.adds) end
 end
 Figs.Refresh = Refresh
 function Figs.SetKind(kind)
@@ -140,21 +144,13 @@ function Figs.SetHp(on)
     Saved().figHp = st.hp
     Refresh()
 end
+function Figs.BindAdds(adds)
+    st.adds = adds
+end
 function Figs.Bind(figs, view)
     st.figs = figs
     st.px = view.GetEffectiveScale and view:GetEffectiveScale() or 1
     if type(st.px) ~= "number" or st.px <= 0 then st.px = 1 end
-end
-function Figs.Button(parent, anchor, height)
-    local b = Kit.Button(parent)
-    b:SetWidth(128)
-    b:SetHeight(height)
-    b:SetPoint("RIGHT", anchor, "LEFT", -10, 0)
-    b.onClick = function() Figs.SetKind(NEXT[st.kind]) end
-    st.btn = b
-    Figs.Load()
-    UpdateButton()
-    return b
 end
 local function ArcFrame(tex, f)
     local col = (f - 1) % ARC_COLS
@@ -186,6 +182,7 @@ function Figs.Build(fig)
     fig.trail:SetAllPoints(fig.ring)
     fig.trail:Hide()
     fig.icon = fig:CreateTexture(nil, "ARTWORK")
+    ns.ReplayShield.Build(fig)
     fig.dot = fig:CreateTexture(nil, "OVERLAY")
     fig.dot:Hide()
     fig.pct = fig:CreateFontString(nil, "OVERLAY")
@@ -201,7 +198,18 @@ function Figs.Config(fig, class, role)
     fig.rimTok = ROLE_TOKEN[role or ""] or DD_TOKEN
     fig.res, fig.skin, fig.hpNow, fig.hpQ = nil, nil, nil, nil
     fig.pctN, fig.growK = nil, nil
+    ns.ReplayShield.Reset(fig)
     Figs.Rim(fig)
+end
+function Figs.ConfigAdd(fig, icon)
+    if not fig.isAdd then
+        fig.isAdd, fig.isBoss, fig.name = true, false, ""
+        fig.cr, fig.cg, fig.cb = Kit.Color(ADD_TOKEN)
+        Figs.Config(fig, nil, "add")
+    end
+    if fig.addIcon ~= icon then
+        fig.addIcon, fig.skin, fig.sQ = icon, nil, nil
+    end
 end
 function Figs.Grow(fig, elapsed)
     local want = fig.grow and GROW_K or 1
@@ -224,7 +232,7 @@ local function BadgesOver(fig, up)
     end
 end
 local function PlacePct(fig, y, cap)
-    fig.pctWant = st.hp and not fig.isBoss
+    fig.pctWant = st.hp and not NoHp(fig)
     if not fig.pctWant then
         BadgesOver(fig, false)
         return
@@ -248,6 +256,13 @@ local function Skin(fig)
     if fig.role == "boss" then
         fig.icon:SetTexture(MARKS)
         fig.icon:SetTexCoord(0.75, 1, 0.25, 0.5)
+    elseif fig.isAdd then
+        if type(fig.addIcon) == "number" then
+            Kit.Icon.Spell(fig.icon, fig.addIcon)
+        else
+            fig.icon:SetTexture(fig.addIcon)
+            fig.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+        end
     elseif vol and lead then
         Kit.Icon.RoleBig(fig.icon, fig.role)
     elseif vol then
@@ -415,7 +430,8 @@ local function Draw(fig, dead, scale, flat, lift, hp)
     local cy = tall + up
     Put(fig.ring, fig, d, d * flat, 0, cy)
     fig.trailWant = arc ~= nil and arc < ARC_N
-    Put(fig.icon, fig, inner, inner * flat, 0, cy)
+    local fit = fig.isAdd and ADD_FIT or 1
+    Put(fig.icon, fig, inner * fit, inner * fit * flat, 0, cy)
     Alive(fig)
     fig.top, fig.hy = cy + d * flat / 2, cy
     PlacePct(fig, chip and cy or fig.top, chip)
@@ -430,7 +446,7 @@ function Figs.Sprite(fig, s, scale, flat, elapsed)
         if abs(want - hp) < HP_EPS then hp = want end
     end
     fig.hpNow = hp
-    if st.hp and not s.dead and not fig.isBoss then
+    if st.hp and not s.dead and not NoHp(fig) then
         local n = max(1, min(100, floor((s.hp or 1) * 100 + 0.5)))
         if fig.pctN ~= n then
             fig.pctN = n

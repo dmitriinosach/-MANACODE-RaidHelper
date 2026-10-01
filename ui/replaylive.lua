@@ -35,9 +35,11 @@ local F = { n = 0, cx = {}, cy = {}, cz = {}, ux = {}, uy = {}, uz = {}, vx = {}
             fx = {}, fy = {}, fz = {}, kz = {}, ringS = {}, ringB = {} }
 local P = { a1 = {}, b1 = {}, a2 = {}, b2 = {}, sx = {}, sy = {}, over = {}, nxt = {}, rkey = {} }
 local ringList = {}
+local Pr = { n = 0, row = {} }
+local PROP_CELL = 8
 local head, tail = {}, {}
 local st = { floors = {}, bases = {}, overs = {}, rings = {}, used = { [POOL_BASE] = 0, [POOL_OVER] = 0, [POOL_FLOOR] = 0, [POOL_RING] = 0 },
-             calls = 0, pieces = 0, hidden = 0, ringOk = false, t = 0, pfDone = -1, texA = {}, texIce = {} }
+             calls = 0, pieces = 0, hidden = 0, ringOk = false, t = 0, pfDone = -1, texA = {}, texIce = {}, path = {} }
 function Live.Build(view, level)
     st.view = view
     local top = CreateFrame("Frame", nil, view)
@@ -77,6 +79,9 @@ function Live.Release()
         for k = 1, #list do list[k]:SetTexture(nil) end
     end
     st.room, st.data, st.ringOk, st.pf, st.pfScene, st.pfDone = nil, nil, false, nil, nil, -1
+    st.atlasPath, st.propsPath = nil, nil
+    for tex in pairs(st.path) do st.path[tex] = nil end
+    Pr.n = 0
 end
 local function SetFace(i, row)
     F.cx[i], F.cy[i], F.cz[i] = row[1], row[2], row[3]
@@ -115,7 +120,7 @@ local function Load(d)
         for b = 1, FLOOR_N do
             n = n + 1
             local tx, ty = (a - (FLOOR_N + 1) / 2) * w, (b - (FLOOR_N + 1) / 2) * w
-            SetFace(n, { tx, ty, 0, 1, 0, 0, 0, 1, 0, w / 2, w / 2, 0.5 + tx * q, 0.5 - ty * q, q, dm, dm, 1, 0 })
+            SetFace(n, { (d.fcx or 0) + tx, (d.fcy or 0) + ty, 0, 1, 0, 0, 0, 1, 0, w / 2, w / 2, 0.5 + tx * q, 0.5 - ty * q, q, dm, dm, 1, 0 })
             F.floor[n] = true
         end
     end
@@ -133,6 +138,17 @@ function Live.Use(room)
         return false
     end
     for k = 2, #st.bases do st.bases[k]:SetTexture(atlas) end
+    for k = 1, #st.bases do st.path[st.bases[k]] = atlas end
+    st.atlasPath = atlas
+    local pr = d.props
+    if pr and st.bases[#st.bases]:SetTexture(d.art .. "_props") then
+        st.propsPath = d.art .. "_props"
+        st.path[st.bases[#st.bases]] = st.propsPath
+        Pr.n, Pr.k = #pr.list, pr.n
+        for p = 1, #pr.list do Pr.row[p] = pr.list[p] end
+    else
+        Pr.n = 0
+    end
     for k = 2, #st.floors do st.floors[k]:SetTexture(fl) end
     for k = 1, #st.overs do
         st.overs[k]:SetTexture(atlas)
@@ -224,6 +240,7 @@ local function Pieces(i, pool, hw, hh)
         end
     end
     local list, cu, cv, q = pools[pool], F.cu[i], F.cv[i], F.q[i]
+    local fix = pool == POOL_BASE and st.propsPath
     local bx, by = A1 * h1 / nu + A2 * h2 / nv, B1 * h1 / nu + B2 * h2 / nv
     for a = 1, nu do
         local ou = -h1 + (2 * a - 1) * h1 / nu
@@ -232,6 +249,11 @@ local function Pieces(i, pool, hw, hh)
             local used = st.used[pool] + 1
             local tex = list[used]
             if not tex then return end
+            if fix and st.path[tex] ~= st.atlasPath then
+                tex:SetTexture(st.atlasPath)
+                st.path[tex] = st.atlasPath
+                st.calls = st.calls + 1
+            end
             local px, py = sx + a1 * ou + a2 * ov, sy + b1 * ou + b2 * ov
             if Put(tex, px - bx, py - by, px + bx, py + by, px, py, i11, i12, i21, i22, cu + ou * q, cv - ov * q, q, hw, hh) then
                 st.used[pool] = used
@@ -239,6 +261,32 @@ local function Pieces(i, pool, hw, hh)
             end
         end
     end
+end
+local function PlaceProp(p, l, t, w, h, hw, hh)
+    local x0, x1 = max(l, -hw), min(l + w, hw)
+    local y0, y1 = max(t, -hh), min(t + h, hh)
+    if x1 - x0 < 1 or y1 - y0 < 1 then return end
+    local used = st.used[POOL_BASE] + 1
+    local tex = st.bases[used]
+    if not tex then return end
+    if st.path[tex] ~= st.propsPath then
+        tex:SetTexture(st.propsPath)
+        st.path[tex] = st.propsPath
+        st.calls = st.calls + 1
+    end
+    local o = 4 + PROP_CELL * P.pk
+    local row = Pr.row[p]
+    local u0, v0, u1, v1 = row[o], row[o + 1], row[o + 2], row[o + 3]
+    local a0, a1 = u0 + (u1 - u0) * (x0 - l) / w, u0 + (u1 - u0) * (x1 - l) / w
+    local b0, b1 = v0 + (v1 - v0) * (y0 - t) / h, v0 + (v1 - v0) * (y1 - t) / h
+    tex:SetPoint("TOPLEFT", st.view, "CENTER", x0, -y0)
+    tex:SetWidth(x1 - x0)
+    tex:SetHeight(y1 - y0)
+    tex:SetTexCoord(a0, b0, a0, b1, a1, b0, a1, b1)
+    tex:Show()
+    st.calls = st.calls + 5
+    st.used[POOL_BASE] = used
+    st.pieces = st.pieces + 1
 end
 local function Shade(from, to, alpha, ice)
     local list, texA, texIce = st.rings, st.texA, st.texIce
@@ -357,11 +405,39 @@ function Live.Place(cam, room, ppy)
         end
         end
     end
+    local nF = F.n
+    if Pr.n > 0 then
+        local twoPi = 2 * math.pi
+        P.pk = floor(((cam.angle % twoPi) / twoPi) * Pr.k + 0.5) % Pr.k
+        local o = 4 + PROP_CELL * P.pk
+        for p = 1, Pr.n do
+            local row = Pr.row[p]
+            local x, y, z = row[1], row[2], row[3]
+            local w, h, ax, ay = row[o + 4] * zp, row[o + 5] * zp, row[o + 6] * zp, row[o + 7] * zp
+            local sx = ox + (x * c - y * s) * zp
+            local sy = oy + ((x * s + y * c) * t - z * k) * zp
+            local l, tp = sx - ax, sy - ay
+            if l + w > -hw and l < hw and tp + h > -hh and tp < hh then
+                local i = nF + p
+                P.sx[i], P.sy[i], P.a1[i], P.b1[i] = l, tp, w, h
+                local key = (x * s + y * c) * k + z * t
+                local b = floor((key + KEY_MAX) * kscale) + 1
+                if b < 1 then b = 1 elseif b > BUCKETS then b = BUCKETS end
+                nxt[i] = 0
+                if tail[b] == 0 then head[b] = i else nxt[tail[b]] = i end
+                tail[b] = i
+            end
+        end
+    end
     PlaceRing(nRing, hw, hh)
     for b = 1, BUCKETS do
         local i = head[b]
         while i ~= 0 do
-            Pieces(i, POOL_BASE, hw, hh)
+            if i > nF then
+                PlaceProp(i - nF, P.sx[i], P.sy[i], P.a1[i], P.b1[i], hw, hh)
+            else
+                Pieces(i, POOL_BASE, hw, hh)
+            end
             i = nxt[i]
         end
     end

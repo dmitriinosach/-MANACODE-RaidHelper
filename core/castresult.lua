@@ -20,7 +20,9 @@ CastResult.WINDOW = WINDOW
 CastResult.FOLLOW = FOLLOW
 function CastResult.New(who)
     local data = ns.replayData
-    return { who = who, taunts = data and data.taunts or {}, last = {}, early = {}, open = {}, tauntList = {} }
+    local taunts = {}
+    for id in pairs(data and data.taunts or {}) do taunts[ns.SpellKey(id)] = true end
+    return { who = who, taunts = taunts, last = {}, early = {}, open = {}, tauntList = {} }
 end
 local function TargetOf(res, guid, dst)
     local key = guid or dst or "?"
@@ -78,7 +80,7 @@ function CastResult.Cast(c, it, dst)
     local key = it.label
     it.dst = dst
     c.last[key] = it
-    if c.taunts[key] then
+    if it.id and c.taunts[ns.SpellKey(it.id) or 0] then
         it.taunt = true
         c.tauntList[#c.tauntList + 1] = it
     end

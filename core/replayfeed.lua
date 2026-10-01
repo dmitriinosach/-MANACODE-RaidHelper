@@ -17,12 +17,17 @@ ns.ReplayFeedCore = FC
 local function Fill(set, list)
     if not list then return end
     if #list > 0 then
-        for i = 1, #list do set[list[i]] = true end
+        for i = 1, #list do set[ns.SpellKey(list[i]) or list[i]] = true end
     else
         for k, v in pairs(list) do
-            if v then set[k] = true end
+            if v then set[ns.SpellKey(k) or k] = true end
         end
     end
+end
+local function Keyed(map)
+    local out = {}
+    for k, v in pairs(map or {}) do out[ns.SpellKey(k) or k] = v end
+    return out
 end
 local function Ids(set, trig)
     if not trig then return end
@@ -47,7 +52,7 @@ local function KeyDispels(boss)
     local def = ns.summaries and ns.summaries[boss]
     for i = 1, def and def.blocks and #def.blocks or 0 do
         local bl = def.blocks[i]
-        if bl.kind == "dispels" and bl.spell then set[bl.spell] = true end
+        if bl.kind == "dispels" and bl.spell then set[ns.SpellKey(bl.spell)] = true end
         if bl.kind == "removed" then Fill(set, bl.spells) end
     end
     return set
@@ -63,17 +68,18 @@ function FC.New(fight)
     Fill(auras, b.auras)
     for i = 1, D and #D.states or 0 do
         local st = D.states[i]
-        if st.feed and st.imp then auras[st.name] = true end
+        if st.feed and st.imp then auras[ns.SpellKey(st.name)] = true end
     end
-    for _, d in pairs(ns.defensives or {}) do defs[d[1]] = true end
+    for id in pairs(ns.defensives or {}) do defs[ns.SpellKey(id)] = true end
     local acts = ns.actions
     Fill(selfRez, acts and acts.selfRez)
     local db = ns.GetDB()
     return {
         fight = fight, from = fight.from, to = fight.to, players = fight.players or {},
-        bosses = ns.Index.BossNames(fight), pets = db and db.pets or {}, owners = {},
-        casts = casts, auras = auras, hits = b.hits or {}, keyDisp = KeyDispels(boss), skipIds = PhaseIds(boss),
-        help = FD.help, hero = FD.hero, defs = defs, selfRez = selfRez, stone = acts and acts.stone,
+        bosses = ns.Index.BossKeys(fight), pets = db and db.pets or {}, owners = {},
+        casts = casts, auras = auras, hits = Keyed(b.hits), keyDisp = KeyDispels(boss), skipIds = PhaseIds(boss),
+        help = Keyed(FD.help), hero = Keyed(FD.hero), defs = defs, selfRez = selfRez,
+        stone = acts and ns.SpellKey(acts.stone), stoneId = acts and acts.stoneId,
         valkyr = D ~= nil and D.valkyr ~= nil and D.valkyr.boss == boss,
         veh = {}, dead = {}, stoneT = {}, last = {}, heroAt = -1e9, auraIds = {}, helpIds = {},
         r = { n = 0, t = {}, kind = {}, icon = {}, imp = {}, key = {}, head = {}, obj = {}, who = {}, text = {},
@@ -88,6 +94,9 @@ local function Row(fc, ts, kind, icon, imp, key, head, obj, who, text, tip)
     r.t[n], r.kind[n], r.icon[n], r.imp[n] = ts - fc.from, kind, icon or 0, imp and true or false
     r.key[n], r.head[n], r.obj[n], r.who[n] = key, head, obj, who
     r.text[n], r.tip[n] = text, tip or text
+end
+function FC.Add(fc, ts, kind, icon, imp, who, text)
+    Row(fc, ts, kind, icon, imp, false, text, false, who, text)
 end
 local function Fresh(fc, key, ts, gap)
     local last = fc.last[key]
@@ -125,8 +134,7 @@ local function BossAura(fc, ts, dst, spell, id)
     if n then fc.auraIds[n] = true end
     Row(fc, ts, "boss", n, true, "b|" .. spell, spell, false, dst, format(ns.T("rep.f.on"), spell, dst))
 end
-local function BossHit(fc, ts, spell, id)
-    local gap = fc.hits[spell]
+local function BossHit(fc, ts, spell, id, gap)
     if not Fresh(fc, "h" .. spell, ts, gap) then return end
     Row(fc, ts, "boss", tonumber(id), true, "b|" .. spell, spell, false, false, spell)
 end
@@ -183,7 +191,8 @@ local function Dispel(fc, ts, sub, who, dst, dstFlags, a1, a2, a4, a5)
     local tip = format(ns.T("rep.f.dispel.tip"), what, on, WithClass(who), tostring(a2))
     if sub == "SPELL_STOLEN" then tip = tip .. "\n" .. ns.T("rep.f.stolen") end
     local icon = tonumber(a4) or tonumber(a1)
-    Row(fc, ts, "dispel", icon, fc.keyDisp[what] == true, "x|" .. what, ns.T("rep.f.dispel.head"), what, on,
+    Row(fc, ts, "dispel", icon, fc.keyDisp[ns.SpellKey(a4) or 0] == true, "x|" .. what, ns.T("rep.f.dispel.head"),
+        what, on,
         text, tip)
 end
 local function Kick(fc, ts, who, dst, a1, a2, a5)
@@ -192,20 +201,20 @@ local function Kick(fc, ts, who, dst, a1, a2, a5)
     local tip = format(ns.T("rep.f.kick.tip"), what, dst or "?", WithClass(who), tostring(a2))
     Row(fc, ts, "kick", tonumber(a1), false, "k|" .. what, ns.T("rep.f.kick.head"), what, who, text, tip)
 end
-local function OwnCast(fc, ts, who, a1, a2)
+local function OwnCast(fc, ts, who, a1, a2, sk)
     local d = fc.dead[who]
     if d then
-        if fc.selfRez[a2] then
+        if sk and fc.selfRez[sk] then
             Rez(fc, ts, who, who, a2, a1)
         elseif fc.stoneT[who] and math.abs(fc.stoneT[who] - d) <= DEATH_NEAR then
-            Rez(fc, ts, who, who, fc.stone, a1)
+            Rez(fc, ts, who, who, ns.SpellName(fc.stoneId), a1)
         end
     end
 end
-local function OnCast(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, a1, a2)
-    if type(a2) ~= "string" then return end
-    if Enemy(srcFlags) or (src and fc.bosses[src]) then
-        if fc.casts[a2] then BossCast(fc, ts, dst, a2, a1) end
+local function OnCast(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, a1, a2, sk)
+    if type(a2) ~= "string" or not sk then return end
+    if Enemy(srcFlags) or fc.bosses[ns.NpcKey(srcGUID) or 0] then
+        if fc.casts[sk] then BossCast(fc, ts, dst, a2, a1) end
         return
     end
     local who = Actor(fc, srcGUID, src, srcFlags)
@@ -215,28 +224,28 @@ local function OnCast(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, a1, a2)
         return
     end
     if sub ~= "SPELL_CAST_SUCCESS" then return end
-    OwnCast(fc, ts, who, a1, a2)
-    if fc.help[a2] then
-        fc.helpIds[a2] = fc.helpIds[a2] or tonumber(a1)
+    OwnCast(fc, ts, who, a1, a2, sk)
+    if fc.help[sk] then
+        fc.helpIds[sk] = fc.helpIds[sk] or tonumber(a1)
         Help(fc, ts, who, dst, a2, a1)
-    elseif fc.hero[a2] then
+    elseif fc.hero[sk] then
         Hero(fc, ts, who, a2, a1)
-    elseif fc.defs[a2] then
+    elseif fc.defs[sk] then
         Defensive(fc, ts, who, dst, a2, a1)
     end
 end
-local function OnApplied(fc, ts, srcGUID, src, srcFlags, dst, a1, a2)
-    if type(a2) ~= "string" or not dst or not fc.players[dst] then return end
-    if fc.auras[a2] and (not src or Enemy(srcFlags) or fc.bosses[src]) then
+local function OnApplied(fc, ts, srcGUID, src, srcFlags, dst, a1, a2, sk)
+    if type(a2) ~= "string" or not sk or not dst or not fc.players[dst] then return end
+    if fc.auras[sk] and (not src or Enemy(srcFlags) or fc.bosses[ns.NpcKey(srcGUID) or 0]) then
         BossAura(fc, ts, dst, a2, a1)
         return
     end
     local who = Actor(fc, srcGUID, src, srcFlags)
     if not who then return end
-    local cast = fc.helpIds[a2]
-    if fc.help[a2] == true and who ~= dst and (not cast or cast == tonumber(a1)) then
+    local cast = fc.helpIds[sk]
+    if fc.help[sk] == true and who ~= dst and (not cast or cast == tonumber(a1)) then
         Help(fc, ts, who, dst, a2, a1)
-    elseif fc.defs[a2] and who == dst then
+    elseif fc.defs[sk] and who == dst then
         Defensive(fc, ts, who, nil, a2, a1)
     end
 end
@@ -249,13 +258,14 @@ local function OnVehicle(fc, ts, src, on)
     fc.veh[src] = on or nil
 end
 function FC.Event(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4, a5)
+    local sk = ns.SpellOf(sub, a1)
     if sub == "SPELL_AURA_APPLIED" then
-        OnApplied(fc, ts, srcGUID, src, srcFlags, dst, a1, a2)
+        OnApplied(fc, ts, srcGUID, src, srcFlags, dst, a1, a2, sk)
     elseif sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CAST_START" or sub == "SPELL_SUMMON" then
-        OnCast(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, a1, a2)
+        OnCast(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, a1, a2, sk)
     elseif sub == "SPELL_DAMAGE" then
-        if a2 and fc.hits[a2] and dst and fc.players[dst] and (Enemy(srcFlags) or not src) then
-            BossHit(fc, ts, a2, a1)
+        if sk and fc.hits[sk] and a2 and dst and fc.players[dst] and (Enemy(srcFlags) or not src) then
+            BossHit(fc, ts, a2, a1, fc.hits[sk])
         end
     elseif sub == "SPELL_DISPEL" or sub == "SPELL_STOLEN" then
         local who = Actor(fc, srcGUID, src, srcFlags)
@@ -273,7 +283,7 @@ function FC.Event(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a
     elseif sub == "SPELL_RESURRECT" then
         if dst and fc.dead[dst] and ts <= fc.to then Rez(fc, ts, dst, src or "?", a2, a1) end
     elseif sub == "SPELL_AURA_REMOVED" then
-        if a2 == fc.stone and dst and fc.players[dst] then fc.stoneT[dst] = ts end
+        if sk and sk == fc.stone and dst and fc.players[dst] then fc.stoneT[dst] = ts end
     elseif sub == "FW_VEH" then
         OnVehicle(fc, ts, src, tonumber(a1) == 1)
     elseif sub == "FW_MARK" and ns.DevMarks then

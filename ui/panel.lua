@@ -12,6 +12,7 @@ local PAD = 5
 local ROWGAP = 3
 local TEXTH = 14
 local DOT = 8
+local TRI = 10
 local TOOLGAP = 8
 local COUNT_PERIOD = 1
 local STRIP_H = 3
@@ -36,6 +37,7 @@ local PLUS = "Interface\\Buttons\\UI-PlusButton-Up"
 local MINUS = "Interface\\Buttons\\UI-MinusButton-Up"
 local PAUSE = "Interface\\TimeManager\\PauseButton"
 local WHITE8 = "Interface\\Buttons\\WHITE8X8"
+local TRI_TEX = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_4"
 local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\"
 local ICONS = {
     { key = "log", label = "panel.log", tip = "panel.tip.log" },
@@ -48,7 +50,7 @@ local ICONS = {
 }
 local Panel = {}
 ns.Panel = Panel
-local frame, lockBtn, dot, countText, strip, stripFill
+local frame, lockBtn, dot, tri, countText, strip, stripFill
 local pauseBtn, sizeBtn, eq, eqBg, graphs
 local buttons = {}
 local eqBars = {}
@@ -163,6 +165,8 @@ local function IconEnter(b)
     ns.Kit.TipAdd(ns.T(b.def.tip), "tip.body", true)
     if b.def.key == "log" then
         ns.Kit.TipAdd(ns.T(RecStateKey()), "text.secondary", true)
+        local rng = ns.Ranging and ns.Ranging.Working and ns.Ranging.Working()
+        if rng then ns.Kit.TipAdd(format(ns.T("panel.rng"), rng, ns.Plural(rng, ns.T("panel.rng.n"))), "badge.yellow", true) end
         local _, frac, text = ns.Jobs.State()
         if frac and text then
             local r, g, bl = ns.Kit.Color("progress.fill")
@@ -480,6 +484,12 @@ local function StepDot()
     else
         dot:Hide()
     end
+    local rng = ns.Ranging and ns.Ranging.Working and ns.Ranging.Working()
+    if rng then
+        if not tri:IsShown() then tri:Show() end
+    elseif tri:IsShown() then
+        tri:Hide()
+    end
 end
 local function StepAlerts()
     for i = 1, #buttons do
@@ -674,6 +684,14 @@ local function Build()
     dot:SetPoint("TOPRIGHT", 1, 1)
     ns.Kit.Paint(dot, "sem.rec")
     dot:Hide()
+    tri = buttons[1]:CreateTexture(nil, "OVERLAY")
+    tri:SetWidth(TRI)
+    tri:SetHeight(TRI)
+    tri:SetPoint("TOPLEFT", -1, 1)
+    tri:SetTexture(TRI_TEX)
+    tri:SetDesaturated(true)
+    ns.Kit.Tint(tri, "badge.yellow")
+    tri:Hide()
     strip = CreateFrame("Frame", nil, buttons[1])
     strip:SetPoint("BOTTOMLEFT", STRIP_IN, STRIP_IN)
     strip:SetPoint("BOTTOMRIGHT", -STRIP_IN, STRIP_IN)

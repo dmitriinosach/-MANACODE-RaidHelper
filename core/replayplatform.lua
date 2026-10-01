@@ -12,19 +12,18 @@ Platform.GROW = GROW
 function Platform.Def(boss)
     return boss and ns.replayPlatform and ns.replayPlatform[boss] or nil
 end
-local function Hit(cast, id, name)
+local function Hit(cast, id)
     local n = tonumber(id)
+    if not n then return false end
+    local key = ns.SpellKey(n)
     for i = 1, #cast.ids do
-        if cast.ids[i] == n then return true end
-    end
-    for i = 1, #cast.names do
-        if cast.names[i] == name then return true end
+        if cast.ids[i] == n or ns.SpellKey(cast.ids[i]) == key then return true end
     end
     return false
 end
 function Platform.Match(def, id, name)
-    if Hit(def.quake, id, name) then return "quake" end
-    if Hit(def.winter, id, name) then return "winter" end
+    if Hit(def.quake, id) then return "quake" end
+    if Hit(def.winter, id) then return "winter" end
     return nil
 end
 function Platform.AddQuake(list, gap, ts, success)

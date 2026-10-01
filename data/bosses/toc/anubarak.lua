@@ -1,18 +1,18 @@
 local _, ns = ...
-local ANUB = "Ануб'арак"
-ns.bosses["Ануб'арак"] = ANUB
+local ANUB = ns.ENC.anubarak
+ns.bosses[34564] = ANUB
 ns.summaries[ANUB] = {
     badges = {
-        { kind = "aura", spell = "Вас преследует Ануб'арак", tip = "sum.b.toc.pursue" },
-        { kind = "aura", spell = "Пронизывающий холод", tip = "sum.b.toc.cold" },
-        { kind = "hit", spell = "Прокалывание", gap = 3, tip = "sum.b.toc.spikes" },
-        { kind = "death", spells = { "Прокалывание" }, id = 67574, tip = "sum.b.toc.spikedeath" },
-        { kind = "stack", spell = "Выявление слабости", tip = "sum.b.toc.expose" },
+        { kind = "aura", spell = 67574, tip = "sum.b.toc.pursue" },
+        { kind = "aura", spell = 68510, tip = "sum.b.toc.cold" },
+        { kind = "hit", spell = 62418, gap = 3, tip = "sum.b.toc.spikes" },
+        { kind = "death", spells = { 62418 }, id = 67574, tip = "sum.b.toc.spikedeath" },
+        { kind = "stack", spell = 67847, tip = "sum.b.toc.expose" },
     },
-    stacks = { { spell = "Выявление слабости" } },
+    stacks = { { spell = 67847 } },
     blocks = {
-        { kind = "taken", label = "sum.k.toc.spikes", spells = { "Прокалывание" } },
-        { kind = "taken", label = "sum.k.toc.cold", spells = { "Пронизывающий холод" } },
-        { kind = "casts", label = "sum.k.toc.strike", spells = { "Теневой удар" } },
+        { kind = "taken", label = "sum.k.toc.spikes", spells = { 62418 } },
+        { kind = "taken", label = "sum.k.toc.cold", spells = { 68510 } },
+        { kind = "casts", label = "sum.k.toc.strike", spells = { 66134 } },
     },
 }

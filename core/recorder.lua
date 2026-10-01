@@ -30,6 +30,8 @@ local WPN_CLASS = { DEATHKNIGHT = true, WARRIOR = true, ROGUE = true, PALADIN = 
 local ACH_EVENTS = { "CHAT_MSG_ACHIEVEMENT", "CHAT_MSG_GUILD_ACHIEVEMENT" }
 local ACH_LINK = "|Hachievement:(%d+):"
 local ACH_DUP = 30
+local ASKED_MAX = 4096
+local ACH_MAX = 512
 local Recorder = {}
 ns.Recorder = Recorder
 local frame = CreateFrame("Frame")
@@ -92,6 +94,7 @@ local wpnGuid, wpnUnit, wpnSent = nil, nil, nil
 local foreignUnit, foreignAt = nil, nil
 local ownAsk = false
 local achSeen = {}
+local achN = 0
 local paused = false
 local pauseWaitIdle = false
 local pauseZone = nil
@@ -263,9 +266,15 @@ function Recorder.Stop()
     ns.Trash.Forget()
 end
 local asked = {}
+local askedN = 0
 local function NoteClass(guid, name, flags)
     if not guid or not name or asked[guid] or not flags then return end
     if band(flags, F_PLAYER) == 0 then return end
+    if askedN >= ASKED_MAX then
+        wipe(asked)
+        askedN = 0
+    end
+    askedN = askedN + 1
     asked[guid] = true
     local classes = ns.GetDB().classes
     if classes[name] then return end
@@ -282,6 +291,7 @@ local function ResetSegmentState()
     vehicleFight = false
     wipe(auraStacks)
     wipe(bossTarget)
+    wipe(bossTick)
     wipe(polledHp)
     wipe(polledMax)
     wipe(polledX)
@@ -296,21 +306,25 @@ local function ResetSegmentState()
     mapElapsed = MAP_PERIOD
     levelOk = true
 end
-local function NoteVehicleFight(name)
-    local enc = ns.Encounters.Of(name, nil) or (name and ns.vehicles[name])
+local function NoteVehicleFight(guid, name)
+    local key = ns.NpcKey(guid)
+    if not key then return end
+    local enc = ns.Encounters.Of(guid, name, nil) or ns.vehicles[key]
     if enc ~= nil and ns.bossVehicle[enc] then vehicleFight = true end
 end
-local function WatchEnd(sub, srcName, srcFlags, dstName, dstFlags, spellId, spell, auto)
+local function WatchEnd(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, auto)
     local E = ns.Encounters
-    if spellId and srcName and ns.Deaths.ByScript(E.Of(srcName, auto), spellId) then
+    if spellId and srcGUID and ns.Deaths.ByScript(E.Of(srcGUID, srcName, auto), spellId) then
         scriptHold = GetTime() + SCRIPT_HOLD
     end
-    if killAt and dstName ~= nil and not dead[dstName] and srcFlags ~= nil
+    local dstKey = killAt and ns.NpcKey(dstGUID)
+    if dstKey and not dead[dstKey] and srcFlags ~= nil
         and band(srcFlags, F_BY_PLAYER) > 0 and find(sub, "_DAMAGE", 1, true)
-        and E.Of(dstName, auto) ~= nil then
+        and E.Of(dstGUID, dstName, auto) ~= nil then
         ForgetKill()
     end
-    local enc, who, sure = E.Ending(sub, srcName, srcFlags, dstName, dstFlags, spell, auto, bossSeen)
+    local enc, who, sure = E.Ending(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, auto,
+        bossSeen)
     if not enc or (killAt and dead[who]) then return end
     dead[who] = true
     local now = GetTime()
@@ -364,16 +378,16 @@ local function WpnReady()
     WpnRead(wpnUnit, wpnGuid)
     WpnDone()
 end
-local function Spent(name, auto)
+local function Spent(guid, name, auto)
     if not closed.mute then return false end
     if GetTime() >= closed.mute then
         closed.mute = nil
         return false
     end
-    return ns.Encounters.Of(name, auto) == closed.enc
+    return ns.Encounters.Of(guid, name, auto) == closed.enc
 end
 local function RecordEvent(ts, ...)
-    local sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, spell, _, auraType = ...
+    local sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, _, _, auraType = ...
     NoteClass(srcGUID, srcName, srcFlags)
     NoteClass(dstGUID, dstName, dstFlags)
     if sub == "SPELL_SUMMON" then NoteSummon(srcName, srcFlags, dstGUID) end
@@ -387,7 +401,8 @@ local function RecordEvent(ts, ...)
     if ns.RecFilter.Keep(sub, srcGUID, srcName, dstGUID, dstName, spellId, auraType, seg.bosses, writeAll) then
         ok = ns.Store.Append(ts, ...)
     end
-    if not seg.pull and ns.RecFilter.Pulls(sub, srcFlags, dstName, seg.bosses) and not Spent(dstName, seg.bosses) then
+    if not seg.pull and ns.RecFilter.Pulls(sub, srcFlags, dstGUID, dstName, seg.bosses)
+        and not Spent(dstGUID, dstName, seg.bosses) then
         ns.Trash.Pull(seg, ts)
         ns.BuffSnap.Take(ts)
         if ns.PullTimer then ns.PullTimer.OnPull(ts) end
@@ -396,10 +411,10 @@ local function RecordEvent(ts, ...)
     if sub == "UNIT_DIED" and dstFlags and band(dstFlags, F_PLAYER) > 0 then ns.Trash.Died(ts) end
     if spellId == WPN_AURA and sub == "SPELL_AURA_APPLIED" then WpnAsk(dstGUID, dstName) end
     Anchor(ts)
-    WatchEnd(sub, srcName, srcFlags, dstName, dstFlags, spellId, spell, seg.bosses)
+    WatchEnd(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, seg.bosses)
     if not vehicleFight then
-        NoteVehicleFight(srcName)
-        NoteVehicleFight(dstName)
+        NoteVehicleFight(srcGUID, srcName)
+        NoteVehicleFight(dstGUID, dstName)
     end
     return ok
 end
@@ -464,6 +479,13 @@ local function OnAchievement(msg, sender)
     local key = name .. ":" .. id
     local now = GetTime()
     if achSeen[key] and now - achSeen[key] < ACH_DUP then return end
+    if not achSeen[key] then
+        achN = achN + 1
+        if achN > ACH_MAX then
+            wipe(achSeen)
+            achN = 1
+        end
+    end
     achSeen[key] = now
     local ts = Now()
     if not ns.Store.Live() then
@@ -576,7 +598,12 @@ local function PollAuras(k, guid)
     if not poll or not slotPlayer[k] then return end
     local unit = slotUnit[k]
     for i = 1, #poll do
-        local name, _, _, count = UnitAura(unit, poll[i])
+        local want = GetSpellInfo(poll[i])
+        local name, count
+        if want then
+            local n, _, _, c = UnitAura(unit, want)
+            name, count = n, c
+        end
         local c = name and ((count and count > 0) and count or 1) or 0
         local stacks = auraStacks[i]
         if not stacks then
@@ -673,7 +700,7 @@ local function NoteBoss(unit)
     local name = BossName(unit)
     if name then
         ns.Store.MarkBoss(name)
-        if not vehicleFight then NoteVehicleFight(name) end
+        if not vehicleFight then NoteVehicleFight(UnitGUID(unit), name) end
         local live = ns.Store.Live()
         if live and live.pull then NoteBossTarget(unit, name) end
     end

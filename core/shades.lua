@@ -10,9 +10,9 @@ local Shades = {}
 ns.Shades = Shades
 local function New(st, s, fight, def)
     if st then return st end
-    return { s = s, byName = s.byName, from = fight.from, to = fight.to, npc = def.src, spell = def.spell,
-             summoned = 0, vic = {}, at = {}, order = {}, hitG = {}, hitW = {}, hitA = {},
-             ex = {}, ev = {}, open = {} }
+    return { s = s, byName = s.byName, from = fight.from, to = fight.to, npc = ns.NpcKeyOf(def.src),
+             spell = ns.SpellKey(def.spell), summoned = 0, vic = {}, at = {}, order = {}, hitG = {}, hitW = {},
+             hitA = {}, ex = {}, ev = {}, open = {}, exAuras = {}, exMoved = {} }
 end
 function Shades.Begin(s, fight)
     local st
@@ -34,14 +34,21 @@ function Shades.Begin(s, fight)
     if not st then return nil end
     for i = 1, #s.badges do
         local bd = s.badges[i]
-        if bd.kind == "chased" and bd.npc == st.npc then
+        if bd.kind == "chased" and ns.NpcKeyOf(bd.npc) == st.npc then
             st.chased = i
             local ex = bd.excuse
             if ex then
                 st.exDef = ex
-                st.ex[ex.mc] = true
-                for name in pairs(ex.auras or NONE) do st.ex[name] = true end
-                for name in pairs(ex.moved or NONE) do st.ex[name] = true end
+                st.exMc = ns.SpellKey(ex.mc)
+                st.ex[st.exMc] = true
+                for id, kind in pairs(ex.auras or NONE) do
+                    st.ex[ns.SpellKey(id)] = true
+                    st.exAuras[ns.SpellKey(id)] = kind
+                end
+                for id, kind in pairs(ex.moved or NONE) do
+                    st.ex[ns.SpellKey(id)] = true
+                    st.exMoved[ns.SpellKey(id)] = kind
+                end
             end
         end
     end
@@ -52,17 +59,16 @@ local function Mark(st, guid, ts)
     st.at[guid] = ts
     st.order[#st.order + 1] = guid
 end
-local function Excuse(st, ts, sub, srcName, dstName, spell, mc)
-    local def = st.exDef
+local function Excuse(st, ts, sub, srcName, dstName, sk, spell, mc)
     local list = st.ev[dstName]
     if not list then
         list = {}
         st.ev[dstName] = list
     end
-    mc = mc or (srcName ~= nil and st.open[srcName .. "|" .. def.mc] ~= nil)
-    local kind = spell == def.mc and "mc" or (def.auras or NONE)[spell]
+    mc = mc or (srcName ~= nil and st.open[srcName .. "|" .. st.exMc] ~= nil)
+    local kind = sk == st.exMc and "mc" or st.exAuras[sk]
     if kind and EX_AURA[sub] then
-        local key = dstName .. "|" .. spell
+        local key = dstName .. "|" .. sk
         local cur = st.open[key]
         if sub == "SPELL_AURA_REMOVED" then
             if cur then
@@ -76,28 +82,29 @@ local function Excuse(st, ts, sub, srcName, dstName, spell, mc)
         end
         return
     end
-    kind = (def.moved or NONE)[spell]
+    kind = st.exMoved[sk]
     if kind and EX_HIT[sub] then
         list[#list + 1] = { t = ts, to = ts, kind = kind, spell = spell, src = srcName, mc = mc or nil }
     end
 end
-function Shades.Feed(st, ts, sub, srcGUID, srcName, dstName, a1, a2, a4, mc)
+function Shades.Feed(st, ts, sub, srcGUID, srcName, dstGUID, dstName, a1, a2, a4, mc)
     if ts < st.from or ts > st.to then return end
-    if a2 and st.ex[a2] and dstName and st.byName[dstName] then
-        Excuse(st, ts, sub, srcName, dstName, a2, mc == true)
+    local sk = ns.SpellOf(sub, a1)
+    if sk and st.ex[sk] and dstName and st.byName[dstName] then
+        Excuse(st, ts, sub, srcName, dstName, sk, a2, mc == true)
         return
     end
     if sub == "SPELL_SUMMON" then
-        if dstName == st.npc then st.summoned = st.summoned + 1 end
+        if ns.NpcKey(dstGUID) == st.npc then st.summoned = st.summoned + 1 end
         return
     end
-    if srcName ~= st.npc or not srcGUID or not dstName or not st.byName[dstName] then return end
+    if ns.NpcKey(srcGUID) ~= st.npc or not srcGUID or not dstName or not st.byName[dstName] then return end
     if sub == "SWING_DAMAGE" or sub == "SWING_MISSED" then
         if not st.vic[srcGUID] then
             st.vic[srcGUID] = dstName
             Mark(st, srcGUID, ts)
         end
-    elseif (sub == "SPELL_DAMAGE" or sub == "SPELL_MISSED") and a2 == st.spell then
+    elseif (sub == "SPELL_DAMAGE" or sub == "SPELL_MISSED") and sk == st.spell then
         Mark(st, srcGUID, ts)
         local n = #st.hitG + 1
         st.hitG[n], st.hitW[n] = srcGUID, dstName
@@ -197,9 +204,10 @@ function Shades.Finish(st)
     if st.chased and st.exDef then Grade(st) end
 end
 function Shades.Excused(s, p, npc, t)
+    local want = ns.NpcKeyOf(npc)
     for i = 1, #s.badges do
         local bd = s.badges[i]
-        local c = bd.kind == "chased" and bd.npc == npc and p.badges[i]
+        local c = bd.kind == "chased" and ns.NpcKeyOf(bd.npc) == want and p.badges[i]
         if c and c.why then
             for k = 1, c.n do
                 if c.why[k] and abs(c.times[k] - t) <= SAME then return c.why[k] end

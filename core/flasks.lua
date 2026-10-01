@@ -82,7 +82,7 @@ end
 function Flasks.ItemName(it)
     if not it then return "?" end
     local name = GetItemInfo and GetItemInfo(it.id)
-    return name or it.name
+    return name or (GetSpellInfo and GetSpellInfo(it.spell)) or "?"
 end
 local function Same(a, b)
     if not a or not b then return false end
@@ -251,13 +251,9 @@ local function AuraIndex()
     byAura = {}
     for i = 1, #ns.flaskItems do
         local it = ns.flaskItems[i]
-        local name = GetSpellInfo and GetSpellInfo(it.spell)
-        byAura[name or it.name] = it
+        byAura[ns.SpellKey(it.spell)] = it
     end
-    for id in pairs(ns.flaskAlchemy) do
-        local name = GetSpellInfo and GetSpellInfo(id)
-        if name then byAura[name] = true end
-    end
+    for id in pairs(ns.flaskAlchemy) do byAura[ns.SpellKey(id)] = true end
 end
 function Flasks.ScanAura(name)
     AuraIndex()
@@ -265,7 +261,7 @@ function Flasks.ScanAura(name)
     for i = 1, AURAS do
         local aura, _, _, _, _, dur, _, _, _, _, id = UnitAura(unit, i, "HELPFUL")
         if not aura then break end
-        local hit = byAura[aura]
+        local hit = id and byAura[ns.SpellKey(id)]
         if (id and ns.flaskAlchemy[id]) or hit == true or (hit and dur and dur >= ALCH_DUR) then
             if not Flasks.IsAlchemist(name) then Flasks.SetAlchemist(name, true) end
             return true

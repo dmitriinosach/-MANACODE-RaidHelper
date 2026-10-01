@@ -1,9 +1,9 @@
 local _, ns = ...
 ns.flaskItems = {
-    { key = "stone", id = 46379, spell = 53758, name = "Настой каменной крови" },
-    { key = "wyrm", id = 46376, spell = 53755, name = "Настой ледяного змея" },
-    { key = "rage", id = 46377, spell = 53760, name = "Настой бесконечной ярости" },
-    { key = "mojo", id = 46378, spell = 54212, name = "Настой чистого колдунства" },
+    { key = "stone", id = 46379, spell = 53758 },
+    { key = "wyrm", id = 46376, spell = 53755 },
+    { key = "rage", id = 46377, spell = 53760 },
+    { key = "mojo", id = 46378, spell = 54212 },
 }
 ns.flaskKinds = { "tank", "sp", "ap" }
 ns.flaskDefault = { tank = "stone", sp = "wyrm", ap = "rage" }
