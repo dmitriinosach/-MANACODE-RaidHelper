@@ -135,9 +135,10 @@ local Follow = ns.ReplayFollow
 local Figs = ns.ReplayFigs
 local Shield = ns.ReplayShield
 local Geo = ns.ReplayGeo
+local Realm = ns.ReplayRealmView
 local order, depth = {}, {}
 local afigs, all = {}, {}
-local addList = { x = {}, y = {}, icon = {}, chase = {} }
+local addList = { x = {}, y = {}, icon = {}, chase = {}, hp = {} }
 local addState = { dead = false, hp = 1, stale = false, speed = 0, vis = true }
 local ADD_K = 0.85
 Figs.BindAdds(afigs)
@@ -349,8 +350,9 @@ local function PlaceAdds(scene, base, elapsed)
                 local x, y, lift = Geo.Where(cam, scene, addList.x[j], addList.y[j])
                 sx, sy, kz = Replay.Project(cam, x, y)
                 sy = sy - lift
-                Figs.ConfigAdd(fig, addList.icon[j])
+                Figs.ConfigAdd(fig, addList.icon[j], addList.hp[j] ~= nil)
                 addState.stale = addList.chase[j]
+                addState.hp = addList.hp[j] or 1
             end
             local scale = kz > 0 and DepthScale(sy, kz) * ADD_K or 0
             if j <= na and kz > 0 and sx > -hw + 2 and sx < hw - 2 and sy < hh - 2 and sy - (ICON + LIFT) * scale > -hh then
@@ -668,8 +670,10 @@ local function Tick(self, elapsed)
     if Geo.Time(scene, run.t) and not run.camDirty and not run.flat then PlaceFloor() end
     if run.camDirty then ApplyCamera() end
     Replay.Sample(scene, run.t)
+    Realm.Sample(scene, run.t, figs)
     run.bossDrawn = Models.Place(cam, run.t, run.figScale, run.faceSign, elapsed)
     LayersView.Place(scene, cam, run.t, figs)
+    Realm.Place(scene, cam, run.t)
     PlaceFigures(elapsed)
     ns.ReplayFeed.Update(run.t - scene.pull)
     PlaceDeaths()
@@ -858,6 +862,7 @@ local function UseScene(scene)
     Figs.Bind(figs, ui.view)
     FindRoles(scene)
     LayersView.Use(scene)
+    Realm.Use(scene)
     Models.Use(scene)
     run.feedHas = ns.ReplayFeed.Use(scene.layers)
     Relayout()
@@ -927,6 +932,7 @@ local function BuildPools()
         dots[i] = dot
     end
     LayersView.Build(view, ui.marks)
+    Realm.Build(view, ui.marks)
     for i = 1, DEATH_POOL do
         local tex = ui.marks:CreateTexture(nil, "ARTWORK")
         tex:SetTexture(MARKS)
@@ -1234,6 +1240,7 @@ local function LoadFight(fight)
     for k = 1, #dots do dots[k]:Hide() end
     Geo.Use(nil)
     LayersView.Use(nil)
+    Realm.Use(nil)
     Models.Use(nil)
     ns.ReplayFeed.Use(nil)
     Bar.Use(nil)

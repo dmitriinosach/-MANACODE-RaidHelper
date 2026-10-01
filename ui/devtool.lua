@@ -121,6 +121,23 @@ local function Range()
         end
     end
     if #out == 0 then out[1] = T("dev.range.none") end
+    local st = ns.Ranging and ns.Ranging.Status and ns.Ranging.Status()
+    if st then
+        out[#out + 1] = format(T("dev.range.status"), st.on and T("dev.range.on") or T("dev.range.off"),
+            st.foreign or 0, ns.Ranging.MinClients(), st.sent or 0, st.got or 0)
+        local s = st.session
+        if s then
+            out[#out + 1] = format(T("dev.range.session"), tostring(s.enc), s.count or 0,
+                s.active and T("dev.range.on") or T("dev.range.off"), s.sent or 0, s.got or 0)
+        end
+        local l = st.last
+        if l and l.why then
+            out[#out + 1] = format(T("dev.range.last"), tostring(l.enc), l.count or 0, tostring(l.why))
+        end
+        if st.broken then out[#out + 1] = format(T("dev.range.broken"), st.broken) end
+        local why = ns.Ranging.Why and ns.Ranging.Why()
+        if why then out[#out + 1] = format(T("dev.range.why"), T("dev.range.why." .. why)) end
+    end
     Out(out, true)
 end
 local function Map()
@@ -255,6 +272,35 @@ local function ProbeTick(_, elapsed)
     end
     ProbeNext()
 end
+local METHOD_PAT = { "Rotat", "Facing", "Camera", "Pitch", "Yaw", "Roll", "Scale", "Position", "Light", "Zoom", "View", "Target" }
+local function Methods()
+    local out = {}
+    for _, kind in ipairs({ "PlayerModel", "Model" }) do
+        local ok, m = pcall(CreateFrame, kind, nil, UIParent)
+        local mt = ok and m and getmetatable(m)
+        local idx = mt and mt.__index
+        local names = {}
+        if type(idx) == "table" then
+            for name, v in pairs(idx) do
+                if type(v) == "function" then
+                    for k = 1, #METHOD_PAT do
+                        if name:find(METHOD_PAT[k], 1, true) then
+                            names[#names + 1] = name
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        table.sort(names)
+        if m then m:Hide() end
+        out[#out + 1] = format(T("dev.methods.head"), kind, #names)
+        for i = 1, #names, 4 do
+            out[#out + 1] = table.concat(names, "  ", i, math.min(i + 3, #names))
+        end
+    end
+    Out(out)
+end
 local function Models()
     if #queue > 0 then
         Out({ T("dev.models.busy") })
@@ -357,7 +403,7 @@ local function BuildChecks(y, inner)
     local checks = {
         { "range", Range }, { "models", Models }, { "map", Map },
         { "cmd", Cmds }, { "auto", Auto }, { "lock", Lock },
-        { "calib", Calib },
+        { "calib", Calib }, { "methods", Methods },
     }
     local third = floor((inner - gap * 2) / 3)
     for i = 1, #checks do

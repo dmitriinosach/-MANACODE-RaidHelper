@@ -3,7 +3,7 @@ local Rooms = { live = {}, height = {} }
 ManaCodeRaidHelperRooms = Rooms
 ns.roomLive, ns.roomHeight = Rooms.live, Rooms.height
 local PREFIX = "ManaCode_RaidHelper_"
-local Packs = { LIST = { "ICC", "RS", "ULD" } }
+local Packs = { LIST = { "ICC", "RS", "ULD", "TOC" } }
 ns.RoomPacks = Packs
 local tried = {}
 function Packs.Name(code)

@@ -3,6 +3,7 @@ local floor = math.floor
 local sqrt = math.sqrt
 local max = math.max
 local min = math.min
+local tsort = table.sort
 local cos = math.cos
 local sin = math.sin
 local rad = math.rad
@@ -28,6 +29,10 @@ local BOSS_SPEED = 7
 local ADD_STEP = 0.5
 local ADD_LIMIT = 160
 local ADD_TAIL = 3
+local ADD_HP_RAMP = 3
+local BOSS_HP_BODIES = 8
+local BOSS_HP_LEAD = 6
+local BOSS_HP_HOLD = 9
 local POOL_LIMIT = 600
 local POOL_JOIN = 3
 local POOL_CENTER_HITS = 6
@@ -77,7 +82,7 @@ local function NewLayers()
         hiT = {}, hiX = {}, hiY = {}, nh = 0,
         cnT = {}, cnTo = {}, cnX = {}, cnY = {}, cnHx = {}, cnHy = {}, cnLen = {}, cnDeg = {}, nc = 0,
         bT = {}, bX = {}, bY = {}, bR = {}, bN = {}, bS = {}, nb = 0, vT = {}, vK = {}, nv = 0, cnS = {},
-        adds = {}, fdT = {}, fdIcon = {}, fdText = {}, fdImp = {}, fdKind = {}, fdTip = {}, nf = 0,
+        adds = {}, addHp = 0, fdT = {}, fdIcon = {}, fdText = {}, fdImp = {}, fdKind = {}, fdTip = {}, nf = 0,
         feedRaw = 0, feedMs = 0,
         tanks = {}, hitbox = 0, bossMoved = false, targets = 0, targetSrc = "", ms = 0,
         switchRaw = 0, switchSmooth = 0, taunts = 0,
@@ -137,6 +142,7 @@ local function AddOf(c, guid, name, ts)
     add = ns.Replay.NewTrack(name)
     add.icon = icon or c.D.addDefault
     add.npc = ns.Replay.NpcOf(guid)
+    add.guid = guid
     add.from = ts
     add.last = -1e9
     c.addN = c.addN + 1
@@ -432,9 +438,21 @@ local function OnSummon(c, ts, srcKey, dstGUID, dst)
     c.born[dstGUID] = ts
     if srcKey and c.bosses[srcKey] then AddOf(c, dstGUID, dst, ts) end
 end
+local function BossSeen(c, guid)
+    if not guid then return end
+    local n = c.bossN[guid]
+    if n then
+        c.bossN[guid] = n + 1
+        return
+    end
+    c.bossN[guid] = 1
+    c.bossG[#c.bossG + 1] = guid
+end
 local function Dispatch(c, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4)
     local srcKey, dstKey = ns.NpcKey(srcGUID), ns.NpcKey(dstGUID)
     local sk = ns.SpellOf(sub, a1)
+    if srcKey and c.bosses[srcKey] then BossSeen(c, srcGUID) end
+    if dstKey and c.bosses[dstKey] then BossSeen(c, dstGUID) end
     if srcKey and c.npcOf[srcKey] == nil and c.bosses[srcKey] then
         c.npcOf[srcKey] = ns.NpcEntry(srcGUID) or false
         if c.npcOf[srcKey] and not c.firstNpc then c.firstNpc = c.npcOf[srcKey] end
@@ -504,7 +522,7 @@ local function NewContext(scene)
         swT = {}, swK = {}, btT = {}, btK = {}, tgT = {}, tgK = {}, hold = TARGET_HOLD, tauT = {}, tauK = {},
         tankHits = {}, addBy = {}, addN = 0, pools = {}, born = {}, follow = {},
         hitAt = {}, coneTo = {}, coneDef = {}, aimX = {}, aimY = {}, aimN = {}, aimOpen = {}, aimSpells = aimSpells,
-        npcOf = {}, diedK = {}, diedT = {},
+        npcOf = {}, diedK = {}, diedT = {}, bossN = {}, bossG = {},
     }
 end
 local function TargetAt(c, t, lo)
@@ -821,6 +839,42 @@ local function FinishAdds(c)
         end
     end
 end
+local function FinishAddHp(c, segs, to)
+    local adds = c.L.adds
+    local n = 0
+    for i = 1, #adds do
+        local add = adds[i]
+        local ts, ps = ns.Streams.NpcHp(segs, add.guid, to)
+        if ts then
+            add.hpT, add.hpV, add.hpI = ts, ps, 1
+            n = n + 1
+        end
+    end
+    c.L.addHp = n
+end
+local function FinishBossHp(c, segs, to, first, realms)
+    local bodies = {}
+    local guids, count = c.bossG, c.bossN
+    for i = 1, #guids do
+        local guid = guids[i]
+        local ts, ps = ns.Streams.NpcHp(segs, guid, to)
+        if ts then
+            local npc = ns.Replay.NpcOf(guid)
+            bodies[#bodies + 1] = {
+                guid = guid, npc = npc, world = realms and npc and realms.rd.boss[npc] or nil,
+                hpT = ts, hpV = ps, hpI = 1,
+            }
+        end
+    end
+    tsort(bodies, function(a, b)
+        if (a.guid == first) ~= (b.guid == first) then return a.guid == first end
+        local na, nb = count[a.guid], count[b.guid]
+        if na ~= nb then return na > nb end
+        return a.guid < b.guid
+    end)
+    for i = #bodies, BOSS_HP_BODIES + 1, -1 do bodies[i] = nil end
+    c.L.bossBodies = #bodies > 0 and bodies or nil
+end
 local function Tanks(c)
     local total = 0
     for _, n in pairs(c.tankHits) do total = total + n end
@@ -842,6 +896,8 @@ function Layers.Build(scene)
     local rb = RB and RB.New(fight)
     local RM = ns.ReplayMech
     local rm = RM and RM.New(fight)
+    local RR = ns.ReplayRealm
+    local rr = RR and RR.New(fight)
     local np = ns.NpcPos and ns.NpcPos.New(scene, c)
     local ph = ns.Phases.New(fight)
     local segs = ns.Encounters.Segs(fight)
@@ -857,6 +913,7 @@ function Layers.Build(scene)
             MK.Event(mc, ts, sub, src, dst, a1)
             if rb then RB.Event(rb, ts, sub, src, dst, a1) end
             if rm then RM.Event(rm, ts, sub, srcGUID, src, dstGUID, dst, a1, a4) end
+            if rr then RR.Event(rr, ts, sub, srcGUID, src, dstGUID, dst, a1, a2) end
             if np then ns.NpcPos.Feed(np, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2) end
         end
     end
@@ -864,10 +921,12 @@ function Layers.Build(scene)
     ns.Replay.SnapDeaths(scene, c.diedK, c.diedT)
     FinishPools(c)
     FinishAdds(c)
+    FinishAddHp(c, segs, fight.to)
     Tanks(c)
     local feedRes = FixSpans(scene, c, res)
     local f0 = debugprofilestop()
     if rm then RM.Done(rm, c.L, function(name, t) return Pos(c, name, t) end, c.ppy, fc) end
+    if rr then RR.Done(rr, c.L, function(name, t) return Pos(c, name, t) end, c.ppy) end
     FC.Done(fc, c.L, feedRes)
     MK.Done(mc, c.L, feedRes)
     if rm and #rm.marks > 0 then c.L.marks = MK.Merge(c.L.marks, rm.marks) end
@@ -875,12 +934,49 @@ function Layers.Build(scene)
     c.L.feedMs = debugprofilestop() - f0
     PickTargets(c)
     if not (np and ns.NpcPos.Place(np, TargetAt)) then PlaceBoss(scene, c) end
+    FinishBossHp(c, segs, fight.to, np and np.stats.guid, rr)
     PlaceCones(scene, c)
     c.L.bsT = c.swT
     c.L.bossNpc = c.npcOf[fight.boss] or c.firstNpc
     c.L.ms = debugprofilestop() - p0
     scene.layers = c.L
     return c.L
+end
+function Layers.AddHp(add, t)
+    local T = add.hpT
+    if not T then return nil end
+    local V = add.hpV
+    local n = #T
+    local i = add.hpI or 1
+    if i > n then i = n end
+    while i > 1 and T[i] > t do i = i - 1 end
+    while i < n and T[i + 1] <= t do i = i + 1 end
+    add.hpI = i
+    local v = V[i]
+    if i == n or T[i] > t then return v end
+    local ramp = min(T[i + 1] - T[i], ADD_HP_RAMP)
+    local from = T[i + 1] - ramp
+    if t <= from then return v end
+    return v + (V[i + 1] - v) * (t - from) / ramp
+end
+function Layers.BossHp(scene, t)
+    local L = scene.layers
+    local bodies = L and L.bossBodies
+    if not bodies then return nil end
+    local world = nil
+    local R = L.realm
+    if R then world = (ns.ReplayRealm.In(R.boss[1], t) and 1) or (ns.ReplayRealm.In(R.boss[2], t) and 2) or 1 end
+    local last, lastT = nil, nil
+    for i = 1, #bodies do
+        local b = bodies[i]
+        local T = b.hpT
+        if (not world or not b.world or b.world == world) and T[1] - BOSS_HP_LEAD <= t then
+            local tail = T[#T]
+            if t <= tail + BOSS_HP_HOLD then return Layers.AddHp(b, t) end
+            if not lastT or tail > lastT then last, lastT = b, tail end
+        end
+    end
+    return last and Layers.AddHp(last, t) or nil
 end
 function Layers.PoolRadius(L, j, t)
     local from, last = L.plFrom[j], L.plLast[j]

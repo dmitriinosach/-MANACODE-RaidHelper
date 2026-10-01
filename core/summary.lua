@@ -91,6 +91,29 @@ local function FillN(set, list)
     if not list then return end
     for i = 1, #list do set[NpcKeyOf(list[i]) or list[i]] = true end
 end
+local badgeSets = setmetatable({}, { __mode = "k" })
+local function BadgeSets(bd)
+    local d = badgeSets[bd]
+    if d then return d end
+    d = { set = {} }
+    if bd.kind == "applied" then
+        Fill(d.set, bd.spells)
+        if bd.names then
+            d.targets = {}
+            FillN(d.targets, bd.names)
+        end
+    else
+        FillN(d.set, bd.names)
+    end
+    badgeSets[bd] = d
+    return d
+end
+local function AppliedHit(bd, sk, dstKey, other)
+    local d = BadgeSets(bd)
+    if not d.set[sk] then return false end
+    if d.targets then return dstKey ~= nil and d.targets[dstKey] == true end
+    return other
+end
 local function IsBoss(fight, guid)
     return ns.IsBossOf(fight, guid)
 end
@@ -128,26 +151,13 @@ local function NewSummary(fight, def)
     end
     for i = 1, #s.badges do
         local bd = s.badges[i]
-        if bd.kind == "dmgto" and not bd.set then
-            bd.set = {}
-            FillN(bd.set, bd.names)
-        end
         if bd.kind == "dmgto" and bd.soak then FillN(s.soaked, bd.names) end
         if bd.kind == "bounce" then
-            bd.set = bd.set or {}
-            FillN(bd.set, bd.names)
+            FillN(BadgeSets(bd).set, bd.names)
             s.bounce = s.bounce or {}
             FillN(s.bounce, bd.names)
         end
         if bd.kind == "captor" then s.captor = i end
-        if bd.kind == "applied" and not bd.set then
-            bd.set = {}
-            Fill(bd.set, bd.spells)
-            if bd.names then
-                bd.targets = {}
-                FillN(bd.targets, bd.names)
-            end
-        end
         if bd.kind == "given" then
             for k = 1, #bd.spells do s.given[SpellKey(bd.spells[k])] = i end
         end
@@ -286,10 +296,11 @@ end
 local function AbTrim(ab)
     for _, m in pairs(ab or {}) do
         local list = {}
-        for key, r in pairs(m) do list[#list + 1] = { key = key, a = r.a } end
+        for key, r in pairs(m) do list[#list + 1] = { key = key, a = r.a, id = r.id or 0 } end
         if #list > ABIL_KEEP then
             tsort(list, function(x, y)
                 if x.a ~= y.a then return x.a > y.a end
+                if x.id ~= y.id then return x.id < y.id end
                 return x.key < y.key
             end)
             local rest = { a = 0, n = 0, k = 0 }
@@ -302,12 +313,12 @@ local function AbTrim(ab)
         end
     end
 end
-local function DamageTo(s, p, who, target, tkey, amount, src, swing, spell, crit, id, srcKey)
+local function DamageTo(s, p, who, target, tkey, amount, src, swing, spell, crit, id, srcKey, guid)
     if not tkey then return end
     local badges = s.badges
     for i = 1, s.own do
         local bd = badges[i]
-        if bd.kind == "dmgto" and bd.set[tkey] then
+        if bd.kind == "dmgto" and BadgeSets(bd).set[tkey] then
             local st = p.badges[i]
             st.n = 1
             st.amount = st.amount + amount
@@ -317,7 +328,9 @@ local function DamageTo(s, p, who, target, tkey, amount, src, swing, spell, crit
     end
     for i = 1, #s.blocks do
         local b = s.blocks[i]
-        if b.names[tkey] and (b.def.kind == "damageTo" or b.def.kind == "oozes") then
+        if b.def.kind == "targets" then
+            ns.Targets.Hit(b, who, target, guid, tkey, amount)
+        elseif b.names[tkey] and (b.def.kind == "damageTo" or b.def.kind == "oozes") then
             Add(b, who, target, amount)
             if b.def.kind == "oozes" then Color(b, who, tkey, amount) end
             Ab(b, who, AbKey(s, swing, src, who, spell, srcKey), amount, crit, id)
@@ -329,7 +342,7 @@ local function Bounce(s, p, tkey, key, at)
     local badges = s.badges
     for i = 1, s.own do
         local bd = badges[i]
-        if bd.kind == "bounce" and bd.set[tkey] then
+        if bd.kind == "bounce" and BadgeSets(bd).set[tkey] then
             local st = p.badges[i]
             st.n = st.n + 1
             if st.n == 1 then st.times[1] = at end
@@ -1421,7 +1434,7 @@ local function Build(fight)
                         ns.Totals.Act(tt, ts, sub)
                         ns.Totals.Damage(p, srcName ~= who, srcName, swing, a1, a2, amount, swing and a7 or a10)
                         DamageTo(s, p, who, dstName, dstKey, amount, srcName, swing, a2, swing and a7 or a10,
-                            swing and MELEE_ID or a1, srcKey)
+                            swing and MELEE_ID or a1, srcKey, dstGUID)
                         if IsBoss(fight, dstGUID) then p.bossDmg = p.bossDmg + amount end
                         if dstKey and watch.targets[dstKey] then
                             p.targetDmg[dstKey] = (p.targetDmg[dstKey] or 0) + amount
@@ -1661,8 +1674,8 @@ local function Build(fight)
                         st.n = st.n + 1
                         st.times[#st.times + 1] = ts - fight.from
                         s.icons[i] = s.icons[i] or chasers[srcGUID].id
-                    elseif bd.kind == "applied" and p and sub == "SPELL_AURA_APPLIED" and sk and bd.set[sk]
-                        and ((bd.targets and dstKey and bd.targets[dstKey]) or (not bd.targets and dst and dstName ~= who)) then
+                    elseif bd.kind == "applied" and p and sub == "SPELL_AURA_APPLIED" and sk
+                        and AppliedHit(bd, sk, dstKey, dst ~= nil and dstName ~= who) then
                         local st = p.badges[i]
                         st.n = st.n + 1
                         st.times[#st.times + 1] = ts - fight.from

@@ -12,7 +12,7 @@ ns.taunts = {
     [6795] = true,
     [31789] = true,
 }
-ns.pollAuras = { 71940, 70873, 63050, 63322 }
+ns.pollAuras = { 71940, 70873, 63050, 63322, 74807 }
 ns.tankSpells = {
     [53595] = true,
     [61411] = true,

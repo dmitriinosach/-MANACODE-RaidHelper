@@ -1,8 +1,12 @@
 local _, ns = ...
 local tsort = table.sort
+local min = math.min
+local byte = string.byte
+local sub = string.sub
 local POS_HOLD = 5
 local DEATH_WINDOW = 1.5
 local MAP_UNITS = 10000
+local NPC_MARK = 35
 local Streams = {}
 ns.Streams = Streams
 function Streams.New(segs)
@@ -17,6 +21,13 @@ function Streams.Any(segs)
         if ns.Store.IsNew(segs[i]) then return true end
     end
     return false
+end
+function Streams.GuidKey(guid)
+    if sub(guid, 1, 2) == "0x" then guid = sub(guid, 3) end
+    return "#" .. guid
+end
+function Streams.IsNpc(name)
+    return byte(name, 1) == NPC_MARK
 end
 function Streams.HpList(segs, who, from, to)
     local out = {}
@@ -41,6 +52,24 @@ function Streams.HpList(segs, who, from, to)
     end
     if held then out[#out + 1] = held end
     return out
+end
+function Streams.NpcHp(segs, guid, to)
+    local key = Streams.GuidKey(guid)
+    local ts, ps
+    for i = 1, #segs do
+        local seg = segs[i]
+        if ns.Store.IsNew(seg) then
+            for t, hp, hpMax in ns.Decode.Hp(seg, key, nil, to) do
+                if t > to then break end
+                if hpMax > 0 then
+                    if not ts then ts, ps = {}, {} end
+                    local n = #ts + 1
+                    ts[n], ps[n] = t, min(1, hp / hpMax)
+                end
+            end
+        end
+    end
+    return ts, ps
 end
 function Streams.Real(segs, who, t)
     local from, to = t - DEATH_WINDOW, t + DEATH_WINDOW
@@ -73,17 +102,19 @@ local function Tracks(segs, kind, from, to, times)
         local names = ns.Decode.Names(seg, kind)
         for k = 1, #names do
             local name = names[k]
-            local tr = out[name]
-            if not tr then
-                tr = { t = {}, a = {}, b = {}, i = 1 }
-                out[name] = tr
-            end
-            local iter = kind == "hp" and ns.Decode.Hp or ns.Decode.Pos
-            for ts, a, b in iter(seg, name, from, to) do
-                if ts <= to then
-                    local n = #tr.t + 1
-                    tr.t[n], tr.a[n], tr.b[n] = ts, a, b
-                    if ts >= from then times[ts] = true end
+            if not (kind == "hp" and Streams.IsNpc(name)) then
+                local tr = out[name]
+                if not tr then
+                    tr = { t = {}, a = {}, b = {}, i = 1 }
+                    out[name] = tr
+                end
+                local iter = kind == "hp" and ns.Decode.Hp or ns.Decode.Pos
+                for ts, a, b in iter(seg, name, from, to) do
+                    if ts <= to then
+                        local n = #tr.t + 1
+                        tr.t[n], tr.a[n], tr.b[n] = ts, a, b
+                        if ts >= from then times[ts] = true end
+                    end
                 end
             end
         end
@@ -229,7 +260,7 @@ function Streams.Names(segs, kind)
         if ns.Store.IsNew(segs[i]) then
             local names = ns.Decode.Names(segs[i], kind)
             for k = 1, #names do
-                if not seen[names[k]] then
+                if not seen[names[k]] and not (kind == "hp" and Streams.IsNpc(names[k])) then
                     seen[names[k]] = true
                     out[#out + 1] = names[k]
                 end

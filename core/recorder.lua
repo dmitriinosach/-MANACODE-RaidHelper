@@ -15,6 +15,9 @@ local CLOCK_BACK = 1
 local TICK_PERIOD = 0.5
 local BOSS_PERIOD = 1
 local RING_PERIOD = 1
+local NPC_PERIOD = 3
+local NPC_MAX = 40
+local NPC_STREAMS = 400
 local PULL_MUTE = 30
 local MAX_RAID = 40
 local MAX_PARTY = 4
@@ -66,6 +69,9 @@ local frameHp, framePos = true, true
 local bossTarget, bossTick = {}, {}
 local polledHp, polledMax, polledX, polledY = {}, {}, {}, {}
 local bossRound = 0
+local npcElapsed = 0
+local npcRound, npcKnown, npcKnownN = {}, {}, 0
+local NPC_UNITS = { "mouseover", "target", "targettarget", "focus" }
 local inVehicle = {}
 local vehicleFight = false
 local auraStacks = {}
@@ -292,6 +298,9 @@ local function ResetSegmentState()
     wipe(auraStacks)
     wipe(bossTarget)
     wipe(bossTick)
+    wipe(npcRound)
+    wipe(npcKnown)
+    npcKnownN = 0
     wipe(polledHp)
     wipe(polledMax)
     wipe(polledX)
@@ -626,6 +635,10 @@ local function PutSlot(live, k, now, withPos, forceHp, forcePos)
     end
     if withPos then
         local px, py = GetPlayerMapPosition(unit)
+        if (px or 0) == 0 and (py or 0) == 0 and ns.RealmShare then
+            local sx, sy = ns.RealmShare.Pos(name)
+            if sx then px, py = sx, sy end
+        end
         local x, y = floor((px or 0) * 10000 + 0.5), floor((py or 0) * 10000 + 0.5)
         if forcePos or polledX[name] ~= x or polledY[name] ~= y then
             polledX[name], polledY[name] = x, y
@@ -684,6 +697,8 @@ local function BossName(unit)
     if UnitLevel(unit) ~= -1 and UnitClassification(unit) ~= "worldboss" then
         return nil
     end
+    local key = ns.NpcKey(UnitGUID(unit))
+    if key and ns.trashBosses[key] then return nil end
     return UnitName(unit)
 end
 local function NoteBossTarget(unit, name)
@@ -728,6 +743,41 @@ end
 local function NoteBosses()
     bossRound = bossRound + 1
     EachTarget(NoteBoss)
+end
+local function PutNpc(live, unit, now, bossOnly)
+    if not UnitExists(unit) or UnitIsPlayer(unit) or UnitPlayerControlled(unit) then return false end
+    local guid = UnitGUID(unit)
+    if not guid or npcRound[guid] then return false end
+    local hpMax = UnitHealthMax(unit) or 0
+    if hpMax <= 0 then return false end
+    local key = ns.Streams.GuidKey(guid)
+    local new = not npcKnown[key]
+    if (bossOnly or (new and npcKnownN >= NPC_STREAMS)) and not BossName(unit) then return false end
+    if new then
+        npcKnown[key] = true
+        npcKnownN = npcKnownN + 1
+    end
+    npcRound[guid] = true
+    local hp = UnitIsDeadOrGhost(unit) and 0 or (UnitHealth(unit) or 0)
+    ns.RecCodec.Hp(live, now, key, hp, hpMax, false)
+    return true
+end
+local function SampleNpcs()
+    local live = ns.Store.Live()
+    if not (live and live.pull and ns.Store.IsNew(live)) then return end
+    wipe(npcRound)
+    local now, n = Now(), 0
+    for i = 1, #NPC_UNITS do
+        if PutNpc(live, NPC_UNITS[i], now) then n = n + 1 end
+    end
+    local nRaid = GetNumRaidMembers()
+    local count, units, of = nRaid, RAID_TARGET, TARGET_OF
+    if nRaid == 0 then count, units = GetNumPartyMembers(), PARTY_TARGET end
+    for i = 1, count do
+        local unit = units[i]
+        if PutNpc(live, unit, now, n >= NPC_MAX) then n = n + 1 end
+        if PutNpc(live, of[unit], now, n >= NPC_MAX) then n = n + 1 end
+    end
 end
 local function PauseStep()
     if not fighting then
@@ -841,6 +891,7 @@ frame:SetScript("OnUpdate", function(_, elapsed)
     posElapsed = posElapsed + elapsed
     bossElapsed = bossElapsed + elapsed
     ringElapsed = ringElapsed + elapsed
+    npcElapsed = npcElapsed + elapsed
     if snapElapsed >= SNAP_PERIOD then
         snapElapsed = snapElapsed - SNAP_PERIOD
         if snapElapsed >= SNAP_PERIOD then snapElapsed = 0 end
@@ -855,6 +906,10 @@ frame:SetScript("OnUpdate", function(_, elapsed)
         elseif ns.Store.Live() then
             NoteBosses()
         end
+    end
+    if npcElapsed >= NPC_PERIOD then
+        npcElapsed = 0
+        if not paused then SampleNpcs() end
     end
     if tickElapsed >= TICK_PERIOD then
         tickElapsed = 0

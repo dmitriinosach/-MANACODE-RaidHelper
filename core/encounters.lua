@@ -13,7 +13,7 @@ local IDLE_GAP = 15
 local RESUME_GAP = 180
 local MIN_FIGHT = 20
 local FX_VERSION = 5
-local SCAN_VERSION = 12
+local SCAN_VERSION = 13
 local CLS_VERSION = 1
 local CAST_WINDOW = 3
 local DEATH_WINDOW = 1.5
@@ -49,7 +49,7 @@ local stale = false
 local pressed = {}
 local function EncounterIn(guid, name, auto, alias)
     local key = NpcKey(guid)
-    if key == nil then return nil end
+    if key == nil or ns.trashBosses[key] then return nil end
     local enc = ns.bosses[key] or (alias ~= nil and alias[key]) or nil
     if enc then return enc end
     if auto and name and auto[name] then
@@ -212,6 +212,7 @@ local function ScanAll()
         end
     end
     local function Push(f)
+        if ns.trashBosses[f.boss] then return end
         Settle(f)
         ns.NoteNpcKey(f.boss, f.title)
         if listed[f] then return end
@@ -324,7 +325,7 @@ local function ScanAll()
                 local byPlayer = touched and srcFlags ~= nil
                     and bit.band(srcFlags, F_BY_PLAYER) > 0
                 local dstKey = byPlayer and auto ~= nil and dstName ~= nil and auto[dstName] and NpcKey(dstGUID)
-                if dstKey and not ns.bosses[dstKey] and not alias[dstKey] and not open[dstKey] then
+                if dstKey and not ns.bosses[dstKey] and not ns.trashBosses[dstKey] and not alias[dstKey] and not open[dstKey] then
                     local host = Busy(open, ts)
                     if host then
                         alias[dstKey] = host.boss

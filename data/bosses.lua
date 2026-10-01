@@ -79,6 +79,11 @@ ns.bosses = {
     [33136] = E.yogg,
     [32871] = E.algalon,
 }
+ns.trashBosses = {
+    [39751] = true,
+    [39747] = true,
+    [39746] = true,
+}
 ns.bossParts = {
     [33329] = true,
     [32933] = true,

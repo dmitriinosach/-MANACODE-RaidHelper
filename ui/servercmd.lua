@@ -89,6 +89,8 @@ end
 function Cmd.Send(key)
     if not Cmd.State(key) then return false end
     last[key] = GetTime()
+    local d = byKey[key]
+    if d and d.dismount and IsMounted and IsMounted() and not (IsFlying and IsFlying()) and Dismount then Dismount() end
     SendChatMessage(Cmd.Command(key), "SAY")
     return true
 end

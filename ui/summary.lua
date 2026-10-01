@@ -35,7 +35,7 @@ ns.SummaryView = View
 local Badges = ns.Badges
 local Grid = ns.Grid
 local style = Badges.style
-local host, scroll, content, bg, hint
+local host, scroll, content, bg, hint, art
 local fight, summary
 local offset = 0
 local stats, panels, heads, tiles = {}, {}, {}, {}
@@ -557,7 +557,7 @@ local function DrawBlocks(s, y, w)
         local b = s.blocks[i]
         if not Hidden(b.def) then
             local v = (ns.Putri and ns.Putri.View(b, ClassOf)) or (ns.Valkyr and ns.Valkyr.View(b, s, ClassOf))
-                or (ns.Uld and ns.Uld.View(b, s, ClassOf))
+                or (ns.Uld and ns.Uld.View(b, s, ClassOf)) or (ns.Targets and ns.Targets.View(b, ClassOf))
             if v then
                 nw = nw + 1
                 list[#list + 1] = WidePanel(v, nw)
@@ -612,6 +612,8 @@ end
 function Render()
     if not host or not host:IsShown() then return end
     lastW = floor(host:GetWidth())
+    local file = fight and ns.RaidArtFile and ns.RaidArtFile(fight.boss, fight.raid and fight.raid.map) or nil
+    ns.Kit.RaidArtSet(art, host, file)
     if failPanel then failPanel:Hide() end
     for i = 1, #stats do stats[i]:Hide() end
     for i = 1, #panels do panels[i]:Hide() end
@@ -653,6 +655,7 @@ function View.Attach(frame)
     bg = host:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     ns.Kit.Paint(bg, "surface.page")
+    art = ns.Kit.RaidArt(host)
     scroll = CreateFrame("ScrollFrame", nil, host)
     scroll:SetAllPoints()
     content = CreateFrame("Frame", nil, scroll)
@@ -714,6 +717,7 @@ end
 if ns.GPList then ns.GPList.OnChange(function() Render() end) end
 function View.Relayout()
     if not host or not host:IsShown() then return end
+    ns.Kit.RaidArtFit(art, host)
     if floor(host:GetWidth()) == lastW then return end
     relayoutAt = GetTime() + RELAYOUT_DELAY
     pump:Show()

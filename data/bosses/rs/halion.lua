@@ -40,7 +40,10 @@ ns.summaries[HALION] = {
         { kind = "taken", label = "sum.k.rs.puddles", spells = { 75884, 75876 } },
         { kind = "taken", label = "sum.k.rs.meteor", spells = { 75879 } },
         { kind = "taken", label = "sum.k.rs.cutter", spells = { 77846, 78862 } },
-        { kind = "damageTo", label = "sum.k.rs.adds", names = { 40681, 40683 } },
+        { kind = "targets", label = "sum.k.rs.targets", rest = "sum.rs.t.rest",
+          groups = { { label = "sum.rs.t.halion", npcs = { 39863, 40142 } },
+                     { label = "sum.rs.t.inferno", npcs = { 40681 } } },
+          tags = { [39863] = "sum.rs.t.phys", [40142] = "sum.rs.t.twi" } },
     },
     stacks = { { spell = 74567 }, { spell = 74795 } },
 }

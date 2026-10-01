@@ -73,7 +73,7 @@ Replay.ROOMS = {
     valithria = { boss = ns.ENC.valithria, floor = 5, tex = "valithria", cx = 769, cy = 475, r = 85, pack = "ICC" },
     sindragosa = { boss = ns.ENC.sindragosa, floor = 4, tex = "sindragosa", cx = 365, cy = 115, r = 78, pack = "ICC" },
     frostmourne = { boss = ns.ENC.lichking, floor = 8, tex = "frostmourne", cx = 470, cy = 365, r = 130 },
-    halion = { boss = ns.ENC.halion, floor = 0, tex = "halion", cx = 495, cy = 366, r = 80 },
+    halion = { boss = ns.ENC.halion, floor = 0, tex = "halion", cx = 495, cy = 366, r = 80, pack = "RS" },
     leviathan = { boss = ns.ENC.leviathan, floor = 1, tex = "leviathan", cx = 493, cy = 276, r = 36 },
     razorscale = { boss = ns.ENC.razorscale, floor = 1, tex = "razorscale", cx = 537, cy = 175, r = 14 },
     ignis = { boss = ns.ENC.ignis, floor = 1, tex = "ignis", cx = 387, cy = 173, r = 14 },
@@ -88,10 +88,11 @@ Replay.ROOMS = {
     vezax = { boss = ns.ENC.vezax, floor = 4, tex = "vezax", cx = 541, cy = 411, r = 68 },
     yogg = { boss = ns.ENC.yogg, floor = 4, tex = "yogg", cx = 694, cy = 294, r = 70 },
     mimiron = { boss = ns.ENC.mimiron, floor = 5, tex = "mimiron", cx = 439, cy = 271, r = 38 },
-    tocBeasts = { boss = ns.ENC.beasts, floor = 1, tex = "toc_arena", cx = 505, cy = 356, r = 165 },
-    tocChampions = { boss = ns.ENC.champions, floor = 1, tex = "toc_arena", cx = 505, cy = 356, r = 165 },
-    tocTwins = { boss = ns.ENC.twins, floor = 1, tex = "toc_arena", cx = 505, cy = 356, r = 165 },
-    tocAnubarak = { boss = ns.ENC.anubarak, floor = 2, tex = "toc_anubarak", cx = 514, cy = 219, r = 85 },
+    tocBeasts = { boss = ns.ENC.beasts, floor = 1, tex = "toc_arena", cx = 505, cy = 356, r = 165, pack = "TOC" },
+    tocJaraxxus = { boss = ns.ENC.jaraxxus, floor = 1, tex = "toc_arena", cx = 505, cy = 356, r = 165, pack = "TOC" },
+    tocChampions = { boss = ns.ENC.champions, floor = 1, tex = "toc_arena", cx = 505, cy = 356, r = 165, pack = "TOC" },
+    tocTwins = { boss = ns.ENC.twins, floor = 1, tex = "toc_arena", cx = 505, cy = 356, r = 165, pack = "TOC" },
+    tocAnubarak = { boss = ns.ENC.anubarak, floor = 2, tex = "toc_anubarak", cx = 514, cy = 219, r = 85, pack = "TOC" },
 }
 function Replay.NpcOf(guid)
     if type(guid) ~= "string" or #guid < 12 or strsub(guid, 1, 2) ~= "0x" then return nil end
@@ -610,6 +611,8 @@ local function SampleOne(st, tr, t, ppy, boss)
 end
 local function SampleBoss(scene, t)
     local st, tr = scene.bossState, scene.boss
+    local hp = scene.layers and ns.ReplayLayers.BossHp(scene, t)
+    st.hp, st.hpOk = hp or 1, hp ~= nil
     if not tr then
         st.vis = false
         return

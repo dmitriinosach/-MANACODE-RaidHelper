@@ -219,6 +219,49 @@ function Kit.SetTheme(key)
     Kit.Repaint()
     return true
 end
+local ART_DIR = "Interface\\Glues\\LoadingScreens\\"
+local ART_FROM = 0.31
+local ART_TO = 0.86
+function Kit.RaidArt(host)
+    local art = { pic = host:CreateTexture(nil, "BORDER"), veil = host:CreateTexture(nil, "ARTWORK") }
+    art.pic:SetAllPoints()
+    Kit.Tint(art.pic, "float.photo")
+    art.pic:Hide()
+    art.veil:SetAllPoints()
+    Kit.Paint(art.veil, "float.veil")
+    art.veil:Hide()
+    return art
+end
+function Kit.RaidArtFit(art, host)
+    if not art.file then return end
+    local l, r, t, b = 0, 1, ART_FROM, ART_TO
+    local w, h = host:GetWidth(), host:GetHeight()
+    if w > 0 and h > 0 then
+        local want = w / h
+        local mid = (t + b) / 2
+        if want > 1 / (b - t) then
+            t, b = mid - 0.5 / want, mid + 0.5 / want
+        else
+            l, r = 0.5 - want * (b - t) / 2, 0.5 + want * (b - t) / 2
+        end
+    end
+    art.pic:SetTexCoord(l, r, t, b)
+end
+function Kit.RaidArtSet(art, host, file)
+    if not file then
+        art.file = nil
+        art.pic:Hide()
+        art.veil:Hide()
+        return
+    end
+    if art.file ~= file then
+        art.file = file
+        art.pic:SetTexture(ART_DIR .. file)
+    end
+    Kit.RaidArtFit(art, host)
+    art.pic:Show()
+    art.veil:Show()
+end
 function Kit.Load()
     local s = Saved()
     local key = s and s.theme

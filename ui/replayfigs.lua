@@ -94,7 +94,7 @@ function Figs.Load()
     if was ~= st.kind and Figs.Refresh then Figs.Refresh() end
 end
 local function NoHp(fig)
-    return fig.isBoss or fig.isAdd or false
+    return (fig.isBoss and not fig.bossHp) or (fig.isAdd and not fig.addHp) or false
 end
 local function Arc(fig)
     return st.hp and st.arcOk and not NoHp(fig) and st.kind ~= "chip"
@@ -112,7 +112,7 @@ local function Plate(fig)
 end
 function Figs.Rim(fig, over)
     if over ~= nil then fig.rimOver = over or nil end
-    local tok = fig.rimOver or (fig.mcOn and "sem.rep.mc") or fig.rimTok
+    local tok = fig.rimOver or (fig.mcOn and "sem.rep.mc") or (fig.dusk and "sem.rep.duskRim") or fig.rimTok
     if tok == DD_TOKEN and Arc(fig) then tok = DD_ARC end
     fig.rimNow = tok
     Kit.Hue(fig.ring, tok)
@@ -201,7 +201,7 @@ function Figs.Config(fig, class, role)
     ns.ReplayShield.Reset(fig)
     Figs.Rim(fig)
 end
-function Figs.ConfigAdd(fig, icon)
+function Figs.ConfigAdd(fig, icon, hasHp)
     if not fig.isAdd then
         fig.isAdd, fig.isBoss, fig.name = true, false, ""
         fig.cr, fig.cg, fig.cb = Kit.Color(ADD_TOKEN)
@@ -209,6 +209,10 @@ function Figs.ConfigAdd(fig, icon)
     end
     if fig.addIcon ~= icon then
         fig.addIcon, fig.skin, fig.sQ = icon, nil, nil
+    end
+    hasHp = hasHp == true
+    if fig.addHp ~= hasHp then
+        fig.addHp, fig.sQ, fig.hpNow, fig.pctN = hasHp, nil, nil, nil
     end
 end
 function Figs.Grow(fig, elapsed)
@@ -352,7 +356,14 @@ local function Dead(fig, inner, flat)
 end
 local function Alive(fig)
     fig.icon:SetDesaturated(false)
-    Kit.Hue(fig.icon, "sem.rep.icon")
+    Kit.Hue(fig.icon, fig.dusk and "sem.rep.dusk" or "sem.rep.icon")
+end
+function Figs.Dusk(fig, on)
+    on = on and true or false
+    if (fig.dusk or false) == on then return end
+    fig.dusk = on
+    fig.sQ = nil
+    if fig.rimTok then Figs.Rim(fig) end
 end
 local function DrawVol(fig, dead, scale, flat, lift, hp)
     local sw = VOL_SHADOW * scale
@@ -411,7 +422,7 @@ local function Draw(fig, dead, scale, flat, lift, hp)
     local tall = 0
     if chip and not dead then
         tall = CHIP_H * scale * sqrt(max(0, 1 - flat * flat))
-        if st.hp and not fig.isBoss then tall = tall * max(CHIP_MIN, hp) end
+        if st.hp then tall = tall * max(CHIP_MIN, hp) end
     end
     fig.tall = tall
     if chip then
@@ -437,6 +448,9 @@ local function Draw(fig, dead, scale, flat, lift, hp)
     PlacePct(fig, chip and cy or fig.top, chip)
 end
 function Figs.Sprite(fig, s, scale, flat, elapsed)
+    if fig.isBoss and fig.bossHp ~= (s.hpOk == true) then
+        fig.bossHp, fig.sQ, fig.hpNow, fig.pctN = s.hpOk == true, nil, nil, nil
+    end
     local want = s.dead and 0 or (s.hp or 1)
     local hp = fig.hpNow
     if not hp or not st.hp then

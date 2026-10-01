@@ -42,7 +42,7 @@ local function PowerNpcs()
 end
 local function IsBoss(guid, name, auto)
     local key = ns.NpcKey(guid)
-    if key == nil then return false end
+    if key == nil or ns.trashBosses[key] then return false end
     return ns.bosses[key] ~= nil or (auto ~= nil and name ~= nil and auto[name] == true)
 end
 function Filter.All()

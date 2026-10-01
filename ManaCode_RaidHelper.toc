@@ -3,7 +3,7 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 0.2.0-beta.7
+## Version: 0.2.0-beta.8
 ## X-Date: 2026-10-01
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
@@ -112,6 +112,7 @@ core\rfury.lua
 core\shades.lua
 core\putri.lua
 core\valkyr.lua
+core\targets.lua
 core\ulduar.lua
 core\absorbs.lua
 core\totals.lua
@@ -136,9 +137,11 @@ core\replayfeed.lua
 core\replaymarks.lua
 core\replaybars.lua
 core\replaymech.lua
+core\replayrealm.lua
 core\replaylayers.lua
 core\npcpos.lua
 core\ranging.lua
+core\realmshare.lua
 core\threat.lua
 core\deathpreview.lua
 core\share.lua
@@ -198,6 +201,7 @@ ui\about.lua
 ui\replayshield.lua
 ui\replayfigs.lua
 ui\replaylayers.lua
+ui\replayrealm.lua
 ui\replayfeed.lua
 ui\replaymodels.lua
 ui\replayfollow.lua

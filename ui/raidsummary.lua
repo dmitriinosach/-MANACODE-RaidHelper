@@ -18,7 +18,7 @@ local Badges = ns.Badges
 local Grid = ns.Grid
 local View = {}
 ns.RaidSummaryView = View
-local host, scroll, content, busy
+local host, scroll, content, busy, art
 local shownKey, asking
 local offset = 0
 local stats, panels = {}, {}
@@ -28,6 +28,9 @@ local lastW = 0
 local relayoutAt = 0
 local pump = CreateFrame("Frame")
 pump:Hide()
+local function Backdrop(raid)
+    Kit.RaidArtSet(art, host, raid and raid.map and ns.raidArt and ns.raidArt[raid.map] or nil)
+end
 local function PageWheel(delta)
     if not content then return end
     local most = max(0, content:GetHeight() - host:GetHeight())
@@ -179,6 +182,7 @@ Render = function()
     content:SetWidth(host:GetWidth())
     local raid = ns.RaidSummary.Find(shownKey)
     local res = raid and ns.RaidSummary.Get(raid)
+    Backdrop(raid)
     laid = {}
     if not res then
         if ns.SumSide then ns.SumSide.Show("raid", {}) end
@@ -207,6 +211,7 @@ function View.Attach(frame)
     local bg = host:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     Kit.Paint(bg, "float.bg")
+    art = Kit.RaidArt(host)
     scroll = CreateFrame("ScrollFrame", nil, host)
     scroll:SetAllPoints()
     content = CreateFrame("Frame", nil, scroll)
@@ -280,6 +285,7 @@ pump:SetScript("OnUpdate", function(self)
 end)
 function View.Relayout()
     if not View.IsShown() then return end
+    Kit.RaidArtFit(art, host)
     if floor(host:GetWidth()) == lastW then return end
     relayoutAt = GetTime() + RELAYOUT_DELAY
     pump:Show()

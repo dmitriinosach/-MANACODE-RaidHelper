@@ -11,7 +11,7 @@ local CHECK = 20
 local View = {}
 ns.ReplayViewMenu = View
 local Kit = ns.Kit
-local st = { rows = {}, rects = {} }
+local st = { rows = {}, rects = {}, moves = {}, worldRects = {} }
 local function Opts(prefix, tipPrefix, keys)
     local out = {}
     for i = 1, #keys do
@@ -49,6 +49,32 @@ local function RoomRow(room)
         Mark(row, "flat")
     end
 end
+local function WorldRow()
+    local Realm = ns.ReplayRealmView
+    local iso = ns.ReplayIso
+    local has = Realm ~= nil and iso ~= nil and Realm.Has(iso.Scene())
+    local row = st.rows.world
+    if has then row.label:Show() else row.label:Hide() end
+    for i = 1, #row.btns do
+        if has then row.btns[i]:Show() else row.btns[i]:Hide() end
+    end
+    if has then Mark(row, Realm.Mode()) end
+    local shift = has and 0 or ROW
+    for i = 1, #st.moves do
+        local m = st.moves[i]
+        m.obj:ClearAllPoints()
+        m.obj:SetPoint("TOPLEFT", st.menu, "TOPLEFT", PAD, -(m.y - shift))
+        st.rects[m.ri].y = m.y - shift
+    end
+    for i = #st.rects, 1, -1 do
+        if st.rects[i].world then tremove(st.rects, i) end
+    end
+    if has then
+        for i = 1, #st.worldRects do st.rects[#st.rects + 1] = st.worldRects[i] end
+    end
+    st.hNow = st.h - shift
+    st.menu:SetHeight(st.hNow)
+end
 function View.Refresh()
     local api = st.api
     if not (api and st.menu) then return end
@@ -56,6 +82,7 @@ function View.Refresh()
     Mark(st.rows.players, api.Models())
     Mark(st.rows.enemies, ns.ReplayModels.Mode())
     RoomRow(api.Room())
+    WorldRow()
     st.heal:SetChecked(api.Heal())
     st.follow:SetChecked(ns.ReplayFollow.On())
     if st.sound then st.sound:SetChecked(ns.ReplayBarsView.Sound()) end
@@ -70,6 +97,8 @@ local function Pick(key, opt)
         ns.ReplayModels.SetMode(opt.key)
     elseif key == "room" then
         if ns.ReplayGeo.Has(api.Room()) then api.SetGeo(opt.key == "vol") end
+    elseif key == "world" then
+        ns.ReplayRealmView.SetMode(opt.key)
     end
     View.Refresh()
 end
@@ -147,20 +176,33 @@ function View.Build(ui, run, api)
     Row(menu, "enemies", "iso.view.enemies", Opts("iso.m3d.", "iso.tip.m3d.", { "off", "boss", "all" }), y)
     y = y + ROW
     Row(menu, "room", "iso.view.room", Opts("iso.geo.", "iso.tip.geo.", { "vol", "flat" }), y)
-    y = y + ROW + GAP
-    st.heal = Check(menu, "iso.focusheal", y, function(on) api.SetHeal(on) end)
     y = y + ROW
-    st.follow = Check(menu, "iso.follow", y, function(on) ns.ReplayFollow.SetOn(on) end)
+    local r0 = #st.rects
+    Row(menu, "world", "iso.view.world", Opts("iso.world.", "iso.tip.world.", { "mine", "both", "phys", "twi" }), y)
+    st.worldRects, st.moves = {}, {}
+    for i = #st.rects, r0 + 1, -1 do
+        st.rects[i].world = true
+        tinsert(st.worldRects, 1, st.rects[i])
+        st.rects[i] = nil
+    end
+    local function Move(obj, at)
+        st.moves[#st.moves + 1] = { obj = obj, y = at, ri = #st.rects }
+        return obj
+    end
+    y = y + ROW + GAP
+    st.heal = Move(Check(menu, "iso.focusheal", y, function(on) api.SetHeal(on) end), y)
+    y = y + ROW
+    st.follow = Move(Check(menu, "iso.follow", y, function(on) ns.ReplayFollow.SetOn(on) end), y)
     y = y + ROW
     if ns.ReplayBarsView then
-        st.sound = Check(menu, "iso.barsound", y, function(on) ns.ReplayBarsView.SetSound(on) end)
+        st.sound = Move(Check(menu, "iso.barsound", y, function(on) ns.ReplayBarsView.SetSound(on) end), y)
         y = y + ROW
     end
     if ns.ThreatView then
-        st.threat = Wide(menu, "iso.threat", y + GAP, ns.ReplayFollow.Threat)
+        st.threat = Move(Wide(menu, "iso.threat", y + GAP, ns.ReplayFollow.Threat), y + GAP)
         y = y + GAP + ROW
     end
-    st.tour = Wide(menu, "iso.tour", y + GAP, ns.ReplayTour.Start)
+    st.tour = Move(Wide(menu, "iso.tour", y + GAP, ns.ReplayTour.Start), y + GAP)
     y = y + GAP + ROW
     st.h = y + PAD - GAP
     menu:SetHeight(st.h)
@@ -170,6 +212,8 @@ function View.Build(ui, run, api)
     ui.viewMenu = menu
     ui.gearBtn.onClick = View.Toggle
     ns.ReplayFigs.onChange = View.Refresh
+    if ns.ReplayRealmView then ns.ReplayRealmView.onChange = View.Refresh end
+    st.hNow = st.h
 end
 function View.Toggle()
     local menu = st.menu
@@ -186,6 +230,6 @@ function View.Hide()
     if st.menu then st.menu:Hide() end
 end
 function View.Probe()
-    return { rects = st.rects, w = W, h = st.h or 0, rows = st.rows, heal = st.heal,
+    return { rects = st.rects, w = W, h = st.hNow or st.h or 0, rows = st.rows, heal = st.heal,
              follow = st.follow, sound = st.sound, threat = st.threat, tour = st.tour, menu = st.menu }
 end

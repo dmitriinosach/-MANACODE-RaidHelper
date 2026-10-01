@@ -262,11 +262,12 @@ local function PlaceCones(scene, cam, t)
 end
 function V.Adds(scene, t, out)
     local list = scene.layers.adds
+    local RV = ns.ReplayRealmView
     local n = 0
     for i = 1, #list do
         if n >= ADD_DRAW then break end
         local a = list[i]
-        if a.from <= t and a.to > t and not a.mdl then
+        if a.from <= t and a.to > t and not a.mdl and not (RV and RV.HideAdd(scene, a)) then
             local x, y, chase = -1, -1, false
             if a.chaseK and t < a.chaseTo then
                 x, y = Replay.PosAtTime(scene.tracks[a.chaseK], t)
@@ -277,6 +278,7 @@ function V.Adds(scene, t, out)
             if x >= 0 then
                 n = n + 1
                 out.x[n], out.y[n], out.icon[n], out.chase[n] = x, y, a.icon, chase
+                out.hp[n] = Layers.AddHp(a, t)
             end
         end
     end
