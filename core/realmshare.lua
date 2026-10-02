@@ -109,7 +109,7 @@ ns.Comm.On(PREFIX, function(body, sender, chan)
     if not ok then stats.dropped = stats.dropped + 1 end
 end)
 local frame = CreateFrame("Frame")
-frame:SetScript("OnUpdate", function(_, dt)
+frame:SetScript("OnUpdate", ns.Prof.Wrap("hot.realm", function(_, dt)
     local ok = pcall(S.Step, dt)
     if not ok then elapsed = 0 end
-end)
+end))

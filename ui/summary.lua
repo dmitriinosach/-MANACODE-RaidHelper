@@ -702,11 +702,11 @@ function View.Details()
     end
     return out
 end
-pump:SetScript("OnUpdate", function(self)
+pump:SetScript("OnUpdate", ns.Prof.Wrap("ui.sum", function(self)
     if GetTime() < relayoutAt then return end
     self:Hide()
     Render()
-end)
+end))
 function View.Refresh()
     Render()
 end

@@ -660,7 +660,7 @@ function View.Enter(mark)
     if not (mark.preview and fight and at and who and fight.players and fight.players[who]) then return end
     if not frame then
         Build()
-        pump:SetScript("OnUpdate", Pump)
+        pump:SetScript("OnUpdate", ns.Prof.Wrap("ui.other", Pump))
     end
     local anchor, death = DP.Anchor(fight, who, at)
     local w = { owner = mark, who = who, at = anchor, showAt = GetTime() + DELAY }

@@ -755,7 +755,7 @@ local function Build(host)
         ScrollTo()
     end
     ticker = CreateFrame("Frame", nil, page)
-    ticker:SetScript("OnUpdate", Tick)
+    ticker:SetScript("OnUpdate", ns.Prof.Wrap("ui.other", Tick))
 end
 local function ShowPage()
     if not current then

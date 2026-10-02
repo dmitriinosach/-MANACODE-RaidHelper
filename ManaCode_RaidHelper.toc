@@ -3,8 +3,8 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 0.2.0-beta.8
-## X-Date: 2026-10-01
+## Version: 0.2.0-beta.9
+## X-Date: 2026-10-02
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
 ## OptionalDeps: Auctionator
@@ -31,6 +31,7 @@ data\replayfeed.lua
 data\replaymarks.lua
 data\replaybars.lua
 data\replaymech.lua
+data\replayspread.lua
 data\defensives.lua
 data\procs.lua
 data\bosses\icc\marrowgar.lua
@@ -138,6 +139,7 @@ core\replaymarks.lua
 core\replaybars.lua
 core\replaymech.lua
 core\replayrealm.lua
+core\replayspread.lua
 core\replaylayers.lua
 core\npcpos.lua
 core\ranging.lua
@@ -149,6 +151,7 @@ core\flasks.lua
 core\flaskrole.lua
 core\flasktrade.lua
 core\memguard.lua
+core\cpumeter.lua
 ui\kit\themes.lua
 ui\kit\theme.lua
 ui\kit\window.lua
@@ -202,6 +205,8 @@ ui\replayshield.lua
 ui\replayfigs.lua
 ui\replaylayers.lua
 ui\replayrealm.lua
+ui\replayspread.lua
+ui\replaysoul.lua
 ui\replayfeed.lua
 ui\replaymodels.lua
 ui\replayfollow.lua
@@ -221,6 +226,7 @@ ui\sumhide.lua
 ui\flasks.lua
 ui\servercmd.lua
 ui\devtool.lua
+ui\devprobe.lua
 ui\devcalib.lua
 
 lead\compat\wotlk.lua

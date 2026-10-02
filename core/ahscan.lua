@@ -240,17 +240,17 @@ end
 driver = CreateFrame("Frame")
 driver:Hide()
 local acc = 0
-driver:SetScript("OnUpdate", function(_, elapsed)
+driver:SetScript("OnUpdate", ns.Prof.Wrap("bg.ahscan", function(_, elapsed)
     acc = acc + (elapsed or 0)
     if acc < 0.1 then return end
     acc = 0
     Tick(GetTime())
-end)
+end))
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("AUCTION_HOUSE_SHOW")
 ev:RegisterEvent("AUCTION_HOUSE_CLOSED")
 ev:RegisterEvent("AUCTION_ITEM_LIST_UPDATE")
-ev:SetScript("OnEvent", function(_, event)
+ev:SetScript("OnEvent", ns.Prof.Wrap("bg.ahscan", function(_, event)
     if event == "AUCTION_HOUSE_SHOW" then
         open = true
         Hook()
@@ -262,4 +262,4 @@ ev:SetScript("OnEvent", function(_, event)
     elseif st.on and not st.paused and st.sentAt and not st.readAt then
         st.readAt = GetTime() + SETTLE
     end
-end)
+end))

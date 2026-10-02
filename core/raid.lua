@@ -186,7 +186,7 @@ local watcher = CreateFrame("Frame")
 watcher:RegisterEvent("UPDATE_INSTANCE_INFO")
 watcher:RegisterEvent("PLAYER_ENTERING_WORLD")
 watcher:RegisterEvent("ZONE_CHANGED_NEW_AREA")
-watcher:SetScript("OnEvent", function(_, event)
+watcher:SetScript("OnEvent", ns.Prof.Wrap("bg.raid", function(_, event)
     if event == "UPDATE_INSTANCE_INFO" then
         locksKnown = true
         Raid.Backfill()
@@ -194,7 +194,7 @@ watcher:SetScript("OnEvent", function(_, event)
     end
     if ns.Store then Raid.Touch(ns.Store.Live()) end
     if RequestRaidInfo then RequestRaidInfo() end
-end)
+end))
 ns.OnReady(function()
     if RequestRaidInfo then RequestRaidInfo() end
 end)

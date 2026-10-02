@@ -177,6 +177,7 @@ local function CloseSegment(why, enc)
     closed.why, closed.enc, closed.at = why, enc, time()
     closed.mute = why == "kill" and enc and GetTime() + PULL_MUTE or nil
     ns.Raid.Touch(ns.Store.Live())
+    if ns.CpuMeter then ns.CpuMeter.Close(enc) end
     ns.Store.Close()
     if why == "kill" and RequestRaidInfo then RequestRaidInfo() end
     if why == "kill" and ns.AutoRec and ns.AutoRec.Killed then ns.AutoRec.Killed(enc) end
@@ -413,6 +414,7 @@ local function RecordEvent(ts, ...)
     if not seg.pull and ns.RecFilter.Pulls(sub, srcFlags, dstGUID, dstName, seg.bosses)
         and not Spent(dstGUID, dstName, seg.bosses) then
         ns.Trash.Pull(seg, ts)
+        if ns.CpuMeter then ns.CpuMeter.Pull(ns.Encounters.Of(dstGUID, dstName, seg.bosses)) end
         ns.BuffSnap.Take(ts)
         if ns.PullTimer then ns.PullTimer.OnPull(ts) end
         frameHp, framePos = true, true
@@ -430,13 +432,7 @@ end
 local function OnCombatEvent(ts, ...)
     seen = seen + 1
     if not inZone then return end
-    if not ns.Prof.on then
-        if RecordEvent(ts, ...) then kept = kept + 1 end
-        return
-    end
-    local p0 = debugprofilestop()
     if RecordEvent(ts, ...) then kept = kept + 1 end
-    ns.Prof.Add("rec.event", debugprofilestop() - p0, 1)
 end
 local function AddSlot(unit, isPlayer, pet)
     local guid = UnitGUID(unit)
@@ -652,7 +648,13 @@ local function PutSlot(live, k, now, withPos, forceHp, forcePos)
                 ns.Store.Append(Now(), "FW_VEH", guid, slotName[k], 0, nil, nil, 0, veh, pet and UnitGUID(pet) or nil)
             end
         end
-        PollAuras(k, guid)
+        if ns.Prof.Busy() then
+            local p0 = debugprofilestop()
+            PollAuras(k, guid)
+            ns.Prof.Part("hot.aura", "hot.rec", debugprofilestop() - p0)
+        else
+            PollAuras(k, guid)
+        end
     end
 end
 local function NotePets(nRaid)
@@ -863,7 +865,7 @@ local function Snapshot()
     local count = CollectUnits(keyframe, withPos, moved)
     if p0 then ns.Prof.Add("rec.snap", debugprofilestop() - p0, count) end
 end
-frame:SetScript("OnEvent", function(_, event, ...)
+frame:SetScript("OnEvent", ns.Prof.Wrap("hot.log", function(_, event, ...)
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
         OnCombatEvent(...)
     elseif event == "CHAT_MSG_RAID_BOSS_EMOTE" then
@@ -882,8 +884,8 @@ frame:SetScript("OnEvent", function(_, event, ...)
     else
         rosterDirty = true
     end
-end)
-frame:SetScript("OnUpdate", function(_, elapsed)
+end))
+frame:SetScript("OnUpdate", ns.Prof.Wrap("hot.rec", function(_, elapsed)
     snapElapsed = snapElapsed + elapsed
     tickElapsed = tickElapsed + elapsed
     mapElapsed = mapElapsed + elapsed
@@ -925,7 +927,7 @@ frame:SetScript("OnUpdate", function(_, elapsed)
     if (killAt or (hadFight and calmAt)) and ns.Store.Live() then
         CheckClose(GetTime())
     end
-end)
+end))
 ns.OnReady(function()
     local db = ns.GetDB()
     if db.recording or db.settings.autoRaid then

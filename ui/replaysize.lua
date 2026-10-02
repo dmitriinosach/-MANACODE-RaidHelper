@@ -138,7 +138,7 @@ local function BuildGrip(frame)
         Sizing(self)
         if st.sizing then StopSizing() end
     end)
-    grip:SetScript("OnUpdate", Sizing)
+    grip:SetScript("OnUpdate", ns.Prof.Wrap("ui.iso", Sizing))
     st.grip = grip
 end
 local function BuildTitle(frame, close, head)

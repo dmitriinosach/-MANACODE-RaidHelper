@@ -20,6 +20,7 @@ local FOOT = 22
 local TITLE_BTNS = 70
 local STATUS_GRIP = 24
 local STATUS_PERIOD = 0.5
+local STILL = { after = 0.5, step = 0.1 }
 local ROOM_PATH = "Interface\\AddOns\\" .. ADDON .. "\\art\\rooms\\"
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local MARKS = "Interface\\TargetingFrame\\UI-RaidTargetingIcons"
@@ -136,6 +137,7 @@ local Figs = ns.ReplayFigs
 local Shield = ns.ReplayShield
 local Geo = ns.ReplayGeo
 local Realm = ns.ReplayRealmView
+local Soul = ns.ReplaySoulView
 local order, depth = {}, {}
 local afigs, all = {}, {}
 local addList = { x = {}, y = {}, icon = {}, chase = {}, hp = {} }
@@ -666,14 +668,34 @@ local function Tick(self, elapsed)
     elseif turned then
         run.camDirty = true
     end
+    local still = not run.playing and not run.drag and not snapped and not run.camDirty
+        and not run.marksDirty and run.t == run.stillT
+        and not IsMouseButtonDown("LeftButton") and not IsMouseButtonDown("RightButton")
+    run.stillT = run.t
+    if still then
+        run.stillFor = (run.stillFor or 0) + elapsed
+        if run.stillFor > STILL.after then
+            run.stillAcc = (run.stillAcc or 0) + elapsed
+            if run.stillAcc < STILL.step then
+                Hover()
+                return
+            end
+            elapsed, run.stillAcc = run.stillAcc, 0
+        end
+    else
+        run.stillFor, run.stillAcc = 0, 0
+    end
     Follow.Step(elapsed)
     if Geo.Time(scene, run.t) and not run.camDirty and not run.flat then PlaceFloor() end
     if run.camDirty then ApplyCamera() end
     Replay.Sample(scene, run.t)
     Realm.Sample(scene, run.t, figs)
+    Soul.Sample(scene, run.t)
     run.bossDrawn = Models.Place(cam, run.t, run.figScale, run.faceSign, elapsed)
     LayersView.Place(scene, cam, run.t, figs)
     Realm.Place(scene, cam, run.t)
+    ns.ReplaySpreadView.Place(scene, cam, run.t)
+    Soul.Place(scene, run.t)
     PlaceFigures(elapsed)
     ns.ReplayFeed.Update(run.t - scene.pull)
     PlaceDeaths()
@@ -863,6 +885,8 @@ local function UseScene(scene)
     FindRoles(scene)
     LayersView.Use(scene)
     Realm.Use(scene)
+    ns.ReplaySpreadView.Use(scene)
+    Soul.Use(scene)
     Models.Use(scene)
     run.feedHas = ns.ReplayFeed.Use(scene.layers)
     Relayout()
@@ -933,6 +957,8 @@ local function BuildPools()
     end
     LayersView.Build(view, ui.marks)
     Realm.Build(view, ui.marks)
+    ns.ReplaySpreadView.Build(view, ui.marks)
+    Soul.Build(view, ui.top)
     for i = 1, DEATH_POOL do
         local tex = ui.marks:CreateTexture(nil, "ARTWORK")
         tex:SetTexture(MARKS)
@@ -1201,14 +1227,16 @@ local function Build()
     Tour.Bind(ui, { Saved = Saved, Figure = NearFigure })
     Size.Bind(frame, close, HEAD, Resize, Around)
     Size.Restore()
-    frame:SetScript("OnUpdate", Tick)
+    frame:SetScript("OnUpdate", ns.Prof.Wrap("ui.iso", Tick))
     frame:SetScript("OnShow", function()
+        if ns.CpuMeter then ns.CpuMeter.WinCheck() end
         Size.Refit()
         if not run.scene then return end
         Geo.Use(run.scene.room)
         run.camDirty = true
     end)
     frame:SetScript("OnHide", function()
+        if ns.CpuMeter then ns.CpuMeter.WinCheck() end
         Geo.Release()
         ViewMenu.Hide()
         Tour.Stop()
@@ -1241,6 +1269,8 @@ local function LoadFight(fight)
     Geo.Use(nil)
     LayersView.Use(nil)
     Realm.Use(nil)
+    ns.ReplaySpreadView.Use(nil)
+    Soul.Use(nil)
     Models.Use(nil)
     ns.ReplayFeed.Use(nil)
     Bar.Use(nil)
@@ -1296,6 +1326,9 @@ function Iso.Open(fight, t, who)
 end
 function Iso.IsShown()
     return ui.frame ~= nil and ui.frame:IsShown() and true or false
+end
+function Iso.Wake()
+    run.stillFor, run.stillAcc = 0, 0
 end
 function Iso.Hide()
     if ui.frame then ui.frame:Hide() end

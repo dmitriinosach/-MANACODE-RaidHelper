@@ -163,7 +163,7 @@ local function Build()
     title:SetPoint("TOPLEFT", PAD, -PAD)
     title:SetHeight(TITLE_H)
     ns.Kit.Title(title)
-    fly:SetScript("OnUpdate", OnUpdate)
+    fly:SetScript("OnUpdate", ns.Prof.Wrap("hot.panel", OnUpdate))
     fly:Hide()
 end
 function Acts.Show(icon, panel, text)

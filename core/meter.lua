@@ -107,7 +107,7 @@ local function StepCurve()
     for i = half + 1, n do curve[i] = nil end
     curveStep = curveStep * 2
 end
-frame:SetScript("OnEvent", function(_, _, _, sub, _, _, srcFlags, _, _, dstFlags, a1, _, _, a4, a5)
+frame:SetScript("OnEvent", ns.Prof.Wrap("hot.log", function(_, _, _, sub, _, _, srcFlags, _, _, dstFlags, a1, _, _, a4, a5)
     local kind = KIND[sub]
     if not kind or not srcFlags or not dstFlags or band(srcFlags, affil) == 0 then return end
     local n
@@ -130,7 +130,7 @@ frame:SetScript("OnEvent", function(_, _, _, sub, _, _, srcFlags, _, _, dstFlags
     end
     silence = 0
     if span == 0 then span = 1 end
-end)
+end))
 local function Advance()
     slot = slot % WINDOW + 1
     dmgSum = dmgSum - dmg[slot]
@@ -156,13 +156,13 @@ local function Advance()
         end
     end
 end
-frame:SetScript("OnUpdate", function(_, elapsed)
+frame:SetScript("OnUpdate", ns.Prof.Wrap("hot.panel", function(_, elapsed)
     acc = acc + elapsed
     if acc < 1 then return end
     acc = acc - 1
     if acc >= 1 then acc = 0 end
     Advance()
-end)
+end))
 function Meter.Reset()
     for i = 1, WINDOW do
         dmg[i], heal[i] = 0, 0

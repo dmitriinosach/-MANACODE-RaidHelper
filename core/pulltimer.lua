@@ -124,7 +124,7 @@ if ns.Comm and ns.Comm.On then
 end
 local frame = CreateFrame("Frame")
 for i = 1, #CHAT_EVENTS do frame:RegisterEvent(CHAT_EVENTS[i]) end
-frame:SetScript("OnEvent", function(_, _, msg, sender)
+frame:SetScript("OnEvent", ns.Prof.Wrap("bg.pulltimer", function(_, _, msg, sender)
     if not ns.Recorder or not ns.Recorder.IsOn() then return end
     PullTimer.Note(sender, PullTimer.FromChat(msg))
-end)
+end))

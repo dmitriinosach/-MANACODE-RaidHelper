@@ -17,7 +17,7 @@ function Comm.Send(prefix, msg, chan, target)
 end
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("CHAT_MSG_ADDON")
-frame:SetScript("OnEvent", function(_, _, prefix, msg, chan, sender)
+frame:SetScript("OnEvent", ns.Prof.Wrap("hot.comm", function(_, _, prefix, msg, chan, sender)
     local fn = handlers[prefix]
     if not fn then return end
     local who = Comm.Clean(sender)
@@ -25,4 +25,4 @@ frame:SetScript("OnEvent", function(_, _, prefix, msg, chan, sender)
     local body = Comm.Clean(msg)
     if not body then return end
     fn(body, who, chan)
-end)
+end))

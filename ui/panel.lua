@@ -59,6 +59,9 @@ local vals = {}
 local buckets = {}
 local alerts = {}
 local countAcc, drawAcc = COUNT_PERIOD, 0
+local cpuText, winText
+local cpuOwn, cpuSkada, cpuMode = -1, -1, -1
+local winRate, winWorst, winMode = -1, -1, -1
 local baseSeen, eqElapsed = 0, 0
 local writing = false
 local lowR, lowG, lowB, midR, midG, midB, highR, highG, highB = 0, 1, 0, 1, 1, 0, 1, 0, 0
@@ -351,10 +354,48 @@ local function Width()
         local n = #blocks
         w = max(w, PAD * 2 + (GRAPH_BARS * GRAPH_SLOT - 1 + NUM_GAP + NumWidth()) * n + GRAPH_GAP * (n - 1))
     end
-    return max(w, countText:GetStringWidth() + PAD * 2 + 4)
+    w = max(w, countText:GetStringWidth() + PAD * 2 + 4)
+    if Saved().open and cpuText then
+        w = max(w, cpuText:GetStringWidth() + PAD * 2 + 4, winText:GetStringWidth() + PAD * 2 + 4)
+    end
+    return w
+end
+local function RefreshWin(C)
+    local rate, worst, live = C.WinLive()
+    local r = rate and floor(rate * 100 + 0.5) or -1
+    local w = floor(worst * 10 + 0.5)
+    local m = live and 1 or 0
+    if r == winRate and w == winWorst and m == winMode then return end
+    winRate, winWorst, winMode = r, w, m
+    if rate then
+        winText:SetText(format(ns.T("panel.cpu.win"), C.Ms(rate), C.Ms(worst)))
+    else
+        winText:SetText(ns.T("panel.cpu.win.none"))
+    end
+    winText:SetAlpha(live and 1 or 0.7)
+end
+local function RefreshCpu()
+    local C = ns.CpuMeter
+    if not (C and cpuText and Saved().open) then return end
+    RefreshWin(C)
+    local own, skada, live, prof = C.Live()
+    local o = own and floor(own * 100 + 0.5) or -1
+    local s = skada and floor(skada * 100 + 0.5) or -1
+    local mode = (live and 1 or 0) + (prof and 2 or 0)
+    if o == cpuOwn and s == cpuSkada and mode == cpuMode then return end
+    cpuOwn, cpuSkada, cpuMode = o, s, mode
+    if own then
+        cpuText:SetText(format(ns.T("panel.cpu"), C.Ms(own))
+            .. (skada and format(ns.T("panel.cpu.skada"), C.Ms(skada)) or "")
+            .. (prof and "" or ns.T("panel.cpu.own")))
+    else
+        cpuText:SetText(ns.T("panel.cpu.none"))
+    end
+    cpuText:SetAlpha(live and 1 or 0.7)
 end
 local function ApplySize()
     RefreshCounts()
+    RefreshCpu()
     local w = Width()
     local h = PAD * 2 + ICON + ROWGAP + EQ_H + 2 + TEXTH
     local eqW = w - PAD * 2 - (EQ_BTN + EQ_GAP) * 2
@@ -366,7 +407,7 @@ local function ApplySize()
         for i = 1, #blocks do blocks[i].text:SetWidth(nw) end
         graphs:SetWidth(w - PAD * 2)
         graphs:Show()
-        h = h + ROWGAP + EQ_H
+        h = h + ROWGAP + EQ_H + 2 + TEXTH * 2
     else
         graphs:Hide()
     end
@@ -516,6 +557,7 @@ local function OnUpdate(self, elapsed)
     if countAcc >= COUNT_PERIOD then
         countAcc = 0
         RefreshCounts()
+        RefreshCpu()
         local w = Width()
         if abs(frame:GetWidth() - w) > 0.5 then ApplySize() end
         if pauseBtn.recKey ~= RecStateKey() then
@@ -627,6 +669,64 @@ local function GraphEnter(self)
     if not M then return end
     ns.Tip.Show(self, self.kind == "avg" and FightTip(M) or NowTip(M, self.kind == "heal"))
 end
+local function CpuEnter(self)
+    local C = ns.CpuMeter
+    if not C then return end
+    local own, skada, live, prof = C.Live()
+    local rows = { { kind = "head", left = ns.T("panel.cpu.head") } }
+    if own then
+        local worst, dur = C.Stats()
+        rows[2] = { kind = "row", left = ns.T("panel.cpu.mine"), right = C.Ms(own) }
+        if skada then rows[#rows + 1] = { kind = "row", left = ns.T("panel.cpu.skada.row"), right = C.Ms(skada) } end
+        rows[#rows + 1] = { kind = "row", left = ns.T("panel.cpu.worst"), right = C.Ms(worst) }
+        rows[#rows + 1] = { kind = "row", left = ns.T("panel.tip.time"),
+            right = format("%d:%02d", floor(dur / 60), floor(dur % 60)) }
+        rows[#rows + 1] = { kind = "note", left = ns.T(prof and "panel.cpu.src.prof" or "panel.cpu.src.own") }
+    end
+    rows[#rows + 1] = { kind = "note",
+        left = ns.T(live and "panel.cpu.live" or (own and "panel.cpu.last" or "panel.cpu.nofight")) }
+    ns.Tip.Show(self, rows)
+end
+local function WinEnter(self)
+    local C = ns.CpuMeter
+    if not C then return end
+    local rate, worst, live, dur, once = C.WinLive()
+    local rows = { { kind = "head", left = ns.T("panel.cpu.win.head") } }
+    if rate then
+        rows[2] = { kind = "row", left = ns.T("panel.cpu.win.rate"), right = C.Ms(rate) }
+        rows[3] = { kind = "row", left = ns.T("panel.cpu.worst"), right = C.Ms(worst) }
+        rows[4] = { kind = "row", left = ns.T("panel.cpu.win.once"), right = C.Ms(once) }
+        rows[5] = { kind = "row", left = ns.T("panel.tip.time"),
+            right = format("%d:%02d", floor(dur / 60), floor(dur % 60)) }
+    end
+    rows[#rows + 1] = { kind = "note",
+        left = ns.T(live and "panel.cpu.win.open" or (rate and "panel.cpu.win.closed" or "panel.cpu.win.never")) }
+    ns.Tip.Show(self, rows)
+end
+local function Hoverable(fs, enter)
+    local h = CreateFrame("Frame", nil, graphs)
+    h:SetPoint("TOPLEFT", fs, "TOPLEFT", 0, 0)
+    h:SetPoint("BOTTOMRIGHT", fs, "BOTTOMRIGHT", 0, 0)
+    h:EnableMouse(true)
+    h:SetScript("OnEnter", enter)
+    h:SetScript("OnLeave", ns.Tip.Hide)
+end
+local function BuildCpu()
+    cpuText = graphs:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    cpuText:SetPoint("TOPLEFT", graphs, "BOTTOMLEFT", 0, -2)
+    cpuText:SetHeight(TEXTH)
+    cpuText:SetJustifyH("LEFT")
+    ns.Kit.Text(cpuText, "text.secondary")
+    Hoverable(cpuText, CpuEnter)
+    cpuText:SetText(ns.T("panel.cpu.none"))
+    winText = graphs:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    winText:SetPoint("TOPLEFT", cpuText, "BOTTOMLEFT", 0, 0)
+    winText:SetHeight(TEXTH)
+    winText:SetJustifyH("LEFT")
+    ns.Kit.Text(winText, "text.secondary")
+    Hoverable(winText, WinEnter)
+    winText:SetText(ns.T("panel.cpu.win.none"))
+end
 local function Hover(g, num, kind)
     local h = CreateFrame("Frame", nil, graphs)
     h:SetPoint("TOPLEFT", g, "TOPLEFT", 0, 0)
@@ -659,6 +759,7 @@ local function BuildGraphs()
         prev = b.text
         blocks[i] = b
     end
+    BuildCpu()
     graphs:Hide()
 end
 local function Build()
@@ -709,7 +810,7 @@ local function Build()
     BuildGraphs()
     OnTheme()
     ns.Kit.OnTheme(OnTheme)
-    frame:SetScript("OnUpdate", OnUpdate)
+    frame:SetScript("OnUpdate", ns.Prof.Wrap("hot.panel", OnUpdate))
     frame:SetScript("OnHide", function()
         if ns.PanelActs then ns.PanelActs.Hide() end
         DragStop()

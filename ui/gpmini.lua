@@ -383,7 +383,7 @@ local function Check(seg)
     gp.signaled = key
     ns.Summary.Compute(f, function(s) Announce(f, s) end)
 end
-waiter:SetScript("OnUpdate", function(self)
+waiter:SetScript("OnUpdate", ns.Prof.Wrap("ui.other", function(self)
     if GetTime() < due then return end
     due = GetTime() + RETRY
     tries = tries + 1
@@ -402,7 +402,7 @@ waiter:SetScript("OnUpdate", function(self)
     end)
     if not started and not ns.Encounters.Ready() then return end
     if started then self:Hide() end
-end)
+end))
 local function OnInvalidate()
     due = GetTime()
     tries = 0

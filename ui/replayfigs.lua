@@ -34,6 +34,8 @@ local TUCK = 1
 local DISC = 22
 local BOSS_K = 1.5
 local CHIP_H = 11
+local BOSS_BASE = 1
+local BOSS_TALL = 2
 local DROP_K = 1.08
 local CHIP_DROP_K = 1.2
 local CHIP_DROP_X = 0.12
@@ -131,6 +133,7 @@ end
 local function Refresh()
     if st.figs then RefreshList(st.figs) end
     if st.adds then RefreshList(st.adds) end
+    if ns.ReplayIso and ns.ReplayIso.Wake then ns.ReplayIso.Wake() end
 end
 Figs.Refresh = Refresh
 function Figs.SetKind(kind)
@@ -333,19 +336,41 @@ local function Put(tex, fig, w, h, x, y)
     tex:SetHeight(max(1, h))
     tex:SetPoint("CENTER", fig, "CENTER", x, y)
 end
-local function PlaceSide(fig, w, flat, tall, lift)
+local function Column(tex, fig, w, flat, tall, lift)
     local ry = w / 2 * flat * SIDE_RX
-    fig.sideWant = tall >= 1 and ry > 0
-    if not fig.sideWant then return end
+    if tall < 1 or ry <= 0 then return false end
     local y0 = max(SIDE_TOP, SIDE_BASE - tall * SIDE_RY / ry)
-    local side = fig.side
-    side:ClearAllPoints()
-    side:SetWidth(w)
-    side:SetHeight(tall + ry)
-    side:SetPoint("TOP", fig, "CENTER", 0, tall + lift)
-    side:SetTexCoord(0, 1, y0 / SIDE_H, SIDE_BOTTOM / SIDE_H)
+    tex:ClearAllPoints()
+    tex:SetWidth(w)
+    tex:SetHeight(tall + ry)
+    tex:SetPoint("TOP", fig, "CENTER", 0, tall + lift)
+    tex:SetTexCoord(0, 1, y0 / SIDE_H, SIDE_BOTTOM / SIDE_H)
+    return true
+end
+local function PlaceSide(fig, w, flat, tall, lift)
+    fig.sideWant = Column(fig.side, fig, w, flat, tall, lift)
+    if not fig.sideWant then return end
     local r, g, b = Kit.RGB("sem.rep.side")
-    side:SetVertexColor(fig.cr * r, fig.cg * g, fig.cb * b)
+    fig.side:SetVertexColor(fig.cr * r, fig.cg * g, fig.cb * b)
+end
+local function PlaceStand(fig, w, flat, tall, lift)
+    if tall < 1 then
+        fig.standWant = false
+        return
+    end
+    if not fig.stand then
+        fig.stand = fig:CreateTexture(nil, "BACKGROUND")
+        fig.stand:SetTexture(SIDE_TEX)
+        fig.stand:Hide()
+        fig.standCap = fig:CreateTexture(nil, "BACKGROUND")
+        fig.standCap:SetTexture(CIRCLE)
+        fig.standCap:Hide()
+    end
+    fig.standWant = Column(fig.stand, fig, w, flat, tall, lift)
+    if not fig.standWant then return end
+    Kit.Hue(fig.stand, "sem.rep.stand")
+    Put(fig.standCap, fig, w, w * flat, 0, tall + lift)
+    Kit.Hue(fig.standCap, "sem.rep.standTop")
 end
 local function Dead(fig, inner, flat)
     Put(fig.icon, fig, inner, inner * flat, 0, 0)
@@ -370,7 +395,7 @@ local function DrawVol(fig, dead, scale, flat, lift, hp)
     local sh = max(2, sw * flat)
     fig:SetWidth(sw)
     fig:SetHeight(sh)
-    fig.w, fig.flat, fig.ringFlat, fig.tall = sw, flat, 1, 0
+    fig.w, fig.flat, fig.ringFlat, fig.tall, fig.standWant = sw, flat, 1, 0, false
     Put(fig.shadow, fig, sw, sh, 0, 0)
     Kit.Hue(fig.shadow, "sem.rep.drop")
     local ic = VOL_ICON * scale * (fig.isBoss and BOSS_K or 1)
@@ -419,12 +444,14 @@ local function Draw(fig, dead, scale, flat, lift, hp)
     fig:SetHeight(max(2, d * flat))
     fig.w, fig.flat, fig.rw, fig.ringFlat = d, flat, d, flat
     local up = lift * scale
-    local tall = 0
+    local tall, base = 0, 0
     if chip and not dead then
         tall = CHIP_H * scale * sqrt(max(0, 1 - flat * flat))
-        if st.hp then tall = tall * max(CHIP_MIN, hp) end
+        if fig.isBoss then tall, base = tall * BOSS_TALL, tall * BOSS_BASE end
+        if st.hp then tall = tall * max(base > 0 and 0 or CHIP_MIN, hp) end
     end
-    fig.tall = tall
+    fig.tall = tall + base
+    fig.standWant = false
     if chip then
         Put(fig.shadow, fig, d * CHIP_DROP_K, d * CHIP_DROP_K * flat, d * CHIP_DROP_X, -d * flat * CHIP_DROP_X)
         Kit.Hue(fig.shadow, "sem.rep.drop")
@@ -436,6 +463,10 @@ local function Draw(fig, dead, scale, flat, lift, hp)
     if dead then
         Dead(fig, inner, flat)
         return
+    end
+    if base > 0 then
+        PlaceStand(fig, d, flat, base, up)
+        up = up + base
     end
     if chip then PlaceSide(fig, d, flat, tall, up) end
     local cy = tall + up
@@ -483,6 +514,11 @@ function Figs.Parts(fig, icon, ring, model)
     Toggle(fig.icon, icon, fig, "iconOn")
     Toggle(fig.ring, ring and fig.ringWant ~= false, fig, "ringOn")
     Toggle(fig.side, ring and fig.sideWant or false, fig, "sideOn")
+    if fig.stand then
+        local on = ring and fig.standWant or false
+        Toggle(fig.stand, on, fig, "standOn")
+        Toggle(fig.standCap, on, fig, "standCapOn")
+    end
     Toggle(fig.trail, ring and fig.trailWant or false, fig, "trailOn")
     Toggle(fig.dot, icon and fig.dotNow or false, fig, "dotOn")
     Toggle(fig.pct, icon and fig.pctWant or false, fig, "pctOn")

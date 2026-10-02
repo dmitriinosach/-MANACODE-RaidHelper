@@ -74,7 +74,7 @@ local function CheckStop()
     ns.Recorder.Pause(true)
     ns.Print(ns.T("auto.done"))
 end
-frame:SetScript("OnEvent", function(_, event, ...)
+frame:SetScript("OnEvent", ns.Prof.Wrap("hot.log", function(_, event, ...)
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
         local _, sub, srcGUID, _, _, dstGUID = ...
         OnCombat(sub, srcGUID, dstGUID)
@@ -85,15 +85,15 @@ frame:SetScript("OnEvent", function(_, event, ...)
     else
         OnZone()
     end
-end)
-frame:SetScript("OnUpdate", function(_, elapsed)
+end))
+frame:SetScript("OnUpdate", ns.Prof.Wrap("hot.bg", function(_, elapsed)
     tick = tick + elapsed
     if tick < TICK_PERIOD then
         return
     end
     tick = 0
     CheckStop()
-end)
+end))
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 frame:RegisterEvent("PLAY_MOVIE")

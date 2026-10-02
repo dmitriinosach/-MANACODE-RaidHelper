@@ -18,7 +18,8 @@ ns.replayData = {
     },
     gone = {
         [ns.ENC.sindragosa] = {
-            { ids = { 69712 }, sub = "SPELL_CAST_START", look = 12, lead = 6.5, land = 39.5, min = 20, max = 60, feed = true },
+            { ids = { 69712 }, sub = "SPELL_CAST_START", look = 12, lead = 6.5, land = 39.5, min = 20, max = 60, feed = true,
+              at = { 1.0, -36.6 }, glide = 4 },
         },
         [ns.ENC.lichking] = {
             { ids = { 73654, 74295, 74296, 74297 }, sub = "SPELL_CAST_SUCCESS", look = 0, lead = 0, land = 49.5, min = 30,
@@ -27,6 +28,12 @@ ns.replayData = {
     },
     pin = {
         [ns.ENC.lichking] = { phases = { t1 = true, t2 = true }, glide = 1, tail = 1.5 },
+        [ns.ENC.putricide] = { phases = { t1 = true, t2 = true }, at = { -41.4, 5.1 }, glide = 2, tail = 0 },
+        [ns.ENC.lanathel] = { waves = { air = true }, at = { 0.5, -6.4 }, glide = 2, tail = 0 },
+        [ns.ENC.valithria] = { phases = { fight = true, dream = true }, at = { -1.3, 20.2 }, glide = 0, tail = 0 },
+    },
+    active = {
+        [ns.ENC.council] = { 70952, 70981, 70982 },
     },
     home = {
         [ns.ENC.sindragosa] = { x = 366.1, y = 141.2 },
@@ -43,7 +50,7 @@ ns.replayData = {
         [355] = true, [56222] = true, [6795] = true, [62124] = true, [31789] = true,
     },
     states = {
-        { name = 69675, icon = 70157, prio = 100, imp = true, feed = true, box = true },
+        { name = 69675, icon = 70157, prio = 100, imp = true, feed = true },
         { name = 71289, icon = 71289, prio = 100, imp = true, feed = true, mc = true },
         { name = 62418, icon = 69065, prio = 100, imp = true, feed = true, spike = true },
         { name = 71340, icon = 71340, prio = 95, imp = true, feed = true, link = true },
@@ -60,6 +67,7 @@ ns.replayData = {
         { name = 31224, icon = 31224, prio = 80 },
         { name = 69279, icon = 69279, prio = 80 },
         { name = 72838, icon = 72838, prio = 82 },
+        { name = 72833, icon = 72833, prio = 82 },
         { name = 73799, icon = 73799, prio = 80 },
         { name = 69762, icon = 69762, prio = 75 },
         { name = 6940, icon = 6940, prio = 75, feed = true },
@@ -76,11 +84,13 @@ ns.replayData = {
         [1022] = "hand", [5599] = "hand", [10278] = "hand",
         [642] = "divine",
         [45438] = "ice",
+        [69675] = "tomb",
         [33206] = "ring",
         [47788] = "ring",
     },
     looks = {
-        divine = { prio = 4, tex = "dome", tone = "sem.rep.shieldHoly", k = 1.12 },
+        tomb = { prio = 5, tex = "prism", tone = "sem.rep.tomb", k = 1.3 },
+        divine ={ prio = 4, tex = "dome", tone = "sem.rep.shieldHoly", k = 1.12 },
         ice = { prio = 3, tex = "prism", tone = "sem.rep.shieldIce", k = 1.05 },
         hand = { prio = 2, tex = "dome", tone = "sem.rep.shieldGold", k = 1 },
         ring = { prio = 1, tex = "ring", tone = "sem.rep.shieldRing", k = 1.35 },
@@ -108,7 +118,7 @@ ns.replayData = {
     },
     blasts = {
         [ns.ENC.deathwhisper] = { { spell = 72012, r = 20 } },
-        [ns.ENC.rotface] = { { spell = 72625, r = 10 } },
+        [ns.ENC.putricide] = { { spell = 72625, r = 10 } },
         [ns.ENC.sindragosa] = {
             { spell = 64623, r = 10, at = "max" },
             { spell = 71046, r = 20 },
@@ -159,7 +169,7 @@ ns.replayData = {
         [38163] = false,
         [36672] = false,
         [36980] = false,
-        [37562] = false,
+        [37562] = 72833,
     },
     models = {
         [ns.ENC.marrowgar] = { npc = 36612, m2 = "Creature\\BoneGuard\\BoneGuard.m2", h = 34.1, w = 75.7,
@@ -277,10 +287,9 @@ ns.replayData = {
         [ns.ENC.lanathel] = {
             [71477] = true, [70445] = true, [73070] = true,
         },
-        [ns.ENC.rotface] = { [72625] = true },
+        [ns.ENC.putricide] = { [71968] = true, [72625] = true },
         [ns.ENC.marrowgar] = { [72089] = true },
         [ns.ENC.deathwhisper] = { [71204] = true },
         [ns.ENC.saurfang] = { [28747] = true },
-        [ns.ENC.putricide] = { [71968] = true },
     },
 }

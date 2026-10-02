@@ -200,6 +200,7 @@ local function OnClick(self, button)
     Kit.Sound(self.clickSfx)
     if self.onClick then self.onClick(self, button) end
 end
+local ClickWrap = ns.Prof.Wrap("ui.click", OnClick)
 local function Make(parent, group, style, prep, name)
     local b = CreateFrame("Button", name, parent)
     b.kitGroup = group
@@ -224,7 +225,7 @@ local function Make(parent, group, style, prep, name)
     b:SetScript("OnLeave", OnLeave)
     b:SetScript("OnMouseDown", OnMouseDown)
     b:SetScript("OnMouseUp", OnMouseUp)
-    b:SetScript("OnClick", OnClick)
+    b:SetScript("OnClick", ClickWrap)
     if prep then prep(b) end
     buttons[#buttons + 1] = b
     Restyle(b)
@@ -260,6 +261,7 @@ local function CheckClick(self)
     Kit.Sound(on and "checkOn" or "checkOff")
     if self.onToggle then self.onToggle(on) end
 end
+local CheckWrap = ns.Prof.Wrap("ui.click", CheckClick)
 local function CheckEnter(self)
     Kit.TipShow(self)
 end
@@ -271,7 +273,7 @@ function Kit.Check(parent, name)
     c.label = c:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     c.label:SetPoint("LEFT", c, "RIGHT", 2, 0)
     Kit.Text(c.label, "check.label")
-    c:SetScript("OnClick", CheckClick)
+    c:SetScript("OnClick", CheckWrap)
     c:SetScript("OnEnter", CheckEnter)
     c:SetScript("OnLeave", Kit.TipHide)
     checks[#checks + 1] = c
@@ -288,6 +290,7 @@ local function RowClick(self, button)
         self.onClick(self)
     end
 end
+local RowWrap = ns.Prof.Wrap("ui.click", RowClick)
 local function RowEnter(self)
     self.hovered = true
     Kit.StyleRow(self)
@@ -308,7 +311,7 @@ function Kit.Row(parent, width)
     r.text:SetPoint("LEFT", 0, 0)
     r.text:SetJustifyH("LEFT")
     r.tipTitle = false
-    r:SetScript("OnClick", RowClick)
+    r:SetScript("OnClick", RowWrap)
     r:SetScript("OnEnter", RowEnter)
     r:SetScript("OnLeave", RowLeave)
     Kit.StyleRow(r)

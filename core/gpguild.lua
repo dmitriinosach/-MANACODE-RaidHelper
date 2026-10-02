@@ -410,7 +410,7 @@ local function TickOut(now)
     end
     return true
 end
-frame:SetScript("OnUpdate", function(self)
+frame:SetScript("OnUpdate", ns.Prof.Wrap("bg.gpguild", function(self)
     local now = GetTime()
     local busy = TickOut(now)
     local a = state.answer
@@ -434,15 +434,15 @@ frame:SetScript("OnUpdate", function(self)
         end
     end
     if not busy then self:Hide() end
-end)
+end))
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_GUILD_UPDATE")
 frame:RegisterEvent("GUILD_ROSTER_UPDATE")
-frame:SetScript("OnEvent", function(_, event)
+frame:SetScript("OnEvent", ns.Prof.Wrap("bg.gpguild", function(_, event)
     if not Store() then return end
     if event == "GUILD_ROSTER_UPDATE" then return OnRoster() end
     Roster()
-end)
+end))
 ns.Comm.On(PREFIX, OnMessage)
 local function Field(rule, f)
     if f == "on" then return rule.on ~= false end

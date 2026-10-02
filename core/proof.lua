@@ -504,13 +504,13 @@ local function SendOne()
     SendChatMessage(m.text, m.chat, nil, m.target)
     nextAt = GetTime() + GAP
 end
-pump:SetScript("OnUpdate", function(self)
+pump:SetScript("OnUpdate", ns.Prof.Wrap("bg.proof", function(self)
     if not queue[1] then
         self:Hide()
         return
     end
     if GetTime() >= nextAt then SendOne() end
-end)
+end))
 function Proof.Pending()
     return #queue
 end

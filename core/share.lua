@@ -493,7 +493,7 @@ local function PauseAll()
     end
 end
 local rr = 0
-pump:SetScript("OnUpdate", function(self)
+pump:SetScript("OnUpdate", ns.Prof.Wrap("bg.share", function(self)
     if #outs == 0 then
         self:Hide()
         return
@@ -514,8 +514,8 @@ pump:SetScript("OnUpdate", function(self)
         table.remove(outs, rr)
         rr = rr - 1
     end
-end)
-waitFrame:SetScript("OnUpdate", function(self, elapsed)
+end))
+waitFrame:SetScript("OnUpdate", ns.Prof.Wrap("bg.share", function(self, elapsed)
     waitAcc = waitAcc + (elapsed or 0)
     if waitAcc < PUMP_STEP then return end
     waitAcc = 0
@@ -525,17 +525,17 @@ waitFrame:SetScript("OnUpdate", function(self, elapsed)
         return
     end
     if GetTime() - a.at > (a.paused and PAUSE_WAIT or ASK_WAIT) then Fail("time") end
-end)
+end))
 function Share.Sending()
     return #outs
 end
 local listener = CreateFrame("Frame")
 listener:RegisterEvent("CHAT_MSG_ADDON")
 listener:RegisterEvent("PLAYER_ENTERING_WORLD")
-listener:SetScript("OnEvent", function(_, event, prefix, body, chan, sender)
+listener:SetScript("OnEvent", ns.Prof.Wrap("bg.share", function(_, event, prefix, body, chan, sender)
     if event == "CHAT_MSG_ADDON" then
         Share.OnAddon(prefix, body, chan, sender)
     else
         AskRoster()
     end
-end)
+end))

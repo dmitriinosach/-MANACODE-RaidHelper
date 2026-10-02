@@ -464,8 +464,8 @@ local function OnEvent(_, event, a, b)
     end
 end
 frame:Hide()
-frame:SetScript("OnUpdate", OnUpdate)
-frame:SetScript("OnEvent", OnEvent)
+frame:SetScript("OnUpdate", ns.Prof.Wrap("bg.flasks", OnUpdate))
+frame:SetScript("OnEvent", ns.Prof.Wrap("bg.flasks", OnEvent))
 frame:RegisterEvent("TRADE_SHOW")
 frame:RegisterEvent("TRADE_CLOSED")
 frame:RegisterEvent("TRADE_PLAYER_ITEM_CHANGED")

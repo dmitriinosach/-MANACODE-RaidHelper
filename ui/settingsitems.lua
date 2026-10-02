@@ -290,6 +290,10 @@ local function PauseText()
     local R = ns.Recorder
     return T((R and R.IsOn() and R.IsPaused()) and "set.svc.resume" or "set.svc.pause")
 end
+local function CpuText()
+    local C = ns.CpuMeter
+    return T((C and C.Wanted()) and "set.svc.cpu.off" or "set.svc.cpu.on")
+end
 local function AdvText()
     return T(S.Advanced() and "set.svc.adv.hide" or "set.svc.adv.show")
 end
@@ -310,6 +314,12 @@ S.Section("svc", "tools", {
           tip = "set.svc.diag.tip", run = function() ns.Slash.Diag() end },
         { kind = "button", key = "prof", text = "set.svc.prof",
           tip = "set.svc.prof.tip", run = function() ns.Slash.Prof() end },
+        { kind = "button", key = "cpu", text = CpuText, tip = "set.svc.cpu.tip", tick = true,
+          shown = function() return ns.CpuMeter ~= nil end,
+          run = function()
+              local out = ns.CpuMeter.Set(not ns.CpuMeter.Wanted())
+              for i = 1, #out do ns.Print(out[i]) end
+          end },
         { kind = "button", key = "test", text = "set.svc.test", tip = "set.svc.test.tip",
           confirm = "set.rec.clear.ask", tick = true,
           shown = function() return ns.RecLock() == "test" end,

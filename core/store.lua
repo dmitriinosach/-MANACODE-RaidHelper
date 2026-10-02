@@ -563,12 +563,12 @@ local function RotateStep()
     rotFrame:Hide()
     Apply(plan)
 end
-rotFrame:SetScript("OnUpdate", function(self, elapsed)
+rotFrame:SetScript("OnUpdate", ns.Prof.Wrap("bg.store", function(self, elapsed)
     rot.acc = rot.acc + elapsed
     if rot.acc < ROTATE_TICK then return end
     rot.acc = 0
     RotateStep()
-end)
+end))
 function Store.Rotate()
     if rot.skip or (ns.RecLock and ns.RecLock()) or not Store.OverLimit() then return false end
     rot.want, rot.prepped, rot.acc = true, false, ROTATE_TICK
@@ -836,7 +836,7 @@ end)
 local logoutFrame = CreateFrame("Frame")
 logoutFrame:RegisterEvent("PLAYER_LOGOUT")
 logoutFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-logoutFrame:SetScript("OnEvent", function(self, event)
+logoutFrame:SetScript("OnEvent", ns.Prof.Wrap("bg.store", function(self, event)
     if event == "PLAYER_ENTERING_WORLD" then
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
         rot.entered = true
@@ -844,4 +844,4 @@ logoutFrame:SetScript("OnEvent", function(self, event)
         return
     end
     Store.Close()
-end)
+end))

@@ -132,7 +132,7 @@ local function Flush(now)
     end
     return left
 end
-timer:SetScript("OnUpdate", function(self, dt)
+timer:SetScript("OnUpdate", ns.Prof.Wrap("bg.version", function(self, dt)
     acc = acc + dt
     if acc < STEP then return end
     acc = 0
@@ -142,7 +142,7 @@ timer:SetScript("OnUpdate", function(self, dt)
         if IsInGuild() then Schedule(CHAN, 0) end
     end
     if not Flush(now) and not loginAt then self:Hide() end
-end)
+end))
 local function Changed()
     for i = 1, #listeners do listeners[i]() end
 end
@@ -212,7 +212,7 @@ end
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("PLAYER_GUILD_UPDATE")
-events:SetScript("OnEvent", function(self, event)
+events:SetScript("OnEvent", ns.Prof.Wrap("bg.version", function(self, event)
     if event == "PLAYER_ENTERING_WORLD" then
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
         loginAt = GetTime() + LOGIN_DELAY
@@ -222,5 +222,5 @@ events:SetScript("OnEvent", function(self, event)
         return
     end
     Joined()
-end)
+end))
 ns.Comm.On(PREFIX, Version.OnMessage)

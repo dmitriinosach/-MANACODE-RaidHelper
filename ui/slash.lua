@@ -71,6 +71,7 @@ function Slash.Diag()
         { "ui/settingsitems.lua", ns.Settings and ns.Settings.itemsLoaded },
         { "ui/panel.lua", ns.Panel },
         { "ui/prof.lua", ns.ProfView },
+        { "core/cpumeter.lua", ns.CpuMeter },
         { "core/summary.lua", ns.Summary },
         { "ui/badges.lua", ns.Badges },
         { "ui/summary.lua", ns.SummaryView },
@@ -131,6 +132,23 @@ function Slash.Prof()
     else
         ns.Print(ns.T("slash.diag.restart"))
     end
+end
+function Slash.Cpu(arg)
+    local C = ns.CpuMeter
+    if not C then
+        ns.Print(ns.T("slash.diag.restart"))
+        return
+    end
+    local out
+    if arg == "on" or arg == "вкл" then
+        out = C.Set(true)
+    elseif arg == "off" or arg == "выкл" then
+        out = C.Set(false)
+    else
+        out = C.Report()
+    end
+    for i = 1, #out do ns.Print(out[i]) end
+    return out
 end
 function Slash.Merge()
     local merged, skipped = ns.Effects.MergeVariants()
@@ -215,6 +233,8 @@ local function Handler(msg)
         Slash.Rescan()
     elseif cmd == "prof" or cmd == "замер" then
         Slash.Prof()
+    elseif cmd == "cpu" or cmd == "цп" then
+        Slash.Cpu(arg)
     elseif cmd == "merge" or cmd == "свести" then
         Slash.Merge()
     elseif cmd == "on" then

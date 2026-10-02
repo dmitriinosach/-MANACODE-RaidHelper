@@ -46,6 +46,9 @@ local BLAST_JOIN = 0.5
 local BLAST_LIMIT = 500
 local VICTIM_LIMIT = 2000
 local BTGT = "FW_BTGT"
+local THR = "FW_THR"
+local THR_HOLD = 6
+local HOLDER_KEEP = 30
 local CAST_LIMIT = 2000
 local CAST_SHOW = 2
 local CAST_INSTANT = 0.8
@@ -161,7 +164,7 @@ local function OnSwing(c, ts, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, sr
     if srcKey and c.bosses[srcKey] then
         if kd then
             local n = #c.swT + 1
-            c.swT[n], c.swK[n] = ts, kd
+            c.swT[n], c.swK[n], c.swG[n] = ts, kd, srcGUID
             c.tankHits[kd] = (c.tankHits[kd] or 0) + 1
         end
         return
@@ -303,11 +306,11 @@ local function OnBlast(c, ts, srcGUID, src, dst, spell, amount, srcFlags, srcKey
         end
     end
 end
-local function OnMelee(c, ts, srcKey, dst, spell)
+local function OnMelee(c, ts, srcGUID, srcKey, dst, spell)
     local kd = dst and c.byK[dst]
     if not kd or not spell or not c.melee or not c.melee[spell] or not srcKey or not c.bosses[srcKey] then return end
     local n = #c.swT + 1
-    c.swT[n], c.swK[n] = ts, kd
+    c.swT[n], c.swK[n], c.swG[n] = ts, kd, srcGUID
     c.tankHits[kd] = (c.tankHits[kd] or 0) + 1
 end
 local function OnTaunt(c, ts, src, dstKey, spell)
@@ -316,9 +319,19 @@ local function OnTaunt(c, ts, src, dstKey, spell)
     local n = #c.tauT + 1
     c.tauT[n], c.tauK[n] = ts, ks
 end
-local function OnTarget(c, ts, dst)
+local function OnTarget(c, ts, srcGUID, dst)
     local n = #c.btT + 1
-    c.btT[n], c.btK[n] = ts, dst and c.byK[dst] or 0
+    c.btT[n], c.btK[n], c.btG[n] = ts, dst and c.byK[dst] or 0, srcGUID
+end
+local function OnThreat(c, ts, srcGUID, srcKey, who)
+    if not srcKey or not c.bosses[srcKey] then return end
+    local n = #c.thT + 1
+    c.thT[n], c.thK[n], c.thG[n] = ts, who and c.byK[who] or 0, srcGUID
+end
+local function OnActive(c, ts, dstGUID, dstKey, spell)
+    if not c.active or not spell or not c.active[spell] or not dstKey or not c.bosses[dstKey] then return end
+    local n = #c.actT + 1
+    c.actT[n], c.actG[n] = ts, dstGUID
 end
 local function OnFollow(c, ts, sub, src, dst, spell, srcKey)
     local defs = c.poolDefs
@@ -409,9 +422,9 @@ local function OnPlatform(c, ts, sub, srcKey, id)
     if not def or not srcKey or not c.bosses[srcKey] then return end
     local kind = ns.ReplayPlatform.Match(def, id)
     if kind == "quake" then
-        ns.ReplayPlatform.AddQuake(c.L.pfQuake, def.quake.gap, ts, sub == "SPELL_CAST_SUCCESS")
+        ns.ReplayPlatform.Add(c.L.pfQuake, def.quake, ts, sub == "SPELL_CAST_SUCCESS")
     elseif kind == "winter" then
-        ns.ReplayPlatform.AddWinter(c.L.pfWinter, def.winter.gap, ts)
+        ns.ReplayPlatform.Add(c.L.pfWinter, def.winter, ts, sub == "SPELL_CAST_SUCCESS")
     end
 end
 local function OnMark(c, ts, key)
@@ -465,21 +478,24 @@ local function Dispatch(c, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFla
         if sub == "SPELL_AURA_APPLIED" then
             OnPool(c, ts, sub, srcGUID, src, dst, sk)
             OnTaunt(c, ts, src, dstKey, sk)
+            OnActive(c, ts, dstGUID, dstKey, sk)
         end
     elseif DAMAGE[sub] then
         OnPool(c, ts, sub, srcGUID, src, dst, sk)
         OnAim(c, ts, dst, sk)
         OnBlast(c, ts, srcGUID, src, dst, sk, tonumber(a4), srcFlags, srcKey)
-        OnMelee(c, ts, srcKey, dst, sk)
+        OnMelee(c, ts, srcGUID, srcKey, dst, sk)
     elseif sub == BTGT then
-        OnTarget(c, ts, dst)
+        OnTarget(c, ts, srcGUID, dst)
+    elseif sub == THR then
+        OnThreat(c, ts, srcGUID, srcKey, dst)
     elseif CASTS[sub] then
         OnCast(c, ts, sub, src, dst, sk, srcKey)
         OnGone(c, ts, sub, srcKey, a1)
         OnPlatform(c, ts, sub, srcKey, a1)
-        if sub == "SPELL_CAST_SUCCESS" then OnMelee(c, ts, srcKey, dst, sk) end
+        if sub == "SPELL_CAST_SUCCESS" then OnMelee(c, ts, srcGUID, srcKey, dst, sk) end
     elseif sub == "SPELL_MISSED" then
-        OnMelee(c, ts, srcKey, dst, sk)
+        OnMelee(c, ts, srcGUID, srcKey, dst, sk)
     elseif sub == "UNIT_DIED" then
         OnDied(c, ts, dstGUID, dst, dstKey)
     elseif sub == "SPELL_SUMMON" then
@@ -509,6 +525,11 @@ local function NewContext(scene)
     end
     for id in pairs(D.taunts) do taunts[SpellKey(id)] = true end
     for id, icon in pairs(D.adds) do adds[ns.NpcKeyOf(id)] = icon end
+    local active = nil
+    for _, id in ipairs(D.active[fight.boss] or {}) do
+        active = active or {}
+        active[SpellKey(id)] = true
+    end
     local goneDefs = D.gone[fight.boss]
     local goneAt = {}
     for i = 1, goneDefs and #goneDefs or 0 do goneAt[i] = {} end
@@ -519,7 +540,8 @@ local function NewContext(scene)
         poolDefs = D.pools[fight.boss], coneDefs = cones, taunts = taunts, adds = adds,
         blastDefs = D.blasts[fight.boss], blastOpen = {}, blastMax = {}, melee = melee,
         valkyr = D.valkyr.boss == fight.boss,
-        swT = {}, swK = {}, btT = {}, btK = {}, tgT = {}, tgK = {}, hold = TARGET_HOLD, tauT = {}, tauK = {},
+        swT = {}, swK = {}, swG = {}, btT = {}, btK = {}, btG = {}, tgT = {}, tgK = {}, hold = TARGET_HOLD, tauT = {}, tauK = {},
+        thT = {}, thK = {}, thG = {}, active = active, actT = {}, actG = {}, holders = {},
         tankHits = {}, addBy = {}, addN = 0, pools = {}, born = {}, follow = {},
         hitAt = {}, coneTo = {}, coneDef = {}, aimX = {}, aimY = {}, aimN = {}, aimOpen = {}, aimSpells = aimSpells,
         npcOf = {}, diedK = {}, diedT = {}, bossN = {}, bossG = {},
@@ -550,8 +572,8 @@ local function Leader(count)
     end
     return best, bestN
 end
-local function Smooth(c)
-    local swT, swK, tauT, tauK = c.swT, c.swK, c.tauT, c.tauK
+local function Smooth(c, swT, swK)
+    local tauT, tauK = c.tauT, c.tauK
     local n = #swT
     local count, outT, outK, rawK = {}, {}, {}, {}
     local lo, hi, ti = 1, 0, 1
@@ -603,13 +625,72 @@ local function PickTargets(c)
         L.targets = #c.btT
     else
         local raw = #c.swT
-        c.tgT, c.tgK, L.switchRaw = Smooth(c)
+        c.tgT, c.tgK, L.switchRaw = Smooth(c, c.swT, c.swK)
         c.hold = BOSS_STEP * 1.5
         L.targetSrc = "swing"
         L.switchSmooth = Switches(c.tgK)
         L.targets = raw
     end
     L.taunts = #c.tauT
+    L.thrRows = #c.thT
+end
+local function OfBody(T, K, G, guid)
+    if not guid then return T, K end
+    local oT, oK = {}, {}
+    for i = 1, #T do
+        if G[i] == guid then
+            oT[#oT + 1], oK[#oK + 1] = T[i], K[i]
+        end
+    end
+    return oT, oK
+end
+local function Alive(c, k, t)
+    local tr = c.tracks[k]
+    local i = tr and ns.Replay.IndexAt(tr, t) or 0
+    return i > 0 and tr.dz[i] == 0
+end
+local function Holders(c, guid)
+    local h = c.holders[guid or ""]
+    if h then return h end
+    local bT, bK = OfBody(c.btT, c.btK, c.btG, guid)
+    local hT, hK = OfBody(c.thT, c.thK, c.thG, guid)
+    local sT, sK = OfBody(c.swT, c.swK, c.swG, guid)
+    local _, smK = Smooth(c, sT, sK)
+    local K, S = {}, {}
+    local bi, hi, last, lastT = 0, 0, 0, -1e9
+    local i, t = 0, c.from
+    while t <= c.to do
+        ns.Jobs.Step(2)
+        i = i + 1
+        while bi < #bT and bT[bi + 1] <= t + TARGET_AHEAD do bi = bi + 1 end
+        while hi < #hT and hT[hi + 1] <= t + TARGET_AHEAD do hi = hi + 1 end
+        local k, src = 0, nil
+        if bi > 0 and bK[bi] > 0 and Alive(c, bK[bi], t) then
+            k, src = bK[bi], "target"
+        elseif hi > 0 and hK[hi] > 0 and t - hT[hi] <= THR_HOLD and Alive(c, hK[hi], t) then
+            k, src = hK[hi], "threat"
+        elseif (smK[i] or 0) > 0 and Alive(c, smK[i], t) then
+            k, src = smK[i], "swing"
+        elseif last > 0 and t - lastT <= HOLDER_KEEP and Alive(c, last, t) then
+            k, src = last, "kept"
+        end
+        if src and src ~= "kept" then last, lastT = k, t end
+        K[i], S[i] = k, src or false
+        t = t + BOSS_STEP
+    end
+    h = { K = K, S = S }
+    c.holders[guid or ""] = h
+    return h
+end
+function Layers.HolderAt(c, guid, t)
+    local h = Holders(c, guid)
+    local i = floor((t - c.from) / BOSS_STEP + 0.5) + 1
+    local k = h.K[i]
+    if not k or k == 0 then return 0, nil end
+    return k, h.S[i]
+end
+function Layers.HasHolders(c)
+    return (c.btT and #c.btT or 0) + (c.thT and #c.thT or 0) + (c.swT and #c.swT or 0) > 0
 end
 local function RaidMean(c, t)
     local sx, sy, n = 0, 0, 0
@@ -647,6 +728,10 @@ local function AddFixed(c, kind, from, to)
     fx.kind[n], fx.from[n], fx.to[n], fx.empty[n] = kind, from, to, false
     return n
 end
+local function PinPoint(room, at, ppy)
+    if not at then return room.cx, room.cy end
+    return room.cx + at[1] * ppy, room.cy + at[2] * ppy
+end
 local function FeedRow(rows, label, sec)
     rows[#rows + 1] = { key = "gone", label = label, from = sec, to = sec }
 end
@@ -655,13 +740,19 @@ local function FixSpans(scene, c, res)
     c.fixed = fx
     c.L.fixed = fx
     local rows = nil
+    local room = scene.room
     local defs = c.goneDefs
     for i = 1, defs and #defs or 0 do
         local def, list = defs[i], c.goneAt[i]
         for j = 1, #list do
             local from, to = GoneSpan(c, list[j], def)
-            local n = AddFixed(c, "gone", from, min(to, c.to))
+            local air = def.at and room
+            local n = AddFixed(c, air and "pin" or "gone", from, min(to, c.to))
             fx.empty[n] = def.empty == true
+            if air then
+                fx.x[n], fx.y[n] = PinPoint(room, def.at, c.ppy)
+                fx.glide[n] = def.glide or 0
+            end
             if def.feed then
                 rows = rows or {}
                 FeedRow(rows, "rep.f.takeoff", from - c.from)
@@ -669,13 +760,23 @@ local function FixSpans(scene, c, res)
             end
         end
     end
-    local pin, room = c.D.pin[scene.fight.boss], scene.room
+    local pin = c.D.pin[scene.fight.boss]
     if pin and room and res then
+        local px, py = PinPoint(room, pin.at, c.ppy)
         for k = 1, #res.spans do
             local sp = res.spans[k]
-            if pin.phases[sp.key] then
+            if pin.phases and pin.phases[sp.key] then
                 local n = AddFixed(c, "pin", c.from + sp.from, min(c.to, c.from + sp.to + pin.tail))
-                fx.x[n], fx.y[n], fx.glide[n] = room.cx, room.cy, pin.glide
+                fx.x[n], fx.y[n], fx.glide[n] = px, py, pin.glide
+            end
+        end
+        for kind in pairs(pin.waves or {}) do
+            local times, ends = res.waves[kind] or {}, res.ends[kind] or {}
+            for j = 1, #times do
+                if ends[j] then
+                    local n = AddFixed(c, "pin", c.from + times[j], min(c.to, c.from + ends[j] + pin.tail))
+                    fx.x[n], fx.y[n], fx.glide[n] = px, py, pin.glide
+                end
             end
         end
     end
@@ -898,6 +999,8 @@ function Layers.Build(scene)
     local rm = RM and RM.New(fight)
     local RR = ns.ReplayRealm
     local rr = RR and RR.New(fight)
+    local SP = ns.ReplaySpread
+    local sp = SP and SP.New(fight)
     local np = ns.NpcPos and ns.NpcPos.New(scene, c)
     local ph = ns.Phases.New(fight)
     local segs = ns.Encounters.Segs(fight)
@@ -914,6 +1017,7 @@ function Layers.Build(scene)
             if rb then RB.Event(rb, ts, sub, src, dst, a1) end
             if rm then RM.Event(rm, ts, sub, srcGUID, src, dstGUID, dst, a1, a4) end
             if rr then RR.Event(rr, ts, sub, srcGUID, src, dstGUID, dst, a1, a2) end
+            if sp then SP.Event(sp, ts, sub, src, dst, a1) end
             if np then ns.NpcPos.Feed(np, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2) end
         end
     end
@@ -925,15 +1029,16 @@ function Layers.Build(scene)
     Tanks(c)
     local feedRes = FixSpans(scene, c, res)
     local f0 = debugprofilestop()
-    if rm then RM.Done(rm, c.L, function(name, t) return Pos(c, name, t) end, c.ppy, fc) end
+    if rm then RM.Done(rm, c.L, function(name, t) return Pos(c, name, t) end, c.ppy, fc, c.byK) end
     if rr then RR.Done(rr, c.L, function(name, t) return Pos(c, name, t) end, c.ppy) end
+    if sp then SP.Done(sp, c.L, scene) end
     FC.Done(fc, c.L, feedRes)
     MK.Done(mc, c.L, feedRes)
     if rm and #rm.marks > 0 then c.L.marks = MK.Merge(c.L.marks, rm.marks) end
     if rb then RB.Done(rb, c.L, feedRes, fight) end
     c.L.feedMs = debugprofilestop() - f0
     PickTargets(c)
-    if not (np and ns.NpcPos.Place(np, TargetAt)) then PlaceBoss(scene, c) end
+    if not (np and ns.NpcPos.Place(np, Layers.HolderAt)) then PlaceBoss(scene, c) end
     FinishBossHp(c, segs, fight.to, np and np.stats.guid, rr)
     PlaceCones(scene, c)
     c.L.bsT = c.swT

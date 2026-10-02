@@ -3,6 +3,7 @@ local floor = math.floor
 local max = math.max
 local min = math.min
 local sqrt = math.sqrt
+local format = string.format
 local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\replay\\"
 local CONE = ART .. "cone"
 local RIM = ART .. "rim"
@@ -27,6 +28,15 @@ local PACT_GAP = 1
 local MAX_PX = 4000
 local SPIKE_W = 10
 local SPIKE_UP = 12
+local COUNT_DRAW = 8
+local CHASE_DRAW = 12
+local CHASE_YD = 1.6
+local ceil = math.ceil
+local BOMB_TOP = 30
+local BOMB_H = 20
+local BOMB_ICON = 16
+local BOMB_EDGE = 3
+local BOMB_PAD = 6
 local V = {}
 ns.ReplayLayersView = V
 local Kit = ns.Kit
@@ -34,15 +44,18 @@ local Replay = ns.Replay
 local Layers = ns.ReplayLayers
 local Shield = ns.ReplayShield
 local pools, cones, blasts, lines, hits = {}, {}, {}, {}, {}
+local counts, chaseLines, chaseRings = {}, {}, {}
 local hitbox
-local used = { pool = 0, cone = 0, blast = 0, line = 0, hit = 0 }
+local bomb
+local used = { pool = 0, cone = 0, blast = 0, line = 0, hit = 0, count = 0, chase = 0, ring = 0 }
 local view, marks
 local hw, hh = 0, 0
 local top1, top2, top3, topN = {}, {}, {}, {}
-local flagBox, flagSpike, flagMc, flagLift, flagHalo, flagGrow = {}, {}, {}, {}, {}, {}
+local flagSpike, flagMc, flagLift, flagHalo, flagGrow = {}, {}, {}, {}, {}
 local flagLook = {}
 local pactK, pactFrom = {}, {}
-local stats = { badges = 0, pools = 0, cones = 0, blasts = 0, adds = 0 }
+local stats = { badges = 0, pools = 0, cones = 0, blasts = 0, adds = 0, counts = 0, countTop = nil, chases = 0,
+                chaseLines = 0 }
 V.stats = stats
 local function PutRect(tex, l, t, r, b, u0, v0, u1, v1)
     local cl, ct, cr, cb = max(l, -hw), max(t, -hh), min(r, hw), min(b, hh)
@@ -113,7 +126,36 @@ function V.Build(v, m)
     for i = 1, LINE_DRAW do lines[i] = Tex(marks, LINE, "BORDER", "sem.rep.pact") end
     for i = 1, CONE_DRAW do cones[i] = Tex(marks, CONE, "ARTWORK", "sem.rep.cone") end
     for i = 1, BLAST_DRAW do blasts[i] = Tex(marks, RIM, "ARTWORK", "sem.rep.blast") end
+    for i = 1, CHASE_DRAW do
+        chaseRings[i] = Tex(marks, RIM, "BORDER", "sem.rep.chase")
+        chaseLines[i] = Tex(marks, LINE, "BORDER", "sem.rep.chase")
+    end
+    for i = 1, COUNT_DRAW do
+        local fs = marks:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+        Kit.Text(fs, "sem.rep.count")
+        fs:Hide()
+        counts[i] = fs
+    end
     hitbox = Tex(marks, RIM, "BACKGROUND", "sem.rep.hitbox")
+    bomb = Kit.PlainFrame(v, 8)
+    bomb:SetHeight(BOMB_H)
+    bomb:SetPoint("TOP", v, "TOP", 0, -BOMB_TOP)
+    local bg = bomb:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(bomb)
+    Kit.Paint(bg, "sem.rep.plate")
+    local edge = bomb:CreateTexture(nil, "BORDER")
+    edge:SetPoint("TOPLEFT", bomb, "TOPLEFT", 0, 0)
+    edge:SetPoint("BOTTOMLEFT", bomb, "BOTTOMLEFT", 0, 0)
+    edge:SetWidth(BOMB_EDGE)
+    Kit.Paint(edge, "sem.rep.bomb")
+    bomb.icon = bomb:CreateTexture(nil, "ARTWORK")
+    bomb.icon:SetWidth(BOMB_ICON)
+    bomb.icon:SetHeight(BOMB_ICON)
+    bomb.icon:SetPoint("LEFT", bomb, "LEFT", BOMB_EDGE + BOMB_PAD, 0)
+    bomb.text = bomb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    bomb.text:SetPoint("LEFT", bomb.icon, "RIGHT", BOMB_PAD / 2, 0)
+    Kit.Text(bomb.text, "text.bad")
+    bomb:Hide()
 end
 function V.Attach(fig)
     fig.bd = {}
@@ -130,11 +172,6 @@ function V.Attach(fig)
     fig.more = fig:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     fig.more:SetPoint("LEFT", fig.bd[3], "RIGHT", 1, 0)
     fig.more:Hide()
-    fig.box = fig:CreateTexture(nil, "OVERLAY")
-    fig.box:SetPoint("TOPLEFT", fig.icon, "TOPLEFT", -4, 4)
-    fig.box:SetPoint("BOTTOMRIGHT", fig.icon, "BOTTOMRIGHT", 4, -4)
-    fig.box:SetAlpha(0.6)
-    fig.box:Hide()
     fig.spike = fig:CreateTexture(nil, "OVERLAY")
     fig.spike:SetTexture(CONE)
     fig.spike:SetTexCoord(0, 0, 1, 0, 0, 1, 1, 1)
@@ -153,7 +190,6 @@ function V.Role(fig)
     fig.bKey, fig.lift, fig.mcOn, fig.grow, fig.look = nil, nil, nil, nil, nil
     for i = 1, BADGES do fig.bd[i]:Hide() end
     fig.more:Hide()
-    fig.box:Hide()
     fig.spike:Hide()
     fig.halo:Hide()
 end
@@ -168,9 +204,15 @@ function V.Use(scene)
     for i = 1, #blasts do blasts[i]:Hide() end
     for i = 1, #lines do lines[i]:Hide() end
     for i = 1, #hits do hits[i]:Hide() end
+    for i = 1, #counts do counts[i]:Hide() end
+    for i = 1, #chaseLines do chaseLines[i]:Hide() end
+    for i = 1, #chaseRings do chaseRings[i]:Hide() end
     hitbox:Hide()
+    bomb:Hide()
+    bomb.key = nil
     for k in pairs(used) do used[k] = 0 end
     for k in pairs(stats) do stats[k] = 0 end
+    stats.countTop = nil
     V.scene = scene
 end
 local function Fade(a, from, to, t)
@@ -180,11 +222,23 @@ local function Fade(a, from, to, t)
     if born < 0.3 then a = a * max(0.3, born / 0.3) end
     return a
 end
+local function Count(fs, sx, sy, left)
+    if fs.left ~= left then
+        fs.left = left
+        fs:SetText(tostring(left))
+    end
+    fs:ClearAllPoints()
+    fs:SetPoint("CENTER", view, "CENTER", sx, -sy)
+    fs:Show()
+    stats.countTop = stats.countTop or left
+end
 local function PlacePools(scene, cam, t)
     local L = scene.layers
     local n = 0
     local ppy, zoom = scene.ppy, cam.zoom
     local boss = scene.bossState
+    local nc = 0
+    stats.countTop = nil
     for j = 1, L.np do
         if n >= POOL_DRAW then break end
         if L.plFrom[j] <= t and L.plTo[j] > t then
@@ -200,14 +254,50 @@ local function PlacePools(scene, cam, t)
                         n = n + 1
                         local r, g, b, a = Kit.Color(def.tone)
                         tex:SetVertexColor(r, g, b, Fade(a, L.plFrom[j], L.plTo[j], t))
+                        if def.boom and nc < COUNT_DRAW then
+                            nc = nc + 1
+                            Count(counts[nc], sx, sy, max(0, ceil(def.boom - t)))
+                        end
                     end
                 end
             end
         end
     end
     for i = n + 1, used.pool do pools[i]:Hide() end
-    used.pool = n
-    stats.pools = n
+    for i = nc + 1, used.count do counts[i]:Hide() end
+    used.pool, used.count = n, nc
+    stats.pools, stats.counts = n, nc
+end
+local function PlaceChase(scene, cam, t)
+    local C = scene.layers.chase
+    local nl, nr = 0, 0
+    for i = 1, C and C.n or 0 do
+        if nr >= CHASE_DRAW then break end
+        local s = C.from[i] <= t and C.to[i] > t and scene.states[C.k[i]]
+        if s and s.vis then
+            local tx, ty, kt = Replay.Project(cam, s.x, s.y)
+            if kt > 0 then
+                local rw = CHASE_YD * scene.ppy * cam.zoom * kt
+                if PutEllipse(chaseRings[nr + 1], tx, ty, rw, max(1, rw * min(1, cam.tilt * kt))) then nr = nr + 1 end
+                local add = C.add[i]
+                local ax, ay = -1, -1
+                if add and add.from <= t and add.to > t then ax, ay = Replay.PosHold(add, t, ADD_HOLD) end
+                if ax >= 0 then
+                    local sx, sy, ka = Replay.Project(cam, ax, ay)
+                    local dx, dy = tx - sx, ty - sy
+                    local d = sqrt(dx * dx + dy * dy)
+                    if ka > 0 and d >= 2 then
+                        local nx, ny = -dy / d * LINE_W * 2, dx / d * LINE_W * 2
+                        if PutAffine(chaseLines[nl + 1], sx - nx / 2, sy - ny / 2, dx, dy, nx, ny) then nl = nl + 1 end
+                    end
+                end
+            end
+        end
+    end
+    for i = nl + 1, used.chase do chaseLines[i]:Hide() end
+    for i = nr + 1, used.ring do chaseRings[i]:Hide() end
+    used.chase, used.ring = nl, nr
+    stats.chases, stats.chaseLines = nr, nl
 end
 local function PlaceBlasts(scene, cam, t)
     local L = scene.layers
@@ -321,10 +411,40 @@ local function PlaceHitbox(scene, cam)
     local rw = R * cam.zoom * k
     PutEllipse(hitbox, sx, sy, rw, max(1, rw * min(1, cam.tilt * k)))
 end
+local function PlaceBomb(L, t)
+    local list, def = L.bombs, L.bombDef
+    local left
+    for i = 1, list and #list or 0 do
+        local d = list[i].t - t
+        if d >= 0 and d <= def.lead then
+            left = d
+            break
+        end
+    end
+    stats.bomb = left
+    if not left then
+        if bomb.key then
+            bomb.key = nil
+            bomb:Hide()
+        end
+        return
+    end
+    local key = floor(left * 10)
+    if bomb.key == key then return end
+    if not bomb.key then Kit.Icon.Spell(bomb.icon, def.icon) end
+    bomb.key = key
+    bomb.str = format(ns.T("rep.bomb"), GetSpellInfo(def.icon) or "", ns.Dec(format("%.1f", key / 10)))
+    bomb.text:SetText(bomb.str)
+    bomb:SetWidth(BOMB_EDGE + BOMB_PAD * 2 + BOMB_ICON + BOMB_PAD / 2 + (bomb.text:GetStringWidth() or 0))
+    bomb:Show()
+end
+function V.BombText()
+    return bomb and bomb.key and bomb.str or nil
+end
 local function Collect(L, n, t)
     for k = 1, n do
         top1[k], top2[k], top3[k], topN[k] = -1, -1, -1, 0
-        flagBox[k], flagSpike[k], flagMc[k], flagLift[k], flagHalo[k] = false, false, false, false, false
+        flagSpike[k], flagMc[k], flagLift[k], flagHalo[k] = false, false, false, false
         flagGrow[k] = false
         flagLook[k] = false
     end
@@ -348,7 +468,6 @@ local function Collect(L, n, t)
             elseif top3[k] < 0 or p > Layers.State(top3[k]).prio then
                 top3[k] = s
             end
-            if def.box then flagBox[k] = true end
             if def.spike then flagSpike[k] = true end
             if def.mc then flagMc[k] = true end
             if def.lift then flagLift[k] = true end
@@ -367,7 +486,7 @@ local function Collect(L, n, t)
 end
 local function Decorate(fig, k)
     local key = (top1[k] + 2) + (top2[k] + 2) * 64 + (top3[k] + 2) * 4096 + topN[k] * 262144
-        + (flagBox[k] and 1e8 or 0) + (flagSpike[k] and 2e8 or 0)
+        + (flagSpike[k] and 2e8 or 0)
     if fig.bKey ~= key then
         fig.bKey = key
         for i = 1, BADGES do
@@ -384,12 +503,6 @@ local function Decorate(fig, k)
             fig.more:Show()
         else
             fig.more:Hide()
-        end
-        if flagBox[k] then
-            Kit.Icon.Spell(fig.box, 70157)
-            fig.box:Show()
-        else
-            fig.box:Hide()
         end
         if flagSpike[k] then fig.spike:Show() else fig.spike:Hide() end
     end
@@ -432,10 +545,12 @@ function V.Place(scene, cam, t, figs)
     if not L or not view then return end
     hw, hh = cam.w / 2, cam.h / 2
     PlacePools(scene, cam, t)
+    PlaceChase(scene, cam, t)
     PlaceHits(scene, cam, t)
     PlaceBlasts(scene, cam, t)
     PlaceCones(scene, cam, t)
     PlaceHitbox(scene, cam)
+    PlaceBomb(L, t)
     local n = #scene.tracks
     local np = Collect(L, n, t)
     stats.badges = 0

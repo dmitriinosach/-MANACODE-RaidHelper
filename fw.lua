@@ -57,12 +57,26 @@ function ns.Dec(s)
     if ns.lang == "enUS" then return s end
     return (s:gsub("%.", ","))
 end
-ns.Prof = { on = false, rows = {} }
-function ns.Prof.Add(key, ms, items)
-    local r = ns.Prof.rows[key]
+local preFrames = nil
+if type(EnumerateFrames) == "function" then
+    preFrames = {}
+    local f = EnumerateFrames()
+    while f do
+        preFrames[f] = true
+        f = EnumerateFrames(f)
+    end
+end
+ns.Prof = { on = false, rows = {}, keys = setmetatable({}, { __mode = "k" }) }
+local Prof = ns.Prof
+local fight = nil
+local win = nil
+local cur = nil
+local curT = nil
+function Prof.Add(key, ms, items)
+    local r = Prof.rows[key]
     if not r then
         r = { n = 0, ms = 0, last = 0, max = 0, items = 0 }
-        ns.Prof.rows[key] = r
+        Prof.rows[key] = r
     end
     r.n = r.n + 1
     r.ms = r.ms + ms
@@ -70,8 +84,117 @@ function ns.Prof.Add(key, ms, items)
     if ms > r.max then r.max = ms end
     r.items = r.items + (items or 0)
 end
-function ns.Prof.Reset()
-    wipe(ns.Prof.rows)
+function Prof.Reset()
+    wipe(Prof.rows)
+end
+function Prof.Busy()
+    return fight ~= nil or win ~= nil or Prof.on
+end
+local function Acc(f, key, ms, t)
+    if f.skip > 0 then
+        ms = ms - f.skip
+        f.skip = 0
+    end
+    if ms < 0 then return end
+    f.ms = f.ms + ms
+    f.by[key] = (f.by[key] or 0) + ms
+    if t == f.frameT then
+        f.frameMs = f.frameMs + ms
+    else
+        if f.frameMs > f.worst then f.worst = f.frameMs end
+        f.frameT, f.frameMs = t, ms
+    end
+end
+function Prof.Hot(key, ms)
+    if ms < 0 then return end
+    if fight or win then
+        local t = GetTime()
+        if fight then Acc(fight, key, ms, t) end
+        if win then Acc(win, key, ms, t) end
+    end
+    if Prof.on then Prof.Add(key, ms, 1) end
+end
+local function Move(f, key, parent, ms)
+    local by = f.by
+    by[key] = (by[key] or 0) + ms
+    by[parent] = (by[parent] or 0) - ms
+end
+function Prof.Part(key, parent, ms)
+    if ms < 0 or key == parent then return end
+    if fight then Move(fight, key, parent, ms) end
+    if win then Move(win, key, parent, ms) end
+    if Prof.on then Prof.Add(key, ms, 1) end
+end
+function Prof.Skip(ms)
+    if ms <= 0 or not cur or curT ~= GetTime() then return end
+    if fight then fight.skip = fight.skip + ms end
+    if win then win.skip = win.skip + ms end
+end
+function Prof.Once(key, ms)
+    local w = win
+    if not w or ms < 0 then return end
+    local o = w.once[key]
+    if not o then
+        o = { ms = 0, n = 0, max = 0, runs = 0 }
+        w.once[key] = o
+    end
+    o.ms = o.ms + ms
+    o.n = o.n + 1
+    if ms > o.max then o.max = ms end
+    w.skip = w.skip + ms
+end
+function Prof.OnceEnd(key)
+    local o = win and win.once[key]
+    if o then o.runs = o.runs + 1 end
+end
+function Prof.Wrap(key, fn)
+    local w = function(...)
+        if not fight and not win and not Prof.on then return fn(...) end
+        local t = GetTime()
+        local outer = cur
+        if outer and curT ~= t then outer = nil end
+        cur, curT = key, t
+        local p0 = debugprofilestop()
+        fn(...)
+        local ms = debugprofilestop() - p0
+        cur = outer
+        if outer then Prof.Part(key, outer, ms) else Prof.Hot(key, ms) end
+    end
+    Prof.keys[w] = key
+    return w
+end
+local function NewSession()
+    return { at = GetTime(), ms = 0, worst = 0, frameT = nil, frameMs = 0, skip = 0, by = {} }
+end
+local function Close(f)
+    if f.frameMs > f.worst then f.worst = f.frameMs end
+    f.dur = GetTime() - f.at
+    return f
+end
+function Prof.FightStart()
+    fight = NewSession()
+end
+function Prof.FightStop()
+    local f = fight
+    if not f then return nil end
+    fight = nil
+    return Close(f)
+end
+function Prof.Fight()
+    return fight
+end
+function Prof.WinStart()
+    win = NewSession()
+    win.once = {}
+end
+function Prof.WinStop()
+    local f = win
+    if not f then return nil end
+    win = nil
+    return Close(f)
+end
+function Prof.Win()
+    return win
 end
 local JOB_BUDGET = 25
 local JOB_BUDGET_TIGHT = 8
@@ -232,12 +355,13 @@ end
 local function Finish(job, ok, ...)
     Drop(job)
     if job.prof and ns.Prof.on then ns.Prof.Add(job.prof .. ".total", job.spent) end
+    if win then Prof.OnceEnd(job.prof or "job") end
     local done = job.done
     for i = 1, #done do
         if ok then done[i](...) else done[i](nil) end
     end
 end
-jobFrame:SetScript("OnUpdate", function(self)
+jobFrame:SetScript("OnUpdate", Prof.Wrap("hot.bg", function(self)
     frameStart = debugprofilestop()
     budget = Jobs.Budget()
     while queue[1] do
@@ -252,6 +376,7 @@ jobFrame:SetScript("OnUpdate", function(self)
         local spent = debugprofilestop() - t0
         job.spent = job.spent + spent
         if job.prof and ns.Prof.on then ns.Prof.Add(job.prof, spent) end
+        if win then Prof.Once(job.prof or "job", spent) end
         if not ok then
             ns.Print(tostring(a))
             Finish(job, false)
@@ -262,7 +387,7 @@ jobFrame:SetScript("OnUpdate", function(self)
     end
     Notify()
     if not queue[1] and not dirty then self:Hide() end
-end)
+end))
 local readyCallbacks = {}
 function ns.OnReady(fn)
     readyCallbacks[#readyCallbacks + 1] = fn
@@ -525,6 +650,16 @@ loader:SetScript("OnEvent", function(self, event, name)
     InstallWidgetFallback()
     for i = 1, #readyCallbacks do
         readyCallbacks[i]()
+    end
+    if preFrames then
+        local own = setmetatable({}, { __mode = "k" })
+        local f = EnumerateFrames()
+        while f do
+            if not preFrames[f] then own[f] = true end
+            f = EnumerateFrames(f)
+        end
+        preFrames = nil
+        ns.ownFrames = own
     end
     if newer then ns.Print(string.format(ns.T("fmt.newer"), newer, rec)) end
 end)

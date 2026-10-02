@@ -418,7 +418,7 @@ function TV.Attach(frame, clip, margin, headH)
         local t, row = At(Cursor(self))
         if t then TV.ClickAt(t, row) end
     end)
-    plot:SetScript("OnUpdate", OnUpdate)
+    plot:SetScript("OnUpdate", ns.Prof.Wrap("ui.tl", OnUpdate))
     plot:SetScript("OnLeave", function()
         cursor:Hide()
         hoverKey = nil

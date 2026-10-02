@@ -26,18 +26,14 @@ function Platform.Match(def, id, name)
     if Hit(def.winter, id) then return "winter" end
     return nil
 end
-function Platform.AddQuake(list, gap, ts, success)
+function Platform.Add(list, cast, ts, success)
+    local start = success and ts - cast.cast or ts
     local n = #list
-    if n > 0 and ts - list[n] < gap then
-        if success then list[n] = ts end
+    if n > 0 and start - list[n] < cast.gap then
+        if start < list[n] then list[n] = start end
         return
     end
-    list[n + 1] = ts
-end
-function Platform.AddWinter(list, gap, ts)
-    local n = #list
-    if n > 0 and ts - list[n] < gap then return end
-    list[n + 1] = ts
+    list[n + 1] = start
 end
 local function ByTime(a, b)
     return a.t < b.t

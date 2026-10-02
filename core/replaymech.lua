@@ -12,7 +12,14 @@ local POS_HOLD = 2
 local POS_GAP = 2
 local HIT = { SPELL_DAMAGE = true, SPELL_MISSED = true, SPELL_PERIODIC_DAMAGE = true }
 local CAST = { SPELL_CAST_START = true, SPELL_CAST_SUCCESS = true }
+local SWING = { SWING_DAMAGE = true, SWING_MISSED = true }
+local REMOVED = { SPELL_AURA_REMOVED = true, SPELL_AURA_BROKEN = true, SPELL_AURA_BROKEN_SPELL = true }
 local BTGT = "FW_BTGT"
+local BOMB_LATE = 1.5
+local BLAST_SLACK = 2
+local SPAWN_EARLY = 0.1
+local SOUL_DIE = 1
+local SOUL_JOIN = 10
 local M = {}
 ns.ReplayMech = M
 local function Set(list, v)
@@ -24,12 +31,30 @@ function M.New(fight)
     local D = ns.replayMech
     local trap = D and D.traps[fight.boss]
     local zones = D and D.zones[fight.boss] or {}
-    if not trap and #zones == 0 then return nil end
+    local bomb = D and D.bombs and D.bombs[fight.boss]
+    local chase = D and D.chase and D.chase[fight.boss] or {}
+    local winter = D and D.winters and D.winters[fight.boss]
+    local soul = D and D.souls and D.souls[fight.boss]
+    if not trap and #zones == 0 and not bomb and #chase == 0 and not winter and not soul then return nil end
     local ctx = { fight = fight, players = fight.players or {}, trap = trap, casts = {}, booms = {}, open = {},
                   btgt = {}, zones = zones, zCast = {}, zSum = {}, zHit = {}, zCasts = {}, inst = {}, byGuid = {},
-                  marks = {} }
+                  marks = {}, bomb = bomb, bCasts = {}, bHits = {}, chase = chase, cAura = {}, cSpawn = {},
+                  cNpc = {}, cSeen = {}, cWait = {}, cLone = {}, cOpen = {}, runs = {},
+                  winter = winter, rings = {}, wHits = {}, soul = soul, sOpen = {}, spans = {} }
+    ctx.wAura = Set(winter and winter.aura)
+    ctx.wHit = Set(winter and winter.hit)
+    ctx.sAura = Set(soul and soul.aura)
     ctx.trapCast = Set(trap and trap.cast)
     ctx.trapBoom = Set(trap and trap.boom)
+    ctx.bCast = Set(bomb and bomb.cast)
+    ctx.bGas = Set(bomb and bomb.gas)
+    ctx.bBoom = Set(bomb and bomb.boom)
+    for di = 1, #chase do
+        local d = chase[di]
+        ctx.cNpc[ns.NpcKeyOf(d.npc)] = di
+        for k in pairs(Set(d.aura)) do ctx.cAura[k] = di end
+        for k in pairs(Set(d.spawn)) do ctx.cSpawn[k] = di end
+    end
     for zi = 1, #zones do
         local z = zones[zi]
         for k, v in pairs(Set(z.cast, zi)) do ctx.zCast[k] = v end
@@ -58,6 +83,21 @@ local function AddHit(ctx, ts, srcGUID, dst, amount, join)
     if not b.amount[dst] then b.hits[#b.hits + 1] = dst end
     b.amount[dst] = (b.amount[dst] or 0) + (tonumber(amount) or 0)
 end
+local function Banner(ctx)
+    local list, hits, join = {}, ctx.bHits, ctx.bomb.join
+    for i = 1, #hits do
+        local h = hits[i]
+        if h.boom then
+            local b = list[#list]
+            if not b or h.t - b.t > join then
+                b = { t = h.t, hits = {} }
+                list[#list + 1] = b
+            end
+            b.hits[#b.hits + 1] = h.name
+        end
+    end
+    return list
+end
 local function ZoneHit(ctx, ts, srcGUID, dst)
     local z = srcGUID and ctx.byGuid[srcGUID]
     if not z then
@@ -71,15 +111,153 @@ local function ZoneHit(ctx, ts, srcGUID, dst)
     end
     if z then z.hits[#z.hits + 1] = { t = ts, name = dst } end
 end
+local function OnWinter(ctx, ts, sub, id, target)
+    local rings = ctx.rings
+    local last = rings[#rings]
+    if target then
+        if HIT[sub] and ctx.wHit[id] then ctx.wHits[#ctx.wHits + 1] = { t = ts, name = target } end
+        return
+    end
+    if not ctx.wAura[id] then return end
+    if sub == "SPELL_CAST_START" then
+        ctx.wStart = ts
+    elseif sub == "SPELL_AURA_APPLIED" then
+        if last and not last.to then return end
+        local W = ctx.winter
+        local start = ctx.wStart
+        if not start or ts - start > W.castTime + 1 or start > ts then start = ts - W.castTime end
+        rings[#rings + 1] = { from = start, on = ts }
+        ctx.wStart = nil
+    elseif REMOVED[sub] and last and not last.to then
+        last.to = ts
+    end
+end
+local function OnSoul(ctx, ts, sub, name)
+    if sub == "SPELL_AURA_APPLIED" then
+        if not ctx.sOpen[name] then ctx.sOpen[name] = ts end
+    elseif REMOVED[sub] then
+        local from = ctx.sOpen[name]
+        if from then
+            ctx.sOpen[name] = nil
+            ctx.spans[#ctx.spans + 1] = { name = name, from = from, to = ts }
+        end
+    end
+end
+local function SoulDied(ctx, ts, name)
+    local from = ctx.sOpen[name]
+    if from then
+        ctx.sOpen[name] = nil
+        ctx.spans[#ctx.spans + 1] = { name = name, from = from, to = ts, died = ts }
+        return
+    end
+    for i = #ctx.spans, 1, -1 do
+        local s = ctx.spans[i]
+        if s.name == name then
+            if ts - s.to <= SOUL_DIE then s.died = ts end
+            return
+        end
+    end
+end
+local function RunEnd(ctx, guid, ts)
+    local run = ctx.cOpen[guid]
+    if not run then return end
+    run.to = ts
+    ctx.cOpen[guid] = nil
+end
+local function RunStart(ctx, guid, name, ts, npc)
+    RunEnd(ctx, guid, ts)
+    local run = { guid = guid, name = name, from = ts, npc = npc }
+    ctx.runs[#ctx.runs + 1] = run
+    ctx.cOpen[guid] = run
+end
+local function Spawned(ctx, guid, di, ts)
+    local link = ctx.chase[di].link or 0
+    local wait = ctx.cWait
+    for i = #wait, 1, -1 do
+        local w = wait[i]
+        if ts - w.t > link then break end
+        if not w.used and w.di == di and w.t - SPAWN_EARLY <= ts then
+            w.used = true
+            RunStart(ctx, guid, w.name, ts, ctx.chase[di].npc)
+            return
+        end
+    end
+    ctx.cLone[#ctx.cLone + 1] = { t = ts, guid = guid, di = di }
+end
+local function Waited(ctx, w)
+    local lone = ctx.cLone
+    for i = #lone, 1, -1 do
+        local o = lone[i]
+        if w.t - o.t > SPAWN_EARLY then break end
+        if not o.used and o.di == w.di then
+            o.used, w.used = true, true
+            RunStart(ctx, o.guid, w.name, o.t, ctx.chase[w.di].npc)
+            return
+        end
+    end
+end
+local function Chase(ctx, ts, sub, srcGUID, dstGUID, dst, a1)
+    local target = dst and ctx.players[dst] and dst or nil
+    local sk, dk = ns.NpcKey(srcGUID), ns.NpcKey(dstGUID)
+    local si, dI = sk and ctx.cNpc[sk], dk and ctx.cNpc[dk]
+    if sub == "UNIT_DIED" then
+        if dI then RunEnd(ctx, dstGUID, ts) end
+        return
+    end
+    for pass = 1, 2 do
+        local guid, di = srcGUID, si
+        if pass == 2 then guid, di = dstGUID, dI end
+        if di and not ctx.cSeen[guid] then
+            ctx.cSeen[guid] = true
+            if ctx.chase[di].spawn then Spawned(ctx, guid, di, ts) end
+        end
+    end
+    if not target then return end
+    if SWING[sub] then
+        local run = si and ctx.chase[si].swing and ctx.cOpen[srcGUID]
+        if run and run.name ~= target then RunStart(ctx, srcGUID, target, ts, run.npc) end
+        return
+    end
+    local id = tonumber(a1)
+    if not id then return end
+    local ai = ctx.cAura[id]
+    if ai and si == ai then
+        if sub == "SPELL_AURA_APPLIED" then
+            RunStart(ctx, srcGUID, target, ts, ctx.chase[ai].npc)
+        elseif REMOVED[sub] and ctx.cOpen[srcGUID] and ctx.cOpen[srcGUID].name == target then
+            RunEnd(ctx, srcGUID, ts)
+        end
+    end
+    local wi = ctx.cSpawn[id]
+    if wi and REMOVED[sub] then
+        local w = { t = ts, name = target, di = wi }
+        ctx.cWait[#ctx.cWait + 1] = w
+        Waited(ctx, w)
+    end
+end
 function M.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1, amount)
     local P = ctx.players
+    if #ctx.chase > 0 then Chase(ctx, ts, sub, srcGUID, dstGUID, dst, a1) end
     if sub == BTGT then
         if dst and P[dst] then ctx.btgt[#ctx.btgt + 1] = { t = ts, src = src, dst = dst } end
+        return
+    end
+    if sub == "UNIT_DIED" then
+        if ctx.soul and dst and P[dst] then SoulDied(ctx, ts, dst) end
         return
     end
     local id = tonumber(a1)
     if not id or (src and P[src]) then return end
     local target = dst and P[dst] and dst or nil
+    if ctx.bomb then
+        if sub == "SPELL_CAST_SUCCESS" and ctx.bCast[id] then
+            AddCast(ctx.bCasts, ts, nil, src)
+        elseif HIT[sub] and target and (ctx.bGas[id] or ctx.bBoom[id]) then
+            ctx.bHits[#ctx.bHits + 1] = { t = ts, name = target, boom = ctx.bBoom[id] }
+        end
+    end
+    if ctx.wAura[id] or ctx.wHit[id] then OnWinter(ctx, ts, sub, id, target) end
+    if ctx.sAura[id] and target then OnSoul(ctx, ts, sub, target) end
     if CAST[sub] and ctx.trapCast[id] then
         AddCast(ctx.casts, ts, target, src)
     elseif HIT[sub] and target and ctx.trapBoom[id] then
@@ -206,6 +384,57 @@ function M.Solve(ctx, posAt, ppy, names)
     end
     tsort(traps, function(a, b) return a.from < b.from end)
 end
+local function NearBomb(list, x, y, reach, ppy)
+    local best, bestD
+    for i = 1, #list do
+        local d = Dist(x, y, list[i].x, list[i].y, ppy)
+        if d <= reach and (not bestD or d < bestD) then best, bestD = list[i], d end
+    end
+    return best
+end
+function M.Bombs(ctx, posAt, ppy)
+    local D = ctx.bomb
+    local out = {}
+    if not D or D.show ~= "floor" then return out end
+    local casts, hits = ctx.bCasts, ctx.bHits
+    for ci = 1, #casts do
+        local c = casts[ci]
+        local stop = min(c.t + D.fuse + BOMB_LATE, casts[ci + 1] and casts[ci + 1].t or c.t + D.fuse + BOMB_LATE)
+        local list = {}
+        for pass = 1, 2 do
+            for i = 1, #hits do
+                local h = hits[i]
+                if h.t >= c.t and h.t < stop and (pass == 2) == (h.boom == true) then
+                    local x, y = posAt(h.name, h.t)
+                    if x then
+                        local b = NearBomb(list, x, y, h.boom and D.blast + BLAST_SLACK or D.reach, ppy)
+                        if not b then
+                            b = { x = x, y = y, n = 0, gas = 0, victims = 0 }
+                            list[#list + 1] = b
+                        end
+                        if h.boom then
+                            b.victims = b.victims + 1
+                            b.boomT = min(b.boomT or h.t, h.t)
+                        else
+                            b.gas = b.gas + 1
+                        end
+                        if not h.boom or b.gas == 0 then
+                            b.n = b.n + 1
+                            b.x, b.y = b.x + (x - b.x) / b.n, b.y + (y - b.y) / b.n
+                        end
+                    end
+                end
+            end
+        end
+        for i = 1, #list do
+            local b = list[i]
+            local to = min(b.boomT or c.t + D.fuse, ctx.fight.to)
+            out[#out + 1] = { cast = c.t, from = min(c.t + D.spawn, to), to = to, x = b.x, y = b.y, gas = b.gas,
+                              victims = b.victims }
+        end
+    end
+    return out
+end
 local function InsertBlast(L, t, x, y, r, n, spell)
     local j = L.nb + 1
     while j > 1 and L.bT[j - 1] > t do
@@ -216,13 +445,59 @@ local function InsertBlast(L, t, x, y, r, n, spell)
     L.bT[j], L.bX[j], L.bY[j], L.bR[j], L.bN[j], L.bS[j] = t, x, y, r, n, spell
     L.nb = L.nb + 1
 end
-local function AddPool(L, from, to, x, y, r, tone)
+local function AddPool(L, from, to, x, y, r, tone, boom)
     local j = L.np + 1
     L.np = j
     L.plX[j], L.plY[j], L.plFrom[j], L.plLast[j], L.plTo[j] = x, y, from, from, to
-    L.plR0[j], L.plR1[j], L.plN[j], L.plDef[j] = r, r, 1, { tone = tone, r0 = r, rmax = r, tail = 0, gap = 0 }
+    L.plR0[j], L.plR1[j], L.plN[j], L.plDef[j] = r, r, 1,
+        { tone = tone, r0 = r, rmax = r, tail = 0, gap = 0, boom = boom }
 end
-function M.Done(ctx, L, posAt, ppy, fc)
+local function ChaseLayer(ctx, L, byK)
+    local addBy = {}
+    for i = 1, L.adds and #L.adds or 0 do addBy[L.adds[i].guid] = L.adds[i] end
+    local C = { n = 0, k = {}, from = {}, to = {}, add = {}, npc = {} }
+    for i = 1, #ctx.runs do
+        local run = ctx.runs[i]
+        local to = run.to or ctx.fight.to
+        local k = byK[run.name]
+        if k and to > run.from then
+            local n = C.n + 1
+            C.n = n
+            C.k[n], C.from[n], C.to[n], C.npc[n] = k, run.from, to, run.npc
+            C.add[n] = addBy[run.guid] or false
+        end
+    end
+    L.chase = C.n > 0 and C or nil
+end
+local function AddRing(L, ring, W)
+    local j = L.np + 1
+    L.np = j
+    L.plX[j], L.plY[j], L.plFrom[j], L.plLast[j], L.plTo[j] = -1, -1, ring.from, ring.on + W.full, ring.to
+    L.plR0[j], L.plR1[j], L.plN[j] = W.r0, W.r, 0
+    L.plDef[j] = { tone = W.tone, r0 = W.r0, rmax = W.r, tail = 0, gap = 0, follow = true }
+end
+local function SpanOrder(a, b)
+    if a.from ~= b.from then return a.from < b.from end
+    return a.name < b.name
+end
+local function Waves(ctx)
+    local spans = ctx.spans
+    for name, from in pairs(ctx.sOpen) do spans[#spans + 1] = { name = name, from = from, to = ctx.fight.to } end
+    ctx.sOpen = {}
+    tsort(spans, SpanOrder)
+    local waves, cur = {}, nil
+    for i = 1, #spans do
+        local s = spans[i]
+        if not cur or s.from - cur.from > SOUL_JOIN then
+            cur = { from = s.from, to = s.to, spans = {} }
+            waves[#waves + 1] = cur
+        end
+        cur.spans[#cur.spans + 1] = s
+        if s.to > cur.to then cur.to = s.to end
+    end
+    return { waves = waves, room = ctx.soul.room }
+end
+function M.Done(ctx, L, posAt, ppy, fc, byK)
     local names = {}
     for name in pairs(ctx.players) do names[#names + 1] = name end
     tsort(names)
@@ -247,7 +522,27 @@ function M.Done(ctx, L, posAt, ppy, fc)
         local z = ctx.zoneOut[i]
         AddPool(L, z.from, z.to, z.x, z.y, z.def.r, z.def.tone)
     end
-    L.mech = { traps = ctx.traps, booms = ctx.booms, zones = ctx.zoneOut }
+    local B = ctx.bomb
+    ctx.floorBombs = M.Bombs(ctx, posAt, ppy)
+    for i = 1, #ctx.floorBombs do
+        local b = ctx.floorBombs[i]
+        AddPool(L, b.from, b.to, b.x, b.y, B.r, B.tone, b.to)
+        InsertBlast(L, b.to, b.x, b.y, B.blast * ppy, b.victims, B.boom[1])
+    end
+    if B and B.show == "banner" then
+        local list = Banner(ctx)
+        if #list > 0 then L.bombs, L.bombDef = list, B end
+    end
+    if byK then ChaseLayer(ctx, L, byK) end
+    local W = ctx.winter
+    for i = 1, W and #ctx.rings or 0 do
+        local ring = ctx.rings[i]
+        ring.to = ring.to or ctx.fight.to
+        AddRing(L, ring, W)
+    end
+    L.mech = { traps = ctx.traps, booms = ctx.booms, zones = ctx.zoneOut, bombs = ctx.floorBombs, casts = ctx.bCasts,
+               runs = ctx.runs, rings = ctx.rings, winter = W, winterHits = ctx.wHits }
+    L.souls = ctx.soul and Waves(ctx) or nil
 end
 local function Marks(fight)
     local out = {}

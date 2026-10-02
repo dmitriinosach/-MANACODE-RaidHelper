@@ -158,7 +158,7 @@ function Tour.Bind(ui, api)
     nextBtn = Btn(box, "iso.tour.next")
     nextBtn:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -PAD, PAD)
     nextBtn.onClick = Next
-    box:SetScript("OnUpdate", Tick)
+    box:SetScript("OnUpdate", ns.Prof.Wrap("ui.iso", Tick))
     box:Hide()
     BuildGlow(ui)
 end

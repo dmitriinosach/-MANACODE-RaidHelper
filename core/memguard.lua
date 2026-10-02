@@ -71,9 +71,9 @@ function MemGuard.Check()
     local after = Used()
     ns.Print(format(ns.T("mem.shed"), floor(kb / KB + 0.5), floor(limitKb / KB + 0.5), floor(after / KB + 0.5)))
 end
-frame:SetScript("OnUpdate", function(_, elapsed)
+frame:SetScript("OnUpdate", ns.Prof.Wrap("hot.bg", function(_, elapsed)
     acc = acc + elapsed
     if acc < PERIOD then return end
     acc = 0
     MemGuard.Check()
-end)
+end))

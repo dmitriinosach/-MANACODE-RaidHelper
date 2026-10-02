@@ -6,6 +6,34 @@ ns.replayMech = {
             slack = 3, join = 0.5, tone = "sem.rep.trap",
         },
     },
+    bombs = {
+        [ns.ENC.putricide] = {
+            show = "floor", cast = { 71255 }, gas = { 71278, 72460, 72619, 72620 },
+            boom = { 71279, 72459, 72621, 72622 }, spawn = 1, fuse = 11, r = 3, blast = 10, reach = 8,
+            tone = "sem.rep.gas",
+        },
+        [ns.ENC.sindragosa] = {
+            show = "banner", boom = { 69845, 71053, 71054, 71055 }, lead = 5.5, join = 1, icon = 69845,
+        },
+    },
+    chase = {
+        [ns.ENC.putricide] = {
+            { npc = 37697, aura = { 70447, 72836, 72837, 72838 } },
+            { npc = 37562, aura = { 70672, 72455, 72832, 72833 } },
+        },
+        [ns.ENC.rotface] = {
+            { npc = 36897, spawn = { 69674, 71224, 73022, 73023 }, swing = true, link = 1.5 },
+        },
+    },
+    winters = {
+        [ns.ENC.lichking] = {
+            aura = { 68981, 74270, 74271, 74272, 72259, 74273, 74274, 74275 }, hit = { 68983, 73791, 73792, 73793 },
+            castTime = 2.5, full = 0.9, r0 = 4, r = 45, tone = "sem.rep.winter",
+        },
+    },
+    souls = {
+        [ns.ENC.lichking] = { aura = { 73655, 74276 }, room = "frostmourne" },
+    },
     zones = {
         [ns.ENC.council] = {
             { cast = { 72037 }, summon = { 72037 }, hit = { 71944, 72812, 72813, 72814 }, life = 30, r = 12, link = 3,

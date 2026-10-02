@@ -5,10 +5,12 @@ local floor = math.floor
 local max = math.max
 local min = math.min
 local sqrt = math.sqrt
-local BASE_POOL = 640
-local OVER_POOL = 120
+local BASE_POOL = 1500
+local OVER_POOL = 300
 local FLOOR_N = 4
+local FLOOR_MAX = 8
 local FLOOR_FIT = 2.6
+local ATLAS_MAX = 4
 local MAX_STRIPS = 6
 local MAX_SLICES = 3
 local BUCKETS = 256
@@ -32,14 +34,15 @@ local Replay = ns.Replay
 local Kit = ns.Kit
 local F = { n = 0, cx = {}, cy = {}, cz = {}, ux = {}, uy = {}, uz = {}, vx = {}, vy = {}, vz = {}, nx = {}, ny = {}, nz = {},
             hu = {}, hv = {}, cu = {}, cv = {}, q = {}, du = {}, dv = {}, kind = {}, shell = {}, flat = {}, floor = {},
-            fx = {}, fy = {}, fz = {}, kz = {}, ringS = {}, ringB = {} }
+            fx = {}, fy = {}, fz = {}, kz = {}, ringS = {}, ringB = {}, at = {} }
 local P = { a1 = {}, b1 = {}, a2 = {}, b2 = {}, sx = {}, sy = {}, over = {}, nxt = {}, rkey = {} }
 local ringList = {}
 local Pr = { n = 0, row = {} }
 local PROP_CELL = 8
 local head, tail = {}, {}
 local st = { floors = {}, bases = {}, overs = {}, rings = {}, used = { [POOL_BASE] = 0, [POOL_OVER] = 0, [POOL_FLOOR] = 0, [POOL_RING] = 0 },
-             calls = 0, pieces = 0, hidden = 0, ringOk = false, t = 0, pfDone = -1, texA = {}, texIce = {}, path = {} }
+             calls = 0, pieces = 0, hidden = 0, ringOk = false, t = 0, pfDone = -1, texA = {}, texIce = {}, path = {}, on = {},
+             atlasPaths = {}, nAtlas = 1 }
 function Live.Build(view, level)
     st.view = view
     local top = CreateFrame("Frame", nil, view)
@@ -51,7 +54,7 @@ function Live.Build(view, level)
         st.rings[k] = view:CreateTexture(nil, "BORDER")
         st.rings[k]:Hide()
     end
-    for k = 1, FLOOR_N * FLOOR_N do
+    for k = 1, FLOOR_MAX * FLOOR_MAX do
         st.floors[k] = view:CreateTexture(nil, "BORDER")
         st.floors[k]:Hide()
     end
@@ -66,9 +69,16 @@ function Live.Build(view, level)
 end
 local pools = { st.bases, st.overs, st.floors, st.rings }
 function Live.HideAll()
+    local on = st.on
     for p = 1, 4 do
         local list, used = pools[p], st.used[p]
-        for k = 1, used do list[k]:Hide() end
+        for k = 1, used do
+            local tex = list[k]
+            if on[tex] then
+                tex:Hide()
+                on[tex] = nil
+            end
+        end
         st.used[p] = 0
     end
 end
@@ -79,11 +89,12 @@ function Live.Release()
         for k = 1, #list do list[k]:SetTexture(nil) end
     end
     st.room, st.data, st.ringOk, st.pf, st.pfScene, st.pfDone = nil, nil, false, nil, nil, -1
-    st.atlasPath, st.propsPath = nil, nil
+    st.atlasPath, st.propsPath, st.nAtlas = nil, nil, 1
     for tex in pairs(st.path) do st.path[tex] = nil end
+    for k = #st.atlasPaths, 1, -1 do st.atlasPaths[k] = nil end
     Pr.n = 0
 end
-local function SetFace(i, row)
+local function SetFace(i, row, ring)
     F.cx[i], F.cy[i], F.cz[i] = row[1], row[2], row[3]
     F.ux[i], F.uy[i], F.uz[i] = row[4], row[5], row[6]
     F.vx[i], F.vy[i], F.vz[i] = row[7], row[8], row[9]
@@ -97,7 +108,11 @@ local function SetFace(i, row)
     F.nx[i], F.ny[i], F.nz[i] = nx, ny, nz
     F.fx[i], F.fy[i], F.fz[i] = row[19] or nx, row[20] or ny, row[21] or nz
     F.kz[i] = row[22] or 0
-    F.ringS[i], F.ringB[i] = row[23], row[24]
+    if ring then
+        F.ringS[i], F.ringB[i], F.at[i] = row[23], row[24], 1
+    else
+        F.ringS[i], F.ringB[i], F.at[i] = nil, nil, row[23] or 1
+    end
     F.flat[i] = nz > NZ_FLAT
     F.floor[i] = false
 end
@@ -111,15 +126,16 @@ local function Load(d)
     local pieces = d.ring and d.ring.pieces or {}
     for k = 1, #pieces do
         n = n + 1
-        SetFace(n, pieces[k])
+        SetFace(n, pieces[k], true)
     end
-    local w = d.fhalf / FLOOR_FIT
+    local fn = min(FLOOR_MAX, d.fn or FLOOR_N)
+    local w = (d.fspan or d.fhalf * 2 / FLOOR_FIT) * 2 / fn
     local q = 1 / (2 * d.fhalf)
     local dm = w / 2
-    for a = 1, FLOOR_N do
-        for b = 1, FLOOR_N do
+    for a = 1, fn do
+        for b = 1, fn do
             n = n + 1
-            local tx, ty = (a - (FLOOR_N + 1) / 2) * w, (b - (FLOOR_N + 1) / 2) * w
+            local tx, ty = (a - (fn + 1) / 2) * w, (b - (fn + 1) / 2) * w
             SetFace(n, { (d.fcx or 0) + tx, (d.fcy or 0) + ty, 0, 1, 0, 0, 0, 1, 0, w / 2, w / 2, 0.5 + tx * q, 0.5 - ty * q, q, dm, dm, 1, 0 })
             F.floor[n] = true
         end
@@ -137,8 +153,22 @@ function Live.Use(room)
         Live.Release()
         return false
     end
-    for k = 2, #st.bases do st.bases[k]:SetTexture(atlas) end
-    for k = 1, #st.bases do st.path[st.bases[k]] = atlas end
+    local nA = min(ATLAS_MAX, d.atlases or 1)
+    local paths = st.atlasPaths
+    paths[1] = atlas
+    for a = 2, nA do
+        paths[a] = atlas .. a
+        if not st.bases[a]:SetTexture(paths[a]) then
+            Live.Release()
+            return false
+        end
+    end
+    st.nAtlas = nA
+    for k = 1, #st.bases do
+        local p = paths[(k - 1) % nA + 1]
+        if k > nA then st.bases[k]:SetTexture(p) end
+        st.path[st.bases[k]] = p
+    end
     st.atlasPath = atlas
     local pr = d.props
     if pr and st.bases[#st.bases]:SetTexture(d.art .. "_props") then
@@ -151,7 +181,9 @@ function Live.Use(room)
     end
     for k = 2, #st.floors do st.floors[k]:SetTexture(fl) end
     for k = 1, #st.overs do
-        st.overs[k]:SetTexture(atlas)
+        local p = paths[(k - 1) % nA + 1]
+        st.overs[k]:SetTexture(p)
+        st.path[st.overs[k]] = p
         Kit.Tint(st.overs[k], OVER_TINT)
     end
     st.ringOk = d.ring ~= nil and st.rings[1]:SetTexture(d.art .. "_ring") and true or false
@@ -203,9 +235,30 @@ local function Put(tex, l, t, r, b, sx, sy, i11, i12, i21, i22, cu, cv, q, hw, h
         cu + (i11 * dx0 + i12 * dy1) * q, cv - (i21 * dx0 + i22 * dy1) * q,
         cu + (i11 * dx1 + i12 * dy0) * q, cv - (i21 * dx1 + i22 * dy0) * q,
         cu + (i11 * dx1 + i12 * dy1) * q, cv - (i21 * dx1 + i22 * dy1) * q)
-    tex:Show()
-    st.calls = st.calls + 5
+    if not st.on[tex] then
+        tex:Show()
+        st.on[tex] = true
+        st.calls = st.calls + 1
+    end
+    st.calls = st.calls + 4
     return true
+end
+local function NextTex(pool, at)
+    local used, nA = st.used[pool], st.nAtlas
+    local j = used + 1
+    if nA > 1 then
+        j = j + (at - 1 - used) % nA
+        local list, on = pools[pool], st.on
+        for k = used + 1, j - 1 do
+            local tex = list[k]
+            if tex and on[tex] then
+                tex:Hide()
+                on[tex] = nil
+                st.calls = st.calls + 1
+            end
+        end
+    end
+    return j
 end
 local function Pieces(i, pool, hw, hh)
     local a1, b1, a2, b2, sx, sy = P.a1[i], P.b1[i], P.a2[i], P.b2[i], P.sx[i], P.sy[i]
@@ -240,19 +293,24 @@ local function Pieces(i, pool, hw, hh)
         end
     end
     local list, cu, cv, q = pools[pool], F.cu[i], F.cv[i], F.q[i]
+    local faces = pool == POOL_BASE or pool == POOL_OVER
     local fix = pool == POOL_BASE and st.propsPath
+    local at = F.at[i]
     local bx, by = A1 * h1 / nu + A2 * h2 / nv, B1 * h1 / nu + B2 * h2 / nv
     for a = 1, nu do
         local ou = -h1 + (2 * a - 1) * h1 / nu
         for b = 1, nv do
             local ov = -h2 + (2 * b - 1) * h2 / nv
-            local used = st.used[pool] + 1
+            local used = faces and NextTex(pool, at) or st.used[pool] + 1
             local tex = list[used]
             if not tex then return end
-            if fix and st.path[tex] ~= st.atlasPath then
-                tex:SetTexture(st.atlasPath)
-                st.path[tex] = st.atlasPath
-                st.calls = st.calls + 1
+            if fix then
+                local want = st.atlasPaths[at]
+                if st.path[tex] ~= want then
+                    tex:SetTexture(want)
+                    st.path[tex] = want
+                    st.calls = st.calls + 1
+                end
             end
             local px, py = sx + a1 * ou + a2 * ov, sy + b1 * ou + b2 * ov
             if Put(tex, px - bx, py - by, px + bx, py + by, px, py, i11, i12, i21, i22, cu + ou * q, cv - ov * q, q, hw, hh) then
@@ -266,7 +324,7 @@ local function PlaceProp(p, l, t, w, h, hw, hh)
     local x0, x1 = max(l, -hw), min(l + w, hw)
     local y0, y1 = max(t, -hh), min(t + h, hh)
     if x1 - x0 < 1 or y1 - y0 < 1 then return end
-    local used = st.used[POOL_BASE] + 1
+    local used = NextTex(POOL_BASE, 1)
     local tex = st.bases[used]
     if not tex then return end
     if st.path[tex] ~= st.propsPath then
@@ -283,8 +341,12 @@ local function PlaceProp(p, l, t, w, h, hw, hh)
     tex:SetWidth(x1 - x0)
     tex:SetHeight(y1 - y0)
     tex:SetTexCoord(a0, b0, a0, b1, a1, b0, a1, b1)
-    tex:Show()
-    st.calls = st.calls + 5
+    if not st.on[tex] then
+        tex:Show()
+        st.on[tex] = true
+        st.calls = st.calls + 1
+    end
+    st.calls = st.calls + 4
     st.used[POOL_BASE] = used
     st.pieces = st.pieces + 1
 end
@@ -441,9 +503,17 @@ function Live.Place(cam, room, ppy)
             i = nxt[i]
         end
     end
+    local on = st.on
     for p = 1, 4 do
         local list = pools[p]
-        for j = st.used[p] + 1, prevUsed[p] do list[j]:Hide() end
+        for j = st.used[p] + 1, prevUsed[p] do
+            local tex = list[j]
+            if on[tex] then
+                tex:Hide()
+                on[tex] = nil
+                st.calls = st.calls + 1
+            end
+        end
     end
     return true
 end

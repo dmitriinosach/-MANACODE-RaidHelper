@@ -115,7 +115,7 @@ local function PaintTabs()
         if e.tab then PlaceTab(e) end
     end
 end
-local function Select(key)
+local function SelectNow(key)
     local e = entries[key]
     if not e then return end
     local old = current and entries[current]
@@ -146,6 +146,7 @@ local function Select(key)
     if e.def.OnShow then e.def.OnShow(e.page) end
     SizePage(e)
 end
+local Select = ns.Prof.Wrap("ui.page", SelectNow)
 local function TabOrder(a, b)
     if (a.def.right and true or false) ~= (b.def.right and true or false) then
         return not a.def.right
@@ -439,7 +440,7 @@ local function BuildGrip()
         Sizing()
         if sizing then StopSizing() end
     end)
-    grip:SetScript("OnUpdate", Sizing)
+    grip:SetScript("OnUpdate", ns.Prof.Wrap("ui.other", Sizing))
 end
 local function BuildStrip()
     strip = CreateFrame("Frame", nil, frame)
@@ -512,7 +513,11 @@ local function Build()
     BuildStrip()
     BuildGrip()
     Place()
+    frame:SetScript("OnShow", function()
+        if ns.CpuMeter then ns.CpuMeter.WinCheck() end
+    end)
     frame:SetScript("OnHide", function()
+        if ns.CpuMeter then ns.CpuMeter.WinCheck() end
         StopMove()
         if sizing then StopSizing() end
         local e = current and entries[current]

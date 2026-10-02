@@ -180,6 +180,26 @@ end
 local function Calib()
     if ns.DevCalib then ns.DevCalib.Toggle() end
 end
+local function Cpu()
+    local C = ns.CpuMeter
+    if not C then return end
+    local out = C.Set(not C.Wanted())
+    out[#out + 1] = C.State()
+    Out(out, true)
+end
+local function CpuLast()
+    if ns.CpuMeter then Out(ns.CpuMeter.Report(), true) end
+end
+local function FrameProbe()
+    local P = ns.DevProbe
+    if not P then return end
+    if P.Running() then
+        Out({ T("dev.probe.busy") })
+        return
+    end
+    P.Start(function(out) Out(out, true) end)
+    Out({ format(T("dev.probe.wait"), P.Seconds()) })
+end
 local function AnimList()
     local out = {}
     local all = Bosses()
@@ -403,7 +423,8 @@ local function BuildChecks(y, inner)
     local checks = {
         { "range", Range }, { "models", Models }, { "map", Map },
         { "cmd", Cmds }, { "auto", Auto }, { "lock", Lock },
-        { "calib", Calib }, { "methods", Methods },
+        { "calib", Calib }, { "methods", Methods }, { "cpu", Cpu },
+        { "cpulast", CpuLast }, { "probe", FrameProbe },
     }
     local third = floor((inner - gap * 2) / 3)
     for i = 1, #checks do

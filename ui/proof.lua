@@ -118,7 +118,7 @@ function View.Setting(parent, name)
     return b
 end
 watcher:RegisterEvent("MODIFIER_STATE_CHANGED")
-watcher:SetScript("OnEvent", function()
+watcher:SetScript("OnEvent", ns.Prof.Wrap("bg.proof", function()
     local m = hovered
     if m and m:IsVisible() and m.proof then View.Enter(m) end
-end)
+end))

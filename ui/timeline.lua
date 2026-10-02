@@ -63,6 +63,7 @@ local frame, canvas, ruler, overlay, statusText, titleText, bareNote
 local cursorLine, cursorLabel, cursorBg, hpDot
 local detailAnchor, rowGlow
 local lastBounds
+local hov = {}
 local auraBar
 local trackHeads = {}
 local gutter, nameW = GUTTERMIN, GUTTERMIN - 6
@@ -1135,7 +1136,8 @@ local function HideReadouts()
     for i = 1, #readouts do readouts[i]:Hide() end
     if hpDot then hpDot:Hide() end
 end
-local function Redraw()
+local function RedrawNow()
+    hov.x = nil
     if not player and ns.SummaryView and ns.SummaryView.IsShown() then return end
     if ns.ThreatView and ns.ThreatView.IsShown() then return end
     local p0 = ns.Prof.on and debugprofilestop()
@@ -1215,6 +1217,7 @@ local function Redraw()
         floor((data.dmgDone or 0) / span), floor((data.healDone or 0) / span)))
     if p0 then ns.Prof.Add("tl.draw", debugprofilestop() - p0, usedBlocks + usedBars) end
 end
+local Redraw = ns.Prof.Wrap("ui.tl", RedrawNow)
 function SelectPlayer(name)
     if ns.ThreatView then ns.ThreatView.Hide() end
     if ns.SummaryView then ns.SummaryView.Hide() end
@@ -1420,7 +1423,7 @@ local function BuildCanvas()
         dragScroll = trackScroll
     end)
     canvas:SetScript("OnMouseUp", function() dragging = false end)
-    canvas:SetScript("OnUpdate", function(self)
+    canvas:SetScript("OnUpdate", ns.Prof.Wrap("ui.tl", function(self)
         if resize then
             if not IsMouseButtonDown("LeftButton") then
                 resize = nil
@@ -1452,7 +1455,17 @@ local function BuildCanvas()
             end
         end
         local x = cursor - self:GetLeft()
-        if self:IsMouseOver() and x >= gutter and x <= self:GetWidth() then
+        local over = self:IsMouseOver() and x >= gutter and x <= self:GetWidth()
+        local _, rawY = GetCursorPosition()
+        if over and hov.x == x and hov.y == rawY and hov.from == viewFrom and hov.to == viewTo
+            and hov.scroll == trackScroll and hov.fight == fight then
+            return
+        end
+        if not over and hov.out then return end
+        hov.x, hov.y, hov.from, hov.to, hov.scroll, hov.fight = over and x or nil, rawY, viewFrom, viewTo,
+            trackScroll, fight
+        hov.out = not over
+        if over then
             local t = viewFrom + (x - gutter) / PlotWidth() * (viewTo - viewFrom)
             cursorLine:ClearAllPoints()
             cursorLine:SetPoint("TOPLEFT", overlay, "TOPLEFT", x, 0)
@@ -1504,7 +1517,7 @@ local function BuildCanvas()
             if rowGlow then rowGlow:Hide() end
             HideReadouts()
         end
-    end)
+    end))
 end
 local function BuildTools()
     if ns.MakeButton then

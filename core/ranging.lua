@@ -435,10 +435,10 @@ function Ranging.OnMessage(body, sender)
 end
 ns.Comm.On(PREFIX, Ranging.OnMessage)
 local frame = CreateFrame("Frame")
-frame:SetScript("OnUpdate", function(_, dt)
+frame:SetScript("OnUpdate", ns.Prof.Wrap("hot.rng", function(_, dt)
     elapsed = elapsed + dt
     if elapsed < STEP or broken then return end
     elapsed = 0
     local ok, err = pcall(Tick, GetTime())
     if not ok then Broke(err) end
-end)
+end))

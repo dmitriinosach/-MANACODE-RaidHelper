@@ -258,7 +258,7 @@ function View.Attach()
     if not bars then return end
     View.Build(bars, Iso.ViewFrame and Iso.ViewFrame() or nil)
     local root = Root(bars)
-    if root then root:HookScript("OnUpdate", View.Step) end
+    if root then root:HookScript("OnUpdate", ns.Prof.Wrap("ui.iso", View.Step)) end
 end
 function View.Probe()
     return { rows = st.rows, lines = st.lines, shown = st.shown, active = st.active, sounds = st.sounds,

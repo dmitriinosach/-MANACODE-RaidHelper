@@ -322,6 +322,33 @@ local function FillTracks(fight, frames, level, byName, tracks, deaths)
         end
     end
 end
+local function FillSide(fight, frames, level)
+    local room
+    for _, r in pairs(Replay.ROOMS) do
+        if r.boss == fight.boss and r.floor ~= level then room = r end
+    end
+    if not room then return nil end
+    local byName, n = {}, 0
+    for i = 1, #frames do
+        ns.Jobs.Step(8)
+        local fr = frames[i]
+        if fr.floor == room.floor then
+            for name, p in pairs(fr.units) do
+                if fight.players[name] and not p.stale and (p.x > 0 or p.y > 0) then
+                    local tr = byName[name]
+                    if not tr then
+                        tr = NewTrack(name)
+                        byName[name] = tr
+                    end
+                    Push(tr, fr.t, p.x * AREA_W, p.y * AREA_H, 1, 0)
+                    n = n + 1
+                end
+            end
+        end
+    end
+    if n == 0 then return nil end
+    return { room = room, tracks = byName, n = n }
+end
 local function Moved(tr, i)
     return tr.x[i] ~= tr.x[i - 1] or tr.y[i] ~= tr.y[i - 1]
 end
@@ -556,6 +583,7 @@ function Replay.Build(fight, frames)
     }
     ns.Jobs.Band(0.1, 0.6)
     FillTracks(fight, frames, level, {}, scene.tracks, scene.deaths)
+    scene.side = FillSide(fight, frames, level)
     local mended = 0
     for k = 1, #scene.tracks do mended = mended + Mend(scene.tracks[k]) end
     scene.mended = mended
