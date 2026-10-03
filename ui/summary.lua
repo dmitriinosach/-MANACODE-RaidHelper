@@ -542,8 +542,8 @@ local function WidePanel(v, slot)
             local mk = r.marks[k]
             marks[k] = mk and { icon = Icon(mk.id), count = tostring(mk.n) } or false
         end
-        rows[i] = { who = r.who, class = r.class, sub = r.sub, cells = r.cells, marks = marks, lines = r.lines,
-                    tips = r.tips }
+        rows[i] = { who = r.who, class = r.class, sub = r.sub, cells = r.cells, vals = r.vals, marks = marks,
+                    lines = r.lines, tips = r.tips }
     end
     local heads = {}
     for k = 1, #v.heads do heads[k] = v.heads[k] and Icon(v.heads[k]) or false end

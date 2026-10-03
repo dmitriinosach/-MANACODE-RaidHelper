@@ -201,12 +201,14 @@ function Targets.View(b, classOf)
     for i = 1, #names do
         local who = names[i]
         local class = classOf and classOf(who) or nil
-        local cells, tips = {}, {}
+        local cells, vals, tips = {}, {}, {}
         for c = 1, #cols do
-            cells[c] = Cell(Of(b, who, cols[c].gs))
+            vals[c] = Of(b, who, cols[c].gs)
+            cells[c] = Cell(vals[c])
             tips[c] = cols[c].gs and CellTip(b, who, class, cols[c]) or false
         end
-        rows[i] = { who = who, class = class, cells = cells, tips = tips, marks = {}, lines = RowTip(b, who, class, cols) }
+        rows[i] = { who = who, class = class, cells = cells, vals = vals, tips = tips, marks = {},
+                    lines = RowTip(b, who, class, cols) }
     end
     return { title = format(T("sum.k.title"), T(b.def.label), ns.BadgeTips.Short(max(0, b.total))), cols = labels,
              heads = {}, rows = rows, tip = PanelTip(b, cols), span = 2 }

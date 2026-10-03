@@ -4,6 +4,8 @@ local floor = math.floor
 local ceil = math.ceil
 local max = math.max
 local min = math.min
+local tsort = table.sort
+local tconcat = table.concat
 local STRIPE = 3
 local PAD = STRIPE + 6
 local TOTALH = 52
@@ -40,6 +42,11 @@ local MARKGAP = 7
 local WIDE_ICON = 12
 local WIDE_GAP = 6
 local WIDE_INDENT = 16
+local SORT_TEX = "Interface\\Buttons\\UI-SortArrow"
+local SORT_ICON = 8
+local SORT_W = SORT_ICON + 2
+local SORT_ARROW = { desc = { 0, 0.5625, 0, 1 }, asc = { 0, 0.5625, 1, 0 } }
+local SORT_NEXT = { desc = "asc" }
 local Badges = {}
 ns.Badges = Badges
 Badges.style = ns.Kit.Group("badge")
@@ -744,6 +751,60 @@ local function CellEnter(self)
     local lines = row.tips and row.tips[self.col] or row.lines
     if lines then ns.Tip.Dock(row, lines, row.tipIcon) end
 end
+local function CellNum(s)
+    if not s or s == "" then return nil end
+    local m, sec = s:match("^(%d+):(%d%d)$")
+    if m then return tonumber(m) * 60 + tonumber(sec) end
+    local num, rest = s:match("^%s*(%-?%d+%.?%d*)%s*(.-)%s*$")
+    num = tonumber(num)
+    if not num then return nil end
+    if rest == ns.T("num.m") then return num * 1e6 end
+    if rest == ns.T("num.k") then return num * 1e3 end
+    return num
+end
+local function WideKey(e, c)
+    local v = e.vals and e.vals[c]
+    if type(v) == "number" then return v end
+    return CellNum(e.cells and e.cells[c])
+end
+local sortDesc = true
+local function GroupBefore(x, y)
+    local a, b = x.key, y.key
+    if a ~= b then
+        if a == nil then return false end
+        if b == nil then return true end
+        if sortDesc then return a > b end
+        return a < b
+    end
+    return x.at < y.at
+end
+local function WideOrder(f)
+    local base, o = f.base or {}, f.order
+    if not (o and o.col and o.col <= #f.cols and #f.cols > 1) then
+        f.list = base
+        return
+    end
+    local groups = {}
+    for i = 1, #base do
+        local e, g = base[i], groups[#groups]
+        if e.sub and g then
+            g[#g + 1] = e
+        else
+            groups[#groups + 1] = { e, at = i, key = WideKey(e, o.col) }
+        end
+    end
+    sortDesc = o.dir ~= "asc"
+    tsort(groups, GroupBefore)
+    local list = {}
+    for i = 1, #groups do
+        local g = groups[i]
+        for k = 1, #g do list[#list + 1] = g[k] end
+    end
+    f.list = list
+end
+local SortEnter
+local SortLeave
+local SortClick
 local function WideSlots(row, n, m)
     for c = #row.cells + 1, n do
         local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -754,10 +815,23 @@ local function WideSlots(row, n, m)
         local hit = CreateFrame("Frame", nil, row)
         hit:SetAllPoints(fs)
         hit:EnableMouse(false)
-        hit:SetScript("OnEnter", CellEnter)
-        hit:SetScript("OnLeave", HideTip)
         hit.col = c
         row.hits[c] = hit
+        if row.isHead then
+            hit:SetFrameLevel(row:GetFrameLevel() + 2)
+            hit:SetScript("OnEnter", SortEnter)
+            hit:SetScript("OnLeave", SortLeave)
+            hit:SetScript("OnMouseUp", SortClick)
+            local tex = row:CreateTexture(nil, "ARTWORK")
+            tex:SetWidth(SORT_ICON)
+            tex:SetHeight(SORT_ICON)
+            tex:SetTexture(SORT_TEX)
+            tex:Hide()
+            row.arrows[c] = tex
+        else
+            hit:SetScript("OnEnter", CellEnter)
+            hit:SetScript("OnLeave", HideTip)
+        end
     end
     for k = #row.icons + 1, m do
         local tex = row:CreateTexture(nil, "ARTWORK")
@@ -789,6 +863,9 @@ local function NewWideRow(f, k)
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
     row.cells, row.icons, row.counts, row.hits = {}, {}, {}, {}
+    if k == 0 then
+        row.isHead, row.arrows, row.wide = true, {}, f
+    end
     return row
 end
 local function WideGrow(f, want)
@@ -819,6 +896,7 @@ local function WidePlace(f, row)
         else
             row.cells[c]:Hide()
             row.hits[c]:Hide()
+            if row.arrows then row.arrows[c]:Hide() end
         end
     end
     for k = ns2 + 1, #row.icons do
@@ -873,13 +951,14 @@ end
 local function WideColumns(f, width)
     f.colW, f.slotW, f.headText = {}, {}, {}
     local data, head, used, name = {}, {}, 0, 0
+    local arrow = #f.cols > 1 and SORT_W or 0
     for c = 1, #f.cols do
         local w = 0
         for r = 1, #f.list do
             local s = f.list[r].cells and f.list[r].cells[c]
             if s and s ~= "" then w = max(w, TextW(f, s)) end
         end
-        data[c], head[c] = w, TextW(f, f.cols[c])
+        data[c], head[c] = w, TextW(f, f.cols[c]) + arrow
         f.colW[c] = ceil(max(w, head[c])) + 2
         used = used + f.colW[c] + COLGAP
     end
@@ -895,7 +974,7 @@ local function WideColumns(f, width)
             if head[c] > data[c] then text, w = Fold(f, f.cols[c]) end
             if text then
                 f.headText[c] = text
-                f.colW[c] = ceil(max(w, data[c])) + 2
+                f.colW[c] = ceil(max(w + arrow, data[c])) + 2
                 f.fold = true
             end
         end
@@ -936,9 +1015,28 @@ local function DrawWide(f)
     f.offset = max(0, min(most, f.offset or 0))
     local h = f.header
     h.name:SetText("")
+    local o, sortable = f.order or {}, #f.cols > 1
     for c = 1, #f.cols do
-        h.cells[c]:SetText(f.headText and f.headText[c] or f.cols[c])
-        h.cells[c]:SetTextColor(style.muted[1], style.muted[2], style.muted[3])
+        local text, cell, arrow = f.headText and f.headText[c] or f.cols[c], h.cells[c], h.arrows[c]
+        cell:SetText(text)
+        h.hits[c]:EnableMouse(sortable)
+        if sortable and o.col == c then
+            ns.Kit.Tone(cell, "text.title")
+            local last = text:match("\n(.*)$") or text
+            arrow:ClearAllPoints()
+            arrow:SetPoint("BOTTOMRIGHT", cell, "BOTTOMRIGHT", -(ceil(TextW(f, last)) + 2), (LINEH - SORT_ICON) / 2)
+            local tc = SORT_ARROW[o.dir] or SORT_ARROW.desc
+            arrow:SetTexCoord(tc[1], tc[2], tc[3], tc[4])
+            ns.Kit.Tint(arrow, "text.title")
+            arrow:Show()
+        else
+            if h.hot == c then
+                ns.Kit.Tone(cell, "text.bright")
+            else
+                cell:SetTextColor(style.muted[1], style.muted[2], style.muted[3])
+            end
+            arrow:Hide()
+        end
     end
     for k = 1, #f.heads do
         local icon = f.heads[k]
@@ -983,6 +1081,52 @@ local function WideWheel(self, delta)
     self.offset = want
     DrawWide(self)
 end
+local function Resort(f)
+    WideOrder(f)
+    f.offset = 0
+    DrawWide(f)
+end
+local function SortTip(self)
+    local f = self:GetParent().wide
+    local o = f.order or {}
+    local state = o.col == self.col and (o.dir == "asc" and "sum.sort.asc" or "sum.sort.desc") or "sum.sort.none"
+    ns.Tip.Dock(self, { { kind = "head", left = f.cols[self.col] or "" },
+        { kind = "row", left = ns.T("sum.sort"), right = ns.T(state) } })
+end
+SortEnter = function(self)
+    local h = self:GetParent()
+    h.hot = self.col
+    DrawWide(h.wide)
+    SortTip(self)
+end
+SortLeave = function(self)
+    local h = self:GetParent()
+    h.hot = nil
+    DrawWide(h.wide)
+    HideTip()
+end
+SortClick = function(self)
+    local f = self:GetParent().wide
+    if #f.cols < 2 then return end
+    local o = f.order
+    if o.col ~= self.col then
+        o.col, o.dir = self.col, "desc"
+    elseif SORT_NEXT[o.dir] then
+        o.dir = SORT_NEXT[o.dir]
+    else
+        local p = f.preset
+        if p and p.col ~= self.col then
+            o.col, o.dir = p.col, p.dir
+        elseif p then
+            o.dir = "desc"
+        else
+            o.col, o.dir = nil, nil
+        end
+    end
+    Resort(f)
+    if f.peer then Resort(f.peer) end
+    SortTip(self)
+end
 function Badges.Wide(parent, modal)
     local f = CreateFrame("Frame", nil, parent)
     f.wide, f.modal, f.rowR = true, modal, modal and ROW_R + 8 or ROW_R
@@ -1007,7 +1151,7 @@ function Badges.Wide(parent, modal)
     f.probe = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f.probe:Hide()
     f.header = NewWideRow(f, 0)
-    f.list, f.rows, f.cols, f.heads = {}, {}, {}, {}
+    f.list, f.rows, f.cols, f.heads, f.order = {}, {}, {}, {}, {}
     f.lineCount = 0
     WideGrow(f, LINES)
     function f.SetModel(self, m)
@@ -1015,19 +1159,32 @@ function Badges.Wide(parent, modal)
         self.title:SetText(m.title)
         self.model = m
         self.head.lines = m.tip
-        self.list = m.rows or {}
+        self.base = m.rows or {}
         self.cols = m.cols or {}
         self.heads = m.heads or {}
         self.empty = m.empty
         self.onWheel = m.onWheel
         self.span = m.span
         self.offset = 0
+        self.peer = nil
+        local sig = tconcat(self.cols, "\1")
+        if sig ~= self.orderSig then
+            local col = #self.cols > 1 and (m.sortCol or 1) or nil
+            self.preset = col and { col = col, dir = "desc" } or nil
+            self.order, self.orderSig = col and { col = col, dir = "desc" } or {}, sig
+        end
+        WideOrder(self)
         WideGrow(self, LINES)
         WideColumns(self, self.colFor)
         DrawWide(self)
     end
     function f.Redraw(self)
         DrawWide(self)
+    end
+    function f.Share(self, source)
+        self.order, self.peer, self.preset = source.order or {}, source, source.preset
+        source.order = self.order
+        Resort(self)
     end
     function f.Layout(self, width)
         local lines = self.fixed or LINES
