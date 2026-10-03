@@ -265,7 +265,6 @@ local function Handler(msg)
         Slash.Pause()
     elseif cmd == "status" then
         local segs, events, bytes = ns.Store.Stats()
-        local tries, mb = ns.Store.Limits()
         if not ns.Recorder.IsOn() then
             ns.Print(ns.T("slash.status.off"))
         elseif ns.Recorder.IsPaused() then
@@ -275,7 +274,7 @@ local function Handler(msg)
         end
         ns.Print(format(ns.T("slash.status.body"),
             segs, events, bytes / 1048576,
-            format(ns.T("slash.status.limit"), tries, mb)))
+            format(ns.T("slash.status.limit"), ns.Store.Limit())))
         local why, enc, at = ns.Recorder.LastClose()
         if why then
             ns.Print(format(ns.T("slash.status.closed"), date("%H:%M:%S", at),

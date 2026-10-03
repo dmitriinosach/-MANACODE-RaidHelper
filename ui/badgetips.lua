@@ -533,7 +533,11 @@ local function AbHits(r)
     if c > 0 then return format(T("sum.ab.crit"), r.n, floor(c * 100 / max(1, r.n) + 0.5)) end
     return format(T("sum.ab.hits"), r.n)
 end
-local function Split(map, out, counts, top)
+local function Amount(v, total)
+    if not total then return Short(v) end
+    return format(T("sum.ab.share"), Short(v), floor(v * 100 / max(1, total) + 0.5))
+end
+local function Split(map, out, counts, top, total)
     local parts = {}
     local rest = map and map[REST_KEY]
     for name, x in pairs(map or {}) do
@@ -541,7 +545,7 @@ local function Split(map, out, counts, top)
         if name ~= REST_KEY then parts[#parts + 1] = { name = name, v = r and r.a or x, r = r } end
     end
     local extra = rest and rest.k or 0
-    if #parts + extra < 2 then return false end
+    if #parts + extra < (total and 1 or 2) then return false end
     tsort(parts, function(a, c)
         if a.v ~= c.v then return a.v > c.v end
         return a.name < c.name
@@ -550,7 +554,7 @@ local function Split(map, out, counts, top)
     for k = 1, shown do
         local e = parts[k]
         if e.r then
-            Put(out, "sub", Glyph(e.r.id) .. PartName(e.name), AbHits(e.r), Short(e.v))
+            Put(out, "sub", Glyph(e.r.id) .. PartName(e.name), AbHits(e.r), Amount(e.v, total))
         else
             Put(out, "sub", PartName(e.name), counts and format("x%d", e.v) or Short(e.v))
         end
@@ -563,13 +567,13 @@ local function Split(map, out, counts, top)
         return true
     end
     for k = shown + 1, #parts do sum, hits = sum + parts[k].v, hits + parts[k].r.n end
-    Put(out, "sub", more, format(T("sum.ab.hits"), hits), Short(sum), "dim")
+    Put(out, "sub", more, format(T("sum.ab.hits"), hits), Amount(sum, total), "dim")
     return true
 end
-function Tips.Abil(out, ab, head)
+function Tips.Abil(out, ab, head, total)
     if not ab then return false end
     local list = {}
-    if not Split(ab, list, false, BLOCK_TOP) then return false end
+    if not Split(ab, list, false, BLOCK_TOP, total) then return false end
     if head then
         Put(out, "sep")
         Put(out, "row", T("sum.tt.abil"), nil, nil, "dim")

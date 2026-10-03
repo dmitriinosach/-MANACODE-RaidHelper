@@ -786,6 +786,7 @@ local function AttachNav(host, title, status)
     navOut:SetPoint("LEFT", navNext, "RIGHT", NAVGAP * 2, 0)
     nav:Hide()
     local play = ns.ReplayLink.Head(host, nav)
+    play = ns.ReplayLink.SaveHead(host, play)
     local last = ns.ThreatView and ns.ThreatView.Head(host, play) or play
     if ns.ShareView then ns.ShareView.Head(host, last) end
     if ns.SumHide then ns.SumHide.Head(host) end

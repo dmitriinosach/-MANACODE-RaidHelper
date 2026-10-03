@@ -1,6 +1,6 @@
 local _, ns = ...
-local floor, ceil, max, min = math.floor, math.ceil, math.max, math.min
-local gmatch, format = string.gmatch, string.format
+local ceil, max, min = math.ceil, math.max, math.min
+local gmatch = string.gmatch
 local tsort, concat = table.sort, table.concat
 local HOUR = 3600
 local ALCH_DUR = 7000
@@ -9,7 +9,7 @@ local RECENT = 12 * HOUR
 local PICK = 3
 local MELEE_SHARE = 0.15
 local AURAS = 40
-local DEF = { hours = 3, limit = 2, gap = 50, own = "warn", whisper = false, auto = true }
+local DEF = { hours = 2, limit = 2, own = "warn", whisper = false, auto = true }
 local Flasks = {}
 ns.Flasks = Flasks
 Flasks.DEF = DEF
@@ -36,6 +36,7 @@ local function Opt()
     end
     if type(o.kinds) ~= "table" then o.kinds = {} end
     if type(o.alch) ~= "table" then o.alch = {} end
+    o.gap = nil
     for k, v in pairs(DEF) do
         if type(o[k]) ~= type(v) then o[k] = v end
     end
@@ -123,15 +124,12 @@ function Flasks.Reset(now)
     Notify()
 end
 local function Count(j, name)
-    local n, last = 0, nil
+    local n = 0
     for i = 1, #j.list do
         local e = j.list[i]
-        if e.n == name then
-            n = n + (e.c or 1)
-            if not last or e.t > last then last = e.t end
-        end
+        if e.n == name then n = n + (e.c or 1) end
     end
-    return n, last
+    return n
 end
 function Flasks.KindOf(role, class)
     if role == "tank" or role == "sp" or role == "ap" then return role end
@@ -300,18 +298,14 @@ end
 function Flasks.Decide(name, now, stock)
     now = now or time()
     local j = Flasks.Journal(now)
-    local n, last = Count(j, name)
+    local n = Count(j, name)
     local norm, dur = Flasks.Norm(name)
-    local plan = { name = name, give = false, n = n, norm = norm, limit = Opt().limit, dur = dur, alch = dur > 1 }
+    local plan = { name = name, give = false, n = n, norm = norm, limit = Opt().limit, left = max(0, norm - n),
+                   dur = dur, alch = dur > 1 }
     plan.kind, plan.src = Flasks.Role(name)
     if plan.kind then plan.item = Flasks.Item(plan.kind) end
     if n >= norm then
         plan.why = "norm"
-        return plan
-    end
-    local gap = Opt().gap * 60 * dur
-    if last and now - last < gap then
-        plan.why, plan.wait = "gap", gap - (now - last)
         return plan
     end
     plan.has = Flasks.Has(name)
@@ -386,9 +380,6 @@ function Flasks.Given(raid)
         out[id] = (out[id] or 0) + (j.list[i].c or 1)
     end
     return out
-end
-function Flasks.Minutes(secs)
-    return format("%d", max(1, floor(secs / 60 + 0.5)))
 end
 function Flasks.InGroup()
     return (GetNumRaidMembers() or 0) > 0 or (GetNumPartyMembers() or 0) > 0

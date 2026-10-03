@@ -92,6 +92,7 @@ local seenIdle = true
 local hadFight = false
 local killAt, killEnd, killSure, killEnc = nil, nil, false, nil
 local scriptHold = nil
+local dummyAt = nil
 local dead = {}
 local bossSeen = {}
 local closed = { why = nil, enc = nil, at = nil, mute = nil }
@@ -168,6 +169,7 @@ end
 local function CloseSegment(why, enc)
     ForgetKill()
     scriptHold = nil
+    dummyAt = nil
     wipe(dead)
     wipe(bossSeen)
     vehicleFight = false
@@ -196,7 +198,7 @@ local function WatchZone(on)
 end
 local function ZoneWanted()
     local _, kind = GetInstanceInfo()
-    if kind == "raid" then return true end
+    if kind == "raid" or ns.Encounters.Dummy() then return true end
     return kind == "party" and ns.GetDB().settings.autoParty == true
 end
 local function Zone()
@@ -205,6 +207,13 @@ local function Zone()
 end
 function Recorder.InZone()
     return inZone
+end
+function Recorder.SetDummy(on)
+    ns.GetDB().settings.dummyRec = on and true or nil
+    ns.Encounters.SetDummy(on)
+    local live = ns.Store.Live()
+    if on and live then live.dummy = true end
+    if isOn then Zone() end
 end
 function Recorder.Start()
     if isOn then
@@ -420,6 +429,10 @@ local function RecordEvent(ts, ...)
         frameHp, framePos = true, true
     end
     if sub == "UNIT_DIED" and dstFlags and band(dstFlags, F_PLAYER) > 0 then ns.Trash.Died(ts) end
+    if srcFlags and band(srcFlags, F_BY_PLAYER) > 0 and ns.Encounters.Dummy() and find(sub, "_DAMAGE", 1, true)
+        and ns.Encounters.IsDummy(ns.NpcKey(dstGUID)) then
+        dummyAt = GetTime()
+    end
     if spellId == WPN_AURA and sub == "SPELL_AURA_APPLIED" then WpnAsk(dstGUID, dstName) end
     Anchor(ts)
     WatchEnd(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, seg.bosses)
@@ -833,7 +846,9 @@ local function CheckClose(now)
     end
     if hadFight and calmAt and now - calmAt >= IDLE_CLOSE and not (scriptHold and now < scriptHold) then
         CloseSegment("idle", nil)
+        return
     end
+    if dummyAt and now - dummyAt >= IDLE_CLOSE then CloseSegment("idle", nil) end
 end
 local function Snapshot()
     local withPos = posElapsed >= POS_PERIOD
@@ -924,12 +939,13 @@ frame:SetScript("OnUpdate", ns.Prof.Wrap("hot.rec", function(_, elapsed)
     end
     if wpnGuid or wpnQueue[1] then WpnStep(GetTime()) end
     if ns.Threat then ns.Threat.Step(elapsed) end
-    if (killAt or (hadFight and calmAt)) and ns.Store.Live() then
+    if (killAt or dummyAt or (hadFight and calmAt)) and ns.Store.Live() then
         CheckClose(GetTime())
     end
 end))
 ns.OnReady(function()
     local db = ns.GetDB()
+    ns.Encounters.SetDummy(db.settings.dummyRec == true)
     if db.recording or db.settings.autoRaid then
         db.recording = false
         Recorder.Start()

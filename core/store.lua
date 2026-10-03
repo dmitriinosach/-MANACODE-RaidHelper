@@ -15,9 +15,7 @@ local abs = math.abs
 local SEEK_SLACK = 5000
 local MB = 1048576
 local WEEK = 7 * 86400
-local TRIES_MIN, TRIES_MAX, TRIES_DEF = 10, 100, 50
-local MB_MIN, MB_MAX, MB_DEF = 50, 300, 150
-local ROTATE_KEY = "store.rotate"
+local MB_MIN, MB_MAX, MB_DEF = 50, 300, 250
 local ROTATE_TICK = 2
 local APPLY_DELAY = 5
 local ASK_AGAIN = 30
@@ -35,7 +33,7 @@ local indexBySeg = setmetatable({}, { __mode = "k" })
 local tagBySeg = setmetatable({}, { __mode = "k" })
 local lookBySeg = setmetatable({}, { __mode = "k" })
 local tailBySeg = setmetatable({}, { __mode = "k" })
-local rot = { want = false, prepped = false, acc = 0, entered = false, measured = false }
+local rot = { want = false, acc = 0, entered = false, measured = false }
 local rotFrame = CreateFrame("Frame")
 rotFrame:Hide()
 local function GetIndex(seg)
@@ -94,6 +92,7 @@ end
 function Store.Open(ts)
     local db = ns.GetDB()
     db.live = ns.RecCodec.Open(ts, ns.Raid and ns.Raid.Current() or nil)
+    if ns.Encounters and ns.Encounters.Dummy() then db.live.dummy = true end
 end
 function Store.MarkBoss(name)
     local db = ns.GetDB()
@@ -213,19 +212,16 @@ local function Clamp(v, lo, hi, def)
     if v > hi then return hi end
     return v
 end
-function Store.Limits()
-    local s = ns.GetDB().settings
-    return Clamp(s.limitTries, TRIES_MIN, TRIES_MAX, TRIES_DEF), Clamp(s.limitMB, MB_MIN, MB_MAX, MB_DEF)
+function Store.Limit()
+    return Clamp(ns.GetDB().settings.limitMB, MB_MIN, MB_MAX, MB_DEF)
 end
 function Store.LimitRange()
-    return TRIES_MIN, TRIES_MAX, TRIES_DEF, MB_MIN, MB_MAX, MB_DEF
+    return MB_MIN, MB_MAX, MB_DEF
 end
 function Store.LimitBytes()
-    local _, mb = Store.Limits()
-    return mb * MB
+    return Store.Limit() * MB
 end
 local function SegTries(seg)
-    if seg.bare then return 0 end
     local scan = seg.scan
     if scan and scan.fights then
         local n = 0
@@ -238,16 +234,9 @@ local function SegTries(seg)
     if seg.pull or (seg.bosses and next(seg.bosses)) then return 1 end
     return 0
 end
-function Store.Tries()
-    local db = ns.GetDB()
-    local n = 0
-    for i = 1, #db.segments do n = n + SegTries(db.segments[i]) end
-    return n
-end
 function Store.OverLimit()
-    local tries, mb = Store.Limits()
     local _, _, bytes = Store.Stats()
-    return bytes > mb * MB or Store.Tries() > tries
+    return bytes > Store.LimitBytes()
 end
 local function FightSegs(fight)
     if fight.segs then return fight.segs end
@@ -263,21 +252,6 @@ function Store.Bare(fight)
         if s and s.bare then return true end
     end
     return false
-end
-function Store.Strip(i)
-    local db = ns.GetDB()
-    local seg = db.segments[i]
-    if not seg or seg.bare or seg == db.live then return 0 end
-    local freed = seg.bytes or 0
-    db.total = math.max(0, db.total - (seg.n or 0))
-    seg.chunks = {}
-    seg.buf, seg.hp, seg.pos, seg.maps = nil, nil, nil, nil
-    seg.actors, seg.spells, seg.strs = nil, nil, nil
-    if seg.dict then seg.dict = {} end
-    seg.n, seg.bytes, seg.bare = 0, 0, true
-    indexBySeg[seg], tagBySeg[seg], lookBySeg[seg], tailBySeg[seg] = nil, nil, nil, nil
-    if ns.Decode then ns.Decode.Drop(seg) end
-    return freed
 end
 local function SameRaid(r, x, dt)
     if not r or not x then return false end
@@ -311,76 +285,35 @@ local function Guard()
         return SameRaid(seg.raid, cur, abs(now - (seg.t1 or seg.t0)))
     end
 end
-local function Closure(i, bySeg, taken, guard)
-    local segs = ns.GetDB().segments
-    local ids, seen, fights, have = { i }, { [i] = true }, {}, {}
-    local k, blocked = 1, false
-    while ids[k] do
-        local at = ids[k]
-        taken[at] = true
-        if not segs[at] or guard(segs[at]) then blocked = true end
-        local list = bySeg[at] or {}
-        for n = 1, #list do
-            local f = list[n]
-            if not have[f] then
-                have[f] = true
-                fights[#fights + 1] = f
-                local fs = FightSegs(f)
-                for j = 1, #fs do
-                    if not seen[fs[j]] then
-                        seen[fs[j]] = true
-                        ids[#ids + 1] = fs[j]
-                    end
-                end
+local function GroupKey(seg)
+    local r = seg.raid
+    if r and r.id then return "#" .. r.id end
+    local day = date(DAY_FMT, floor(seg.t0 or 0))
+    if not r then return "|" .. day end
+    return tostring(r.name) .. "|" .. tostring(r.size) .. "|" .. day
+end
+function Store.Count()
+    local db = ns.GetDB()
+    local seen, raids, tries = {}, 0, 0
+    for i = 1, #db.segments + 1 do
+        local s = db.segments[i] or (i > #db.segments and db.live)
+        if s then
+            tries = tries + SegTries(s)
+            local key = GroupKey(s)
+            if not seen[key] then
+                seen[key] = true
+                raids = raids + 1
             end
         end
-        k = k + 1
     end
-    if blocked then return nil, ids end
-    local g = { segs = {}, fights = fights, tries = 0 }
-    for n = 1, #ids do g.segs[n] = segs[ids[n]] end
-    for n = 1, #fights do
-        if not Store.Bare(fights[n]) then g.tries = g.tries + 1 end
-    end
-    return g, ids
+    return raids, tries
 end
-local function Plan(maxTries, mb)
+local function Plan(mb)
     local segs = ns.GetDB().segments
     local limit = mb * MB
     local guard = Guard()
-    local list = ns.Encounters.Fights()
-    local bySeg, tries = {}, 0
-    for k = 1, #list do
-        local f = list[k]
-        local fs = FightSegs(f)
-        if not Store.Bare(f) then tries = tries + 1 end
-        for j = 1, #fs do
-            local at = bySeg[fs[j]]
-            if not at then
-                at = {}
-                bySeg[fs[j]] = at
-            end
-            at[#at + 1] = f
-        end
-    end
     local _, _, bytes = Store.Stats()
-    local plan = { strip = {}, drop = {} }
-    local taken, stripped = {}, {}
-    for i = 1, #segs do
-        if tries <= maxTries and bytes <= limit then break end
-        if not taken[i] and not segs[i].bare and not guard(segs[i]) then
-            local g, ids = Closure(i, bySeg, taken, guard)
-            if g then
-                plan.strip[#plan.strip + 1] = g
-                tries = tries - g.tries
-                for n = 1, #ids do
-                    stripped[ids[n]] = true
-                    bytes = bytes - (segs[ids[n]].bytes or 0)
-                end
-            end
-        end
-    end
-    local gone = {}
+    local drop, gone = {}, {}
     for i = 1, #segs do
         if bytes <= limit then break end
         local seg = segs[i]
@@ -391,36 +324,13 @@ local function Plan(maxTries, mb)
                 if not gone[j] and not guard(s) and SameGroup(seg, s) then
                     gone[j] = true
                     group[#group + 1] = s
-                    bytes = bytes - (stripped[j] and 0 or (s.bytes or 0)) - TotalsBytes(s)
+                    bytes = bytes - (s.bytes or 0) - TotalsBytes(s)
                 end
             end
-            plan.drop[#plan.drop + 1] = group
+            drop[#drop + 1] = group
         end
     end
-    return plan
-end
-local function Needs(plan)
-    local doomed = {}
-    for k = 1, #plan.drop do
-        for n = 1, #plan.drop[k] do doomed[plan.drop[k][n]] = true end
-    end
-    local need, freeze = {}, {}
-    for k = 1, #plan.strip do
-        local g = plan.strip[k]
-        local keep = false
-        for n = 1, #g.segs do
-            local s = g.segs[n]
-            if not doomed[s] then
-                keep = true
-                if not s.bare and not ns.Digest.Frozen(s) then freeze[#freeze + 1] = s end
-            end
-        end
-        for n = 1, keep and #g.fights or 0 do
-            local f = g.fights[n]
-            if not Store.Bare(f) and not ns.Digest.Has(f) then need[#need + 1] = f end
-        end
-    end
-    return need, freeze
+    return drop
 end
 local function IndexOf(seg)
     local segs = ns.GetDB().segments
@@ -428,33 +338,6 @@ local function IndexOf(seg)
         if segs[i] == seg then return i end
     end
     return nil
-end
-local function Prep(need, freeze)
-    ns.Jobs.Run(ROTATE_KEY, function()
-        ns.Jobs.Label("job.rotate")
-        for k = 1, #need do
-            if not ns.Digest.Has(need[k]) then ns.Summary.Full(need[k]) end
-            ns.Jobs.Yield()
-        end
-        for k = 1, #freeze do
-            local s = freeze[k]
-            local i = IndexOf(s)
-            if i and not s.bare and not ns.Digest.Frozen(s) then ns.Digest.Freeze(s, ns.Digest.Trash(i, s)) end
-            ns.Jobs.Yield()
-        end
-        return true
-    end, function() rot.prepped = true end, "store.rotate")
-end
-local function Kept(g)
-    for n = 1, #g.fights do
-        local f = g.fights[n]
-        if not Store.Bare(f) and not ns.Digest.Has(f) then return false end
-    end
-    for n = 1, #g.segs do
-        local s = g.segs[n]
-        if not s.bare and not ns.Digest.Frozen(s) then return false end
-    end
-    return true
 end
 local function DropGroup(group)
     local ids, set = {}, {}
@@ -465,7 +348,7 @@ local function DropGroup(group)
             set[i] = true
         end
     end
-    if #ids == 0 then return 0 end
+    if #ids == 0 then return false, 0 end
     local doomed = {}
     local list = ns.Encounters.Fights()
     for k = 1, #list do
@@ -477,51 +360,27 @@ local function DropGroup(group)
         if mine then doomed[#doomed + 1] = list[k] end
     end
     local plan = ns.FightTree.Plan(doomed, ids)
-    if not plan then return 0 end
+    if not plan then return false, 0 end
     ns.FightTree.Drop(plan)
-    return #doomed
+    return true, #doomed
 end
 local function Forms(n, key)
     local forms = ns.T(key)
     return ns.Plural and ns.Plural(n, forms) or match(forms, "^[^|]*")
 end
-local function Apply(plan)
-    local doomed = {}
-    for k = 1, #plan.drop do
-        for n = 1, #plan.drop[k] do doomed[plan.drop[k][n]] = true end
-    end
-    local tries, segsDone = 0, 0
-    for k = 1, #plan.strip do
-        local g = plan.strip[k]
-        if Kept(g) then
-            local n = g.tries
-            for j = 1, #g.segs do
-                local s = g.segs[j]
-                local i = not doomed[s] and not s.bare and IndexOf(s)
-                if i then
-                    Store.Strip(i)
-                    segsDone = segsDone + 1
-                end
-            end
-            tries = tries + n
+local function Apply(drop)
+    local raids, gone = 0, 0
+    for k = 1, #drop do
+        local ok, tries = DropGroup(drop[k])
+        if ok then
+            raids = raids + 1
+            gone = gone + tries
         end
     end
-    if segsDone > 0 and ns.Index then ns.Index.Reset() end
-    local raids, gone = 0, 0
-    for k = 1, #plan.drop do
-        gone = gone + DropGroup(plan.drop[k])
-        raids = raids + 1
-    end
+    if raids == 0 then return end
     local _, _, bytes = Store.Stats()
-    if tries > 0 then
-        ns.Print(format(Forms(tries, "store.stripped"), tries, bytes / MB))
-    elseif segsDone > 0 then
-        ns.Print(format(ns.T("store.stripped.trash"), segsDone, bytes / MB))
-    end
-    if raids > 0 then
-        ns.Print(format(Forms(raids, "store.dropped"), raids, gone, bytes / MB))
-    end
-    if (tries > 0 or raids > 0) and ns.Settings and ns.Settings.RefreshRecord then ns.Settings.RefreshRecord() end
+    ns.Print(format(Forms(raids, "store.dropped"), raids, gone, bytes / MB))
+    if ns.Settings and ns.Settings.RefreshRecord then ns.Settings.RefreshRecord() end
 end
 local function Noop() end
 local function Idle()
@@ -537,6 +396,10 @@ local function LocksReady()
     end
     return false
 end
+local function Stop()
+    rot.want = false
+    rotFrame:Hide()
+end
 local function RotateStep()
     if rot.after and GetTime() < rot.after then return end
     if not LocksReady() or not Idle() then return end
@@ -544,24 +407,11 @@ local function RotateStep()
         ns.Encounters.Scan(Noop)
         return
     end
-    local plan = Plan(Store.Limits())
-    if #plan.strip == 0 and #plan.drop == 0 then
-        rot.want, rot.prepped = false, false
-        rotFrame:Hide()
-        return
-    end
-    if not rot.prepped then
-        local need, freeze = Needs(plan)
-        if #need > 0 or #freeze > 0 then
-            Prep(need, freeze)
-            return
-        end
-        rot.prepped = true
-    end
-    if #plan.drop > 0 and ns.Shell and ns.Shell.IsOpen and ns.Shell.IsOpen("log") then return end
-    rot.want, rot.prepped = false, false
-    rotFrame:Hide()
-    Apply(plan)
+    local drop = Plan(Store.Limit())
+    if #drop == 0 then return Stop() end
+    if ns.Shell and ns.Shell.IsOpen and ns.Shell.IsOpen("log") then return end
+    Stop()
+    Apply(drop)
 end
 rotFrame:SetScript("OnUpdate", ns.Prof.Wrap("bg.store", function(self, elapsed)
     rot.acc = rot.acc + elapsed
@@ -571,7 +421,7 @@ rotFrame:SetScript("OnUpdate", ns.Prof.Wrap("bg.store", function(self, elapsed)
 end))
 function Store.Rotate()
     if rot.skip or (ns.RecLock and ns.RecLock()) or not Store.OverLimit() then return false end
-    rot.want, rot.prepped, rot.acc = true, false, ROTATE_TICK
+    rot.want, rot.acc = true, ROTATE_TICK
     rotFrame:Show()
     return true
 end
@@ -581,39 +431,27 @@ end
 function Store.Skipped()
     return rot.skip == true
 end
-function Store.SetLimits(tries, mb)
-    local s = ns.GetDB().settings
-    if tries then s.limitTries = Clamp(tries, TRIES_MIN, TRIES_MAX, TRIES_DEF) end
-    if mb then s.limitMB = Clamp(mb, MB_MIN, MB_MAX, MB_DEF) end
+function Store.SetLimit(mb)
+    ns.GetDB().settings.limitMB = Clamp(mb, MB_MIN, MB_MAX, MB_DEF)
     rot.skip = nil
     rot.after = GetTime() + APPLY_DELAY
     return Store.Rotate()
 end
-function Store.Cuts(tries, mb)
-    local curTries, curMB = Store.Limits()
-    tries = tries and Clamp(tries, TRIES_MIN, TRIES_MAX, TRIES_DEF) or curTries
-    mb = mb and Clamp(mb, MB_MIN, MB_MAX, MB_DEF) or curMB
-    if tries >= curTries and mb >= curMB then return false end
+function Store.Cuts(mb)
+    if mb >= Store.Limit() then return false end
     local _, _, bytes = Store.Stats()
-    return Store.Tries() > tries or bytes > mb * MB
+    return bytes > mb * MB
 end
 local function GroupLabel(group)
     local s = group[1]
     local label = s.raid and ns.Raid and ns.Raid.Label(s.raid) or ns.T("raid.none")
     return label .. " " .. date("%d.%m", floor(s.t0))
 end
-function Store.Preview(tries, mb)
-    local curTries, curMB = Store.Limits()
-    tries = tries and Clamp(tries, TRIES_MIN, TRIES_MAX, TRIES_DEF) or curTries
-    mb = mb and Clamp(mb, MB_MIN, MB_MAX, MB_DEF) or curMB
-    if not (ns.Encounters and ns.Encounters.Ready()) then
-        return math.max(0, Store.Tries() - tries), nil
-    end
-    local plan = Plan(tries, mb)
-    local n, raids = 0, {}
-    for k = 1, #plan.strip do n = n + plan.strip[k].tries end
-    for k = 1, #plan.drop do raids[#raids + 1] = GroupLabel(plan.drop[k]) end
-    return n, raids
+function Store.Preview(mb)
+    local drop = Plan(mb)
+    local raids = {}
+    for k = 1, #drop do raids[k] = GroupLabel(drop[k]) end
+    return raids
 end
 local function Measured()
     rot.measured = true
@@ -621,7 +459,7 @@ local function Measured()
         rot.note = nil
         if Store.OverLimit() then
             local _, _, bytes = Store.Stats()
-            ns.Print(format(ns.T("store.kept.over"), bytes / MB, Store.Tries()))
+            ns.Print(format(ns.T("store.kept.over"), bytes / MB))
         end
     end
     if rot.entered then Store.Rotate() end
@@ -825,8 +663,7 @@ ns.OnReady(function()
     if st.limitNote then
         st.limitNote = nil
         rot.skip, rot.note = true, true
-        local tries, mb = Store.Limits()
-        ns.Print(format(ns.T("store.kept"), tries, mb))
+        ns.Print(format(ns.T("store.kept"), Store.Limit()))
     end
     if ns.GetDB().live then
         Store.Close()

@@ -190,6 +190,20 @@ end
 local function CpuLast()
     if ns.CpuMeter then Out(ns.CpuMeter.Report(), true) end
 end
+local function DummyLabel()
+    return format(T("dev.chk.dummy"), T(ns.Encounters.Dummy() and "dev.dummy.on" or "dev.dummy.off"))
+end
+local function Dummy()
+    local on = not ns.Encounters.Dummy()
+    ns.Recorder.SetDummy(on)
+    local b = View.btn.dummy
+    if b then
+        b:SetText(DummyLabel())
+        b.tipTitle = DummyLabel()
+    end
+    Out({ T(on and "dev.dummy.out.on" or "dev.dummy.out.off") }, true)
+    RecState()
+end
 local function FrameProbe()
     local P = ns.DevProbe
     if not P then return end
@@ -424,12 +438,13 @@ local function BuildChecks(y, inner)
         { "range", Range }, { "models", Models }, { "map", Map },
         { "cmd", Cmds }, { "auto", Auto }, { "lock", Lock },
         { "calib", Calib }, { "methods", Methods }, { "cpu", Cpu },
-        { "cpulast", CpuLast }, { "probe", FrameProbe },
+        { "cpulast", CpuLast }, { "probe", FrameProbe }, { "dummy", Dummy },
     }
     local third = floor((inner - gap * 2) / 3)
     for i = 1, #checks do
         local key = checks[i][1]
-        local b = Btn(frame, T("dev.chk." .. key), T("dev.chk." .. key .. ".tip"), checks[i][2])
+        local text = key == "dummy" and DummyLabel() or T("dev.chk." .. key)
+        local b = Btn(frame, text, T("dev.chk." .. key .. ".tip"), checks[i][2])
         local col = (i - 1) % 3
         Put(b, pad + col * (third + gap), y - floor((i - 1) / 3) * ROW, third)
         View.btn[key] = b

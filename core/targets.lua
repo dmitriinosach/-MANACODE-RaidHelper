@@ -1,5 +1,6 @@
 local _, ns = ...
 local format = string.format
+local floor = math.floor
 local max = math.max
 local min = math.min
 local tsort = table.sort
@@ -27,136 +28,186 @@ local function Index(def)
     indexed[def] = idx
     return idx
 end
-function Targets.Hit(b, who, target, guid, tkey, amount)
+local function Slot(b, name)
+    local t = b[name]
+    if not t then
+        t = {}
+        b[name] = t
+    end
+    return t
+end
+function Targets.Hit(b, who, target, guid, tkey, amount, key, crit, id)
     local entry = ns.NpcEntry(guid) or tkey
     if not entry then return end
     local g = Index(b.def)[entry] or #b.def.groups + 1
     b.total = b.total + amount
     b.by[who] = (b.by[who] or 0) + amount
-    local tg = b.tg
-    if not tg then
-        tg = {}
-        b.tg = tg
-    end
+    local tg = Slot(b, "tg")
     local row = tg[who]
     if not row then
         row = {}
         tg[who] = row
     end
     row[g] = (row[g] or 0) + amount
-    local sums = b.gsum
-    if not sums then
-        sums = {}
-        b.gsum = sums
-    end
+    local sums = Slot(b, "gsum")
     sums[g] = (sums[g] or 0) + amount
-    local col = b.col
-    if not col then
-        col = {}
-        b.col = col
-    end
+    local col = Slot(b, "col")
     local c = col[who]
     if not c then
         c = {}
         col[who] = c
     end
     c[entry] = (c[entry] or 0) + amount
-    local tn = b.tn
-    if not tn then
-        tn = {}
-        b.tn = tn
-    end
+    local tn = Slot(b, "tn")
     if target and not tn[entry] then tn[entry] = target end
+    if key then
+        local gab = Slot(b, "gab")
+        local h = gab[g]
+        if not h then
+            h = {}
+            gab[g] = h
+        end
+        ns.Summary.Ab(h, who, key, amount, crit, id)
+    end
 end
-local function Of(b, who, g)
+local function Of(b, who, gs)
+    if not gs then return b.by[who] or 0 end
     local row = b.tg and b.tg[who]
-    return row and row[g] or 0
+    local v = 0
+    for i = 1, #gs do v = v + (row and row[gs[i]] or 0) end
+    return v
 end
 local function GroupLabel(b, g)
     local def = b.def
-    return T(def.groups[g] and def.groups[g].label or def.rest)
-end
-local function GroupLines(b, who, g, out)
-    local def = b.def
-    local col = b.col and b.col[who] or {}
-    local v = Of(b, who, g)
-    Put(out, "row", GroupLabel(b, g), Cell(v), nil, v == 0 and "dim" or nil)
-    if v == 0 then return end
-    local list = {}
     local grp = def.groups[g]
-    if grp then
-        for i = 1, #grp.npcs do
-            local id = grp.npcs[i]
-            local tag = def.tags and def.tags[id]
-            if tag and (col[id] or 0) > 0 then list[#list + 1] = { k = T(tag), v = col[id] } end
+    if not grp then return T(def.rest) end
+    if not grp.name then return T(grp.label) end
+    return format(T(grp.label), b.tn and b.tn[grp.npcs[1]] or T(grp.name))
+end
+local function Columns(b)
+    local def = b.def
+    local cols = {}
+    if def.lead then cols[1] = { label = T(def.lead.label), gs = def.lead.of, lead = true } end
+    local rest = #def.groups + 1
+    for g = 1, rest do
+        if g < rest or (b.gsum and (b.gsum[rest] or 0) > 0) then
+            cols[#cols + 1] = { label = GroupLabel(b, g), gs = { g } }
         end
-    else
-        local idx = Index(def)
-        for entry, amount in pairs(col) do
-            if not idx[entry] then list[#list + 1] = { k = b.tn and b.tn[entry] or ("#" .. tostring(entry)), v = amount } end
-        end
-        local merged, by = {}, {}
-        for i = 1, #list do
-            local r = by[list[i].k]
+    end
+    cols[#cols + 1] = { label = T("sum.tt.total") }
+    return cols
+end
+local function RestNames(b, who, out)
+    local idx = Index(b.def)
+    local list, by = {}, {}
+    for entry, amount in pairs(b.col and b.col[who] or {}) do
+        if not idx[entry] then
+            local k = b.tn and b.tn[entry] or ("#" .. tostring(entry))
+            local r = by[k]
             if r then
-                r.v = r.v + list[i].v
+                r.v = r.v + amount
             else
-                by[list[i].k] = list[i]
-                merged[#merged + 1] = list[i]
+                r = { k = k, v = amount }
+                by[k] = r
+                list[#list + 1] = r
             end
         end
-        list = merged
     end
     tsort(list, function(x, y)
         if x.v ~= y.v then return x.v > y.v end
         return x.k < y.k
     end)
-    local shown = grp and #list or min(REST_KEEP, #list)
+    local shown = min(REST_KEEP, #list)
     for i = 1, shown do Put(out, "sub", list[i].k, ns.BadgeTips.Short(list[i].v)) end
     if #list > shown then Put(out, "sub", (format(T("sum.tip.more"), #list - shown):gsub("^%s+", "")), nil, nil, "dim") end
 end
-local function RowTip(b, who, class)
+local function ColLines(b, who, c, out)
+    local v = Of(b, who, c.gs)
+    Put(out, "row", c.label, Cell(v), nil, v == 0 and "dim" or nil)
+    if v == 0 then return end
+    if c.lead then
+        for i = 1, #c.gs do Put(out, "sub", GroupLabel(b, c.gs[i]), Cell(Of(b, who, { c.gs[i] }))) end
+    elseif not b.def.groups[c.gs[1]] then
+        RestNames(b, who, out)
+    end
+end
+local function Abilities(b, who, gs)
+    local maps = {}
+    for i = 1, #gs do
+        local h = b.gab and b.gab[gs[i]]
+        local m = h and h.ab and h.ab[who]
+        if m then maps[#maps + 1] = m end
+    end
+    if #maps < 2 then return maps[1] end
+    local out = {}
+    for i = 1, #maps do
+        for key, r in pairs(maps[i]) do
+            local o = out[key]
+            if not o then
+                o = { a = 0, n = 0, c = 0, k = 0, id = r.id }
+                out[key] = o
+            end
+            o.a, o.n, o.c, o.k = o.a + r.a, o.n + r.n, o.c + (r.c or 0), o.k + (r.k or 0)
+        end
+    end
+    return out
+end
+local function CellTip(b, who, class, c)
+    local v = Of(b, who, c.gs)
+    local all = b.by[who] or 0
+    local out = { { kind = "head", left = who, right = all > 0 and format("%d%%", floor(v * 100 / all + 0.5)) or nil,
+                    class = class } }
+    ColLines(b, who, c, out)
+    if v > 0 then ns.BadgeTips.Abil(out, Abilities(b, who, c.gs), true, v) end
+    return out
+end
+local function RowTip(b, who, class, cols)
     local out = { { kind = "head", left = who, right = ns.BadgeTips.Short(b.by[who] or 0), class = class } }
-    for g = 1, #b.def.groups + 1 do GroupLines(b, who, g, out) end
+    for i = 1, #cols - 1 do ColLines(b, who, cols[i], out) end
     Put(out, "sep")
     Put(out, "row", T("sum.tt.total"), ns.BadgeTips.Short(b.by[who] or 0))
     return out
 end
-local function PanelTip(b)
+local function PanelTip(b, cols)
     local Short = ns.BadgeTips.Short
     local out = { { kind = "head", left = T(b.def.label), right = Short(b.total) } }
-    for g = 1, #b.def.groups + 1 do
-        local v = b.gsum and b.gsum[g] or 0
-        Put(out, "row", GroupLabel(b, g), Cell(v), b.total > 0 and format("%.1f%%", v / b.total * 100) or nil,
-            v == 0 and "dim" or nil)
+    local under = {}
+    for i = 1, #(b.def.lead and b.def.lead.of or {}) do under[b.def.lead.of[i]] = true end
+    for i = 1, #cols - 1 do
+        local c = cols[i]
+        local v = 0
+        for k = 1, #c.gs do v = v + (b.gsum and b.gsum[c.gs[k]] or 0) end
+        Put(out, (not c.lead and under[c.gs[1]]) and "sub" or "row", c.label, Cell(v),
+            b.total > 0 and format("%.1f%%", v / b.total * 100) or nil, v == 0 and "dim" or nil)
     end
     return out
 end
 function Targets.View(b, classOf)
     if b.def.kind ~= "targets" or not b.by then return nil end
+    local cols = Columns(b)
+    local first = cols[1].gs
     local names = {}
     for who in pairs(b.by) do names[#names + 1] = who end
     tsort(names, function(x, y)
-        local hx, hy = Of(b, x, 1), Of(b, y, 1)
+        local hx, hy = Of(b, x, first), Of(b, y, first)
         if hx ~= hy then return hx > hy end
         local vx, vy = b.by[x] or 0, b.by[y] or 0
         if vx ~= vy then return vx > vy end
         return x < y
     end)
-    local n = #b.def.groups + 1
-    local cols = {}
-    for g = 1, n do cols[g] = GroupLabel(b, g) end
-    cols[n + 1] = T("sum.tt.total")
+    local labels = {}
+    for c = 1, #cols do labels[c] = cols[c].label end
     local rows = {}
     for i = 1, #names do
         local who = names[i]
-        local cells = {}
-        for g = 1, n do cells[g] = Cell(Of(b, who, g)) end
-        cells[n + 1] = Cell(b.by[who] or 0)
         local class = classOf and classOf(who) or nil
-        rows[i] = { who = who, class = class, cells = cells, marks = {}, lines = RowTip(b, who, class) }
+        local cells, tips = {}, {}
+        for c = 1, #cols do
+            cells[c] = Cell(Of(b, who, cols[c].gs))
+            tips[c] = cols[c].gs and CellTip(b, who, class, cols[c]) or false
+        end
+        rows[i] = { who = who, class = class, cells = cells, tips = tips, marks = {}, lines = RowTip(b, who, class, cols) }
     end
-    local label = T(b.def.label)
-    return { title = format(T("sum.k.title"), label, ns.BadgeTips.Short(max(0, b.total))), cols = cols, heads = {},
-             rows = rows, tip = PanelTip(b), span = 2 }
+    return { title = format(T("sum.k.title"), T(b.def.label), ns.BadgeTips.Short(max(0, b.total))), cols = labels,
+             heads = {}, rows = rows, tip = PanelTip(b, cols), span = 2 }
 end

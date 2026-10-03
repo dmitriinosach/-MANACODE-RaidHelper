@@ -739,6 +739,11 @@ function Badges.Personal(parent)
     end
     return t
 end
+local function CellEnter(self)
+    local row = self:GetParent()
+    local lines = row.tips and row.tips[self.col] or row.lines
+    if lines then ns.Tip.Dock(row, lines, row.tipIcon) end
+end
 local function WideSlots(row, n, m)
     for c = #row.cells + 1, n do
         local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -746,6 +751,13 @@ local function WideSlots(row, n, m)
         fs:SetJustifyH("RIGHT")
         fs:SetWordWrap(false)
         row.cells[c] = fs
+        local hit = CreateFrame("Frame", nil, row)
+        hit:SetAllPoints(fs)
+        hit:EnableMouse(false)
+        hit:SetScript("OnEnter", CellEnter)
+        hit:SetScript("OnLeave", HideTip)
+        hit.col = c
+        row.hits[c] = hit
     end
     for k = #row.icons + 1, m do
         local tex = row:CreateTexture(nil, "ARTWORK")
@@ -759,11 +771,16 @@ local function WideSlots(row, n, m)
         row.icons[k], row.counts[k] = tex, fs
     end
 end
+local function WideAnchor(f, row, k)
+    local y = 8 + (k + 1) * LINEH + ((f.fold and k > 0) and LINEH or 0)
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", 6, -y)
+    row:SetPoint("TOPRIGHT", -(f.rowR or ROW_R), -y)
+end
 local function NewWideRow(f, k)
     local row = CreateFrame("Frame", nil, f)
     row:SetHeight(LINEH)
-    row:SetPoint("TOPLEFT", 6, -(8 + (k + 1) * LINEH))
-    row:SetPoint("TOPRIGHT", -(f.rowR or ROW_R), -(8 + (k + 1) * LINEH))
+    WideAnchor(f, row, k)
     row:EnableMouse(k > 0)
     row:SetScript("OnEnter", ShowLines)
     row:SetScript("OnLeave", HideTip)
@@ -771,7 +788,7 @@ local function NewWideRow(f, k)
     row.name:SetHeight(LINEH)
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
-    row.cells, row.icons, row.counts = {}, {}, {}
+    row.cells, row.icons, row.counts, row.hits = {}, {}, {}, {}
     return row
 end
 local function WideGrow(f, want)
@@ -796,7 +813,13 @@ local function WidePlace(f, row)
     local nc, ns2 = #f.cols, #f.heads
     WideSlots(row, nc, ns2)
     for c = 1, #row.cells do
-        if c <= nc then row.cells[c]:Show() else row.cells[c]:Hide() end
+        if c <= nc then
+            row.cells[c]:Show()
+            row.hits[c]:Show()
+        else
+            row.cells[c]:Hide()
+            row.hits[c]:Hide()
+        end
     end
     for k = ns2 + 1, #row.icons do
         row.icons[k]:Hide()
@@ -822,23 +845,64 @@ local function WidePlace(f, row)
     row.name:SetPoint("RIGHT", row, "RIGHT", -(off - COLGAP + NAMEGAP), 0)
     row.nameOff = off - COLGAP + NAMEGAP
 end
-local function WideColumns(f)
-    f.colW, f.slotW = {}, {}
+local function TextW(f, text)
+    f.probe:SetText(text)
+    return f.probe:GetStringWidth() or 0
+end
+local function Fold(f, text)
+    local best, bw, from = nil, 0, 1
+    while true do
+        local at = text:find(" ", from, true)
+        if not at then return best, bw end
+        local w = max(TextW(f, text:sub(1, at - 1)), TextW(f, text:sub(at + 1)))
+        if not best or w < bw then best, bw = text:sub(1, at - 1) .. "\n" .. text:sub(at + 1), w end
+        from = at + 1
+    end
+end
+local function WideFold(f)
+    local h, tall = f.header, f.fold and LINEH * 2 or LINEH
+    h:SetHeight(tall)
+    for c = 1, #h.cells do
+        h.cells[c]:SetHeight(tall)
+        h.cells[c]:SetWordWrap(f.fold == true)
+        h.cells[c]:SetJustifyV(f.fold and "BOTTOM" or "MIDDLE")
+    end
+    f.head:SetHeight(8 + tall + LINEH)
+    for k = 1, #f.rows do WideAnchor(f, f.rows[k], k) end
+end
+local function WideColumns(f, width)
+    f.colW, f.slotW, f.headText = {}, {}, {}
+    local data, head, used, name = {}, {}, 0, 0
     for c = 1, #f.cols do
-        f.probe:SetText(f.cols[c])
-        local w = f.probe:GetStringWidth() or 0
+        local w = 0
         for r = 1, #f.list do
             local s = f.list[r].cells and f.list[r].cells[c]
-            if s and s ~= "" then
-                f.probe:SetText(s)
-                w = max(w, f.probe:GetStringWidth() or 0)
+            if s and s ~= "" then w = max(w, TextW(f, s)) end
+        end
+        data[c], head[c] = w, TextW(f, f.cols[c])
+        f.colW[c] = ceil(max(w, head[c])) + 2
+        used = used + f.colW[c] + COLGAP
+    end
+    for i = 1, #f.heads do
+        f.slotW[i] = SlotWidth(f, i)
+        if f.slotW[i] > 0 then used = used + f.slotW[i] + WIDE_GAP end
+    end
+    for r = 1, #f.list do name = max(name, TextW(f, f.list[r].who or "")) end
+    f.fold = false
+    if width and width - 6 - (f.rowR or ROW_R) - 4 - 2 - used + COLGAP - NAMEGAP < name then
+        for c = 1, #f.cols do
+            local text, w = nil, 0
+            if head[c] > data[c] then text, w = Fold(f, f.cols[c]) end
+            if text then
+                f.headText[c] = text
+                f.colW[c] = ceil(max(w, data[c])) + 2
+                f.fold = true
             end
         end
-        f.colW[c] = ceil(w) + 2
     end
-    for i = 1, #f.heads do f.slotW[i] = SlotWidth(f, i) end
     WidePlace(f, f.header)
     for k = 1, #f.rows do WidePlace(f, f.rows[k]) end
+    WideFold(f)
 end
 local function WideRow(row, e, f)
     row.name:SetPoint("LEFT", (e and e.sub) and WIDE_INDENT or 4, 0)
@@ -861,6 +925,8 @@ local function WideRow(row, e, f)
         end
     end
     row.lines = e and e.lines
+    row.tips = e and e.tips
+    for c = 1, #f.cols do row.hits[c]:EnableMouse(row.tips ~= nil and row.tips[c] and true or false) end
     row.tipIcon = nil
 end
 local function DrawWide(f)
@@ -871,7 +937,7 @@ local function DrawWide(f)
     local h = f.header
     h.name:SetText("")
     for c = 1, #f.cols do
-        h.cells[c]:SetText(f.cols[c])
+        h.cells[c]:SetText(f.headText and f.headText[c] or f.cols[c])
         h.cells[c]:SetTextColor(style.muted[1], style.muted[2], style.muted[3])
     end
     for k = 1, #f.heads do
@@ -957,7 +1023,7 @@ function Badges.Wide(parent, modal)
         self.span = m.span
         self.offset = 0
         WideGrow(self, LINES)
-        WideColumns(self)
+        WideColumns(self, self.colFor)
         DrawWide(self)
     end
     function f.Redraw(self)
@@ -965,12 +1031,13 @@ function Badges.Wide(parent, modal)
     end
     function f.Layout(self, width)
         local lines = self.fixed or LINES
-        if lines ~= self.lineCount then
+        if lines ~= self.lineCount or width ~= self.colFor then
+            self.colFor = width
             WideGrow(self, lines)
-            WideColumns(self)
+            WideColumns(self, width)
             DrawWide(self)
         end
-        local h = 14 + (max(1, min(lines, #self.list)) + 2) * LINEH
+        local h = 14 + (max(1, min(lines, #self.list)) + 2 + (self.fold and 1 or 0)) * LINEH
         self:SetWidth(width)
         self:SetHeight(h)
         return h

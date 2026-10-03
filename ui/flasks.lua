@@ -52,6 +52,7 @@ end
 local function StatusText(s)
     local st = s.status or "wait"
     local item = F.ItemName(s.item)
+    if (s.put or 0) > 1 then item = item .. " x" .. s.put end
     if st == "placed" or st == "accepting" or st == "accepted" or st == "press" then
         return format(T("flask.st." .. st), item)
     end
@@ -59,7 +60,7 @@ local function StatusText(s)
         return T("flask.st." .. st)
     end
     if st == "many" then return format(T("flask.st.many"), s.many or 0) end
-    if st == "cursor" or st == "full" or st == "pick" or st == "nosplit" then
+    if st == "cursor" or st == "full" or st == "pick" or st == "nosplit" or st == "bags" then
         return format(T("flask.put." .. st), F.ItemName(s.plan and s.plan.item))
     end
     if s.plan then return Trade.Reason(s.plan) end
@@ -183,7 +184,7 @@ function View.Refresh()
     end
     local kind = s.kind or (p and p.kind)
     for k, b in pairs(kindBtn) do b:SetActive(k == kind) end
-    local placed = s.item ~= nil
+    local placed = (s.put or 0) > 0
     if p and not placed and p.item and p.n < p.limit and s.status ~= "combat" and s.status ~= "stranger" then
         forceBtn:Enable()
     else
@@ -281,9 +282,6 @@ local function Hours(v)
     local s = v == floor(v) and format("%d", v) or ns.Dec(format("%.1f", v))
     return format(T("flask.unit.hours"), s)
 end
-local function Mins(v)
-    return format(T("flask.unit.min"), v)
-end
 local function Pcs(v)
     return format(T("flask.unit.pcs"), v)
 end
@@ -320,7 +318,6 @@ if S and S.Category then
         items = {
             Slider("hours", "flask.set.hours", 1, 8, 0.5, Hours, 10),
             Slider("limit", "flask.set.limit", 1, 4, 1, Pcs, 20),
-            Slider("gap", "flask.set.gap", 0, 120, 5, Mins, 30),
         },
     })
     S.Section("flasks", "rules", {

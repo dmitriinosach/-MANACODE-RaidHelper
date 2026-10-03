@@ -83,6 +83,23 @@ function RL.Head(host, anchor)
     RL.SetFight(nil)
     return b
 end
+function RL.SaveHead(host, anchor)
+    local b = Kit.Button(host)
+    b:SetHeight(HEADH)
+    b:SetPoint("LEFT", anchor, "RIGHT", HEADGAP / 2, 0)
+    b.text:SetText(ns.T("save.btn"))
+    b:SetWidth(max(HEADW, floor(b.text:GetStringWidth() + 16)))
+    b.tipTitle = ns.T("save.head")
+    b.tip = ns.T("save.tip")
+    b.onClick = function()
+        if InCombatLockdown() or UnitAffectingCombat("player") then
+            ns.Print(ns.T("save.combat"))
+            return
+        end
+        Kit.Confirm(ns.T("save.ask"), ns.T("save.btn"), function() ReloadUI() end)
+    end
+    return b
+end
 function RL.HeadFrame()
     return head
 end

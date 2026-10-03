@@ -89,6 +89,7 @@ function Modal.Open(source)
     local least = source.wide and WIDTH_WIDE or WIDTH_DETAIL
     f:SetModel(m)
     f:Layout(min(max(source:GetWidth() * scale, least), ui:GetWidth() - MARGIN * 2))
+    if f.fold then top = top + step end
     f:ClearAllPoints()
     f:SetPoint("CENTER", dim, "CENTER", 0, 0)
     f.bar:ClearAllPoints()

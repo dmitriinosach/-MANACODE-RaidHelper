@@ -109,11 +109,11 @@ local function RecState()
     if ns.Recorder.IsOn() then key = ns.Recorder.IsPaused() and "set.rec.paused" or "set.rec.on" end
     return T(key)
 end
-local function RecSize()
-    local segs, _, bytes = ns.Store.Stats()
-    local over = ns.Store.OverLimit()
-    local tries, mb = ns.Store.Limits()
-    return format(T(over and "set.rec.size.over" or "set.rec.size"), bytes / MB, mb, ns.Store.Tries(), tries, segs)
+local function RecUsed()
+    local _, _, bytes = ns.Store.Stats()
+    local raids, tries = ns.Store.Count()
+    local key = ns.Store.OverLimit() and "set.rec.used.over" or "set.rec.used"
+    return format(T(key), bytes / MB, ns.Store.Limit(), raids, tries)
 end
 local function SetRec(key, on)
     if key == "autoRaid" and on and ns.RecLock() then
@@ -134,8 +134,6 @@ S.Section("rec", "status", {
     items = {
         { kind = "text", key = "state", tick = true, text = RecState,
           token = function() return ns.RecLock() and "text.warn" or "text.primary" end },
-        { kind = "text", key = "size", tick = true, text = RecSize,
-          token = function() return ns.Store.OverLimit() and "text.bad" or "text.primary" end },
     },
 })
 S.Section("rec", "what", {
@@ -151,32 +149,24 @@ S.Section("rec", "what", {
           get = function() return Opt().recAll == true end, set = function(on) SetRec("recAll", on) end },
     },
 })
-local triesLo, triesHi, triesDef, mbLo, mbHi, mbDef = ns.Store.LimitRange()
-local function LimitAsk(tries, mb)
-    if not ns.Store.Cuts(tries, mb) then return nil end
-    local n, raids = ns.Store.Preview(tries, mb)
-    if n == 0 and not (raids and raids[1]) then return T("set.rec.ask.none") end
-    local list = (raids and raids[1]) and format(T("set.rec.ask.raids"), table.concat(raids, ", ")) or ""
-    local w = ns.Plural and ns.Plural(n, T("set.rec.ask.w")) or T("set.rec.ask.w")
-    return format(T("set.rec.ask"), n, w, list)
+local mbLo, mbHi, mbDef = ns.Store.LimitRange()
+local function LimitAsk(mb)
+    if not ns.Store.Cuts(mb) then return nil end
+    local raids = ns.Store.Preview(mb)
+    if not raids[1] then return T("set.rec.ask.none") end
+    return format(T("set.rec.ask"), concat(raids, ", "))
 end
 S.Section("rec", "store", {
     label = "set.rec.store",
     order = 30,
     items = {
-        { kind = "slider", key = "tries", label = "set.rec.tries", tip = "set.rec.tries.tip",
-          min = triesLo, max = triesHi, step = 5, default = triesDef,
-          get = function() return (ns.Store.Limits()) end,
-          ask = function(v) return LimitAsk(v, nil) end,
-          set = function(v) ns.Store.SetLimits(v, nil) end },
+        { kind = "text", key = "used", tick = true, text = RecUsed,
+          token = function() return ns.Store.OverLimit() and "text.bad" or "text.primary" end },
         { kind = "slider", key = "mb", label = "set.rec.limit", tip = "set.rec.limit.tip",
           min = mbLo, max = mbHi, step = 10, default = mbDef,
-          get = function()
-              local _, mb = ns.Store.Limits()
-              return mb
-          end,
-          ask = function(v) return LimitAsk(nil, v) end,
-          set = function(v) ns.Store.SetLimits(nil, v) end },
+          get = function() return ns.Store.Limit() end,
+          ask = LimitAsk,
+          set = function(v) ns.Store.SetLimit(v) end },
         { kind = "button", key = "clear", label = "set.rec.clear", confirm = "set.rec.clear.ask",
           tip = "set.rec.clear.tip", danger = true, order = 100,
           run = function()

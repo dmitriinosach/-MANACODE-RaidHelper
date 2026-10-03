@@ -510,37 +510,19 @@ function ns.TuneSig()
     end
     return out
 end
-local AVG_LINE = 56
-local LIMIT_MB = 150
-local LIMIT_TRIES = 50
+local LIMIT_MB = 250
 local LIMIT_MB_KEPT = 300
-local LIMIT_TRIES_KEPT = 100
-local function LimitToMB(db, limit)
-    if type(limit) ~= "number" or limit <= 0 or limit == 500000 then return 0 end
-    local events, bytes = 0, 0
-    for i = 1, #db.segments do
-        local seg = db.segments[i]
-        events = events + (tonumber(seg.n) or 0)
-        bytes = bytes + (tonumber(seg.bytes) or 0)
-    end
-    local avg = (events > 0 and bytes > 0) and bytes / events or AVG_LINE
-    return math.ceil(limit * avg / 1048576)
-end
 local function ApplyDefaults(db)
     if type(db.settings) ~= "table" then db.settings = {} end
     if type(db.settings.ui) ~= "table" then db.settings.ui = {} end
     if db.settings.lang ~= "enUS" and db.settings.lang ~= "ruRU" then db.settings.lang = "auto" end
     if type(db.segments) ~= "table" then db.segments = {} end
-    local kept = type(db.settings.limitTries) ~= "number" and #db.segments > 0
-    if type(db.settings.limitMB) ~= "number" then
-        db.settings.limitMB = LimitToMB(db, db.settings.limit)
-    end
-    if db.settings.limitMB <= 0 then db.settings.limitMB = kept and LIMIT_MB_KEPT or LIMIT_MB end
-    if type(db.settings.limitTries) ~= "number" then
-        db.settings.limitTries = kept and LIMIT_TRIES_KEPT or LIMIT_TRIES
+    local kept = type(db.settings.limitMB) ~= "number" and #db.segments > 0
+    if type(db.settings.limitMB) ~= "number" or db.settings.limitMB <= 0 then
+        db.settings.limitMB = kept and LIMIT_MB_KEPT or LIMIT_MB
     end
     if kept then db.settings.limitNote = true end
-    db.settings.limit = nil
+    db.settings.limit, db.settings.limitTries = nil, nil
     if type(db.settings.autoRaid) ~= "boolean" then db.settings.autoRaid = true end
     if type(db.settings.autoParty) ~= "boolean" then db.settings.autoParty = false end
     if db.settings.tune ~= nil and type(db.settings.tune) ~= "table" then db.settings.tune = nil end

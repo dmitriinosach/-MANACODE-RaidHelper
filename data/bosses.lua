@@ -32,6 +32,7 @@ ns.ENC = {
     champions = 34441,
     twins = 34497,
     anubarak = 34564,
+    dummy = 31144,
 }
 local E = ns.ENC
 ns.bosses = {
@@ -83,6 +84,10 @@ ns.trashBosses = {
     [39751] = true,
     [39747] = true,
     [39746] = true,
+}
+ns.dummies = {
+    [31144] = true, [31146] = true, [32541] = true, [32542] = true, [32543] = true,
+    [32545] = true, [32546] = true, [32666] = true, [32667] = true,
 }
 ns.bossParts = {
     [33329] = true,

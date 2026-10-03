@@ -41,8 +41,53 @@ local frame = CreateFrame("Frame")
 frame:Hide()
 local seenAll = 0
 local counter = CreateFrame("Frame")
-counter:SetScript("OnEvent", function() seenAll = seenAll + 1 end)
+local LOG_FIX = { tick = 1, silent = 5, gap = 15, say = 60, quiet = 0, acc = 0, last = -1, at = -60, saidAt = -60, n = 0 }
+local function Clear()
+    if CombatLogClearEntries then CombatLogClearEntries() end
+end
+counter:SetScript("OnEvent", function(_, event)
+    if event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        seenAll = seenAll + 1
+        return
+    end
+    local _, kind = GetInstanceInfo()
+    if kind == "raid" or kind == "party" then Clear() end
+end)
 counter:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+counter:RegisterEvent("PLAYER_ENTERING_WORLD")
+local function GroupFighting()
+    if UnitAffectingCombat("player") then return true end
+    local n, unit = GetNumRaidMembers(), "raid"
+    if n == 0 then n, unit = GetNumPartyMembers(), "party" end
+    for i = 1, n do
+        if UnitAffectingCombat(unit .. i) then return true end
+    end
+    return false
+end
+counter:SetScript("OnUpdate", function(_, elapsed)
+    local F = LOG_FIX
+    F.acc = F.acc + elapsed
+    if F.acc < F.tick then return end
+    local dt = F.acc
+    F.acc = 0
+    local grouped = GetNumRaidMembers() > 0 or GetNumPartyMembers() > 0
+    if seenAll ~= F.last or not grouped or not GroupFighting() then
+        F.quiet, F.last = 0, seenAll
+        return
+    end
+    F.quiet = F.quiet + dt
+    local now = GetTime()
+    if F.quiet < F.silent or now - F.at < F.gap then return end
+    F.quiet, F.at, F.n = 0, now, F.n + 1
+    Clear()
+    if now - F.saidAt >= F.say then
+        F.saidAt = now
+        ns.Print(ns.T("log.revived"))
+    end
+end)
+function Meter.LogRevived()
+    return LOG_FIX.n
+end
 function Meter.Seen()
     return seenAll
 end

@@ -43,7 +43,7 @@ end
 local function IsBoss(guid, name, auto)
     local key = ns.NpcKey(guid)
     if key == nil or ns.trashBosses[key] then return false end
-    return ns.bosses[key] ~= nil or (auto ~= nil and name ~= nil and auto[name] == true)
+    return ns.bosses[key] ~= nil or (auto ~= nil and name ~= nil and auto[name] == true) or ns.Encounters.IsDummy(key)
 end
 function Filter.All()
     local db = ns.GetDB and ns.GetDB()

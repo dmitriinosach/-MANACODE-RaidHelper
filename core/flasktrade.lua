@@ -47,24 +47,38 @@ end
 local function Stock(id)
     return GetItemCount(id) or 0
 end
-local function FindSlot(id)
-    local sb, ss, sc, busy = nil, nil, 0, false
+local function Offered(id)
+    local n = 0
+    for i = 1, GIVE_SLOTS do
+        local name, _, count = GetTradePlayerItemInfo(i)
+        if name and LinkId(GetTradePlayerItemLink(i)) == id then n = n + (count or 1) end
+    end
+    return n
+end
+local function FindSlot(id, left)
+    local bb, bs, bc, sb, ss, sc
+    local locked = 0
     for bag = 0, BAGS do
         for slot = 1, GetContainerNumSlots(bag) or 0 do
             if LinkId(GetContainerItemLink(bag, slot)) == id then
-                local _, count, locked = GetContainerItemInfo(bag, slot)
+                local _, count, isLocked = GetContainerItemInfo(bag, slot)
                 count = count or 1
-                if locked then
-                    busy = true
-                elseif count == 1 then
-                    return bag, slot, 1, busy
-                elseif not sb then
+                if isLocked then
+                    locked = locked + count
+                elseif count == left then
+                    return bag, slot, count, false
+                elseif count > left then
+                    if not bc or count < bc then bb, bs, bc = bag, slot, count end
+                elseif not sc or count > sc then
                     sb, ss, sc = bag, slot, count
                 end
             end
         end
     end
-    return sb, ss, sc, busy
+    local busy = locked > Offered(id)
+    if bb then return bb, bs, bc, busy end
+    if sb then return sb, ss, sc, busy end
+    return nil, nil, 0, busy
 end
 local function EmptySlot()
     for bag = 0, BAGS do
@@ -77,40 +91,31 @@ local function EmptySlot()
     end
     return nil, nil
 end
-local function Offered(id)
-    local n = 0
-    for i = 1, GIVE_SLOTS do
-        local name, _, count = GetTradePlayerItemInfo(i)
-        if name and LinkId(GetTradePlayerItemLink(i)) == id then n = n + (count or 1) end
-    end
-    return n
-end
 local function FreeSlot()
     for i = 1, GIVE_SLOTS do
-        if not GetTradePlayerItemInfo(i) then return i end
+        if not (cur.slots and cur.slots[i]) and not GetTradePlayerItemInfo(i) then return i end
     end
     return nil
 end
 local function Ours()
-    if not cur.slot or not cur.item then return false end
+    local it = cur.item
+    if not it or not cur.slots or (cur.put or 0) < 1 or cur.put ~= cur.need then return false end
+    local n = 0
     for i = 1, ALL_SLOTS do
-        local name, _, n = GetTradePlayerItemInfo(i)
-        if i == cur.slot then
-            if LinkId(GetTradePlayerItemLink(i)) ~= cur.item.id or (n or 1) ~= 1 then return false end
-        elseif name then
-            return false
+        local name, _, c = GetTradePlayerItemInfo(i)
+        if name then
+            if not cur.slots[i] or LinkId(GetTradePlayerItemLink(i)) ~= it.id then return false end
+            n = n + (c or 1)
         end
     end
-    return (GetPlayerTradeMoney() or 0) == 0
-end
-local function Holds()
-    if not cur.slot or not cur.item then return false end
-    return LinkId(GetTradePlayerItemLink(cur.slot)) == cur.item.id
+    return n == cur.put and (GetPlayerTradeMoney() or 0) == 0
 end
 local function Arm()
-    if not Holds() then return nil end
-    local id = cur.item.id
-    return { item = cur.item, kind = cur.kind, forced = cur.forced, count = Offered(id), stock = Stock(id) }
+    local it = cur.item
+    if not it then return nil end
+    local n = Offered(it.id)
+    if n < 1 then return nil end
+    return { item = it, kind = cur.kind, forced = cur.forced, count = n, stock = Stock(it.id) }
 end
 local function TargetEmpty()
     for i = 1, ALL_SLOTS do
@@ -121,7 +126,6 @@ end
 local function Reason(plan)
     local who = plan.name
     if plan.why == "norm" then return format(T("flask.why.norm"), who, plan.n, plan.norm) end
-    if plan.why == "gap" then return format(T("flask.why.gap"), who, F.Minutes(plan.wait or 0)) end
     if plan.why == "own" then return format(T("flask.why.own"), who, plan.has or 0) end
     if plan.why == "bags" then return format(T("flask.why.bags"), F.ItemName(plan.item)) end
     return format(T("flask.why.role"), who)
@@ -132,8 +136,6 @@ local function Whisper(plan)
     local key
     if plan.why == "norm" then
         key = format(T("flask.tell.norm"), plan.norm)
-    elseif plan.why == "gap" then
-        key = format(T("flask.tell.gap"), F.Minutes(plan.wait or 0))
     elseif plan.why == "own" then
         key = T("flask.tell.own")
     end
@@ -149,13 +151,13 @@ local function Drop(ts, bag, slot)
     end
     return true
 end
-local function Split(bag, slot)
+local function Split(bag, slot, n)
     local eb, es = EmptySlot()
     if not eb then
         cur.status = "nosplit"
         return false
     end
-    SplitContainerItem(bag, slot, 1)
+    SplitContainerItem(bag, slot, n)
     if not CursorHasItem() then
         cur.status = "pick"
         return false
@@ -169,63 +171,92 @@ local function Split(bag, slot)
     cur.split = true
     return true
 end
-local function PutFailed(item)
-    if cur.status ~= "split" then Say(format(T("flask.put." .. cur.status), F.ItemName(item))) end
+local function Forget()
+    cur.item, cur.kind, cur.forced = nil, nil, nil
+    cur.need, cur.put, cur.slots = nil, nil, nil
+    cur.split, cur.waits, cur.pending = nil, nil, nil
+end
+local function Failed()
+    if cur.status == "split" then return end
+    Say(format(T("flask.put." .. cur.status), F.ItemName(cur.item)))
+    if (cur.put or 0) == 0 then Forget() end
 end
 local Retry
-local function Put(item, kind, forced)
-    if CursorHasItem() then
-        cur.status = "cursor"
-        return false
-    end
-    local ts = FreeSlot()
-    if not ts then
-        cur.status = "full"
-        return false
-    end
-    local bag, slot, count, busy = FindSlot(item.id)
-    if bag and count == 1 then
-        if not Drop(ts, bag, slot) then
-            cur.status = "pick"
-            return false
-        end
-        cur.slot, cur.item, cur.kind, cur.forced = ts, item, kind, forced or nil
-        cur.want, cur.waits = nil, nil
-        cur.pending = true
-        cur.status = "placed"
-        return true
-    end
-    if bag and not cur.split then
-        if not Split(bag, slot) then return false end
-    elseif not busy and not cur.split then
-        cur.status = "bags"
-        return false
-    end
+local function Wait()
     cur.waits = (cur.waits or 0) + 1
     if cur.waits > SPLIT_TRIES then
         cur.status = "pick"
         return false
     end
-    cur.want = { item = item, kind = kind, forced = forced or nil }
     cur.status = "split"
     After(DELAY, Retry)
     return false
 end
+local function Fill()
+    local id = cur.item.id
+    while cur.put < cur.need do
+        if CursorHasItem() then
+            cur.status = "cursor"
+            return false
+        end
+        local ts = FreeSlot()
+        if not ts then
+            cur.status = "full"
+            return false
+        end
+        local left = cur.need - cur.put
+        local bag, slot, count, busy = FindSlot(id, left)
+        if bag and count <= left and (count == left or not cur.split) then
+            if not Drop(ts, bag, slot) then
+                cur.status = "pick"
+                return false
+            end
+            cur.slots[ts] = count
+            cur.put = cur.put + count
+            cur.pending, cur.split, cur.waits = true, nil, nil
+        elseif bag and count > left and not cur.split then
+            if not Split(bag, slot, left) then return false end
+            return Wait()
+        elseif busy or cur.split then
+            return Wait()
+        else
+            cur.status = "bags"
+            return false
+        end
+    end
+    cur.status = "placed"
+    return true
+end
+local function Start(plan, forced)
+    local it = plan.item
+    local need = plan.left > 0 and plan.left or plan.limit - plan.n
+    local have = Stock(it.id)
+    cur.item, cur.kind, cur.forced = it, plan.kind, forced or nil
+    if have < 1 then
+        cur.status = "bags"
+        Failed()
+        return
+    end
+    if have < need then
+        Say(format(T("flask.put.short"), F.ItemName(it), have, need, plan.name))
+        need = have
+    end
+    cur.need, cur.put, cur.slots = need, 0, {}
+    cur.split, cur.waits, cur.many = nil, nil, nil
+    if not Fill() then Failed() end
+end
 Retry = function()
-    local w = cur.want
-    if not w or not cur.open or cur.item or InCombatLockdown() then return end
-    if not Put(w.item, w.kind, w.forced) then PutFailed(w.item) end
+    if not cur.open or not cur.item or not cur.need or cur.put >= cur.need or InCombatLockdown() then return end
+    if not Fill() then Failed() end
     Changed()
 end
-local function Forget()
-    cur.slot, cur.item, cur.kind, cur.forced = nil, nil, nil, nil
-    cur.pending = nil
-end
 local function Withdraw()
-    if not cur.slot or CursorHasItem() then return end
-    if GetTradePlayerItemInfo(cur.slot) then
-        ClickTradeButton(cur.slot)
-        if CursorHasItem() then ClearCursor() end
+    if not cur.item or CursorHasItem() then return end
+    for ts in pairs(cur.slots or {}) do
+        if GetTradePlayerItemInfo(ts) then
+            ClickTradeButton(ts)
+            if CursorHasItem() then ClearCursor() end
+        end
     end
     Forget()
 end
@@ -258,25 +289,34 @@ local function TryAccept()
     end)
     Changed()
 end
-local function ItemChanged(slot)
-    if cur.item and (slot == nil or slot == cur.slot) then
-        if Holds() then
+local function Soon()
+    if cur.soon then return end
+    cur.soon = true
+    After(0, function()
+        cur.soon = nil
+        TryAccept()
+    end)
+end
+local function ItemChanged()
+    if cur.item and (cur.put or 0) > 0 then
+        local n = Offered(cur.item.id)
+        if n > cur.put then
+            Say(format(T("flask.trade.many"), n, F.ItemName(cur.item)))
+            Withdraw()
+            cur.status, cur.many = "many", n
+            Changed()
+            return
+        end
+        if n == cur.put then
             cur.pending = nil
-            local n = Offered(cur.item.id)
-            if n > 1 then
-                Say(format(T("flask.trade.many"), n, F.ItemName(cur.item)))
-                Withdraw()
-                cur.status, cur.many = "many", n
-                Changed()
-                return
-            end
         elseif not cur.pending then
             Forget()
             cur.status = "removed"
             Changed()
+            return
         end
     end
-    TryAccept()
+    Soon()
 end
 local function Plan(force)
     if not cur.open or not cur.partner then return end
@@ -291,7 +331,7 @@ local function Plan(force)
     if give then
         if cur.item and cur.item ~= plan.item then Withdraw() end
         if plan.warn == "own" then Say(format(T("flask.warn.own"), plan.name, plan.has or 0)) end
-        if not cur.item and not Put(plan.item, plan.kind, not plan.give) then PutFailed(plan.item) end
+        if not cur.item then Start(plan, not plan.give) end
     else
         cur.status = plan.why
         Say(Reason(plan))
@@ -352,7 +392,7 @@ local function Complete(s)
     F.Record(s.partner, a.item, a.kind, time(), a.forced, a.count)
     local plan = s.plan
     local n = (plan and plan.n or 0) + a.count
-    Say(format(T("flask.trade.given"), F.ItemName(a.item), s.partner, n, plan and plan.norm or n))
+    Say(format(T("flask.trade.given"), F.ItemName(a.item), a.count, s.partner, n, plan and plan.norm or n))
     Changed()
 end
 local function OnClosed()
@@ -374,8 +414,12 @@ local function Resume()
         return
     end
     F.ScanAura(cur.partner)
-    cur.status = cur.item and "placed" or "wait"
+    cur.status = (cur.put or 0) > 0 and "placed" or "wait"
     cur.inspect = nil
+    if cur.item and cur.need and cur.put < cur.need then
+        cur.waits = nil
+        Retry()
+    end
     Plan(false)
     TryAccept()
 end
@@ -397,12 +441,12 @@ function Trade.Choose(kind)
 end
 function Trade.Force()
     if not cur.open or not cur.partner then return end
-    cur.inspect, cur.split, cur.waits = nil, nil, nil
+    cur.inspect = nil
     Plan(true)
 end
 function Trade.Accept()
     if not cur.open or InCombatLockdown() then return end
-    if cur.item and Offered(cur.item.id) > 1 then return end
+    if cur.item and Offered(cur.item.id) > (cur.put or 0) then return end
     AcceptTrade()
 end
 function Trade.Switch(on)
@@ -445,12 +489,14 @@ local function OnEvent(_, event, a, b)
             Say(T("flask.off.group"))
         end
     elseif event == "TRADE_PLAYER_ITEM_CHANGED" then
-        ItemChanged(a)
+        ItemChanged()
+        if cur.item then cur.armed = Arm() end
     elseif event == "TRADE_TARGET_ITEM_CHANGED" or event == "TRADE_MONEY_CHANGED" then
         TryAccept()
     elseif event == "TRADE_ACCEPT_UPDATE" then
-        cur.accepted = a == 1
-        if a == 1 or b == 1 then cur.armed = Arm() end
+        local mine, theirs = a == 1 or a == true, b == 1 or b == true
+        cur.accepted = mine
+        if mine or theirs then cur.armed = Arm() end
         if cur.accepted and cur.tries then
             fails = 0
             cur.status = "accepted"

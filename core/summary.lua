@@ -329,7 +329,7 @@ local function DamageTo(s, p, who, target, tkey, amount, src, swing, spell, crit
     for i = 1, #s.blocks do
         local b = s.blocks[i]
         if b.def.kind == "targets" then
-            ns.Targets.Hit(b, who, target, guid, tkey, amount)
+            ns.Targets.Hit(b, who, target, guid, tkey, amount, AbKey(s, swing, src, who, spell, srcKey), crit, id)
         elseif b.names[tkey] and (b.def.kind == "damageTo" or b.def.kind == "oozes") then
             Add(b, who, target, amount)
             if b.def.kind == "oozes" then Color(b, who, tkey, amount) end
@@ -1429,7 +1429,8 @@ local function Build(fight)
                             tonumber(swing and a2 or a5) or 0, swing and "#swing" or tostring(a2),
                             sub == "SPELL_PERIODIC_DAMAGE", abHit)
                     end
-                    if p and not dst and dstFlags and band(dstFlags, F_HOSTILE) > 0 then
+                    if p and not dst and dstFlags and (band(dstFlags, F_HOSTILE) > 0
+                        or (fight.boss == ns.ENC.dummy and IsBoss(fight, dstGUID))) then
                         p.dmg = p.dmg + amount
                         ns.Totals.Act(tt, ts, sub)
                         ns.Totals.Damage(p, srcName ~= who, srcName, swing, a1, a2, amount, swing and a7 or a10)
@@ -1740,7 +1741,10 @@ local function Build(fight)
     if rf then ns.RFury.Finish(rf) end
     if et then ns.EffTime.Finish(et, s) end
     s.rp = ns.RaidPart.Close(rp, s.players)
-    for i = 1, #s.blocks do AbTrim(s.blocks[i].ab) end
+    for i = 1, #s.blocks do
+        AbTrim(s.blocks[i].ab)
+        for _, h in pairs(s.blocks[i].gab or {}) do AbTrim(h.ab) end
+    end
     return s
 end
 Summary.Build = Build

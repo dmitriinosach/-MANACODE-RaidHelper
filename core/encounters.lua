@@ -12,6 +12,7 @@ local NpcKey = ns.NpcKey
 local IDLE_GAP = 15
 local RESUME_GAP = 180
 local MIN_FIGHT = 20
+local MIN_DUMMY = 3
 local FX_VERSION = 5
 local SCAN_VERSION = 13
 local CLS_VERSION = 1
@@ -47,11 +48,13 @@ Encounters.BOSS_SUBS = BOSS_SUBS
 local fights = nil
 local stale = false
 local pressed = {}
-local function EncounterIn(guid, name, auto, alias)
+local dummyRec = false
+local function EncounterIn(guid, name, auto, alias, dummy)
     local key = NpcKey(guid)
     if key == nil or ns.trashBosses[key] then return nil end
     local enc = ns.bosses[key] or (alias ~= nil and alias[key]) or nil
     if enc then return enc end
+    if dummy and ns.dummies[key] then return ns.ENC.dummy end
     if auto and name and auto[name] then
         ns.NoteNpcKey(key, name)
         return key
@@ -90,7 +93,19 @@ local function EndOf(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags
     return nil, nil, false
 end
 function Encounters.Of(guid, name, auto)
-    return EncounterIn(guid, name, auto, nil)
+    return EncounterIn(guid, name, auto, nil, dummyRec)
+end
+function Encounters.SetDummy(on)
+    dummyRec = on and true or false
+end
+function Encounters.Dummy()
+    return dummyRec
+end
+local function MinFight(f)
+    return f.boss == ns.ENC.dummy and MIN_DUMMY or MIN_FIGHT
+end
+function Encounters.IsDummy(key)
+    return dummyRec and key ~= nil and ns.dummies[key] == true
 end
 function Encounters.Ending(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, auto, seen)
     local enc, who, died = EndOf(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, auto, nil,
@@ -151,6 +166,7 @@ local function SegsOf(fight)
 end
 Encounters.Segs = SegsOf
 local function Resumable(found, enc, ts)
+    if enc == ns.ENC.dummy then return nil end
     for k = #found, 1, -1 do
         local f = found[k]
         if f.boss == enc then
@@ -258,6 +274,7 @@ local function ScanAll()
         local auto = seg.bosses
         local full = ns.fullRegistry and ns.fullRegistry[Encounters.MapOf(seg) or ""]
         local own = not full and auto or nil
+        local dummy = seg.dummy == true or dummyRec
         local bossSeen = {}
         local segAlias = {}
         local open = {}
@@ -313,8 +330,8 @@ local function ScanAll()
                         end
                     end
                 end
-                local asSrc = EncounterIn(srcGUID, srcName, own, alias)
-                local asDst = EncounterIn(dstGUID, dstName, own, alias)
+                local asSrc = EncounterIn(srcGUID, srcName, own, alias, dummy)
+                local asDst = EncounterIn(dstGUID, dstName, own, alias, dummy)
                 local hurt = sub:find("_DAMAGE", 1, true) ~= nil
                 local touched = hurt or sub:find("_HEAL", 1, true) ~= nil
                 if (hurt or sub == "SPELL_INSTAKILL") and dstName and dstFlags
@@ -345,7 +362,7 @@ local function ScanAll()
                         and (ts - f.last > (f.killed and IDLE_GAP or RESUME_GAP)
                             or (not f.killed and ts - f.last > IDLE_GAP and Wiped(f)))
                     if pulled and (not f or stale) then
-                        if f and f.to - f.from >= MIN_FIGHT then
+                        if f and f.to - f.from >= MinFight(f) then
                             Push(f)
                         end
                         if not open[enc] then openCount = openCount + 1 end
@@ -363,6 +380,10 @@ local function ScanAll()
                     if f and (pulled or not stale) and not (f.won and ns.bossYield and ns.bossYield[enc]) then
                         f.last = ts
                         f.to = ts
+                        if pulled and enc == ns.ENC.dummy then
+                            f.names = f.names or {}
+                            f.names[NpcKey(dstGUID)] = true
+                        end
                         if f.killed and pulled and not f.won
                             and ts - (f.diedAt or ts) > REVIVE_GAP then
                             f.killed = false
@@ -408,7 +429,7 @@ local function ScanAll()
         for _, f in pairs(open) do
             f.wipe = (not f.killed and Wiped(f)) or nil
             f.dts = nil
-            if f.to - f.from >= MIN_FIGHT then
+            if f.to - f.from >= MinFight(f) then
                 Push(f)
             end
         end

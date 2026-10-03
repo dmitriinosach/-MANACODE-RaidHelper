@@ -32,6 +32,7 @@ local NAMES = {
     ["enc.34441"] = { "Чемпионы фракций", "Faction Champions" },
     ["enc.34497"] = { "Валь'киры-близнецы", "Twin Val'kyr" },
     ["enc.34564"] = { "Ануб'арак", "Anub'arak" },
+    ["enc.31144"] = { "Тренировочный манекен", "Training Dummy" },
     ["ph.transition"] = { "Переход", "Transition" },
     ["ph.w.bloodbolt"] = { "Кровавый вихрь", "Bloodbolt Whirl" },
     ["sum.shed.by.45438"] = { "глыба", "Ice Block" },
