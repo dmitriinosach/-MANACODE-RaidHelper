@@ -211,8 +211,12 @@ local function AddRetry(list)
     local first = list[1]
     if first and first.kind == "npc" then list[#list + 1] = { kind = "npc", v = first.v, from = "retry" } end
 end
+function M.Away(away)
+    M.away = away and true or false
+end
 function M.Use(sc)
     scene = sc
+    M.away = false
     for i = 1, #slots do Release(slots[i]) end
     for k in pairs(bossSrc) do bossSrc[k] = nil end
     if not sc then return end
@@ -518,6 +522,17 @@ function M.Place(cam, t, figScale, faceSign, elapsed)
     for i = #drawn, 1, -1 do drawn[i] = nil end
     stats.models, stats.wait, stats.bad = 0, 0, 0
     if not scene or not M.ready then return false end
+    if M.away then
+        for i = 1, #slots do
+            local slot = slots[i]
+            if slot.on then
+                slot.on, slot.alpha, slot.off = false, 0, 0
+                slot.m:SetAlpha(0)
+                slot.shadow:Hide()
+            end
+        end
+        return false
+    end
     local mode = M.Mode()
     if mode == "off" then
         for i = 1, #slots do

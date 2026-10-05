@@ -20,6 +20,9 @@ local LINK = "^|c%x%x%x%x%x%x%x%x|H[^|]*|h[^|]*|h|r"
 local CHANNELS = { "RAID", "PARTY", "GUILD", "OFFICER", "WHISPER", "SAY" }
 local KNOWN = { RAID = true, PARTY = true, GUILD = true, OFFICER = true, WHISPER = true, SAY = true }
 local DEATH_KINDS = { death = true, anydeath = true }
+local VIEWS = { chron = true, short = true }
+local CHRON = 8
+local CHRON_MSGS = 4
 local Proof = {}
 ns.Proof = Proof
 Proof.LIMIT = LIMIT
@@ -250,22 +253,61 @@ local function DeathClause(fight, head, p, d, name)
     if #concat(out, " ") > LIMIT then out = Compose(head, DeathChain(fight, p, d, name, true)) end
     return out
 end
+local function Unit()
+    return ns.Ledger and ns.Ledger.Unit() or T("led.unit.gp")
+end
 local function Head(name, rule, gp, done)
     local reason = ns.Penalties and ns.Penalties.Reason(rule) or rule.key
-    return format(T(done and "proof.head.done" or "proof.head"), TAG, Plain(name), Plain(reason), gp)
+    return format(T(done and "proof.head.done" or "proof.head"), TAG, Plain(name), Plain(reason), gp, Unit())
+end
+local function ChronList(fight, head, p, d, name, keep)
+    local out = { head .. " —", Killer(d, name, fight.boss) .. " " .. format(T("proof.at"), Clock(d.t - fight.from)) .. ";" }
+    local list = {}
+    for i = 1, #(d.recent or {}) do
+        local e = d.recent[i]
+        if d.t - e.t <= RECENT then list[#list + 1] = e end
+    end
+    local from = math.max(1, #list - keep + 1)
+    for i = from, #list do
+        local e = list[i]
+        local text = Dec(e.t - d.t) .. " " .. Spell(e)
+        if (e.amount or 0) > 0 then text = text .. " " .. Short(e.amount) end
+        if e == d.killer then text = text .. T("proof.chron.kill") end
+        out[#out + 1] = text .. (i < #list and " /" or "")
+    end
+    local tail = (d.mc and format(T("proof.mc"), Plain(d.mc.by))) or (d.scripted and T("proof.scripted"))
+        or (p and Guard(p, d))
+    if tail then
+        out[#out] = out[#out] .. ";"
+        out[#out + 1] = tail
+    end
+    return out
+end
+local function ChronClause(fight, head, p, d, name)
+    if not d then return Compose(head, { T("proof.nodeath") }) end
+    local keep = CHRON
+    local out = ChronList(fight, head, p, d, name, keep)
+    while keep > 0 and #Proof.Split(out) > CHRON_MSGS do
+        keep = keep - 1
+        out = ChronList(fight, head, p, d, name, keep)
+    end
+    return out
+end
+local function Clause(view, fight, head, p, d, name)
+    if view == "chron" then return ChronClause(fight, head, p, d, name) end
+    return DeathClause(fight, head, p, d, name)
 end
 local function Sum(events)
-    local issued = ns.GetDB().gpIssued or {}
     local gp, done, first = 0, #events > 0, nil
     for k = 1, #events do
         local ev = events[k]
-        gp = gp + (ev.gp or 0)
-        if not issued[ev.key] then done = false end
+        gp = gp + (ev.n or 0)
+        if not (ns.Ledger and ns.Ledger.Done(ev.key)) then done = false end
         if ev.t and (not first or ev.t < first) then first = ev.t end
     end
     return gp, done, first
 end
-local function HitTexts(fight, name, p, s, hit, out)
+local function HitTexts(fight, name, p, s, hit, out, view)
     local rule = hit.rule
     if DEATH_KINDS[rule.kind] or rule.kind == "killer" or rule.kind == "caused" then
         for k = 1, #hit.events do
@@ -287,7 +329,7 @@ local function HitTexts(fight, name, p, s, hit, out)
                     if dep and ns.DeathDeps then chain[2] = Plain(ns.DeathDeps.What(dep)) end
                 end
             end
-            out[#out + 1] = chain and Compose(head, chain) or DeathClause(fight, head, p, DeathAt(p, ev.t), name)
+            out[#out + 1] = chain and Compose(head, chain) or Clause(view, fight, head, p, DeathAt(p, ev.t), name)
         end
         return
     end
@@ -316,6 +358,7 @@ function Proof.Clauses(ask)
     local fight, name = ask.fight, ask.name
     local p, s = Player(fight, name, ask.s)
     local hits = ask.hits or {}
+    local view = ask.view or Proof.View()
     if ask.deaths then
         local list = p and p.deathInfo or {}
         for i = 1, min(DEATHS_MAX, #list) do
@@ -328,14 +371,14 @@ function Proof.Clauses(ask)
             else
                 head = format(T("proof.head.death"), TAG, Plain(name))
             end
-            out[#out + 1] = DeathClause(fight, head, p, d, name)
+            out[#out + 1] = Clause(view, fight, head, p, d, name)
         end
         for i = 1, #hits do
-            if not DEATH_KINDS[hits[i].rule.kind] then HitTexts(fight, name, p, s, hits[i], out) end
+            if not DEATH_KINDS[hits[i].rule.kind] then HitTexts(fight, name, p, s, hits[i], out, view) end
         end
         return out
     end
-    for i = 1, #hits do HitTexts(fight, name, p, s, hits[i], out) end
+    for i = 1, #hits do HitTexts(fight, name, p, s, hits[i], out, view) end
     return out
 end
 local function Words(text)
@@ -474,6 +517,16 @@ end
 function Proof.SetChannel(c)
     if not KNOWN[c or ""] then return false end
     ns.GetDB().gp.proof = c
+    return true
+end
+function Proof.View()
+    local db = ns.GetDB()
+    local v = db and db.gp and db.gp.proofView
+    return VIEWS[v or ""] and v or "short"
+end
+function Proof.SetView(v)
+    if not VIEWS[v or ""] then return false end
+    ns.GetDB().gp.proofView = v
     return true
 end
 function Proof.Label(c)

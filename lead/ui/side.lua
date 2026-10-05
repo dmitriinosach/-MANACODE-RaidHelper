@@ -90,10 +90,10 @@ local function fillUn(r, m)
     ns.ClassText(r.name, m.class)
     local grp = m.work and ns.T("grpN", m.sub) or (ns.Hex("text.muted") .. ns.T("grpReserve", m.sub) .. "|r")
     local parse = ns.Bober.ParseText(m.name, m.unit)
-    r.info:SetText(grp .. "  " .. ns.Board.GsText(m.name) .. (parse and ("  " .. parse) or ""))
-    ns.Board.SpecTip(r, m)
+    r.info:SetText(grp .. "  " .. ns.RaidPane.GsText(m.name) .. (parse and ("  " .. parse) or ""))
+    ns.RaidPane.SpecTip(r, m)
     r.tip = ns.Bober.Tip(r.tip, m.name, m.unit)
-    ns.Board.FillSlotButtons(r.btns, m)
+    ns.RaidPane.FillSlotButtons(r.btns, m)
 end
 local function fillWait(r, w)
     local sp = w.spec and ns.SPEC[w.spec]

@@ -26,14 +26,22 @@ local function Units()
     for i = 1, GetNumPartyMembers() do units[i + 1] = PARTY[i] end
     return units
 end
+local seen = {}
 local function Has(unit, def)
-    local want = ns.SpellKey(def.id)
-    for i = 1, MAX_AURAS do
-        local name, _, _, _, _, _, _, _, _, _, id = UnitAura(unit, i, "HELPFUL")
-        if not name then return false end
-        if id == def.id or (id and ns.SpellKey(id) == want) then return true end
+    local set = seen[unit]
+    if not set then
+        set = {}
+        for i = 1, MAX_AURAS do
+            local name, _, _, _, _, _, _, _, _, _, id = UnitAura(unit, i, "HELPFUL")
+            if not name then break end
+            if id then
+                set[id] = true
+                set[ns.SpellKey(id)] = true
+            end
+        end
+        seen[unit] = set
     end
-    return false
+    return set[def.id] == true or set[ns.SpellKey(def.id)] == true
 end
 local signByKey
 local signClass
@@ -88,6 +96,7 @@ local function Tanks(ts, us)
         concat(strong, SEP), concat(weak, SEP), concat(mt, SEP), concat(unseen, SEP))
 end
 function Snap.Take(ts)
+    wipe(seen)
     local us = Units()
     Tanks(ts, us)
     local list = ns.buffSnap

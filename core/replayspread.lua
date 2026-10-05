@@ -5,6 +5,8 @@ local tsort = table.sort
 local CASTS = { SPELL_CAST_START = true, SPELL_CAST_SUCCESS = true }
 local APPLIED = { SPELL_AURA_APPLIED = true, SPELL_AURA_REFRESH = true }
 local HITS = { SPELL_DAMAGE = true, SPELL_MISSED = true }
+local OWN = { SPELL_AURA_APPLIED = true, SPELL_AURA_APPLIED_DOSE = true, SPELL_AURA_REFRESH = true }
+local OWN_LATE = 1
 local LIFE = 15
 local MERGE = 0.3
 local STEP = 0.25
@@ -32,7 +34,7 @@ function S.New(fight)
     if not defs or #defs == 0 then return nil end
     local ctx = { fight = fight, players = fight.players or {}, defs = defs, hold = ns.replaySpread.hold or 0,
                   cast = Index(defs, "cast"), aura = Index(defs, "aura"), hit = Index(defs, "hit"),
-                  open = Index(defs, "open"), openT = {}, on = {}, raw = {} }
+                  open = Index(defs, "open"), own = Index(defs, "own"), hits = {}, openT = {}, on = {}, raw = {} }
     for di = 1, #defs do ctx.on[di], ctx.raw[di] = {}, {} end
     return ctx
 end
@@ -50,6 +52,10 @@ function S.Event(ctx, ts, sub, src, dst, a1)
     local id = tonumber(a1)
     if not id then return end
     local P = ctx.players
+    local own = ctx.own[id]
+    if own and OWN[sub] and src and dst and P[src] and P[dst] then
+        for i = 1, #own do ctx.hits[#ctx.hits + 1] = { di = own[i], src = src, dst = dst, t = ts } end
+    end
     if src and P[src] then return end
     local list = ctx.open[id]
     if list and (CASTS[sub] or sub == "SPELL_AURA_APPLIED") then
@@ -110,13 +116,31 @@ function S.Done(ctx, L, scene)
                 if cur and cur.k == k and from <= cur.to + MERGE then
                     if to > cur.to then cur.to = to end
                 else
-                    cur = { k = k, from = from, to = to, r = ctx.defs[di].r, di = di }
+                    local def = ctx.defs[di]
+                    cur = { k = k, from = from, to = to, r = def.r, di = di, stack = def.stack, tone = def.tone }
                     out[#out + 1] = cur
                 end
             end
         end
     end
     tsort(out, ByFrom)
+    local hits = ctx.hits
+    for i = 1, #out do
+        local w = out[i]
+        local name = scene.tracks[w.k].name
+        for j = 1, #hits do
+            local h = hits[j]
+            local hk = byK[h.dst]
+            if h.di == w.di and h.src == name and h.t >= w.from and h.t <= w.to + OWN_LATE and hk then
+                w.ht = w.ht and min(w.ht, h.t) or h.t
+                local list = w.hk or {}
+                w.hk = list
+                local dup = hk == w.k
+                for q = 1, #list do dup = dup or list[q] == hk end
+                if not dup then list[#list + 1] = hk end
+            end
+        end
+    end
     L.spread = out
     return out
 end
@@ -152,7 +176,7 @@ function S.Check(scene, list)
     for i = 1, #list do
         local w = list[i]
         local hit
-        local t = w.from
+        local t = w.stack and w.to + 1 or w.from
         while t <= w.to do
             for j = 1, #tracks do StateAt(tracks[j], t, states[j]) end
             local n = S.Near(states, w.k, w.r * ppy, near)

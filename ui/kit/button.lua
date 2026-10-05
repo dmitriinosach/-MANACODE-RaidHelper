@@ -7,28 +7,31 @@ local WHITE8 = "Interface\\Buttons\\WHITE8X8"
 local GLOW_INSET, GLOW_A = 3, 0.10
 local buttons = {}
 local checks = {}
+Kit.BUTTON_KINDS = { main = true, quiet = true, icon = true, danger = true, hot = true }
 function Kit.StyleButton(b)
-    local bt = Kit.Theme().button
+    local base = Kit.Theme().button
+    local bt = b.kind and base[b.kind] or base
     local bg, br, t
     if b.btnDisabled and b.active then
-        bg, br, t = bt.bgActive, bt.borderActive, bt.textOff
+        bg, br, t = base.bgActive, base.borderActive, base.textOff
     elseif b.btnDisabled then
-        bg, br, t = bt.bgOff, bt.borderOff, bt.textOff
+        bg, br, t = b.kind and bt.bg or base.bgOff, base.borderOff, base.textOff
     elseif b.active then
-        bg, br, t = bt.bgActive, bt.borderActive, bt.textActive
+        bg, br, t = base.bgActive, base.borderActive, base.textActive
     elseif b.pressed then
-        bg, br, t = bt.bgDown, bt.borderHover, bt.textHover
+        bg, br, t = bt.bgDown, bt.borderHover, bt.textHover or base.textHover
     elseif b.hovered then
-        bg, br, t = bt.bgHover, bt.borderHover, bt.textHover
+        bg, br, t = bt.bgHover, bt.borderHover, bt.textHover or base.textHover
     else
-        bg, br, t = bt.bg, bt.border, bt.text
+        bg, br, t = bt.bg, bt.border, bt.text or base.text
     end
     if b.tint and not b.btnDisabled then t = b.tint end
     b:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 1)
     b:SetBackdropBorderColor(br[1], br[2], br[3], br[4] or 1)
     b.text:SetTextColor(t[1], t[2], t[3])
+    if b.icon and b.kind == "icon" then b.icon:SetVertexColor(t[1], t[2], t[3]) end
     if b.hovered and not b.pressed and not b.btnDisabled then
-        local g = bt.glow
+        local g = bt.glow or base.glow
         b.glow:SetTexture(g[1], g[2], g[3], GLOW_A)
         b.glow:Show()
     else
@@ -231,8 +234,27 @@ local function Make(parent, group, style, prep, name)
     Restyle(b)
     return b
 end
-function Kit.Button(parent, name)
-    return Make(parent, "button", Kit.StyleButton, nil, name)
+function Kit.Button(parent, name, kind)
+    local b = Make(parent, "button", Kit.StyleButton, nil, name)
+    if kind then Kit.ButtonKind(b, kind) end
+    return b
+end
+function Kit.ButtonKind(b, kind)
+    b.kind = Kit.BUTTON_KINDS[kind] and kind or nil
+    b.kitStyle(b)
+end
+function Kit.IconButton(parent, tex, size, name)
+    local b = Make(parent, "button", Kit.StyleButton, nil, name)
+    size = size or 16
+    b:SetWidth(size + 6)
+    b:SetHeight(size + 6)
+    b.icon = b:CreateTexture(nil, "OVERLAY")
+    b.icon:SetTexture(tex)
+    b.icon:SetWidth(size)
+    b.icon:SetHeight(size)
+    b.icon:SetPoint("CENTER", b, "CENTER", 0, 0)
+    Kit.ButtonKind(b, "icon")
+    return b
 end
 function Kit.Tab(parent, icon, size)
     local b = Make(parent, "tab", StyleTab, PrepTab)

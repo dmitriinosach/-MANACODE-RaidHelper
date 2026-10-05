@@ -4,28 +4,44 @@ local floor = math.floor
 local max = math.max
 local min = math.min
 local PAD = 12
-local HEAD = 120
+local HEAD = 104
 local ROWH = 24
 local WHEEL = 3
 local TEXTW = 270
 local NUMW = 52
 local MODEW = 96
-local REASONW = 200
+local SHORTW = 140
 local RESETW = 90
+local HOTW = 52
 local MODES = { "once", "each", "grow" }
 local View = {}
 ns.GPSettings = View
-local frame, listBox, presetBtn, nameBox, copyBtn, renameBtn, deleteBtn, banner, pageText
-local guildText, publishBtn, epgpBox, addBtn
+local frame, listBox, banner, pageText, guildText, publishBtn, resetAllBtn, searchBox
+local query = ""
+local heads = {}
+local hotBoxes = {}
 local rows = {}
 local items = {}
 local offset = 0
 local slots = 0
-local function Editable()
-    return ns.Penalties.IsOwn(ns.Penalties.Active())
-end
 local function Changed()
     if ns.GPList then ns.GPList.Changed() end
+end
+local function LowA(a)
+    return "\208" .. string.char(a:byte() + 32)
+end
+local function LowR(a)
+    return "\209" .. string.char(a:byte() - 32)
+end
+local function Lower(s)
+    s = s:lower():gsub("\208\129", "\209\145"):gsub("\208([\144-\159])", LowA):gsub("\208([\160-\175])", LowR)
+    return s
+end
+local function Matches(r)
+    if query == "" then return true end
+    local hay = Lower(ns.T(r.text) .. " " .. ns.Penalties.Short(r) .. " " ..
+        (r.boss == ns.penaltyAny and ns.T("gpset.any") or ns.EncName(r.boss)))
+    return hay:find(query, 1, true) ~= nil
 end
 local function BuildItems()
     items = {}
@@ -33,11 +49,13 @@ local function BuildItems()
     local lastBoss
     for i = 1, #all do
         local r = all[i]
-        if r.boss ~= lastBoss then
-            lastBoss = r.boss
-            items[#items + 1] = { head = r.boss == ns.penaltyAny and ns.T("gpset.any") or ns.EncName(r.boss) }
+        if Matches(r) then
+            if r.boss ~= lastBoss then
+                lastBoss = r.boss
+                items[#items + 1] = { head = r.boss == ns.penaltyAny and ns.T("gpset.any") or ns.EncName(r.boss) }
+            end
+            items[#items + 1] = { rule = r }
         end
-        items[#items + 1] = { rule = r }
     end
 end
 local function Reload()
@@ -45,10 +63,14 @@ local function Reload()
     View.Refresh()
     Changed()
 end
+local function FieldOf(box)
+    if box.what then return ns.Penalties.SYS[ns.Ledger.Key()][box.what] end
+    return box.field
+end
 local function Commit(box, numeric)
     local key = box.editKey
     box.editKey = nil
-    if not key or not Editable() then return end
+    if not key then return end
     local text = box:GetText()
     local value
     if numeric then
@@ -58,14 +80,15 @@ local function Commit(box, numeric)
     else
         value = text
     end
-    ns.Penalties.Set(key, box.field, value)
+    ns.Penalties.Set(key, FieldOf(box), value)
     Reload()
 end
-local function MakeBox(parent, name, width, field, numeric)
+local function MakeBox(parent, name, width, what, field)
+    local numeric = what ~= nil
     local box = ns.Kit.Edit(parent, false, name)
     box:SetWidth(width)
     box:SetHeight(20)
-    box.field = field
+    box.what, box.field = what, field
     if numeric then box:SetNumeric(true) end
     box:HookScript("OnEditFocusGained", function(self)
         local rule = self:GetParent().rule
@@ -81,13 +104,13 @@ local function MakeBox(parent, name, width, field, numeric)
 end
 local function OnCheck(self)
     local rule = self:GetParent().rule
-    if not rule or not Editable() then return end
+    if not rule then return end
     ns.Penalties.Set(rule.key, "on", self:GetChecked() and true or false)
     Reload()
 end
 local function OnMode(row)
     local rule = row.rule
-    if not rule or not Editable() then return end
+    if not rule then return end
     local cur = rule.mode or "each"
     local nextMode = MODES[1]
     for i = 1, #MODES do
@@ -98,16 +121,7 @@ local function OnMode(row)
 end
 local function OnReset(row)
     local rule = row.rule
-    if not rule or not Editable() then return end
-    if not ns.Penalties.IsOwnRule(rule.key) then
-        if ns.Penalties.Reset(rule.key) then Reload() end
-        return
-    end
-    if not ns.GPList then return end
-    local key = rule.key
-    ns.GPList.Confirm(format(ns.T("gpset.removeask"), ns.Penalties.Reason(rule)), ns.T("gpset.remove"), function()
-        if ns.Penalties.RemoveRule(key) then Reload() end
-    end)
+    if rule and ns.Penalties.Reset(rule.key) then Reload() end
 end
 local function Row(i)
     local r = rows[i]
@@ -130,25 +144,25 @@ local function Row(i)
     r.text:SetWidth(TEXTW)
     r.text:SetJustifyH("LEFT")
     local x = 26 + TEXTW + 6
-    r.mode = ns.MakeButton(r, "HTP_FailWatchGPMode" .. i)
+    r.mode = ns.MakeButton(r, "HTP_FailWatchGPMode" .. i, "quiet")
     r.mode:SetWidth(MODEW)
     r.mode:SetHeight(20)
     r.mode:SetPoint("LEFT", x, 0)
     r.mode.onClick = function() OnMode(r) end
     x = x + MODEW + 12
-    r.gp = MakeBox(r, "HTP_FailWatchGPCost" .. i, NUMW, "gp", true)
+    r.gp = MakeBox(r, "HTP_FailWatchGPCost" .. i, NUMW, "sum")
     r.gp:SetPoint("LEFT", x, 0)
     x = x + NUMW + 10
-    r.wipe = MakeBox(r, "HTP_FailWatchGPWipe" .. i, NUMW, "wipe", true)
+    r.wipe = MakeBox(r, "HTP_FailWatchGPWipe" .. i, NUMW, "wipe")
     r.wipe:SetPoint("LEFT", x, 0)
     x = x + NUMW + 10
-    r.step = MakeBox(r, "HTP_FailWatchGPStep" .. i, NUMW, "step", true)
+    r.step = MakeBox(r, "HTP_FailWatchGPStep" .. i, NUMW, "step")
     r.step:SetPoint("LEFT", x, 0)
     x = x + NUMW + 10
-    r.reason = MakeBox(r, "HTP_FailWatchGPReason" .. i, REASONW, "reason", false)
-    r.reason:SetPoint("LEFT", x, 0)
-    x = x + REASONW + 10
-    r.reset = ns.MakeButton(r, "HTP_FailWatchGPReset" .. i)
+    r.short = MakeBox(r, "HTP_FailWatchGPShort" .. i, SHORTW, nil, "short")
+    r.short:SetPoint("LEFT", x, 0)
+    x = x + SHORTW + 10
+    r.reset = ns.MakeButton(r, "HTP_FailWatchGPReset" .. i, "danger")
     r.reset:SetWidth(RESETW)
     r.reset:SetHeight(20)
     r.reset:SetPoint("LEFT", x, 0)
@@ -157,13 +171,12 @@ local function Row(i)
     rows[i] = r
     return r
 end
-local function SetBox(box, value, editable)
+local function SetBox(box, value)
     if not box:HasFocus() then box:SetText(value ~= nil and tostring(value) or "") end
-    box:EnableMouse(editable)
-    ns.Kit.Tone(box, editable and "text.bright" or "text.off")
+    ns.Kit.Tone(box, "text.bright")
 end
-local function FillRow(r, item, editable)
-    local controls = { r.check, r.text, r.mode, r.gp, r.wipe, r.step, r.reason, r.reset }
+local function FillRow(r, item)
+    local controls = { r.check, r.text, r.mode, r.gp, r.wipe, r.step, r.short, r.reset }
     if item.head then
         r.rule = nil
         for i = 1, #controls do controls[i]:Hide() end
@@ -174,30 +187,20 @@ local function FillRow(r, item, editable)
     r.head:Hide()
     for i = 1, #controls do controls[i]:Show() end
     local rule = item.rule
+    local sys = ns.Ledger.Key()
     r.rule = rule
     r.check:SetChecked(rule.on and true or false)
-    if editable then r.check:Enable() else r.check:Disable() end
     local label = ns.T(rule.text)
     if rule.kind == "manual" then label = label .. " " .. ns.Kit.Hex("text.note") .. ns.T("gpset.manual") .. "|r" end
-    if rule.custom then label = label .. " " .. ns.Kit.Hex("text.note") .. ns.T("gpset.rule." .. rule.custom) .. "|r" end
     if rule.unverified then label = label .. " " .. ns.Kit.Hex("text.bad") .. "?|r" end
     r.text:SetText(label)
     ns.Kit.Tone(r.text, rule.on and "text.bright" or "text.off")
     r.mode.text:SetText(ns.T("gpset.mode." .. (rule.mode or "each")))
-    if editable then r.mode:Enable() else r.mode:Disable() end
-    SetBox(r.gp, rule.gp, editable)
-    SetBox(r.wipe, rule.wipe, editable)
-    SetBox(r.step, rule.step, editable)
-    SetBox(r.reason, rule.reason, editable)
-    local own = editable and ns.Penalties.IsOwnRule(rule.key)
-    r.reset.text:SetText(ns.T(own and "gpset.remove" or "gpset.reset"))
-    if not editable then
-        r.reset:Hide()
-    elseif own or ns.Penalties.IsChanged(rule.key) then
-        r.reset:Enable()
-    else
-        r.reset:Disable()
-    end
+    SetBox(r.gp, ns.Penalties.Amount(rule, sys, "sum"))
+    SetBox(r.wipe, ns.Penalties.Amount(rule, sys, "wipe"))
+    SetBox(r.step, ns.Penalties.Amount(rule, sys, "step"))
+    SetBox(r.short, ns.Penalties.Short(rule))
+    if ns.Penalties.IsChanged(rule.key) then r.reset:Enable() else r.reset:Disable() end
 end
 local function GuildLine()
     local G = ns.GPGuild
@@ -215,24 +218,21 @@ local function RefreshGuild()
     guildText:SetText(GuildLine())
     ns.Kit.Text(guildText, (st and st.synced) and "sem.win" or "badge.link")
     if st and st.officer then publishBtn:Show() else publishBtn:Hide() end
-    if not epgpBox:HasFocus() then epgpBox:SetText(ns.Penalties.EpgpReason()) end
+end
+local function RefreshHead()
+    local sys = ns.Ledger.Key()
+    local n = ns.Penalties.Changed()
+    banner:SetText(format(ns.T("gpset.mine"), ns.Penalties.Label(), n))
+    if n > 0 then resetAllBtn:Enable() else resetAllBtn:Disable() end
+    for kind, box in pairs(hotBoxes) do
+        if not box:HasFocus() then box:SetText(tostring(ns.Ledger.HotSum(kind, sys))) end
+    end
+    local unit = ns.Ledger.Unit(sys)
+    heads.sum:SetText(format(ns.T("gpset.col.sum"), unit))
 end
 function View.Refresh()
     if not frame or not frame:IsVisible() then return end
-    local active = ns.Penalties.Active()
-    local editable = Editable()
-    presetBtn.text:SetText(format(ns.T("gpset.preset"), ns.Penalties.Label(active)))
-    if editable then
-        banner:SetText(format(ns.T("gpset.own"), ns.Penalties.Label(ns.Penalties.BaseOf(active) or "")))
-        renameBtn:Enable()
-        deleteBtn:Enable()
-        addBtn:Enable()
-    else
-        banner:SetText(ns.T("gpset.readonly"))
-        renameBtn:Disable()
-        deleteBtn:Disable()
-        addBtn:Disable()
-    end
+    RefreshHead()
     RefreshGuild()
     slots = max(1, floor(listBox:GetHeight() / ROWH))
     offset = max(0, min(offset, #items - slots))
@@ -240,87 +240,26 @@ function View.Refresh()
         local r = Row(i)
         local item = items[i + offset]
         if item then
-            FillRow(r, item, editable)
+            FillRow(r, item)
             r:Show()
         else
             r:Hide()
         end
     end
     for i = slots + 1, #rows do rows[i]:Hide() end
-    pageText:SetText(format(ns.T("gpset.page"), offset + 1, min(#items, offset + slots), #items))
+    pageText:SetText(format(ns.T("gpset.page"), min(#items, offset + 1), min(#items, offset + slots), #items))
+end
+function View.Search(text)
+    query = Lower(ns.Penalties.Clean(text))
+    offset = 0
+    BuildItems()
+    View.Refresh()
 end
 function View.Scroll(delta)
     local focus = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus()
     if focus and focus.editKey then focus:ClearFocus() end
     offset = offset - delta * WHEEL
     View.Refresh()
-end
-local function PresetMenu()
-    local menu = { { text = ns.T("gpset.pick"), isTitle = true, notCheckable = true } }
-    local names = ns.Penalties.Names()
-    local active = ns.Penalties.Active()
-    for i = 1, #names do
-        local name = names[i]
-        menu[#menu + 1] = {
-            text = ns.Penalties.Label(name),
-            checked = name == active,
-            func = function()
-                ns.Penalties.Select(name)
-                offset = 0
-                Reload()
-            end,
-        }
-    end
-    ns.Kit.Menu(menu, presetBtn)
-end
-local function TypedName()
-    local name = ns.Penalties.Clean(nameBox:GetText())
-    if name == "" then
-        ns.Print(ns.T("gpset.noname"))
-        return nil
-    end
-    if ns.Penalties.Taken(name, ns.Penalties.Active()) then
-        ns.Print(format(ns.T("gpset.taken"), name))
-        return nil
-    end
-    return name
-end
-local function Typed()
-    nameBox:SetText("")
-    nameBox:ClearFocus()
-end
-local function DoCopy()
-    local name = TypedName()
-    if not name or not ns.Penalties.Copy(name) then
-        if name then ns.Print(format(ns.T("gpset.taken"), name)) end
-        return
-    end
-    Typed()
-    offset = 0
-    Reload()
-end
-local function DoRename()
-    local old = ns.Penalties.Active()
-    if not ns.Penalties.IsOwn(old) then return end
-    if ns.Penalties.Clean(nameBox:GetText()) == old then return Typed() end
-    local name = TypedName()
-    if not name then return end
-    if not ns.Penalties.Rename(old, name) then
-        ns.Print(format(ns.T("gpset.taken"), name))
-        return
-    end
-    Typed()
-    Reload()
-end
-local function DoDelete()
-    local name = ns.Penalties.Active()
-    if not ns.Penalties.IsOwn(name) or not ns.GPList then return end
-    ns.GPList.Confirm(format(ns.T("gpset.delask"), name), ns.T("gpset.delete"), function()
-        if ns.Penalties.Delete(name) then
-            offset = 0
-            Reload()
-        end
-    end)
 end
 local function DoPublish()
     local G = ns.GPGuild
@@ -331,113 +270,101 @@ local function DoPublish()
     end
     local st = G.Status()
     local v = max(st.guild or 0, st.mine or 0) + 1
-    local label = ns.Penalties.Label(ns.Penalties.Active())
-    ns.GPList.Confirm(format(ns.T("gpg.ask"), label, v), ns.T("gpg.yes"), function()
+    ns.GPList.Confirm(format(ns.T("gpg.ask"), ns.Penalties.Label(), v), ns.T("gpg.yes"), function()
         local _, key, a, b = G.Publish()
         ns.Print(format(ns.T(key), a or 0, b or 0))
         Reload()
     end)
 end
-local function AddRule(boss)
-    local key = ns.Penalties.AddRule(boss)
-    if not key then return end
-    BuildItems()
-    for i = 1, #items do
-        if items[i].rule and items[i].rule.key == key then offset = i - 1 end
-    end
-    View.Refresh()
-    Changed()
+local function DoResetAll()
+    if not ns.GPList or ns.Penalties.Changed() == 0 then return end
+    ns.GPList.Confirm(format(ns.T("gpset.resetall.ask"), ns.Penalties.Changed()), ns.T("gpset.resetall"), function()
+        ns.Penalties.ResetAll()
+        Reload()
+    end)
 end
-local function AddMenu()
-    if not Editable() then return end
-    local menu = { { text = ns.T("gpset.addpick"), isTitle = true, notCheckable = true } }
-    local seen = {}
-    for i = 1, #items do
-        local rule = items[i].rule
-        if rule and not seen[rule.boss] then
-            seen[rule.boss] = true
-            local boss = rule.boss
-            menu[#menu + 1] = {
-                text = boss == ns.penaltyAny and ns.T("gpset.any") or ns.EncName(boss),
-                func = function() AddRule(boss) end,
-            }
-        end
-    end
-    ns.Kit.Menu(menu, addBtn)
-end
-local function CommitEpgp()
-    ns.Penalties.SetEpgpReason(epgpBox:GetText())
-    RefreshGuild()
-end
-local function TopButton(parent, name, width, label, onClick)
-    local b = ns.MakeButton(parent, name)
+local function TopButton(parent, name, width, label, onClick, kind)
+    local b = ns.MakeButton(parent, name, kind)
     b:SetWidth(width)
     b:SetHeight(22)
     b.text:SetText(ns.T(label))
     b.onClick = onClick
     return b
 end
-function View.Attach(host)
-    frame = host
-    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", PAD, -12)
-    title:SetText(ns.T("gpset.title"))
-    presetBtn = TopButton(frame, "HTP_FailWatchGPPreset", 240, "gpset.pick", PresetMenu)
-    presetBtn:SetPoint("TOPLEFT", PAD - 2, -34)
-    nameBox = ns.Kit.Edit(frame, false, "HTP_FailWatchGPNewName")
-    nameBox:SetWidth(160)
-    nameBox:SetHeight(22)
-    nameBox:SetPoint("LEFT", presetBtn, "RIGHT", 18, 0)
-    nameBox:SetScript("OnEnterPressed", DoCopy)
-    nameBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-    copyBtn = TopButton(frame, "HTP_FailWatchGPCopy", 150, "gpset.copy", DoCopy)
-    copyBtn:SetPoint("LEFT", nameBox, "RIGHT", 8, 0)
-    renameBtn = TopButton(frame, "HTP_FailWatchGPRename", 120, "gpset.rename", DoRename)
-    renameBtn:SetPoint("LEFT", copyBtn, "RIGHT", 6, 0)
-    deleteBtn = TopButton(frame, "HTP_FailWatchGPDelete", 90, "gpset.delete", DoDelete)
-    deleteBtn:SetPoint("LEFT", renameBtn, "RIGHT", 6, 0)
-    if ns.ProofView then
-        local proofBtn = ns.ProofView.Setting(frame, "HTP_FailWatchGPProof")
-        proofBtn:SetWidth(200)
-        proofBtn:SetHeight(22)
-        proofBtn:SetPoint("LEFT", deleteBtn, "RIGHT", 18, 0)
-    end
-    guildText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    guildText:SetPoint("TOPLEFT", PAD, -66)
-    guildText:SetWidth(360)
-    guildText:SetJustifyH("LEFT")
-    publishBtn = TopButton(frame, "HTP_FailWatchGPPublish", 220, "gpg.publish", DoPublish)
-    publishBtn:SetPoint("TOPLEFT", PAD + 370, -60)
-    local epgpLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    epgpLabel:SetPoint("LEFT", publishBtn, "RIGHT", 18, 0)
-    epgpLabel:SetText(ns.T("gpset.epgp"))
-    epgpBox = ns.Kit.Edit(frame, false, "HTP_FailWatchGPEpgp")
-    epgpBox:SetWidth(110)
-    epgpBox:SetHeight(22)
-    epgpBox:SetPoint("LEFT", epgpLabel, "RIGHT", 8, 0)
-    epgpBox:HookScript("OnEditFocusLost", CommitEpgp)
-    epgpBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
-    epgpBox:SetScript("OnEscapePressed", function(self)
-        self:SetText(ns.Penalties.EpgpReason())
+local function HotBox(kind, anchor)
+    local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    label:SetPoint("LEFT", anchor, "RIGHT", 14, 0)
+    label:SetText(ns.Ledger.HotLabel(kind))
+    local box = ns.Kit.Edit(frame, false, "HTP_FailWatchGPHot" .. kind)
+    box:SetWidth(HOTW)
+    box:SetHeight(20)
+    box:SetNumeric(true)
+    box:SetPoint("LEFT", label, "RIGHT", 6, 0)
+    box:HookScript("OnEditFocusLost", function(self)
+        ns.Ledger.SetHot(kind, ns.Ledger.Key(), tonumber(self:GetText()))
+        self:SetText(tostring(ns.Ledger.HotSum(kind)))
+        Changed()
+    end)
+    box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    box:SetScript("OnEscapePressed", function(self)
+        self:SetText(tostring(ns.Ledger.HotSum(kind)))
         self:ClearFocus()
     end)
-    addBtn = TopButton(frame, "HTP_FailWatchGPAdd", 150, "gpset.add", AddMenu)
-    addBtn:SetPoint("LEFT", epgpBox, "RIGHT", 18, 0)
+    hotBoxes[kind] = box
+    return box
+end
+function View.Attach(host)
+    frame = host
+    local searchLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    searchLabel:SetPoint("TOPLEFT", PAD, -12)
+    searchLabel:SetText(ns.T("gpset.search"))
+    searchBox = ns.Kit.Edit(frame, false, "HTP_FailWatchGPSearch")
+    searchBox:SetWidth(150)
+    searchBox:SetHeight(20)
+    searchBox:SetPoint("LEFT", searchLabel, "RIGHT", 6, 0)
+    searchBox:SetScript("OnTextChanged", function(self) View.Search(self:GetText()) end)
+    searchBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    searchBox:SetScript("OnEscapePressed", function(self)
+        self:SetText("")
+        self:ClearFocus()
+    end)
+    local last = searchBox
+    if ns.ProofView then
+        local proofBtn = ns.ProofView.Setting(frame, "HTP_FailWatchGPProof")
+        proofBtn:SetWidth(230)
+        proofBtn:SetHeight(22)
+        proofBtn:SetPoint("LEFT", searchBox, "RIGHT", 18, 0)
+        last = proofBtn
+    end
+    local hotTitle = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hotTitle:SetPoint("LEFT", last, "RIGHT", 24, 0)
+    hotTitle:SetText(ns.T("gpset.hot"))
+    local anchor = hotTitle
+    for i = 1, #ns.Ledger.HOT do anchor = HotBox(ns.Ledger.HOT[i], anchor) end
+    guildText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    guildText:SetPoint("TOPLEFT", PAD, -44)
+    guildText:SetWidth(360)
+    guildText:SetJustifyH("LEFT")
+    publishBtn = TopButton(frame, "HTP_FailWatchGPPublish", 220, "gpg.publish", DoPublish, "main")
+    publishBtn:SetPoint("TOPLEFT", PAD + 370, -38)
     banner = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    banner:SetPoint("TOPLEFT", PAD, -92)
+    banner:SetPoint("TOPLEFT", PAD, -72)
     ns.Kit.Text(banner, "badge.link")
-    local heads = {
-        { ns.T("gpset.col.rule"), 26 },
-        { ns.T("gpset.col.mode"), 26 + TEXTW + 6 },
-        { ns.T("gpset.col.gp"), 26 + TEXTW + 6 + MODEW + 12 },
-        { ns.T("gpset.col.wipe"), 26 + TEXTW + 6 + MODEW + 12 + NUMW + 10 },
-        { ns.T("gpset.col.step"), 26 + TEXTW + 6 + MODEW + 12 + (NUMW + 10) * 2 },
-        { ns.T("gpset.col.reason"), 26 + TEXTW + 6 + MODEW + 12 + (NUMW + 10) * 3 },
+    resetAllBtn = TopButton(frame, "HTP_FailWatchGPResetAll", 150, "gpset.resetall", DoResetAll, "danger")
+    resetAllBtn:SetPoint("TOPLEFT", PAD + 370, -66)
+    local cols = {
+        { "rule", ns.T("gpset.col.rule"), 26 },
+        { "mode", ns.T("gpset.col.mode"), 26 + TEXTW + 6 },
+        { "sum", "", 26 + TEXTW + 6 + MODEW + 12 },
+        { "wipe", ns.T("gpset.col.wipe"), 26 + TEXTW + 6 + MODEW + 12 + NUMW + 10 },
+        { "step", ns.T("gpset.col.step"), 26 + TEXTW + 6 + MODEW + 12 + (NUMW + 10) * 2 },
+        { "short", ns.T("gpset.col.short"), 26 + TEXTW + 6 + MODEW + 12 + (NUMW + 10) * 3 },
     }
-    for i = 1, #heads do
+    for i = 1, #cols do
         local fs = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fs:SetPoint("TOPLEFT", PAD + heads[i][2], -(HEAD - 14))
-        fs:SetText(heads[i][1])
+        fs:SetPoint("TOPLEFT", PAD + cols[i][3], -(HEAD - 14))
+        fs:SetText(cols[i][2])
+        heads[cols[i][1]] = fs
     end
     listBox = CreateFrame("Frame", nil, frame)
     listBox:SetPoint("TOPLEFT", PAD, -HEAD)
@@ -450,6 +377,7 @@ function View.Attach(host)
     hint:SetPoint("BOTTOMLEFT", PAD, 10)
     hint:SetText(ns.T("gpset.hint"))
     if ns.GPGuild then ns.GPGuild.OnChange(function() View.Opened() end) end
+    if ns.GPList then ns.GPList.OnChange(function() View.Refresh() end) end
 end
 function View.Opened()
     if not ns.Penalties or not frame then return end

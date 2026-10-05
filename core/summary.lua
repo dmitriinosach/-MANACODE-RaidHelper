@@ -1267,6 +1267,7 @@ local function Build(fight)
             ns.Totals.Aura(tt, ts, sub, srcGUID, srcName, srcFlags, dstName, a1, a2)
         end
         if sub == "FW_PULLT" then ns.PullTimer.Feed(s, ts, srcName, a1, a2) end
+        if sub == "FW_SPEC" and ts >= from and ts <= fight.to then ns.Specs.Feed(byName, a1, a2, a3) end
         if sub == "FW_MARK" and ts >= s.lead and ts <= to then
             s.marks = s.marks or {}
             s.marks[#s.marks + 1] = { t = ts, key = a1, text = a2 }
@@ -1681,6 +1682,14 @@ local function Build(fight)
                         st.n = st.n + 1
                         st.times[#st.times + 1] = ts - fight.from
                         if dst then st.notes[#st.notes + 1] = dstName end
+                        if #bd.spells > 1 then
+                            st.keys, st.ids = st.keys or {}, st.ids or {}
+                            st.keys[st.n], st.ids[st.n] = sk, tonumber(a1) or false
+                            if bd.names then
+                                st.tg = st.tg or {}
+                                st.tg[st.n] = dstName or "?"
+                            end
+                        end
                         s.icons[i] = s.icons[i] or bd.id or tonumber(a1)
                     end
                 end

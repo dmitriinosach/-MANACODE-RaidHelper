@@ -6,7 +6,6 @@ local TABS = {
     gp = "gp", ["гп"] = "gp",
     spam = "spam",
     tpl = "tpl",
-    board = "board",
     raid = "raid",
 }
 local clearAskedAt = 0

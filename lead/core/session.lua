@@ -357,3 +357,9 @@ function S.FlaskRole(name)
     return nil
 end
 if root.Flasks and root.Flasks.RoleSource then root.Flasks.RoleSource("lead", S.FlaskRole, 20) end
+function S.InviteCap()
+    if not S.Active() then return nil end
+    local tpl = S.Template()
+    return tpl and (tpl.size or #tpl.slots) or nil
+end
+if root.AutoInvite and root.AutoInvite.CapSource then root.AutoInvite.CapSource(S.InviteCap) end

@@ -10,8 +10,7 @@ local MIN_PANE_W, MIN_PANE_H = 602, 514
 local TABS = {
     { key = "spam",  label = "tabSpam",  order = 20 },
     { key = "tpl",   label = "tabTpl",   order = 30 },
-    { key = "board", label = "tabBoard", order = 40 },
-    { key = "raid",  label = "tabRaid",  order = 50 },
+    { key = "raid",  label = "tabRaid",  order = 40 },
 }
 local host, prefsBack, prefsPane
 local panes = {}

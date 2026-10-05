@@ -13,11 +13,26 @@ local Modal = {}
 ns.WidgetModal = Modal
 local dim
 local panels = {}
-local function Close()
+local closing = false
+local function Shut()
+    closing = false
     if dim then dim:Hide() end
 end
-local function OnKey(self, key)
-    if key == "ESCAPE" then self:Hide() end
+local function Shown()
+    for _, f in pairs(panels) do
+        if f:IsShown() then return f end
+    end
+    return nil
+end
+local function Close()
+    if closing or not (dim and dim:IsShown()) then return end
+    closing = true
+    local f = Shown()
+    if f then ns.Kit.PopOut(f) end
+    ns.Kit.FadeOut(dim, Shut)
+end
+local function OnKey(_, key)
+    if key == "ESCAPE" then Close() end
 end
 local function Build()
     if dim then return dim end
@@ -32,9 +47,12 @@ local function Build()
     dim:SetScript("OnMouseWheel", function() end)
     dim:SetScript("OnMouseDown", Close)
     dim:SetScript("OnKeyDown", OnKey)
-    dim:SetScript("OnHide", function() ns.Tip.Hide() end)
+    dim:SetScript("OnHide", function()
+        closing = false
+        ns.Tip.Hide()
+    end)
     dim:RegisterEvent("PLAYER_REGEN_DISABLED")
-    dim:SetScript("OnEvent", Close)
+    dim:SetScript("OnEvent", Shut)
     local shade = dim:CreateTexture(nil, "BACKGROUND")
     shade:SetAllPoints()
     ns.Kit.Paint(shade, "surface.shade")
@@ -96,17 +114,17 @@ function Modal.Open(source)
     f.bar:ClearAllPoints()
     f.bar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -BAR_R, -top)
     f.bar:SetHeight(f.fixed * step)
+    closing = false
     f:Show()
     dim:Show()
     f:Redraw()
+    ns.Kit.FadeIn(dim)
+    ns.Kit.PopIn(f)
 end
 function Modal.Current()
-    if not (dim and dim:IsShown()) then return nil end
-    for _, f in pairs(panels) do
-        if f:IsShown() then return f end
-    end
-    return nil
+    if closing or not (dim and dim:IsShown()) then return nil end
+    return Shown()
 end
 function Modal.Close()
-    Close()
+    Shut()
 end

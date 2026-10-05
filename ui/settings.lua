@@ -664,6 +664,7 @@ function Settings.Select(key)
     Saved().ui.setCat = key
     offset = 0
     Activate(cats[key])
+    if old then Kit.FadeIn(cats[key].holder) end
 end
 function Settings.Current()
     return current

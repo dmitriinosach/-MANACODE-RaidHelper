@@ -88,7 +88,9 @@ local NAV = {
     { "mode", "iso.tip.to2d", 10 },
     { "low", "iso.tip.low", 10 }, { "high", "iso.tip.high", 4 }, { "reset", "iso.tip.reset", 4 },
     { "help", "iso.tip.help", 10 },
+    { "scene", "iso.tip.scene.auto", 10 },
 }
+local SCENE = { w = 46, fade = 0.15 }
 local VIEW_LOW = 0.35
 local VIEW_HIGH = 0.8
 local NAV_BTN = 24
@@ -124,6 +126,7 @@ local run = {
     tilt3 = START_TILT, persp3 = START_PERSP, flat = false, loading = false,
     msSum = 0, msN = 0, msMax = 0, acc = 0, models = 0, shown = 0, levelBase = 0,
     lastClock = -1, hover = nil, figCount = 0, hasTex = false, gapKind = "", gapSince = -1, gapLevel = -1,
+    fadeA = 0, snapScene = false,
 }
 local cam = { angle = START_ANGLE, tilt = START_TILT, persp = START_PERSP, zoom = 1, lift = 0, r = 1, a = 0,
               cx = 0, cy = 0, w = dim.viewW, h = dim.viewH, c = 1, s = 0 }
@@ -646,9 +649,40 @@ local function Status()
         st.blasts, st.adds))
     run.msSum, run.msN, run.msMax = 0, 0, 0
 end
+local SwapScene
+local function WantScene()
+    local base = run.base
+    local alt = base and base.alt
+    if not alt then return base end
+    if run.pin then return run.pin == "alt" and alt or base end
+    if run.focus and Follow.On() then return Replay.InsideOne(base, run.focus, run.t) and alt or base end
+    return Replay.AltAt(base, run.t) and alt or base
+end
+local function StepScene(elapsed)
+    local want = WantScene()
+    if want and want ~= run.scene then
+        if run.snapScene then
+            SwapScene(want)
+        else
+            run.fadeA = min(1, run.fadeA + elapsed / SCENE.fade)
+            if run.fadeA >= 1 then SwapScene(want) end
+        end
+    elseif run.fadeA > 0 then
+        run.fadeA = max(0, run.fadeA - elapsed / SCENE.fade)
+    end
+    run.snapScene = false
+    if run.fadeA > 0 then
+        ui.fade:SetAlpha(run.fadeA)
+        if not ui.fade:IsShown() then ui.fade:Show() end
+        return true
+    end
+    if ui.fade:IsShown() then ui.fade:Hide() end
+    return want ~= run.scene
+end
 local function Tick(self, elapsed)
-    local scene = run.scene
-    if not scene then return end
+    if not run.scene then return end
+    local busy = StepScene(elapsed)
+    local scene, base = run.scene, run.base
     local p0 = debugprofilestop()
     if run.playing then
         run.t = run.t + elapsed * run.speed
@@ -668,7 +702,7 @@ local function Tick(self, elapsed)
     elseif turned then
         run.camDirty = true
     end
-    local still = not run.playing and not run.drag and not snapped and not run.camDirty
+    local still = not run.playing and not run.drag and not snapped and not run.camDirty and not busy
         and not run.marksDirty and run.t == run.stillT
         and not IsMouseButtonDown("LeftButton") and not IsMouseButtonDown("RightButton")
     run.stillT = run.t
@@ -689,13 +723,18 @@ local function Tick(self, elapsed)
     if Geo.Time(scene, run.t) and not run.camDirty and not run.flat then PlaceFloor() end
     if run.camDirty then ApplyCamera() end
     Replay.Sample(scene, run.t)
+    if scene ~= base then Replay.Sample(base, run.t) end
     Realm.Sample(scene, run.t, figs)
-    Soul.Sample(scene, run.t)
+    Soul.Sample(base, run.t)
+    if scene ~= base then Soul.Fill(scene, run.t) end
     run.bossDrawn = Models.Place(cam, run.t, run.figScale, run.faceSign, elapsed)
     LayersView.Place(scene, cam, run.t, figs)
     Realm.Place(scene, cam, run.t)
+    ns.ReplaySwarmView.Place(scene, cam, run.t)
+    ns.ReplayClassView.Place(scene, cam, run.t)
     ns.ReplaySpreadView.Place(scene, cam, run.t)
-    Soul.Place(scene, run.t)
+    ns.ReplayCueView.Place(scene, cam, run.t)
+    Soul.Place(base, scene, run.t)
     PlaceFigures(elapsed)
     ns.ReplayFeed.Update(run.t - scene.pull)
     PlaceDeaths()
@@ -770,6 +809,7 @@ local function ApplyFocus()
         end
     end
     for k = 1, run.figCount do figs[k].alpha = nil end
+    LayersView.Focus(run.focus)
     if run.focus then
         ui.focus:SetText(format(ns.T("iso.focus"), run.focus))
         ui.focus:Show()
@@ -809,6 +849,7 @@ local function ApplySeek()
     if not scene or not run.seek then return end
     run.t = Clamp(scene.pull + run.seek, scene.from, scene.to)
     run.seek = nil
+    run.snapScene = true
     run.playing = run.t < scene.to
     run.marksDirty = true
     UpdatePlay()
@@ -867,7 +908,7 @@ local function Resize(vw, vh)
         r.x = vw - r.right - r.w
     end
     Bar.Resize(vw)
-    Bar.Use(run.scene)
+    Bar.Use(run.base)
     ui.status:SetWidth(vw - STATUS_GRIP)
     ui.frame:SetHeight(dim.h)
     FrameWidth()
@@ -875,8 +916,61 @@ local function Resize(vw, vh)
     Reframe()
     run.marksDirty = true
 end
+local function UseFloor(room)
+    run.hasTex = false
+    if room then
+        local path = ROOM_PATH .. room.tex
+        run.hasTex = true
+        for k = 1, #strips do
+            if not strips[k]:SetTexture(path) then run.hasTex = false end
+        end
+    end
+    for k = 1, run.stripUsed do strips[k]:Hide() end
+    run.stripUsed = 0
+    Geo.Use(room)
+    if not room then
+        ui.hint:SetText(ns.T("iso.notex"))
+        ui.hint:Show()
+    elseif not run.hasTex then
+        ui.hint:SetText(ns.T("iso.notexfile"))
+        ui.hint:Show()
+    else
+        ui.hint:Hide()
+    end
+end
+local function UpdateSceneBtn()
+    local b = ui.nav and ui.nav.scene
+    if not b then return end
+    local base = run.base
+    if not (base and base.alt) then
+        b:Hide()
+        return
+    end
+    b.text:SetText(ns.T(run.scene == base and "iso.scene.base" or "iso.scene.alt"))
+    b.tip = ns.T(run.pin and "iso.tip.scene.pin" or "iso.tip.scene.auto")
+    b:SetActive(run.pin ~= nil)
+    b:Show()
+end
+SwapScene = function(sc)
+    run.scene = sc
+    run.deathShown = -1
+    run.gapKind, run.gapSince, run.gapLevel = "", -1, -1
+    LayersView.Use(sc)
+    ns.ReplayClassView.Use(sc)
+    ns.ReplaySpreadView.Use(sc)
+    ns.ReplayCueView.Use(sc)
+    Models.Away(sc ~= run.base)
+    ConfigFigure(figs[#sc.tracks + 1], nil, sc)
+    UseFloor(sc.room)
+    ResetCamera(false)
+    Follow.Apply()
+    run.marksDirty = true
+    UpdateSceneBtn()
+end
 local function UseScene(scene)
-    run.scene = scene
+    Replay.Prep(scene)
+    run.scene, run.base, run.fadeA = scene, scene, 0
+    ui.fade:Hide()
     run.t = scene.from
     run.playing = false
     run.deathShown, run.lastClock = -1, -1
@@ -885,7 +979,10 @@ local function UseScene(scene)
     FindRoles(scene)
     LayersView.Use(scene)
     Realm.Use(scene)
+    ns.ReplaySwarmView.Use(scene)
+    ns.ReplayClassView.Use(scene)
     ns.ReplaySpreadView.Use(scene)
+    ns.ReplayCueView.Use(scene)
     Soul.Use(scene)
     Models.Use(scene)
     run.feedHas = ns.ReplayFeed.Use(scene.layers)
@@ -898,29 +995,16 @@ local function UseScene(scene)
     run.figCount = n + 1
     for k = 1, n + 1 do order[k] = k end
     for k = n + 2, #order do order[k] = nil end
-    run.hasTex = false
-    if scene.room then
-        local path = ROOM_PATH .. scene.room.tex
-        run.hasTex = true
-        for k = 1, #strips do
-            if not strips[k]:SetTexture(path) then run.hasTex = false end
-        end
-    end
-    Geo.Use(scene.room)
-    if not scene.room then
-        ui.hint:SetText(ns.T("iso.notex"))
-        ui.hint:Show()
-    elseif not run.hasTex then
-        ui.hint:SetText(ns.T("iso.notexfile"))
-        ui.hint:Show()
-    else
-        ui.hint:Hide()
-    end
+    UseFloor(scene.room)
     ResetCamera(false)
     Bar.Use(scene)
     UpdatePlay()
     ApplySeek()
     SetFocus(run.want)
+    local want = WantScene()
+    if want and want ~= run.scene then SwapScene(want) end
+    run.snapScene = false
+    UpdateSceneBtn()
     Tour.Auto()
 end
 local function NavButton(parent, icon, tip)
@@ -957,7 +1041,10 @@ local function BuildPools()
     end
     LayersView.Build(view, ui.marks)
     Realm.Build(view, ui.marks)
+    ns.ReplaySwarmView.Build(view, ui.marks)
+    ns.ReplayClassView.Build(view, ui.marks)
     ns.ReplaySpreadView.Build(view, ui.marks)
+    ns.ReplayCueView.Build(view, ui.marks)
     Soul.Build(view, ui.top)
     for i = 1, DEATH_POOL do
         local tex = ui.marks:CreateTexture(nil, "ARTWORK")
@@ -1076,19 +1163,30 @@ local function BuildNav(top)
         help = function()
             if ui.legend:IsShown() then ui.legend:Hide() else ui.legend:Show() end
         end,
+        scene = function()
+            if not (run.base and run.base.alt) then return end
+            if run.pin then
+                run.pin = nil
+            else
+                run.pin = run.scene == run.base and "alt" or "base"
+            end
+            UpdateSceneBtn()
+            Iso.Wake()
+        end,
     }
     local y = NAV_TOP + COMPASS
     for i = 1, #NAV do
         local d = NAV[i]
         local name = d[1]
         local b = NavButton(top, ICONS[name], d[2])
-        local w = name == "mode" and COMPASS or NAV_BTN
+        local w = (name == "mode" and COMPASS) or (name == "scene" and SCENE.w) or NAV_BTN
         b:SetWidth(w)
         y = NavPlace(b, name, y + d[3], w, NAV_BTN)
         b.onClick = act[name]
         ui.nav[name] = b
     end
     ui.modeBtn = ui.nav.mode
+    ui.nav.scene:Hide()
     BuildLegend(top)
 end
 local function BuildBars(side)
@@ -1140,6 +1238,10 @@ local function BuildView(frame)
     top:SetAllPoints(view)
     top:SetFrameLevel(min(118, run.levelBase + 2 * 42 + 4))
     ui.top = top
+    ui.fade = top:CreateTexture(nil, "BACKGROUND")
+    ui.fade:SetAllPoints(view)
+    Kit.Paint(ui.fade, "surface.page")
+    ui.fade:Hide()
     ui.hoverBox = CreateFrame("Frame", nil, top)
     ui.hoverBox:SetWidth(240)
     ui.hoverBox:SetHeight(16)
@@ -1258,7 +1360,9 @@ local function SelectedFight()
 end
 local function LoadFight(fight)
     run.fight = fight
-    run.scene = nil
+    run.scene, run.base, run.pin, run.fadeA = nil, nil, nil, 0
+    ui.fade:Hide()
+    UpdateSceneBtn()
     run.loading = true
     for k = 1, #figs do HideFigure(figs[k]) end
     for k = 1, #afigs do HideFigure(afigs[k]) end
@@ -1269,7 +1373,10 @@ local function LoadFight(fight)
     Geo.Use(nil)
     LayersView.Use(nil)
     Realm.Use(nil)
+    ns.ReplaySwarmView.Use(nil)
+    ns.ReplayClassView.Use(nil)
     ns.ReplaySpreadView.Use(nil)
+    ns.ReplayCueView.Use(nil)
     Soul.Use(nil)
     Models.Use(nil)
     ns.ReplayFeed.Use(nil)
@@ -1342,6 +1449,9 @@ function Iso.Focus(name)
     SetFocus(name)
 end
 function Iso.Scene()
+    return run.base
+end
+function Iso.Shown()
     return run.scene
 end
 function Iso.Now()
@@ -1393,7 +1503,9 @@ function Iso.Layout()
              barsH = dim.barsH, nav = ui.navRects, navBtns = ui.nav, camW = cam.w, camH = cam.h, fitZoom = run.fitZoom,
              figScale = run.figScale, size = Size.Probe(), tour = Tour.Probe(), feedRows = ns.ReplayFeed.Stats().rows,
              bar = Bar.Probe(), menu = ViewMenu.Probe(), narrow = run.narrow, zoom = cam.zoom,
-             tilt = run.tilt3, flat = run.flat, speed = run.speed, mode = run.mode, heal = run.focusHeal }
+             tilt = run.tilt3, flat = run.flat, speed = run.speed, mode = run.mode, heal = run.focusHeal,
+             scene = run.scene and (run.scene == run.base and "base" or "alt") or nil, pin = run.pin, fade = run.fadeA,
+             camR = cam.r, camCx = cam.cx, camCy = cam.cy, gap = run.gapKind or nil }
 end
 function Iso.SetCamera(index)
     run.camIndex = index

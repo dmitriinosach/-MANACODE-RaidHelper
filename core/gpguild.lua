@@ -10,9 +10,8 @@ local DEFAULT = "spartans"
 local CHUNK = 200
 local MAX_PARTS = 64
 local MAX_TEXT = 200
-local MAX_BOSS = 96
+local MAX_SHORT = 64
 local MAX_KEY = 48
-local MAX_EXTRA = 100
 local MAX_NUM = 100000
 local MAX_VER = 1000000
 local MAX_BUF = 8
@@ -28,12 +27,12 @@ local TWO32 = 4294967296
 local FNV_BASIS = 2166136261
 local FNV_LOW = 403
 local FNV_HIGH = 16777216
-local ORDER = { "on", "mode", "gp", "wipe", "step", "reason" }
-local XORDER = { "boss", "on", "mode", "gp", "wipe", "step", "reason" }
-local RSET = { on = true, mode = true, gp = true, wipe = true, step = true, reason = true }
-local XSET = { boss = true, on = true, mode = true, gp = true, wipe = true, step = true, reason = true }
+local ORDER = { "on", "mode", "gp", "wipe", "step", "ep", "epwipe", "epstep", "dkp", "dkpwipe", "dkpstep", "short" }
+local RSET = {}
+for i = 1, #ORDER do RSET[ORDER[i]] = true end
 local MODES = { once = true, each = true, grow = true }
-local NUMS = { gp = true, wipe = true, step = true }
+local NUMS = { gp = true, wipe = true, step = true, ep = true, epwipe = true, epstep = true, dkp = true, dkpwipe = true,
+    dkpstep = true }
 local ESC = { ["~"] = "~t", [";"] = "~s", [","] = "~c", ["="] = "~e", [":"] = "~o" }
 local UNESC = { t = "~", s = ";", c = ",", e = "=", o = ":" }
 local BLOCK = "%-FW%-.-%-FW%-"
@@ -119,14 +118,13 @@ end
 local function Encode(f, v)
     if f == "on" then return v and "1" or "0" end
     if f == "mode" then return MODES[v] and v or nil end
-    if f == "boss" and type(v) == "number" then return tostring(floor(v)) end
     if NUMS[f] then
         if type(v) ~= "number" then return nil end
         v = floor(v + 0.5)
         if v < 0 or v > MAX_NUM then return nil end
         return tostring(v)
     end
-    local t = Text(v, f == "boss" and MAX_BOSS or MAX_TEXT)
+    local t = Text(v, f == "short" and MAX_SHORT or MAX_TEXT)
     if t == "" then return nil end
     return Esc(t)
 end
@@ -137,7 +135,6 @@ local function Decode(f, s)
         return nil
     end
     if f == "mode" then return MODES[s] and s or nil end
-    if f == "boss" and #s <= 6 and s:match("^%d+$") then return tonumber(s) end
     if NUMS[f] then
         if #s > 6 or not s:match("^%d+$") then return nil end
         local n = tonumber(s)
@@ -145,7 +142,7 @@ local function Decode(f, s)
         return n
     end
     local t = Unesc(s)
-    t = t and Text(t, f == "boss" and MAX_BOSS or MAX_TEXT)
+    t = t and Text(t, f == "short" and MAX_SHORT or MAX_TEXT)
     if not t or t == "" then return nil end
     return t
 end
@@ -165,7 +162,7 @@ local function KeyOk(key)
     return type(key) == "string" and #key <= MAX_KEY and key:match("^[%w%._]+$") ~= nil
 end
 local function Raw(model)
-    local out, keys, seen = {}, {}, {}
+    local out, keys = {}, {}
     for key in pairs(model.rules) do
         if KeyOk(key) then keys[#keys + 1] = key end
     end
@@ -173,35 +170,21 @@ local function Raw(model)
     for i = 1, #keys do
         out[#out + 1] = Record("R", keys[i], model.rules[keys[i]], ORDER)
     end
-    for i = 1, #model.extra do
-        local x = model.extra[i]
-        if i <= MAX_EXTRA and KeyOk(x.key) and not seen[x.key] and Encode("boss", x.boss) and Encode("gp", x.gp) then
-            seen[x.key] = true
-            out[#out + 1] = Record("X", x.key, x, XORDER)
-        end
-    end
     return concat(out, ";")
 end
 function GPGuild.Parse(data)
     if type(data) ~= "string" then return nil end
-    local model, seen = { rules = {}, extra = {} }, {}
+    local model = { rules = {} }
     for rec in data:gmatch("[^;]+") do
-        local tag, raw, body = rec:match("^([RX])([^:]*):(.*)$")
+        local raw, body = rec:match("^R([^:]*):(.*)$")
         local key = raw and Unesc(raw)
         if KeyOk(key) then
-            local allowed = tag == "X" and XSET or RSET
             local fields = {}
             for pair in body:gmatch("[^,]+") do
                 local f, s = pair:match("^(%a+)=(.*)$")
-                if f and allowed[f] then fields[f] = Decode(f, s) end
+                if f and RSET[f] then fields[f] = Decode(f, s) end
             end
-            if tag == "R" then
-                if next(fields) then model.rules[key] = fields end
-            elseif fields.boss and fields.gp and not seen[key] and #model.extra < MAX_EXTRA then
-                seen[key] = true
-                fields.key = key
-                model.extra[#model.extra + 1] = fields
-            end
+            if next(fields) then model.rules[key] = fields end
         end
     end
     return model
@@ -447,8 +430,8 @@ ns.Comm.On(PREFIX, OnMessage)
 local function Field(rule, f)
     if f == "on" then return rule.on ~= false end
     if f == "mode" then return rule.mode or "each" end
-    if f == "reason" then
-        if type(rule.reason) == "string" and rule.reason ~= "" then return rule.reason end
+    if f == "short" then
+        if type(rule.short) == "string" and rule.short ~= "" then return rule.short end
         return nil
     end
     return rule[f]
@@ -458,14 +441,11 @@ function GPGuild.FromActive()
     local builtin = {}
     local preset = ns.penaltyPresets[DEFAULT]
     for i = 1, #preset.rules do builtin[preset.rules[i].key] = preset.rules[i] end
-    local model = { rules = {}, extra = {} }
+    local model = { rules = {} }
     local all = ns.Penalties.All()
     for i = 1, #all do
         local r = all[i]
-        if r.custom then
-            model.extra[#model.extra + 1] = { key = r.key, boss = r.boss, on = r.on, mode = r.mode, gp = r.gp,
-                wipe = r.wipe, step = r.step, reason = r.reason }
-        elseif builtin[r.key] then
+        if builtin[r.key] then
             local diff = {}
             for k = 1, #ORDER do
                 local f = ORDER[k]
@@ -499,9 +479,8 @@ function GPGuild.Publish()
     if Letters(new) > limit then return false, "gpg.err.long", Letters(new), limit end
     SetGuildInfoText(new)
     state.anchorV, state.anchorSum, state.anchorBy = v, sum, me
-    local active = ns.Penalties.Active()
     Accept(v, sum, data, me)
-    ns.Penalties.Prune(active)
+    ns.Penalties.Prune()
     return true, "gpg.done", v, Broadcast(v, data)
 end
 function GPGuild.Status()

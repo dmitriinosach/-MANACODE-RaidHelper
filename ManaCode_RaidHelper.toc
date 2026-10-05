@@ -3,8 +3,8 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 0.2.0-beta.11
-## X-Date: 2026-10-03
+## Version: 0.2.0-beta.12
+## X-Date: 2026-10-05
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
 ## OptionalDeps: Auctionator
@@ -17,6 +17,7 @@ locale\flasks.lua
 locale\servercmd.lua
 locale\devtool.lua
 locale\threat.lua
+locale\autoinvite.lua
 locale\lang.lua
 locale\enUS.lua
 data\bosses.lua
@@ -32,6 +33,9 @@ data\replaymarks.lua
 data\replaybars.lua
 data\replaymech.lua
 data\replayspread.lua
+data\replayswarm.lua
+data\replayclass.lua
+data\replaycue.lua
 data\defensives.lua
 data\procs.lua
 data\bosses\icc\marrowgar.lua
@@ -88,6 +92,7 @@ core\decode.lua
 core\recfilter.lua
 core\store.lua
 core\buffsnap.lua
+core\specs.lua
 core\recorder.lua
 core\meter.lua
 core\effects.lua
@@ -104,6 +109,7 @@ core\version.lua
 core\pulltimer.lua
 core\devmarks.lua
 core\gpguild.lua
+core\ledger.lua
 core\proof.lua
 core\mindctl.lua
 core\phases.lua
@@ -140,6 +146,9 @@ core\replaybars.lua
 core\replaymech.lua
 core\replayrealm.lua
 core\replayspread.lua
+core\replayswarm.lua
+core\replayclass.lua
+core\replaycue.lua
 core\replaylayers.lua
 core\npcpos.lua
 core\ranging.lua
@@ -150,10 +159,12 @@ core\share.lua
 core\flasks.lua
 core\flaskrole.lua
 core\flasktrade.lua
+core\autoinvite.lua
 core\memguard.lua
 core\cpumeter.lua
 ui\kit\themes.lua
 ui\kit\theme.lua
+ui\kit\anim.lua
 ui\kit\window.lua
 ui\kit\tip.lua
 ui\kit\button.lua
@@ -181,9 +192,11 @@ ui\expect.lua
 ui\proof.lua
 ui\achievements.lua
 ui\gplist.lua
+ui\faulttable.lua
 ui\sumside.lua
 ui\summary.lua
 ui\gpsettings.lua
+ui\faults.lua
 ui\gpmini.lua
 ui\fightlist.lua
 ui\raidsummary.lua
@@ -206,6 +219,9 @@ ui\replayfigs.lua
 ui\replaylayers.lua
 ui\replayrealm.lua
 ui\replayspread.lua
+ui\replayswarm.lua
+ui\replayclass.lua
+ui\replaycue.lua
 ui\replaysoul.lua
 ui\replayfeed.lua
 ui\replaymodels.lua
@@ -224,6 +240,7 @@ ui\settingsitems.lua
 ui\threatview.lua
 ui\sumhide.lua
 ui\flasks.lua
+ui\autoinvite.lua
 ui\servercmd.lua
 ui\devtool.lua
 ui\devprobe.lua
@@ -258,7 +275,6 @@ lead\ui\window.lua
 lead\ui\pult.lua
 lead\ui\pultmarks.lua
 lead\ui\spam.lua
-lead\ui\board.lua
 lead\ui\raid.lua
 lead\ui\tpl.lua
 lead\ui\prefs.lua

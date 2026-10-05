@@ -225,14 +225,9 @@ S.Section("parse", "jobs", {
     },
 })
 local function PresetNow()
-    local P = ns.Penalties
-    if not P then return "" end
-    return format(T("set.gp.preset.now"), P.Label(P.Active()))
-end
-local function SetMini(on)
-    ns.GetDB().gp.mini = on and true or false
-    if not on and ns.GPMini and ns.GPMini.IsShown() then ns.GPMini.Hide() end
-    if ns.GPList and ns.GPList.Changed then ns.GPList.Changed() end
+    local L = ns.Ledger
+    if not L then return "" end
+    return format(T("set.gp.preset.now"), L.Label())
 end
 local function Channels()
     local out = {}
@@ -246,9 +241,7 @@ S.Section("gp", "preset", {
     items = {
         { kind = "text", key = "now", text = PresetNow, token = "text.primary" },
         { kind = "button", key = "edit", label = "set.gp.edit", tip = "set.gp.edit.tip",
-          run = function() ns.Shell.Open("gp") end },
-        { kind = "check", key = "mini", label = "set.gp.mini", tip = "set.gp.mini.tip",
-          get = function() return ns.GetDB().gp.mini end, set = SetMini },
+          run = function() if ns.FaultsPage then ns.FaultsPage.Open("rules") else ns.Shell.Open("gp") end end },
     },
 })
 S.Section("gp", "signal", {
@@ -267,12 +260,6 @@ S.Section("gp", "proof", {
           set = function(k)
               ns.Proof.SetChannel(k)
               if ns.ProofView and ns.ProofView.Repaint then ns.ProofView.Repaint() end
-          end },
-        { kind = "field", key = "epgp", label = "set.gp.epgp", tip = "set.gp.epgp.tip", width = 200,
-          get = function() return ns.Penalties.EpgpReason() end,
-          set = function(text)
-              ns.Penalties.SetEpgpReason(text)
-              if ns.GPSettings and ns.GPSettings.Refresh then ns.GPSettings.Refresh() end
           end },
     },
 })

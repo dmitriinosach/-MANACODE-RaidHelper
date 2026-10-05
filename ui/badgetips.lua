@@ -59,6 +59,17 @@ local function Dec(v, digits)
     return ns.Dec(format("%." .. digits .. "f", v))
 end
 Tips.Dec = Dec
+local USE_NAMES = 3
+function Tips.Uses(out, st, of)
+    local list = st.keys and ns.Actions and ns.Actions.Uses(st) or {}
+    for k = 1, #list do
+        local u = list[k]
+        local id = u.id or nil
+        local whom = #u.tg <= USE_NAMES and concat(u.tg, ", ") or format(T("sum.tt.ntargets"), #u.tg)
+        Put(out, "row", Inline(id) .. (u.name or ns.SpellName(id)),
+            of and format(T("sum.tt.of"), u.ok, u.n) or format("x%d", u.n), whom ~= "" and whom or nil)
+    end
+end
 local VERDICT = { red = "sum.mc.on", green = "sum.mc.off", yellow = "sum.mc.maybe" }
 local TONE = { red = "bad", green = "good" }
 local function Drained(out, c)
@@ -289,6 +300,7 @@ function Tips.Badge(st, def)
     else
         Times(out, max(st.n, st.removed or 0), st.times, 0)
     end
+    if kind == "applied" then Tips.Uses(out, st) end
     if kind == "stack" and st.max > 0 then Put(out, "row", T("sum.tt.stackmax"), tostring(st.max)) end
     if kind == "hit" then
         Put(out, "row", T("sum.tt.hits"), tostring(st.hits))
@@ -442,6 +454,8 @@ function Tips.Verdict(d)
         text = format(T(key), react, ReadyName(d) or "?")
     elseif why == "dep" and ns.DeathDeps then
         text = ns.DeathDeps.Text(d)
+    elseif d.ruleN then
+        text = format(T(key), d.ruleN)
     else
         text = T("sum.dg.nodmg")
     end
@@ -640,8 +654,8 @@ function Tips.Hit(fight, hit, reason)
     local out = {}
     Head(out, reason)
     local sum = 0
-    for k = 1, #hit.events do sum = sum + hit.events[k].gp end
-    Put(out, "row", T("sum.tt.fine"), format(T("sum.tt.gp"), sum), format("x%d", #hit.events))
+    for k = 1, #hit.events do sum = sum + hit.events[k].n end
+    Put(out, "row", T("sum.tt.fine"), format(T("sum.tt.gp"), sum, ns.Ledger and ns.Ledger.Unit() or T("led.unit.gp")), format("x%d", #hit.events))
     local info = hit.events[1] and hit.events[1].info
     local rule = hit.rule
     if info and info.missing then
@@ -691,16 +705,16 @@ function Tips.GPRow(item, reasonOf)
     for i = 1, #item.hits do
         local hit = item.hits[i]
         local sum = 0
-        for k = 1, #hit.events do sum = sum + hit.events[k].gp end
-        Put(out, "row", reasonOf(hit.rule), format(T("sum.tt.gp"), sum), format("x%d", #hit.events))
+        for k = 1, #hit.events do sum = sum + hit.events[k].n end
+        Put(out, "row", reasonOf(hit.rule), format(T("sum.tt.gp"), sum, ns.Ledger and ns.Ledger.Unit() or T("led.unit.gp")), format("x%d", #hit.events))
         for k = 1, #(hit.shed or {}) do
             Put(out, "sub", ns.Penalties.ShedText(hit.shed[k].hangs, true), nil, nil,
                 ns.Penalties.Grade(hit) == "yellow" and "warn" or nil)
         end
     end
     Put(out, "sep")
-    Put(out, "row", T("sum.tt.gptotal"), format(T("sum.tt.gp"), item.total))
-    Put(out, "row", T("sum.tt.gppending"), format(T("sum.tt.gp"), item.pending), nil,
+    Put(out, "row", T("sum.tt.gptotal"), format(T("sum.tt.gp"), item.total, ns.Ledger.Unit()))
+    Put(out, "row", T("sum.tt.gppending"), format(T("sum.tt.gp"), item.pending, ns.Ledger.Unit()), nil,
         item.pending > 0 and "bad" or "good")
     Put(out, "foot", T("sum.tt.footrow"))
     return out

@@ -30,6 +30,7 @@ local WPN_STALE = 8
 local WPN_FOREIGN = 5
 local WPN_RANGE = 1
 local WPN_CLASS = { DEATHKNIGHT = true, WARRIOR = true, ROGUE = true, PALADIN = true, SHAMAN = true }
+local SPEC_SWAP = { [63644] = true, [63645] = true }
 local ACH_EVENTS = { "CHAT_MSG_ACHIEVEMENT", "CHAT_MSG_GUILD_ACHIEVEMENT" }
 local ACH_LINK = "|Hachievement:(%d+):"
 local ACH_DUP = 30
@@ -425,6 +426,7 @@ local function RecordEvent(ts, ...)
         ns.Trash.Pull(seg, ts)
         if ns.CpuMeter then ns.CpuMeter.Pull(ns.Encounters.Of(dstGUID, dstName, seg.bosses)) end
         ns.BuffSnap.Take(ts)
+        ns.Specs.Take(ts)
         if ns.PullTimer then ns.PullTimer.OnPull(ts) end
         frameHp, framePos = true, true
     end
@@ -434,6 +436,7 @@ local function RecordEvent(ts, ...)
         dummyAt = GetTime()
     end
     if spellId == WPN_AURA and sub == "SPELL_AURA_APPLIED" then WpnAsk(dstGUID, dstName) end
+    if SPEC_SWAP[spellId] and sub == "SPELL_CAST_SUCCESS" then ns.Specs.Swap(srcName) end
     Anchor(ts)
     WatchEnd(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, seg.bosses)
     if not vehicleFight then
@@ -566,7 +569,11 @@ local function CountOnMap()
 end
 local function TryLevel(level)
     levelProbes = levelProbes + 1
-    SetDungeonMapLevel(level)
+    if level ~= 0 then
+        SetDungeonMapLevel(level)
+    elseif not pcall(SetDungeonMapLevel, 0) or GetCurrentMapDungeonLevel() ~= 0 then
+        return 0, 0
+    end
     return CountOnMap()
 end
 local function PickLevel()
@@ -594,11 +601,15 @@ local function PickLevel()
             end
         end
     end
+    if bestOn == 0 and was ~= 0 and first ~= 0 then
+        local c = TryLevel(0)
+        if c > 0 then best, bestOn = 0, c end
+    end
     if bestOn == 0 then best = first or was end
-    if best == 0 then
+    if best == 0 and bestOn == 0 and first ~= 0 then
         SetMapToCurrentZone()
     elseif best ~= GetCurrentMapDungeonLevel() then
-        SetDungeonMapLevel(best)
+        if best ~= 0 then SetDungeonMapLevel(best) else pcall(SetDungeonMapLevel, 0) end
     end
     if bestOn == 0 then return false end
     if best ~= was then levelFixes = levelFixes + 1 end

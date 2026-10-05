@@ -8,7 +8,8 @@ local concat = table.concat
 local ROW_H = 30
 local BTN = 24
 local PLAY_ICON = 18
-local SPEED_W = 36
+local SPEED_W = 30
+local SPEED_GAP = 2
 local CLOCK_W = 76
 local GAP = 4
 local GAP_WIDE = 8
@@ -27,7 +28,7 @@ local GROUP_POOL = 64
 local DEATH_POOL = 64
 local NAMES_MAX = 5
 local SEEK_STEP = 2
-local SPEEDS = { 1, 2, 4, 8, 0.5 }
+local SPEEDS = { 0.5, 1, 2, 4, 8 }
 local PLAY_TEX = "Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up"
 local PAUSE_TEX = "Interface\\TimeManager\\PauseButton"
 local GEAR_ICON = 18
@@ -77,7 +78,10 @@ function Bar.UpdatePlay()
     if not ui then return end
     ui.playIcon:SetTexture(run.playing and PAUSE_TEX or PLAY_TEX)
     ui.playBtn.tipTitle = ns.T(run.playing and "iso.pause" or "iso.play")
-    ui.speedBtn.text:SetText(SpeedText(run.speed))
+    for i = 1, #ui.speedBtns do
+        local b = ui.speedBtns[i]
+        b:SetActive(b.speed == run.speed)
+    end
 end
 function Bar.TogglePlay()
     local run = st.run
@@ -265,15 +269,21 @@ local function BuildPlay(ui)
     ui.playBtn = b
 end
 local function BuildSpeed(ui)
-    local b = Kit.Button(ui.bar)
-    b:SetWidth(SPEED_W)
-    b:SetHeight(BTN)
-    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    b.tipTitle = ns.T("iso.speed.title")
-    b.tip = ns.T("iso.speed.tip")
-    b.tipAnchor = "ANCHOR_TOP"
-    b.onClick = function(_, button) Bar.StepSpeed(button == "RightButton" and -1 or 1) end
-    ui.speedBtn = b
+    ui.speedBtns = {}
+    for i = 1, #SPEEDS do
+        local b = Kit.Button(ui.bar)
+        b:SetWidth(SPEED_W)
+        b:SetHeight(BTN)
+        b.speed = SPEEDS[i]
+        b.text:SetText(SpeedText(b.speed))
+        b.tipTitle = ns.T("iso.speed.title")
+        b.tipAnchor = "ANCHOR_TOP"
+        b.onClick = function(self)
+            st.run.speed = self.speed
+            Bar.UpdatePlay()
+        end
+        ui.speedBtns[i] = b
+    end
 end
 local function BuildScrub(ui)
     local track = ui.bar:CreateTexture(nil, "BACKGROUND")
@@ -327,9 +337,10 @@ function Bar.Resize(width)
     At(ui.playBtn, x, 0)
     Rect("play", x, BTN)
     x = x + BTN + GAP
-    At(ui.speedBtn, x, 0)
-    Rect("speed", x, SPEED_W)
-    x = x + SPEED_W + GAP_WIDE
+    local speedW = #ui.speedBtns * SPEED_W + (#ui.speedBtns - 1) * SPEED_GAP
+    for i = 1, #ui.speedBtns do At(ui.speedBtns[i], x + (i - 1) * (SPEED_W + SPEED_GAP), 0) end
+    Rect("speed", x, speedW)
+    x = x + speedW + GAP_WIDE
     st.scrubX = x
     st.scrubW = max(1, width - x - GAP_WIDE - CLOCK_W - GAP - BTN)
     At(ui.track, x, -TRACK_Y)

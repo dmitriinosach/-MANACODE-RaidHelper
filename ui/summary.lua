@@ -1,4 +1,4 @@
-local _, ns = ...
+local ADDON, ns = ...
 local format = string.format
 local floor = math.floor
 local max = math.max
@@ -356,15 +356,11 @@ local function DrawStats(s, w)
     end
     return Grid.Place(list, MARGIN, MARGIN, w, TOTALMIN, GAP, true)
 end
-local function PopOut()
-    if not fight then return end
-    ns.GetDB().gp.mini = true
-    local f = fight
-    ns.GPList.Changed()
-    if ns.GPMini then ns.GPMini.ShowFight(f) end
+local function OpenPage()
+    if ns.FaultsPage then ns.FaultsPage.Open("give", fight) else ns.Print(ns.T("slash.diag.restart")) end
 end
-local function FitButton(b, key)
-    b.text:SetText(ns.T(key))
+local function FitButton(b, text)
+    b.text:SetText(text)
     b:SetWidth(max(BTNMIN, floor(b.text:GetStringWidth() + 0.5) + BTNPAD))
 end
 local function FailHeadEnter(self)
@@ -413,7 +409,7 @@ local function FailMode(f, inside)
     f.title:ClearAllPoints()
     f.preset:ClearAllPoints()
     if inside then
-        f.head:SetPoint("RIGHT", f.pop, "LEFT", -8, 0)
+        f.head:SetPoint("RIGHT", f.cfg, "LEFT", -8, 0)
         f.head:SetHeight(GPLINE)
         f.title:SetPoint("LEFT", f.head, "LEFT", 10, 0)
         f.preset:SetPoint("LEFT", f.title, "RIGHT", GPGAP, 0)
@@ -433,21 +429,21 @@ end
 local function FailPanel()
     if failPanel then return failPanel end
     local f = CreateFrame("Frame", nil, content)
-    f.all = ns.MakeButton(f, "HTP_FailWatchGPAll")
+    f.all = ns.MakeButton(f, "HTP_FailWatchGPAll", "main")
     f.all:SetHeight(BTNH)
     f.all.onClick = function()
         if fight and gpModel then ns.GPList.Issue(fight, gpModel.all) end
     end
-    f.cfg = ns.MakeButton(f, "HTP_FailWatchGPSettings")
+    f.pop = ns.Kit.IconButton(f, "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\gp.tga", 16, "HTP_FailWatchGPOpen")
+    f.pop:SetPoint("RIGHT", f.all, "LEFT", -6, 0)
+    f.pop.tipTitle = false
+    f.pop.tip = ns.T("sum.gp.open")
+    f.pop.onClick = OpenPage
+    f.cfg = ns.MakeButton(f, "HTP_FailWatchGPSys", "quiet")
     f.cfg:SetHeight(BTNH)
-    f.cfg:SetPoint("RIGHT", f.all, "LEFT", -6, 0)
-    f.cfg.onClick = function()
-        if ns.GPSettings and ns.Shell then ns.Shell.Open("gp") else ns.Print(ns.T("slash.diag.restart")) end
-    end
-    f.pop = ns.MakeButton(f, "HTP_FailWatchGPPop")
-    f.pop:SetHeight(BTNH)
-    f.pop:SetPoint("RIGHT", f.cfg, "LEFT", -6, 0)
-    f.pop.onClick = PopOut
+    f.cfg:SetPoint("RIGHT", f.pop, "LEFT", -6, 0)
+    f.cfg.tip = ns.T("gpset.pick")
+    f.cfg.onClick = function() if ns.FaultsPage then ns.FaultsPage.SystemMenu(f.cfg) end end
     f.head = CreateFrame("Frame", nil, f)
     f.head:EnableMouse(true)
     f.head:SetScript("OnEnter", FailHeadEnter)
@@ -464,16 +460,15 @@ local function FailPanel()
     return f
 end
 local function FailItem(model)
-    if not model or fight.foreign or ns.GetDB().gp.mini then return nil end
+    if not model or fight.foreign then return nil end
     local f = FailPanel()
     FailMode(f, Inside())
     Badges.Skin(f, style.red)
     f.model = model
-    f.title:SetText(format(ns.T("sum.gp.title"), #model.items, model.pending))
-    f.preset:SetText(format(ns.T("sum.gp.preset"), ns.Penalties.Label(ns.Penalties.Active())))
-    FitButton(f.all, "sum.gp.all")
-    FitButton(f.cfg, "sum.gp.cfg")
-    FitButton(f.pop, "gp.popout")
+    f.title:SetText(format(ns.T("sum.gp.title"), model.ready, model.pending, ns.Ledger.Unit()))
+    f.preset:SetText("")
+    FitButton(f.all, format(ns.T("sum.gp.all"), model.pending))
+    FitButton(f.cfg, ns.Ledger.Label())
     if model.pending > 0 then f.all:Enable() else f.all:Disable() end
     return f
 end
@@ -676,7 +671,6 @@ function View.Show(f)
     offset = 0
     summary = f.foreign and f.sum or ns.Summary.Get(f)
     host:Show()
-    if not f.foreign and ns.GetDB().gp.mini and ns.GPMini and ns.GPMini.IsShown() then ns.GPMini.ShowFight(f) end
     Render()
     if not summary and not f.foreign then
         ns.Summary.Compute(f, function(s)

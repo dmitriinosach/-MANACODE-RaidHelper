@@ -3,7 +3,7 @@ local format = string.format
 local floor = math.floor
 local max = math.max
 local min = math.min
-local W = 270
+local W = 440
 local PADX = 8
 local PADY = 7
 local ROWS = 5
@@ -18,10 +18,9 @@ local BAR = 3
 local RETRY = 1
 local RETRY_MAX = 60
 local GEAR = "Interface\\Icons\\INV_Misc_Gear_01"
-local BACK = "Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Up"
 local Mini = {}
 ns.GPMini = Mini
-local frame, titleText, prevBtn, nextBtn, list, busyText, allBtn, openBtn, cfgBtn, backBtn, track, thumb
+local frame, titleText, prevBtn, nextBtn, list, busyText, allBtn, openBtn, cfgBtn, track, thumb
 local current, model
 local follow = true
 local offset = 0
@@ -91,16 +90,16 @@ local function TitleTip()
     local lines = { { ns.EncName(current.boss), "tip.body" } }
     lines[#lines + 1] = { format(ns.T("gpmini.tip.try"), n, total, Outcome(current), Clock(current.to - current.from)),
         "tip.title" }
-    lines[#lines + 1] = { format(ns.T("sum.gp.preset"), ns.Penalties.Label(ns.Penalties.Active())), "text.secondary" }
+    lines[#lines + 1] = { format(ns.T("sum.gp.preset"), ns.Ledger.Label()), "text.secondary" }
     if model then
-        lines[#lines + 1] = { format(ns.T("gpmini.tip.gp"), #model.items, model.pending), "tip.title" }
+        lines[#lines + 1] = { format(ns.T("gpmini.tip.gp"), model.ready, model.pending, ns.Ledger.Unit()), "tip.title" }
     end
     lines[#lines + 1] = { ns.T("gpmini.tip.help"), "tip.dim", true }
     Tip(titleText.hit, lines)
 end
 local function Wheel(delta)
     if not model then return end
-    local most = max(0, #model.items - ROWS)
+    local most = max(0, (list.total or 0) - ROWS)
     local was = offset
     offset = max(0, min(most, offset - delta))
     if offset ~= was then Mini.Refresh() end
@@ -136,15 +135,8 @@ local function OpenSummary()
     ns.Shell.Open("log")
     if ns.Timeline and ns.Timeline.ShowFight then ns.Timeline.ShowFight(f) end
 end
-local function Back()
-    ns.GetDB().gp.mini = false
-    local f = current
-    frame:Hide()
-    ns.GPList.Changed()
-    if f then OpenSummary() end
-end
-local function SmallButton(name, width, label, icon)
-    local b = ns.MakeButton(frame, name)
+local function SmallButton(name, width, label, icon, kind)
+    local b = ns.MakeButton(frame, name, kind)
     b:SetWidth(width)
     b:SetHeight(FOOTH)
     ns.GPList.Small(b)
@@ -169,7 +161,7 @@ local function Build()
     local s = Saved()
     frame = CreateFrame("Frame", "HTP_FailWatchGPMini", UIParent)
     frame:SetWidth(W)
-    frame:SetHeight(PADY * 2 + HEADH + GAP + ROWS * ns.GPList.COMPACT.rowh + GAP + FOOTH)
+    frame:SetHeight(PADY * 2 + HEADH + GAP + ns.GPList.COMPACT.headh + ROWS * ns.GPList.COMPACT.rowh + GAP + FOOTH)
     frame:SetPoint(s.point or "CENTER", UIParent, s.point or "CENTER", s.x or 300, s.y or 0)
     frame:SetFrameStrata("HIGH")
     frame:SetToplevel(true)
@@ -235,28 +227,30 @@ local function Build()
     busyText:SetPoint("TOPLEFT", list, "TOPLEFT", 4, -4)
     busyText:SetWidth(W - PADX * 2 - 8)
     busyText:SetJustifyH("LEFT")
-    allBtn = SmallButton("HTP_FailWatchGPMiniAll", ALLW, "gpmini.all", nil)
+    allBtn = SmallButton("HTP_FailWatchGPMiniAll", ALLW, "gpmini.all", nil, "main")
     allBtn:SetPoint("BOTTOMLEFT", PADX, PADY)
     allBtn.onClick = function()
         if current and model then ns.GPList.Issue(current, model.all) end
     end
     Hint(allBtn, "gpmini.all", function()
-        return model and format(ns.T("gpmini.all.tip"), model.pending, #model.items) or nil
+        return model and format(ns.T("gpmini.all.tip"), model.pending, ns.Ledger.Unit(), model.ready) or nil
     end)
-    openBtn = SmallButton("HTP_FailWatchGPMiniOpen", OPENW, "gpmini.open", nil)
+    openBtn = SmallButton("HTP_FailWatchGPMiniOpen", OPENW, "gpmini.open", nil, "quiet")
     openBtn:SetPoint("LEFT", allBtn, "RIGHT", GAP, 0)
     openBtn.onClick = OpenSummary
     Hint(openBtn, "gpmini.open", ns.T("gpmini.open.tip"))
     cfgBtn = SmallButton("HTP_FailWatchGPMiniCfg", ICONBTN, nil, GEAR)
     cfgBtn:SetPoint("BOTTOMRIGHT", -PADX, PADY)
     cfgBtn.onClick = function()
-        if ns.Shell then ns.Shell.Open("gp") end
+        if ns.FaultsPage then ns.FaultsPage.Open("rules") end
     end
     Hint(cfgBtn, "gpmini.cfg", ns.T("gpmini.cfg.tip"))
-    backBtn = SmallButton("HTP_FailWatchGPMiniBack", ICONBTN, nil, BACK)
-    backBtn:SetPoint("RIGHT", cfgBtn, "LEFT", -GAP, 0)
-    backBtn.onClick = Back
-    Hint(backBtn, "gpmini.back", ns.T("gpmini.back.tip"))
+    local pageBtn = SmallButton("HTP_FailWatchGPMiniPage", OPENW, "gpmini.page", nil, "quiet")
+    pageBtn:SetPoint("LEFT", openBtn, "RIGHT", GAP, 0)
+    pageBtn.onClick = function()
+        if ns.FaultsPage then ns.FaultsPage.Open("give", current) end
+    end
+    Hint(pageBtn, "gpmini.page", ns.T("sum.gp.open"))
 end
 local function PaintHead(fights)
     local i = IndexOf(fights, current)
@@ -298,10 +292,10 @@ local function PaintList()
     end
     busyText:Hide()
     model = ns.GPList.Build(current, summary)
-    offset = max(0, min(offset, #model.items - ROWS))
+    offset = max(0, min(offset, #ns.FaultTable.Rows(model, list.filter) - ROWS))
     list:Draw(current, model, width, offset, ROWS)
     list:Show()
-    PaintBar(#model.items)
+    PaintBar(list.total)
     if model.pending > 0 then allBtn:Enable() else allBtn:Disable() end
 end
 function Mini.Refresh()
@@ -314,7 +308,6 @@ function Mini.Refresh()
     end
     PaintHead(fights)
     PaintList()
-    if ns.GetDB().gp.mini then backBtn:Show() else backBtn:Hide() end
 end
 local function Opened()
     if ns.Panel and ns.Panel.SetAlert then ns.Panel.SetAlert("gp", false) end
@@ -371,7 +364,8 @@ local function Announce(f, s)
         if Mini.IsShown() and follow then Mini.Refresh() end
         return
     end
-    ns.Print(format(ns.T("gp.signal"), #m.items, ns.Plural(#m.items, ns.T("gp.players")), m.pending, ns.EncName(f.boss)))
+    ns.Print(format(ns.T("gp.signal"), m.ready, ns.Plural(m.ready, ns.T("gp.players")), m.pending, ns.Ledger.Unit(),
+        ns.EncName(f.boss)))
     if Mini.IsShown() and follow then Mini.Refresh() end
 end
 local function Check(seg)

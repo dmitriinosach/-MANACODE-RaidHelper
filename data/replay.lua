@@ -77,8 +77,88 @@ ns.replayData = {
         { name = 70445, icon = 70838, prio = 60 },
         { name = 33206, icon = 33206, prio = 78 },
         { name = 47788, icon = 47788, prio = 78 },
-        { name = 32182, icon = 32182, prio = 0, grow = true },
-        { name = 54131, icon = 2825, prio = 0, grow = true },
+        { name = 73070, icon = 73070, prio = 90, boss = ns.ENC.lanathel },
+        { name = 63802, icon = 63802, prio = 95, imp = true, feed = true, link = true, boss = ns.ENC.yogg },
+        { name = 61969, icon = 61969, prio = 95, imp = true, feed = true, boss = ns.ENC.hodir },
+        { name = 32182, icon = 32182, prio = 1, grow = true },
+        { name = 54131, icon = 2825, prio = 1, grow = true },
+        { name = 66233, icon = 66233, prio = 87, cast = 4 },
+        { name = 871, icon = 871, prio = 84 },
+        { name = 48792, icon = 48792, prio = 84 },
+        { name = 498, icon = 498, prio = 84 },
+        { name = 61336, icon = 61336, prio = 84 },
+        { name = 12975, icon = 12975, prio = 83 },
+        { name = 55233, icon = 55233, prio = 83 },
+        { name = 22812, icon = 22812, prio = 82 },
+        { name = 48707, icon = 48707, prio = 81 },
+        { name = 22842, icon = 22842, prio = 80 },
+        { name = 51271, icon = 51271, prio = 80 },
+        { name = 55694, icon = 55694, prio = 79 },
+        { name = 64843, icon = 64843, prio = 84, self = true },
+        { name = 64901, icon = 64901, prio = 72, self = true },
+        { name = 16190, icon = 16190, prio = 72, cast = 12 },
+        { name = 64205, icon = 64205, prio = 74, self = true },
+        { name = 31821, icon = 31821, prio = 68, self = true },
+        { name = 53563, icon = 53563, prio = 55, pre = true },
+        { name = 31884, icon = 31884, prio = 60, focus = true, self = true },
+        { name = 50334, icon = 50334, prio = 60, focus = true, self = true },
+        { name = 47241, icon = 47241, prio = 60, focus = true, self = true },
+        { name = 12292, icon = 12292, prio = 60, focus = true, self = true },
+        { name = 1719, icon = 1719, prio = 60, focus = true, self = true },
+        { name = 3045, icon = 3045, prio = 60, focus = true, self = true },
+        { name = 13750, icon = 13750, prio = 60, focus = true, self = true },
+        { name = 13877, icon = 13877, prio = 58, focus = true, self = true },
+        { name = 49222, icon = 49222, prio = 58, focus = true, self = true },
+        { name = 2565, icon = 2565, prio = 58, focus = true, self = true },
+        { name = 54428, icon = 54428, prio = 58, focus = true, self = true },
+        { name = 31842, icon = 31842, prio = 58, focus = true, self = true },
+        { name = 20216, icon = 20216, prio = 56, focus = true, self = true },
+        { name = 14751, icon = 14751, prio = 56, focus = true, self = true },
+        { name = 16188, icon = 16188, prio = 56, focus = true, self = true },
+        { name = 30823, icon = 30823, prio = 56, focus = true, self = true },
+        { name = 55198, icon = 55198, prio = 56, focus = true, self = true },
+        { name = 10060, icon = 10060, prio = 55, focus = true },
+        { name = 29166, icon = 29166, prio = 55, focus = true },
+        { name = 57933, icon = 57933, prio = 55, focus = true },
+        { name = 49016, icon = 49016, prio = 55, focus = true },
+        { name = 31801, icon = 31801, prio = 40, focus = true, self = true, proof = true },
+        { name = 20375, icon = 20375, prio = 40, focus = true, self = true, proof = true },
+        { name = 53736, icon = 53736, prio = 40, focus = true, self = true },
+        { name = 20166, icon = 20166, prio = 40, focus = true, self = true },
+        { name = 20165, icon = 20165, prio = 40, focus = true, self = true },
+        { name = 21084, icon = 21084, prio = 40, focus = true, self = true },
+        { name = 20164, icon = 20164, prio = 40, focus = true, self = true },
+        { name = 25780, icon = 25780, prio = 38, focus = true, self = true },
+        { name = 2457, icon = 2457, prio = 40, focus = true, self = true },
+        { name = 71, icon = 71, prio = 40, focus = true, self = true },
+        { name = 2458, icon = 2458, prio = 40, focus = true, self = true },
+        { name = 768, icon = 768, prio = 40, focus = true, self = true },
+        { name = 9634, icon = 9634, prio = 40, focus = true, self = true },
+        { name = 24858, icon = 24858, prio = 40, focus = true, self = true },
+        { name = 33891, icon = 33891, prio = 40, focus = true, self = true },
+        { name = 48266, icon = 48266, prio = 40, focus = true, self = true },
+        { name = 48263, icon = 48263, prio = 40, focus = true, self = true },
+        { name = 48265, icon = 48265, prio = 40, focus = true, self = true },
+        { name = 15473, icon = 15473, prio = 40, focus = true, self = true },
+        { name = 61847, icon = 61847, prio = 36, focus = true, self = true },
+        { name = 34074, icon = 34074, prio = 36, focus = true, self = true },
+        { name = 48942, icon = 48942, prio = 30, focus = true, self = true },
+        { name = 54043, icon = 54043, prio = 30, focus = true, self = true },
+        { name = 19746, icon = 19746, prio = 30, focus = true, self = true },
+        { name = 32223, icon = 32223, prio = 30, focus = true, self = true },
+        { name = 48943, icon = 48943, prio = 30, focus = true, self = true },
+        { name = 48945, icon = 48945, prio = 30, focus = true, self = true },
+        { name = 48947, icon = 48947, prio = 30, focus = true, self = true },
+    },
+    control = {
+        prio = 86,
+        ids = {
+            74384, 65543, 65930, 36922, 65809,
+            74531, 75418, 66613, 70980, 67662, 67652, 67656, 66012, 74509, 71163, 15621, 66407, 70432, 20253, 71151,
+            71103, 65801, 65960, 65877, 33786, 71298,
+            51514, 20066,
+        },
+        soft = { prio = 50, ids = { 1604 } },
     },
     shields = {
         [1022] = "hand", [5599] = "hand", [10278] = "hand",
@@ -94,6 +174,8 @@ ns.replayData = {
         ice = { prio = 3, tex = "prism", tone = "sem.rep.shieldIce", k = 1.05 },
         hand = { prio = 2, tex = "dome", tone = "sem.rep.shieldGold", k = 1 },
         ring = { prio = 1, tex = "ring", tone = "sem.rep.shieldRing", k = 1.35 },
+        essLight = { prio = 0.5, tex = "ring", tone = "sem.rep.essLight", k = 1.2 },
+        essDark = { prio = 0.5, tex = "ring", tone = "sem.rep.essDark", k = 1.2 },
     },
     pools = {
         [ns.ENC.lichking] = {
@@ -109,11 +191,20 @@ ns.replayData = {
         [ns.ENC.putricide] = {
             { spell = 70341, tail = 8, r0 = 4, rmax = 16, gap = 20, by = "src", tone = "sem.rep.ooze" },
         },
+        [ns.ENC.anubarak] = {
+            { spell = 67857, life = 900, tail = 0, r0 = 6, rmax = 6, gap = 900, by = "src", tone = "sem.rep.frost" },
+            { spell = 67856, life = 900, tail = 0, r0 = 6, rmax = 6, gap = 900, by = "src", tone = "sem.rep.frost" },
+            { spell = 67855, life = 900, tail = 0, r0 = 6, rmax = 6, gap = 900, by = "src", tone = "sem.rep.frost" },
+            { spell = 66193, life = 900, tail = 0, r0 = 6, rmax = 6, gap = 900, by = "src", tone = "sem.rep.frost" },
+        },
         [ns.ENC.rotface] = {
             { spell = 69774, life = 20, tail = 0, r0 = 6, rmax = 6, gap = 20, tone = "sem.rep.ooze" },
         },
-        [ns.ENC.lanathel] = {
-            { spell = 71264, tail = 4, r0 = 4, rmax = 4, gap = 4, tone = "sem.rep.shadow" },
+        [ns.ENC.ignis] = {
+            { spell = 63475, src = 33221, tail = 2, r0 = 13, rmax = 13, gap = 45, by = "src", tone = "sem.rep.fire" },
+        },
+        [ns.ENC.mimiron] = {
+            { spell = 64566, tail = 2, r0 = 3, rmax = 8, gap = 8, tone = "sem.rep.fire" },
         },
     },
     blasts = {
@@ -124,11 +215,21 @@ ns.replayData = {
             { spell = 71046, r = 20 },
         },
         [ns.ENC.lichking] = {
+            { spell = 73778, r = 5, near = 6 },
             { spell = 73808, r = 5 },
             { spell = 62937, r = 10 },
             { spell = 61968, r = 10 },
         },
         [ns.ENC.saurfang] = { { spell = 72440, r = 12 } },
+        [ns.ENC.mimiron] = { { spell = 63009, r = 3 } },
+        [ns.ENC.hodir] = { { spell = 62457, r = 4 } },
+        [ns.ENC.yogg] = { { spell = 65209, r = 15 } },
+        [ns.ENC.twins] = {
+            { spell = 67240, r = 6, tone = "sem.rep.blastLight" }, { spell = 67239, r = 6, tone = "sem.rep.blastLight" },
+            { spell = 67238, r = 6, tone = "sem.rep.blastLight" }, { spell = 65795, r = 6, tone = "sem.rep.blastLight" },
+            { spell = 67174, r = 6, tone = "sem.rep.blastDark" }, { spell = 67173, r = 6, tone = "sem.rep.blastDark" },
+            { spell = 67172, r = 6, tone = "sem.rep.blastDark" }, { spell = 65808, r = 6, tone = "sem.rep.blastDark" },
+        },
     },
     cones = {
         [ns.ENC.sindragosa] = {
@@ -142,6 +243,23 @@ ns.replayData = {
         [ns.ENC.marrowgar] = {
             { spell = 70814, sub = "SPELL_CAST_SUCCESS", len = 8, deg = 90, dur = 0.8 },
         },
+        [ns.ENC.lichking] = {
+            { spell = 73796, src = 37698, sub = "SPELL_CAST_START", len = 20, deg = 60, dur = 1.5, aim = { 73796 }, win = 2 },
+            { spell = 73802, src = 36701, sub = "SPELL_CAST_START", len = 15, deg = 60, dur = 1.2, aim = { 73802 }, win = 1.5 },
+            { spell = 73790, sub = "SPELL_CAST_START", len = 40, deg = 10, dur = 1, aim = { 73790 }, win = 1 },
+        },
+        [ns.ENC.halion] = {
+            { spell = 74528, sub = "SPELL_CAST_START", len = 60, deg = 60, dur = 2, aim = { 74528 }, tone = "sem.rep.breathFire" },
+            { spell = 75956, sub = "SPELL_CAST_START", len = 60, deg = 60, dur = 2, aim = { 75956 }, tone = "sem.rep.breathShadow" },
+            { spell = 74531, sub = "SPELL_CAST_SUCCESS", len = 30, deg = 90, dur = 0.8, back = true },
+        },
+    },
+    rings = {
+        [40681] = { r = 15, tone = "sem.rep.inferno" },
+    },
+    tints = {
+        { look = "essLight", ids = { 65686, 67222, 67223, 67224 } },
+        { look = "essDark", ids = { 65684, 67176, 67177, 67178 } },
     },
     adds = {
         [36609] = 69037,
@@ -170,6 +288,10 @@ ns.replayData = {
         [36672] = false,
         [36980] = false,
         [37562] = 72833,
+        [34001] = false,
+        [34362] = false,
+        [33169] = false,
+        [40681] = 75887,
     },
     models = {
         [ns.ENC.marrowgar] = { npc = 36612, m2 = "Creature\\BoneGuard\\BoneGuard.m2", h = 34.1, w = 75.7,
@@ -293,3 +415,17 @@ ns.replayData = {
         [ns.ENC.saurfang] = { [28747] = true },
     },
 }
+do
+    local D = ns.replayData
+    for _, list in ipairs({ D.control, D.control.soft }) do
+        for i = 1, #list.ids do
+            D.states[#D.states + 1] = { name = list.ids[i], icon = list.ids[i], prio = list.prio, cc = true }
+        end
+    end
+    for _, tint in ipairs(D.tints) do
+        for _, id in ipairs(tint.ids) do
+            D.states[#D.states + 1] = { name = id, icon = id, prio = 0, bare = true }
+            D.shields[id] = tint.look
+        end
+    end
+end

@@ -210,6 +210,13 @@ local function Blocked(lock, id)
     end
     return false
 end
+local TALENT_FRESH = 8 * 3600
+local function Owns(def, p, t, at)
+    local tal = def and def.talent
+    if not tal then return true end
+    if p.tree then return p.tree == tal.tree and (not p.class or p.class == tal.class) end
+    return t - at <= TALENT_FRESH
+end
 function DG.Seen(p, t, defs, times, ids)
     local reg = not defs and ns.Encounters and ns.Encounters.Pressed and ns.Encounters.Pressed(p.name)
     defs = defs or ns.defensives or {}
@@ -224,7 +231,7 @@ function DG.Seen(p, t, defs, times, ids)
     end
     for k = 1, reg and #reg or 0, 2 do
         local at, id = reg[k], reg[k + 1]
-        has[id] = true
+        if Owns(defs[id], p, t, at) then has[id] = true end
         if at <= t and (not all[id] or at > all[id]) then all[id] = at end
     end
     return { has = has, win = win, all = all }
@@ -291,13 +298,21 @@ local function Marked(s)
 end
 local function RuleHit(ctx, p, d)
     for i = 1, #ctx.rules do
-        if ns.Penalties.DeathMatch(ctx.rules[i], d) then return true end
+        if ns.Penalties.DeathMatch(ctx.rules[i], d) then return ctx.rules[i] end
     end
     for i = 1, #ctx.marked do
         local m = ctx.marked[i]
         if ns.Summary.DeathFits(ctx.s, m.bd, p, d, m.spells, m.srcs) then return true end
     end
-    return false
+    return nil
+end
+local function RuleTicks(rule, d)
+    local want, n = {}, 0
+    for i = 1, #(rule.spells or {}) do want[ns.SpellKey(rule.spells[i]) or rule.spells[i]] = true end
+    for i = 1, #(d.recent or {}) do
+        if want[d.recent[i].key] then n = n + 1 end
+    end
+    return n
 end
 local function Alive(q, t)
     for k = 1, #q.deathInfo do
@@ -367,7 +382,13 @@ local function Judge(ctx, p, d)
         return Set(d, d.link and "yellow" or "green", d.link and "link" or "ally")
     end
     local fast = react < ns.Tune("react")
-    if RuleHit(ctx, p, d) then
+    local rule = RuleHit(ctx, p, d)
+    if type(rule) == "table" and rule.sure then
+        d.ruleN = RuleTicks(rule, d)
+        Set(d, "red", rule.sure)
+        return Ready(d, ready, n, fast)
+    end
+    if rule then
         local short = pre ~= nil and pre < HALF and (d.gap or 0) >= GAP_MIN and most > 0
             and (d.gapHeal or 0) < HEAL_LOW * most
         if short or d.mass then

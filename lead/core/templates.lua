@@ -13,7 +13,7 @@ local function copySlots(slots)
             specs = {}
             for k, v in ipairs(s.specs) do specs[k] = v end
         end
-        out[i] = { role = s.role, specs = specs, cap = s.cap, mark = s.mark }
+        out[i] = { role = s.role, specs = specs, cap = s.cap, mark = s.mark, grp = s.grp }
     end
     return out
 end
@@ -220,6 +220,15 @@ function T.SetMark(key, i, mark)
     if not was or was.mark == mark then return end
     local t = T.Edit(key)
     t.slots[i].mark = mark
+    ns.Session.Changed()
+end
+function T.SetGroup(key, i, g)
+    g = tonumber(g)
+    if g and (g < 1 or g > 8 or g ~= math.floor(g)) then g = nil end
+    local was = slotOf(key, i)
+    if not was or was.grp == g then return end
+    local t = T.Edit(key)
+    t.slots[i].grp = g
     ns.Session.Changed()
 end
 function T.MarkSlots(key, mark)

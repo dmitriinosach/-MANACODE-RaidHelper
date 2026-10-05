@@ -68,6 +68,7 @@ local PCT_SIZE = 9
 local PCT_H = 10
 local PCT_GAP = 1
 local GROW_K = 1.15
+local MC_K = 1.3
 local GROW_TIME = 0.2
 local Figs = { KINDS = KINDS, ARC_N = ARC_N }
 ns.ReplayFigs = Figs
@@ -219,10 +220,10 @@ function Figs.ConfigAdd(fig, icon, hasHp)
     end
 end
 function Figs.Grow(fig, elapsed)
-    local want = fig.grow and GROW_K or 1
+    local want = fig.mcOn and MC_K or fig.grow and GROW_K or 1
     local k = fig.growK or 1
     if k == want then return k end
-    local step = (GROW_K - 1) / GROW_TIME * max(0, elapsed or 0)
+    local step = (max(want, k) - 1) / GROW_TIME * max(0, elapsed or 0)
     if k < want then k = min(want, k + step) else k = max(want, k - step) end
     fig.growK = k
     return k

@@ -140,6 +140,14 @@ local function Range()
     end
     Out(out, true)
 end
+local function RaidOnMap()
+    local n, on = GetNumRaidMembers() or 0, 0
+    for i = 1, n do
+        local px, py = GetPlayerMapPosition("raid" .. i)
+        if (px or 0) > 0 or (py or 0) > 0 then on = on + 1 end
+    end
+    return on, n
+end
 local function Map()
     local level = GetCurrentMapDungeonLevel() or 0
     local levels = GetNumDungeonMapLevels() or 0
@@ -148,13 +156,36 @@ local function Map()
         good and tostring(good) or T("dev.no")) }
     local x, y = GetPlayerMapPosition("player")
     out[2] = format(T("dev.map.me"), x or 0, y or 0)
-    local n, on = GetNumRaidMembers() or 0, 0
-    for i = 1, n do
-        local px, py = GetPlayerMapPosition("raid" .. i)
-        if (px or 0) > 0 or (py or 0) > 0 then on = on + 1 end
-    end
+    local on, n = RaidOnMap()
     out[3] = format(T("dev.map.raid"), on, n)
     if WorldMapFrame and WorldMapFrame:IsShown() then out[4] = T("dev.map.world") end
+    Out(out, true)
+end
+local function Floors()
+    if WorldMapFrame and WorldMapFrame:IsShown() then
+        Out({ T("dev.floors.world") }, true)
+        return
+    end
+    local was, area = GetCurrentMapDungeonLevel() or 0, GetCurrentMapAreaID() or 0
+    local levels = GetNumDungeonMapLevels() or 0
+    local out = { format(T("dev.floors.head"), GetRealZoneText() or "?", tostring(GetMapInfo() or "?"), area, was,
+        levels) }
+    for level = 0, levels do
+        local ok = pcall(SetDungeonMapLevel, level)
+        local now = GetCurrentMapDungeonLevel() or 0
+        if not ok or now ~= level then
+            out[#out + 1] = format(T("dev.floors.no"), level, now)
+        else
+            local x, y = GetPlayerMapPosition("player")
+            local on, n = RaidOnMap()
+            out[#out + 1] = format(T("dev.floors.row"), level, x or 0, y or 0, on, n)
+        end
+    end
+    if (GetCurrentMapAreaID() or 0) ~= area then SetMapToCurrentZone() end
+    if (GetCurrentMapDungeonLevel() or 0) ~= was then
+        if was > 0 then SetDungeonMapLevel(was) else SetMapToCurrentZone() end
+    end
+    out[#out + 1] = format(T("dev.floors.back"), GetCurrentMapDungeonLevel() or 0)
     Out(out, true)
 end
 local function Cmds()
@@ -435,7 +466,7 @@ local function BuildChecks(y, inner)
     Group(T("dev.g.checks"), y, inner)
     y = y - CAP
     local checks = {
-        { "range", Range }, { "models", Models }, { "map", Map },
+        { "range", Range }, { "models", Models }, { "map", Map }, { "floors", Floors },
         { "cmd", Cmds }, { "auto", Auto }, { "lock", Lock },
         { "calib", Calib }, { "methods", Methods }, { "cpu", Cpu },
         { "cpulast", CpuLast }, { "probe", FrameProbe }, { "dummy", Dummy },

@@ -37,7 +37,7 @@ function M.New(fight)
     local soul = D and D.souls and D.souls[fight.boss]
     if not trap and #zones == 0 and not bomb and #chase == 0 and not winter and not soul then return nil end
     local ctx = { fight = fight, players = fight.players or {}, trap = trap, casts = {}, booms = {}, open = {},
-                  btgt = {}, zones = zones, zCast = {}, zSum = {}, zHit = {}, zCasts = {}, inst = {}, byGuid = {},
+                  btgt = {}, zones = zones, zCast = {}, zSum = {}, zDrop = {}, zHit = {}, zCasts = {}, inst = {}, byGuid = {},
                   marks = {}, bomb = bomb, bCasts = {}, bHits = {}, chase = chase, cAura = {}, cSpawn = {},
                   cNpc = {}, cSeen = {}, cWait = {}, cLone = {}, cOpen = {}, runs = {},
                   winter = winter, rings = {}, wHits = {}, soul = soul, sOpen = {}, spans = {} }
@@ -59,6 +59,7 @@ function M.New(fight)
         local z = zones[zi]
         for k, v in pairs(Set(z.cast, zi)) do ctx.zCast[k] = v end
         for k, v in pairs(Set(z.summon, zi)) do ctx.zSum[k] = v end
+        for k, v in pairs(Set(z.drop, zi)) do ctx.zDrop[k] = v end
         for k, v in pairs(Set(z.hit, zi)) do ctx.zHit[k] = v end
         ctx.zCasts[zi] = {}
     end
@@ -265,6 +266,8 @@ function M.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1, amount)
     end
     local zi = ctx.zCast[id]
     if zi and CAST[sub] then AddCast(ctx.zCasts[zi], ts, target, src) end
+    zi = ctx.zDrop[id]
+    if zi and target and REMOVED[sub] then AddCast(ctx.zCasts[zi], ts, target, src) end
     zi = ctx.zSum[id]
     if zi and sub == "SPELL_SUMMON" then
         local inst = { zi = zi, t = ts, guid = dstGUID, hits = {} }
@@ -476,6 +479,42 @@ local function AddRing(L, ring, W)
     L.plR0[j], L.plR1[j], L.plN[j] = W.r0, W.r, 0
     L.plDef[j] = { tone = W.tone, r0 = W.r0, rmax = W.r, tail = 0, gap = 0, follow = true }
 end
+local function Pulse(hits, ring, W)
+    local last, gaps, t0 = {}, {}, nil
+    for i = 1, #hits do
+        local h = hits[i]
+        if h.t >= ring.on and h.t <= ring.to then
+            if not t0 or h.t < t0 then t0 = h.t end
+            local p = last[h.name]
+            local gap = p and h.t - p or 0
+            if gap > W.tick * 0.5 and gap < W.tick * 1.5 then gaps[#gaps + 1] = gap end
+            last[h.name] = h.t
+        end
+    end
+    tsort(gaps)
+    ring.tick = #gaps > 0 and gaps[floor(#gaps / 2) + 1] or W.tick
+    ring.t0 = t0 or ring.on + W.full
+end
+function M.Waves(ring, W, t, rs, as)
+    if t < ring.on or t >= (ring.to or t) then return 0, 0 end
+    local tick, t0 = ring.tick or W.tick, ring.t0 or ring.on
+    local beat = (t - t0) / tick
+    local k = floor(beat)
+    local n = 0
+    while n < W.waves do
+        local born = t0 + k * tick
+        local age = t - born
+        if age >= W.wave or born < ring.on then break end
+        n = n + 1
+        local u = age / W.wave
+        rs[n] = W.r0 + (W.r - W.r0) * u
+        as[n] = (1 - u) * min(1, age / W.waveIn)
+        k = k - 1
+    end
+    if t < ring.on + W.full then return n, 0 end
+    local fall = 1 - (beat - floor(beat))
+    return n, W.edge + (1 - W.edge) * fall * fall
+end
 local function SpanOrder(a, b)
     if a.from ~= b.from then return a.from < b.from end
     return a.name < b.name
@@ -538,6 +577,7 @@ function M.Done(ctx, L, posAt, ppy, fc, byK)
     for i = 1, W and #ctx.rings or 0 do
         local ring = ctx.rings[i]
         ring.to = ring.to or ctx.fight.to
+        Pulse(ctx.wHits, ring, W)
         AddRing(L, ring, W)
     end
     L.mech = { traps = ctx.traps, booms = ctx.booms, zones = ctx.zoneOut, bombs = ctx.floorBombs, casts = ctx.bCasts,

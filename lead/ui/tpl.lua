@@ -10,7 +10,7 @@ local DEL_WINDOW = 4
 local pane, listPool, rowPool, checkPool
 local left, mid, right, scroll, child
 local nameE, sizeSel, copyBtn, delBtn, resetBtn, addBtn
-local roleSel, capE, rmBtn, lockFs, emptyFs
+local roleSel, grpSel, capE, rmBtn, lockFs, emptyFs
 local markCap, markBtns
 local curKey, curSlot
 local delAsk, delAskAt = nil, 0
@@ -28,6 +28,18 @@ local function roleOptions()
         out[#out + 1] = { key = r, label = ns.T("slot_" .. r) }
     end
     return out
+end
+local function groupOptions(auto)
+    local out = { { key = 0, label = ns.T("slotGrpAuto", auto) } }
+    for g = 1, ns.Layout.GROUPS do out[#out + 1] = { key = g, label = ns.T("grpN", g) } end
+    return out
+end
+local function autoGroup(tpl, i)
+    local slots = {}
+    for k, s in ipairs(tpl.slots) do
+        slots[k] = { role = s.role, grp = k ~= i and s.grp or nil }
+    end
+    return ns.Layout.Groups({ size = tpl.size, slots = slots })[i]
 end
 local function newListBtn()
     local b = ns.MakeKitButton(left)
@@ -165,12 +177,13 @@ local function refresh()
     end
     if lock then sizeSel:Disable() sizeSel.tip = ns.T("tipTplEditLocked") else sizeSel:Enable() sizeSel.tip = nil end
     rowPool:Reset()
+    local groups = ns.Layout.Groups(tpl)
     for i, s in ipairs(tpl.slots) do
         local r = rowPool:Acquire()
         r:ClearAllPoints()
         r:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -(i - 1) * ROW_H)
         ns.Icon.Role(r.role, ns.ROLE_GROUP[s.role])
-        r.text:SetText(i .. ". " .. (s.cap or ns.T("slot_" .. s.role)))
+        r.text:SetText(i .. ". " .. (s.cap or ns.T("slot_" .. s.role)) .. "  " .. ns.Hex("text.muted") .. ns.T("slotGrpShort", groups[i]) .. "|r")
         r.text:ClearAllPoints()
         if s.mark then
             ns.Icon.Mark(r.mark, s.mark)
@@ -206,6 +219,7 @@ local function refresh()
     if not slot then
         curSlot = nil
         roleSel:Hide()
+        grpSel:Hide()
         capE:Hide()
         rmBtn:Hide()
         paintMarks(nil)
@@ -213,10 +227,12 @@ local function refresh()
     else
         emptyFs:Hide()
         roleSel:Show()
+        grpSel:Show()
         capE:Show()
         rmBtn:Show()
         paintMarks(slot)
         roleSel:SetOptions(roleOptions(), slot.role)
+        grpSel:SetOptions(groupOptions(autoGroup(tpl, curSlot)), slot.grp or 0)
         if not capE.focused then capE:SetValue(slot.cap or "") end
         local on = {}
         for _, k in ipairs(slot.specs or {}) do on[k] = true end
@@ -345,6 +361,15 @@ local function build()
     roleSel.onPick = function(k)
         unfocus()
         ns.Tpl.SetRole(curKey, curSlot, k)
+    end
+    grpSel = ns.MakeSelect(right)
+    grpSel:SetPoint("LEFT", roleSel, "RIGHT", 8, 0)
+    grpSel:SetWidth(90)
+    grpSel.tipTitle = ns.T("slotGrpTitle")
+    grpSel.tip = ns.T("tipSlotGrp")
+    grpSel.onPick = function(k)
+        unfocus()
+        ns.Tpl.SetGroup(curKey, curSlot, k ~= 0 and k or nil)
     end
     capE = ns.MakeEdit(right)
     capE:SetPoint("TOPLEFT", roleSel, "BOTTOMLEFT", 0, -8)

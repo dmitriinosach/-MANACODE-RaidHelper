@@ -1,7 +1,7 @@
-local _, ns = ...
+local ADDON, ns = ...
 local format = string.format
-local ICON = "Interface\\GossipFrame\\GossipGossipIcon"
-local PAD = 4
+local ICON = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\spam.tga"
+local VIEWS = { "chron", "short" }
 local View = {}
 ns.ProofView = View
 local hovered
@@ -24,7 +24,8 @@ function View.Preview(ask, out)
     return out
 end
 function View.Lines(ask)
-    local out = { { kind = "head", left = format(T("proof.tip.head"), ns.Proof.Label(ns.Proof.Channel())) } }
+    local out = { { kind = "head", left = format(T("proof.tip.head"), ns.Proof.Label(ns.Proof.Channel()),
+        T("proof.view." .. ns.Proof.View())) } }
     View.Preview(ask, out)
     out[#out + 1] = { kind = "foot", left = T("proof.tip.btn") }
     return out
@@ -53,7 +54,7 @@ function View.Click(mark, button)
     return true
 end
 local function PaintSetting(b)
-    local label = format(T("proof.set"), ns.Proof.Label(ns.Proof.Channel()))
+    local label = format(T("proof.set"), ns.Proof.Label(ns.Proof.Channel()), T("proof.view." .. ns.Proof.View()))
     b.text:SetText(label)
     b.tipTitle = label
 end
@@ -71,15 +72,26 @@ function View.Menu(anchor)
             end,
         }
     end
+    menu[#menu + 1] = { text = T("proof.menu.view"), isTitle = true, notCheckable = true }
+    local view = ns.Proof.View()
+    for i = 1, #VIEWS do
+        local v = VIEWS[i]
+        menu[#menu + 1] = {
+            text = T("proof.view." .. v),
+            checked = v == view,
+            func = function()
+                ns.Proof.SetView(v)
+                for k = 1, #settings do PaintSetting(settings[k]) end
+            end,
+        }
+    end
     ns.Tip.Hide()
     ns.Kit.Menu(menu, anchor)
 end
 local function ButtonEnter(self)
-    ns.Kit.Tint(self.icon, "text.good")
     if self.ask then ns.Tip.Show(self, View.Lines(self.ask)) end
 end
 local function ButtonLeave(self)
-    ns.Kit.Tint(self.icon, "text.muted")
     ns.Tip.Hide()
 end
 local function ButtonClick(self, button)
@@ -91,19 +103,12 @@ local function ButtonClick(self, button)
     if self.ask then ns.Proof.Send(self.ask) end
 end
 function View.Button(parent, size)
-    local b = CreateFrame("Button", nil, parent)
-    b:SetWidth(size + PAD)
-    b:SetHeight(size + PAD)
+    local b = ns.Kit.IconButton(parent, ICON, size)
+    b.tipTitle = false
     b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    b.icon = b:CreateTexture(nil, "OVERLAY")
-    b.icon:SetWidth(size)
-    b.icon:SetHeight(size)
-    b.icon:SetPoint("CENTER", 0, 0)
-    b.icon:SetTexture(ICON)
-    ns.Kit.Tint(b.icon, "text.muted")
-    b:SetScript("OnEnter", ButtonEnter)
-    b:SetScript("OnLeave", ButtonLeave)
-    b:SetScript("OnClick", ButtonClick)
+    b:HookScript("OnEnter", ButtonEnter)
+    b:HookScript("OnLeave", ButtonLeave)
+    b.onClick = ButtonClick
     return b
 end
 function View.Repaint()

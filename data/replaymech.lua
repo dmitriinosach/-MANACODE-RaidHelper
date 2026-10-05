@@ -24,11 +24,16 @@ ns.replayMech = {
         [ns.ENC.rotface] = {
             { npc = 36897, spawn = { 69674, 71224, 73022, 73023 }, swing = true, link = 1.5 },
         },
+        [ns.ENC.anubarak] = {
+            { npc = 34564, aura = { 67574 } },
+        },
     },
     winters = {
         [ns.ENC.lichking] = {
             aura = { 68981, 74270, 74271, 74272, 72259, 74273, 74274, 74275 }, hit = { 68983, 73791, 73792, 73793 },
             castTime = 2.5, full = 0.9, r0 = 4, r = 45, tone = "sem.rep.winter",
+            tick = 1, wave = 2.5, waves = 4, waveIn = 0.15, edge = 0.35,
+            waveTone = "sem.rep.winterWave", edgeTone = "sem.rep.winterEdge",
         },
     },
     souls = {
@@ -38,6 +43,12 @@ ns.replayMech = {
         [ns.ENC.council] = {
             { cast = { 72037 }, summon = { 72037 }, hit = { 71944, 72812, 72813, 72814 }, life = 30, r = 12, link = 3,
               tone = "sem.rep.vortex" },
+        },
+        [ns.ENC.xt002] = {
+            { summon = { 64235 }, drop = { 64234 }, hit = { 64206 }, life = 180, r = 10, link = 0.5,
+              tone = "sem.rep.shadow" },
+            { summon = { 64203 }, drop = { 63024 }, hit = { 64208 }, life = 180, r = 5, link = 0.5,
+              tone = "sem.rep.shadow" },
         },
     },
     realms = {

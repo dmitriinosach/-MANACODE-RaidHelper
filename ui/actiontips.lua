@@ -84,6 +84,7 @@ function Tips.cc(st, def)
     local out = {}
     Head(out, T(def.tip))
     Put(out, "row", T("sum.tt.ok"), format(T("sum.tt.of"), st.hits, st.n), nil, Tone(st.hits, st.n))
+    ns.BadgeTips.Uses(out, st, true)
     for k = 1, min(TIMES, st.n) do
         local ok = st.res[k] == "ok"
         local what

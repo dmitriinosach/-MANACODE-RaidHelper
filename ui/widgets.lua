@@ -1,6 +1,6 @@
 local _, ns = ...
-function ns.MakeButton(parent, name)
-    local b = ns.Kit.Button(parent, name)
+function ns.MakeButton(parent, name, kind)
+    local b = ns.Kit.Button(parent, name, kind)
     b.tipTitle = false
     return b
 end

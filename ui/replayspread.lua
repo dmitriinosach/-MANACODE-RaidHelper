@@ -2,6 +2,9 @@ local ADDON, ns = ...
 local max = math.max
 local min = math.min
 local RIM = "Interface\\AddOns\\" .. ADDON .. "\\art\\replay\\rim"
+local DISC = "Interface\\AddOns\\" .. ADDON .. "\\art\\replay\\disc256"
+local FLASH_DRAW = 8
+local FLASH = 1
 local RING_DRAW = 30
 local MARK_DRAW = 30
 local MARK_YD = 1.6
@@ -11,12 +14,12 @@ ns.ReplaySpreadView = V
 local Kit = ns.Kit
 local Replay = ns.Replay
 local Core = ns.ReplaySpread
-local rings, marks = {}, {}
-local used = { ring = 0, mark = 0 }
+local rings, marks, flashes = {}, {}, {}
+local used = { ring = 0, mark = 0, flash = 0 }
 local view
 local hw, hh = 0, 0
 local near, bad = {}, {}
-local probe = { rings = 0, bad = 0, marks = 0, list = {} }
+local probe = { rings = 0, bad = 0, marks = 0, flashes = 0, own = 0, list = {} }
 function V.Build(v, layer)
     view = v
     for i = 1, RING_DRAW do
@@ -32,16 +35,24 @@ function V.Build(v, layer)
         tex:Hide()
         marks[i] = tex
     end
+    for i = 1, FLASH_DRAW do
+        local tex = layer:CreateTexture(nil, "BORDER")
+        tex:SetTexture(DISC)
+        tex:Hide()
+        flashes[i] = tex
+    end
 end
-local function HideFrom(n, m)
+local function HideFrom(n, m, f)
+    f = f or 0
     for i = n + 1, used.ring do rings[i]:Hide() end
     for i = m + 1, used.mark do marks[i]:Hide() end
-    used.ring, used.mark = n, m
+    for i = f + 1, used.flash do flashes[i]:Hide() end
+    used.ring, used.mark, used.flash = n, m, f
 end
 function V.Use(scene)
     if not view then return end
-    used.ring, used.mark = #rings, #marks
-    HideFrom(0, 0)
+    used.ring, used.mark, used.flash = #rings, #marks, #flashes
+    HideFrom(0, 0, 0)
 end
 local function PutDisc(tex, sx, sy, rw, rh)
     if rw * 2 > MAX_PX or sx + rw < -hw or sx - rw > hw or sy + rh < -hh or sy - rh > hh then
@@ -72,7 +83,7 @@ end
 function V.Place(scene, cam, t)
     if not view then return end
     local list = scene.layers and scene.layers.spread
-    local n, m, nb = 0, 0, 0
+    local n, m, nb, f, no = 0, 0, 0, 0, 0
     local plist = probe.list
     if list and #list > 0 then
         hw, hh = cam.w / 2, cam.h / 2
@@ -82,14 +93,31 @@ function V.Place(scene, cam, t)
             local w = list[i]
             if w.from > t or n >= RING_DRAW then break end
             local st = states[w.k]
+            if w.ht and t >= w.ht and t < w.ht + FLASH and st and st.vis then
+                local r, g, b, a = Kit.Color(w.tone or "sem.rep.spread")
+                local fade = 1 - (t - w.ht) / FLASH
+                if f < FLASH_DRAW and Ring(flashes[f + 1], cam, scene, st, w.r) then
+                    f = f + 1
+                    flashes[f]:SetVertexColor(r, g, b, a * 0.6 * fade)
+                end
+                for q = 1, #w.hk do
+                    local sj = states[w.hk[q]]
+                    if m < MARK_DRAW and sj and sj.vis and not sj.dead and Ring(marks[m + 1], cam, scene, sj, MARK_YD) then
+                        m = m + 1
+                        no = no + 1
+                        marks[m]:SetVertexColor(r, g, b, a * fade)
+                    end
+                end
+            end
             if w.to > t and st and st.vis and not st.dead then
-                local cnt = Core.Near(states, w.k, w.r * ppy, near)
+                local cnt = w.stack and 0 or Core.Near(states, w.k, w.r * ppy, near)
                 for j = 1, cnt do bad[near[j]] = true end
                 local tex = rings[n + 1]
                 local ok, yd = Ring(tex, cam, scene, st, w.r)
                 if ok then
                     n = n + 1
-                    tex:SetVertexColor(Kit.Color(cnt > 0 and "sem.rep.spreadBad" or "sem.rep.spread"))
+                    tex:SetVertexColor(Kit.Color(w.stack and (w.tone or "sem.rep.spread")
+                        or (cnt > 0 and "sem.rep.spreadBad" or "sem.rep.spread")))
                     if cnt > 0 then nb = nb + 1 end
                     local e = plist[n] or {}
                     e.k, e.yd, e.bad, e.tex = w.k, yd, cnt > 0, tex
@@ -99,11 +127,14 @@ function V.Place(scene, cam, t)
         end
         for j in pairs(bad) do
             if m >= MARK_DRAW then break end
-            if Ring(marks[m + 1], cam, scene, states[j], MARK_YD) then m = m + 1 end
+            if Ring(marks[m + 1], cam, scene, states[j], MARK_YD) then
+                m = m + 1
+                marks[m]:SetVertexColor(Kit.Color("sem.rep.spreadBad"))
+            end
         end
     end
-    probe.rings, probe.bad, probe.marks = n, nb, m
-    HideFrom(n, m)
+    probe.rings, probe.bad, probe.marks, probe.flashes, probe.own = n, nb, m, f, no
+    HideFrom(n, m, f)
 end
 function V.Probe()
     return probe

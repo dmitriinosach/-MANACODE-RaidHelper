@@ -318,7 +318,6 @@ end
 function RaidSum.GP(res)
     if res.gp then return res.gp, res.gpOffer, res.gpIssued end
     if not (ns.Penalties and ns.Penalties.Evaluate) then return nil, 0, 0 end
-    local issued = ns.GetDB().gpIssued or {}
     local by, offer, given = {}, 0, 0
     for k = 1, #res.sums do
         local e = res.sums[k]
@@ -332,13 +331,15 @@ function RaidSum.GP(res)
             for h = 1, #hits do
                 local evs = hits[h].events
                 for x = 1, #evs do
-                    local gp = evs[x].gp or 0
+                    local gp = evs[x].n or 0
                     row.offer = row.offer + gp
                     row.n = row.n + 1
                     offer = offer + gp
-                    if issued[evs[x].key] then
-                        row.issued = row.issued + gp
-                        given = given + gp
+                    local done = ns.Ledger and ns.Ledger.Done(evs[x].key)
+                    if done then
+                        local n = done.n or gp
+                        row.issued = row.issued + n
+                        given = given + n
                     end
                 end
             end

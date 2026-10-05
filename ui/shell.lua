@@ -119,6 +119,7 @@ local function SelectNow(key)
     local e = entries[key]
     if not e then return end
     local old = current and entries[current]
+    local switching = old and old ~= e and old.page and old.page:IsShown()
     if old and old ~= e and old.page then
         old.page:Hide()
         if old.def.OnHide then old.def.OnHide(old.page) end
@@ -145,6 +146,7 @@ local function SelectNow(key)
     end
     if e.def.OnShow then e.def.OnShow(e.page) end
     SizePage(e)
+    if switching then Kit.FadeIn(e.page) end
 end
 local Select = ns.Prof.Wrap("ui.page", SelectNow)
 local function TabOrder(a, b)
@@ -246,10 +248,10 @@ local function SetScale(v)
     PaintZoom()
     if ns.Settings and ns.Settings.Refresh then ns.Settings.Refresh() end
 end
-local function MakeZoom(label, tip, delta)
+local function MakeZoom(label, tip, delta, font)
     local b = Kit.Button(frame)
     b:SetFrameLevel(frame:GetFrameLevel() + TABLEVEL)
-    b.text:SetFontObject("GameFontNormal")
+    b.text:SetFontObject(font or "GameFontNormal")
     b:SetText(ns.T(label))
     b.tip = ns.T(tip)
     b.onClick = function() SetScale(Scale() + delta) end
@@ -271,7 +273,7 @@ local function PlaceZoom()
     about:SetWidth(size)
     about:SetHeight(size)
     about:ClearAllPoints()
-    about:SetPoint("RIGHT", zoomOut, "LEFT", -ZOOMGAP, 0)
+    about:SetPoint("RIGHT", zoomOut, "LEFT", -ZOOMGAP * 3, 0)
 end
 local function PlaceNote()
     if not frame then return end

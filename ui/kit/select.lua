@@ -186,7 +186,7 @@ function Kit.Menu(items, anchor)
         if it.isTitle and not title and #options == 0 then
             title = it.text
         elseif not it.isTitle then
-            options[#options + 1] = { key = i, label = it.text, disabled = it.disabled, tipTitle = false }
+            options[#options + 1] = { key = i, label = it.text, disabled = it.disabled, tip = it.tip, tipTitle = false }
             if it.checked then value = i end
         end
     end

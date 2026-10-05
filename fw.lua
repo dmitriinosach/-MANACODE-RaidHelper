@@ -532,14 +532,19 @@ local function ApplyDefaults(db)
     if type(db.gpIssued) ~= "table" then db.gpIssued = {} end
     if type(db.prices) ~= "table" then db.prices = {} end
     if type(db.gp) ~= "table" then db.gp = {} end
-    if type(db.gp.preset) ~= "string" then db.gp.preset = "spartans" end
-    if type(db.gp.own) ~= "table" then db.gp.own = {} end
+    db.gp.preset, db.gp.own, db.gp.epgpReason = nil, nil, nil
     if type(db.gp.manual) ~= "table" then db.gp.manual = {} end
     if type(db.gp.bump) ~= "table" then db.gp.bump = {} end
-    if type(db.gp.mini) ~= "boolean" then db.gp.mini = false end
+    db.gp.mini = nil
     if type(db.gp.proof) ~= "string" then db.gp.proof = "RAID" end
     if type(db.gp.guild) ~= "table" then db.gp.guild = {} end
-    if db.gp.epgpReason ~= nil and type(db.gp.epgpReason) ~= "string" then db.gp.epgpReason = nil end
+    if type(db.faults) ~= "table" then db.faults = {} end
+    local fl = db.faults
+    if fl.system ~= "gp" and fl.system ~= "ep" and fl.system ~= "dkp" then fl.system = "gp" end
+    if type(fl.done) ~= "table" then fl.done = {} end
+    if type(fl.log) ~= "table" then fl.log = {} end
+    if type(fl.rules) ~= "table" then fl.rules = {} end
+    if type(fl.hot) ~= "table" then fl.hot = {} end
     if db.recording ~= true then db.recording = false end
     if db.recAuto ~= 1 then
         db.recAuto = 1

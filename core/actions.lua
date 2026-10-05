@@ -281,7 +281,7 @@ local function KickEnd(st, p, who, ts, dstName, a1, a2, res, what)
     end
     k.res[i], k.sp[i] = res, type(what) == "string" and what or false
 end
-local function Cc(st, p, ts, sub, dstName, a2, a4, sk)
+local function Cc(st, p, ts, sub, dstName, a1, a2, a4, sk)
     local i = st.cc
     local c = p.badges[i]
     if sub == "SPELL_AURA_REMOVED" then
@@ -302,7 +302,9 @@ local function Cc(st, p, ts, sub, dstName, a2, a4, sk)
     c.res = c.res or {}
     c.outs = c.outs or {}
     c.open = c.open or {}
+    c.ids = c.ids or {}
     c.spells[n], c.keys[n], c.res[n], c.outs[n] = a2, sk, ok and "ok" or tostring(a4), false
+    c.ids[n] = tonumber(a1) or false
     if ok then
         c.hits = c.hits + 1
         c.open[dstName] = n
@@ -401,7 +403,7 @@ function Acts.Feed(st, ts, sub, who, srcGUID, srcName, srcFlags, dstGUID, dstNam
             KickEnd(st, p, who, ts, dstName, a1, a2, "miss", a4)
         end
     elseif st.cc and st.ccSet[sk] then
-        if srcName == who and dstName and byName[dstName] then Cc(st, p, ts, sub, dstName, a2, a4, sk) end
+        if srcName == who and dstName and byName[dstName] then Cc(st, p, ts, sub, dstName, a1, a2, a4, sk) end
     elseif st.wrath and st.wrathSet[sk] then
         if srcName == who and ns.NpcKey(dstGUID) ~= st.boss and dstFlags and band(dstFlags, F_HOSTILE) > 0 then
             Wrath(st, p, ts, sub)
@@ -486,6 +488,46 @@ local function CcCasts(st)
         for sp, v in pairs(tries) do p.casts[sp] = math.max(p.casts[sp] or 0, v) end
     end
 end
+local function ByUse(a, b)
+    if a.ok ~= b.ok then return a.ok > b.ok end
+    if a.n ~= b.n then return a.n > b.n end
+    return tostring(a.key) < tostring(b.key)
+end
+function Acts.Uses(st)
+    local list, by = {}, {}
+    local keys, ids, tg, res = st.keys or {}, st.ids or {}, st.tg or st.notes or {}, st.res
+    for n = 1, #keys do
+        local k = keys[n]
+        local u = by[k]
+        if not u then
+            u = { key = k, id = ids[n], name = st.spells and st.spells[n] or nil, n = 0, ok = 0, tg = {}, seen = {} }
+            by[k] = u
+            list[#list + 1] = u
+        end
+        u.n = u.n + 1
+        if not res or res[n] == "ok" then u.ok = u.ok + 1 end
+        local who = tg[n]
+        if who and not u.seen[who] then
+            u.seen[who] = true
+            u.tg[#u.tg + 1] = who
+        end
+    end
+    tsort(list, ByUse)
+    return list
+end
+local function UseIcons(st)
+    local s = st.s
+    for i = 1, #s.badges do
+        local bd = s.badges[i]
+        if bd.kind == "cc" or (bd.kind == "applied" and bd.spells and #bd.spells > 1) then
+            for k = 1, #s.players do
+                local c = s.players[k].badges[i]
+                local top = c and c.keys and Acts.Uses(c)[1]
+                if top and top.id then c.icon = top.id end
+            end
+        end
+    end
+end
 function Acts.Finish(st)
     for k = 1, #st.rezzes do
         local r, name = st.rezzes[k], st.rezWho[k]
@@ -496,6 +538,7 @@ function Acts.Finish(st)
         end
     end
     CcCasts(st)
+    UseIcons(st)
     SunderEnd(st)
 end
 function Acts.Grade(n, hits, forced)

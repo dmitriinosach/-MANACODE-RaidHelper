@@ -31,6 +31,10 @@ local DEATH_SNAP = 1
 local SNAP = 0.25
 local BOSS_GAP = 3
 local LEAD_HOLD = 10
+local SOUL_HOLD = 2
+local PLAN_STEP = 0.5
+local PLAN_JOIN = 3
+local PLAN_MIN = 3
 local PRE_PULL = 5
 local LOOK = 0.5
 local MOVE_YPS = 1.5
@@ -61,7 +65,8 @@ Replay.RUN_YPS = RUN_YPS
 Replay.MOVE_YPS = MOVE_YPS
 Replay.ROOMS = {
     lanathel = { boss = ns.ENC.lanathel, floor = 6, tex = "lanathel", cx = 511, cy = 310, r = 160, pack = "ICC" },
-    lichking = { boss = ns.ENC.lichking, floor = 7, tex = "lichking", cx = 500, cy = 349, r = 255, pack = "ICC" },
+    lichking = { boss = ns.ENC.lichking, floor = 7, tex = "lichking", cx = 500, cy = 349, r = 255, pack = "ICC",
+                 alias = { [0] = { 41.601306, -28.455828, 41.601233, -27.249835 } } },
     marrowgar = { boss = ns.ENC.marrowgar, floor = 1, tex = "marrowgar", cx = 390, cy = 402, r = 66, pack = "ICC" },
     deathwhisper = { boss = ns.ENC.deathwhisper, floor = 1, tex = "deathwhisper", cx = 390, cy = 540, r = 66, pack = "ICC" },
     gunship = { boss = ns.ENC.gunship, floor = 2, tex = "gunship", cx = 625, cy = 318, r = 100 },
@@ -72,7 +77,7 @@ Replay.ROOMS = {
     council = { boss = ns.ENC.council, floor = 5, tex = "council", cx = 518, cy = 95, r = 58, pack = "ICC" },
     valithria = { boss = ns.ENC.valithria, floor = 5, tex = "valithria", cx = 769, cy = 475, r = 85, pack = "ICC" },
     sindragosa = { boss = ns.ENC.sindragosa, floor = 4, tex = "sindragosa", cx = 365, cy = 115, r = 78, pack = "ICC" },
-    frostmourne = { boss = ns.ENC.lichking, floor = 8, tex = "frostmourne", cx = 470, cy = 365, r = 130 },
+    frostmourne = { boss = ns.ENC.lichking, floor = 8, tex = "frostmourne", cx = 470, cy = 365, r = 130, pack = "ICC" },
     halion = { boss = ns.ENC.halion, floor = 0, tex = "halion", cx = 495, cy = 366, r = 80, pack = "RS" },
     leviathan = { boss = ns.ENC.leviathan, floor = 1, tex = "leviathan", cx = 493, cy = 276, r = 36 },
     razorscale = { boss = ns.ENC.razorscale, floor = 1, tex = "razorscale", cx = 537, cy = 175, r = 14 },
@@ -201,6 +206,17 @@ local function PickFloor(fight, frames)
         count[fr.floor] = (count[fr.floor] or 0) + n
         area[fr.floor] = area[fr.floor] or fr.map
     end
+    for _, room in pairs(Replay.ROOMS) do
+        if room.boss == fight.boss and room.alias then
+            for level in pairs(room.alias) do
+                if count[level] then
+                    count[room.floor] = (count[room.floor] or 0) + count[level]
+                    area[room.floor] = area[room.floor] or area[level]
+                    count[level] = nil
+                end
+            end
+        end
+    end
     local best, bestN = nil, -1
     for level, n in pairs(count) do
         local weight = n
@@ -283,14 +299,15 @@ function Replay.IndexAt(tr, t)
 end
 Replay.NewTrack = NewTrack
 Replay.Push = Push
-local function FillTracks(fight, frames, level, byName, tracks, deaths)
+local function FillTracks(fight, frames, level, byName, tracks, deaths, alias)
     local lastRef, lastHp, lastX, lastY, deadAt, gapped = {}, {}, {}, {}, {}, {}
     local total = #frames
     for i = 1, total do
         ns.Jobs.Step(8)
         ns.Jobs.Progress(i, total)
         local fr = frames[i]
-        local onFloor = fr.floor == level
+        local k = fr.floor ~= level and alias and alias[fr.floor] or nil
+        local onFloor = fr.floor == level or k ~= nil
         for name, p in pairs(fr.units) do
             local tr = byName[name]
             if not tr and fight.players[name] then
@@ -298,14 +315,19 @@ local function FillTracks(fight, frames, level, byName, tracks, deaths)
                 byName[name] = tr
                 tracks[#tracks + 1] = tr
             end
-            local valid = onFloor and (p.x > 0 or p.y > 0)
+            local px, py = p.x, p.y
+            local valid = onFloor and (px > 0 or py > 0)
+            if valid and k then
+                px, py = px * k[1] + k[2], py * k[3] + k[4]
+                valid = px >= 0 and px <= 1 and py >= 0 and py <= 1
+            end
             if tr and (lastRef[name] ~= p or valid == (gapped[name] or false)) then
                 lastRef[name] = p
                 local hp = p.hp or 0
                 local top = p.max
                 local pct = hp > 0 and (top and top > 0 and min(1, hp / top) or 1) or 0
-                local x = valid and p.x * AREA_W or -1
-                local y = valid and p.y * AREA_H or -1
+                local x = valid and px * AREA_W or -1
+                local y = valid and py * AREA_H or -1
                 if hp == 0 and (lastHp[name] or 1) > 0 then
                     deadAt[name] = fr.t
                     local mx = valid and x or lastX[name]
@@ -321,33 +343,6 @@ local function FillTracks(fight, frames, level, byName, tracks, deaths)
             end
         end
     end
-end
-local function FillSide(fight, frames, level)
-    local room
-    for _, r in pairs(Replay.ROOMS) do
-        if r.boss == fight.boss and r.floor ~= level then room = r end
-    end
-    if not room then return nil end
-    local byName, n = {}, 0
-    for i = 1, #frames do
-        ns.Jobs.Step(8)
-        local fr = frames[i]
-        if fr.floor == room.floor then
-            for name, p in pairs(fr.units) do
-                if fight.players[name] and not p.stale and (p.x > 0 or p.y > 0) then
-                    local tr = byName[name]
-                    if not tr then
-                        tr = NewTrack(name)
-                        byName[name] = tr
-                    end
-                    Push(tr, fr.t, p.x * AREA_W, p.y * AREA_H, 1, 0)
-                    n = n + 1
-                end
-            end
-        end
-    end
-    if n == 0 then return nil end
-    return { room = room, tracks = byName, n = n }
 end
 local function Moved(tr, i)
     return tr.x[i] ~= tr.x[i - 1] or tr.y[i] ~= tr.y[i - 1]
@@ -420,13 +415,14 @@ local function FillGaps(scene, frames)
     local ts, kinds, since, floors = {}, {}, {}, {}
     local n, prev, prevFloor = 0, false, nil
     local level = scene.floor
+    local alias = scene.room and scene.room.alias or {}
     for i = 1, #frames do
         ns.Jobs.Step(8)
         local fr = frames[i]
         local kind = false
         if fr.lost then
             kind = "lost"
-        elseif fr.floor ~= level then
+        elseif fr.floor ~= level and not alias[fr.floor] then
             kind = "away"
         end
         if kind ~= prev or (kind == "away" and fr.floor ~= prevFloor) then
@@ -573,6 +569,66 @@ local function FirstSeen(fight, frames)
     end
     return first
 end
+local function FillAlt(fight, frames, scene)
+    local room
+    for _, r in pairs(Replay.ROOMS) do
+        if r.boss == fight.boss and r.floor ~= scene.floor then room = r end
+    end
+    if not room then return nil end
+    local byName, on, lastHp, deadAt, lastX, lastY = {}, {}, {}, {}, {}, {}
+    local deaths, n = {}, 0
+    for i = 1, #frames do
+        ns.Jobs.Step(8)
+        local fr = frames[i]
+        local here = fr.floor == room.floor
+        for name, p in pairs(fr.units) do
+            if fight.players[name] then
+                local hp = p.hp or 0
+                local valid = here and not p.stale and (p.x > 0 or p.y > 0)
+                local x = valid and p.x * AREA_W or -1
+                local y = valid and p.y * AREA_H or -1
+                if hp == 0 and (lastHp[name] or 1) > 0 then
+                    deadAt[name] = fr.t
+                    local mx = valid and x or (on[name] and lastX[name])
+                    if mx then deaths[#deaths + 1] = { t = fr.t, x = mx, y = valid and y or lastY[name], name = name } end
+                elseif hp > 0 then
+                    deadAt[name] = nil
+                end
+                lastHp[name] = hp
+                if valid or on[name] then
+                    local tr = byName[name]
+                    if not tr then
+                        tr = NewTrack(name)
+                        byName[name] = tr
+                    end
+                    local top = p.max
+                    local pct = hp > 0 and (top and top > 0 and min(1, hp / top) or 1) or 0
+                    Push(tr, fr.t, x, y, pct, deadAt[name] or 0)
+                    if valid then
+                        n = n + 1
+                        lastX[name], lastY[name] = x, y
+                    end
+                    on[name] = valid
+                end
+            end
+        end
+    end
+    local alt = {
+        fight = fight, from = scene.from, pull = scene.pull, to = scene.to, area = scene.area, floor = room.floor,
+        room = room, ppy = PixelsPerYard(scene.area, room.floor), tracks = {}, states = {}, deaths = deaths,
+        bossState = NewState(), base = scene, byName = {}, n = n, mended = 0,
+    }
+    for k = 1, #scene.tracks do
+        local name = scene.tracks[k].name
+        alt.tracks[k] = byName[name] or NewTrack(name)
+        alt.states[k] = NewState()
+        alt.byName[name] = k
+    end
+    FillGaps(alt, frames)
+    FitCircle(alt)
+    FillGrid(alt)
+    return alt
+end
 function Replay.Build(fight, frames)
     ns.Jobs.Band(0, 0.1)
     local level, area = PickFloor(fight, frames)
@@ -582,8 +638,7 @@ function Replay.Build(fight, frames)
         tracks = {}, states = {}, deaths = {}, bossState = NewState(),
     }
     ns.Jobs.Band(0.1, 0.6)
-    FillTracks(fight, frames, level, {}, scene.tracks, scene.deaths)
-    scene.side = FillSide(fight, frames, level)
+    FillTracks(fight, frames, level, {}, scene.tracks, scene.deaths, scene.room and scene.room.alias)
     local mended = 0
     for k = 1, #scene.tracks do mended = mended + Mend(scene.tracks[k]) end
     scene.mended = mended
@@ -594,11 +649,12 @@ function Replay.Build(fight, frames)
     scene.boss, scene.bossName = FillBoss(frames, level)
     FitCircle(scene)
     FillGrid(scene)
+    scene.alt = FillAlt(fight, frames, scene)
     return scene
 end
-local function SampleOne(st, tr, t, ppy, boss)
+local function SampleOne(st, tr, t, ppy, boss, lead)
     local i = Seek(tr, t)
-    if i == 0 and tr.n > 0 and tr.t[1] - t <= LEAD_HOLD then i = 1 end
+    if i == 0 and lead and tr.n > 0 and tr.t[1] - t <= LEAD_HOLD then i = 1 end
     local x, y = PosAt(tr, i, t, nil)
     if x < 0 then
         st.vis = false
@@ -658,9 +714,10 @@ function Replay.Sample(scene, t)
     local tracks, states, ppy = scene.tracks, scene.states, scene.ppy
     local shown = 0
     local nearD, nearK = nil, nil
+    local lead = scene.base == nil
     for k = 1, #tracks do
         local st = states[k]
-        SampleOne(st, tracks[k], t, ppy, boss)
+        SampleOne(st, tracks[k], t, ppy, boss, lead)
         if st.vis then
             shown = shown + 1
             if boss.vis and not st.dead then
@@ -675,6 +732,121 @@ function Replay.Sample(scene, t)
         boss.hx, boss.hy = (states[nearK].x - boss.x) / d, (states[nearK].y - boss.y) / d
     end
     return shown
+end
+local function InWave(scene, name, t)
+    local souls = scene.layers and scene.layers.souls
+    local waves = souls and souls.waves
+    for w = 1, waves and #waves or 0 do
+        local wave = waves[w]
+        if wave.from > t then break end
+        if t < wave.to then
+            for i = 1, #wave.spans do
+                local s = wave.spans[i]
+                if s.name == name and s.from <= t and (t < s.to or s.died) then return true end
+            end
+        end
+    end
+    return false
+end
+local function OnAlt(tr, t)
+    return tr ~= nil and tr.n > 0 and PosAt(tr, Seek(tr, t), t, SOUL_HOLD) >= 0
+end
+function Replay.Inside(scene, t, inside, list)
+    for k in pairs(inside) do inside[k] = nil end
+    for i = #list, 1, -1 do list[i] = nil end
+    local souls = scene.layers and scene.layers.souls
+    local waves = souls and souls.waves
+    for w = 1, waves and #waves or 0 do
+        local wave = waves[w]
+        if wave.from > t then break end
+        if t < wave.to then
+            for i = 1, #wave.spans do
+                local s = wave.spans[i]
+                if s.from <= t and (t < s.to or s.died) and not inside[s.name] then
+                    inside[s.name] = true
+                    list[#list + 1] = s.name
+                end
+            end
+        end
+    end
+    local alt = scene.alt
+    for k = 1, alt and #alt.tracks or 0 do
+        local tr = alt.tracks[k]
+        if not inside[tr.name] and OnAlt(tr, t) then
+            inside[tr.name] = true
+            list[#list + 1] = tr.name
+        end
+    end
+    tsort(list)
+    return #list
+end
+function Replay.InsideOne(scene, name, t)
+    if InWave(scene, name, t) then return true end
+    local alt = scene.alt
+    local k = alt and alt.byName[name]
+    return k ~= nil and OnAlt(alt.tracks[k], t)
+end
+function Replay.Plan(scene)
+    if scene.plan then return scene.plan end
+    local raw, out = {}, {}
+    scene.plan = out
+    if not scene.alt then return out end
+    local inside, list, on = {}, {}, false
+    local tracks = scene.tracks
+    local t = scene.from
+    while t <= scene.to do
+        Replay.Inside(scene, t, inside, list)
+        local alive, inAlive = 0, 0
+        for k = 1, #tracks do
+            local tr = tracks[k]
+            local i = Bisect(tr.t, tr.n, t)
+            if not (i > 0 and tr.dz[i] > 0) then
+                alive = alive + 1
+                if inside[tr.name] then inAlive = inAlive + 1 end
+            end
+        end
+        local want = inAlive * 2 > alive
+        if want ~= on then
+            raw[#raw + 1] = t
+            on = want
+        end
+        t = t + PLAN_STEP
+    end
+    if on then raw[#raw + 1] = scene.to + PLAN_STEP end
+    local joined = {}
+    for i = 1, #raw - 1, 2 do
+        local n = #joined
+        if n > 0 and raw[i] - joined[n] < PLAN_JOIN then
+            joined[n] = raw[i + 1]
+        else
+            joined[n + 1], joined[n + 2] = raw[i], raw[i + 1]
+        end
+    end
+    for i = 1, #joined - 1, 2 do
+        if joined[i + 1] - joined[i] >= PLAN_MIN then
+            local n = #out
+            out[n + 1], out[n + 2] = joined[i], joined[i + 1]
+        end
+    end
+    return out
+end
+function Replay.AltAt(scene, t)
+    local plan = scene.plan
+    local n = plan and #plan or 0
+    if n == 0 then return false end
+    return Bisect(plan, n, t) % 2 == 1
+end
+function Replay.Prep(scene)
+    local alt = scene.alt
+    if not alt then return end
+    local L = scene.layers
+    if L and alt.layers == nil then
+        local over = { np = 0, nh = 0, nb = 0, nc = 0, adds = {}, hitbox = 0 }
+        if L.chase ~= nil then over.chase = false end
+        if L.spread ~= nil then over.spread = false end
+        alt.layers = setmetatable(over, { __index = L })
+    end
+    Replay.Plan(scene)
 end
 function Replay.Aim(cam)
     cam.c, cam.s = cos(cam.angle), sin(cam.angle)

@@ -94,7 +94,7 @@ local function Stint(st, g, ts)
         who = st.pend and st.pendT and ts - st.pendT <= ENTER_GAP and st.pend or "?"
     end
     local a = max(ts, st.from)
-    d = { who = who, a = a, z = a, slows = 0, casts = 0, eats = 0, energy = 0, dmg = 0, heal = {}, egive = {} }
+    d = { who = who, a = a, z = a, slows = 0, casts = 0, eats = 0, energy = 0, dmg = 0, heal = {}, egive = {}, eby = {} }
     st.guids[g] = d
     st.order[#st.order + 1] = g
     return d
@@ -110,7 +110,8 @@ local function Abom(st, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, a
     local g = (srcKey == npc and srcGUID) or (dstKey == npc and dstGUID) or nil
     if not g then return end
     local d = Stint(st, g, ts)
-    if srcKey == npc then
+    local selfPower = dstKey == npc and (sub == "SPELL_ENERGIZE" or sub == "SPELL_PERIODIC_ENERGIZE")
+    if srcKey == npc and not selfPower then
         local driven = srcFlags ~= nil and band(srcFlags, F_BY_PLAYER) > 0
         if driven and ts > d.z then d.z = min(ts, st.to) end
         if sk and sk == st.slow and sub == "SPELL_AURA_APPLIED" and dstKey and st.targets[dstKey] then
@@ -142,6 +143,15 @@ local function Abom(st, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, a
             ab.power = true
             local key = (who or srcName or "?") .. " — " .. tostring(a2 or "?")
             d.egive[key] = (d.egive[key] or 0) + amount
+            if who and who ~= d.who then
+                local by = d.eby[who]
+                if not by then
+                    by = {}
+                    d.eby[who] = by
+                end
+                local sp = tostring(a2 or "?")
+                by[sp] = (by[sp] or 0) + amount
+            end
         elseif find(sub, "_HEAL", 1, true) and who and st.byName[who] then
             local eff = (tonumber(a4) or 0) - (tonumber(a5) or 0)
             if eff > 0 then
@@ -309,7 +319,7 @@ local function Drivers(b)
         local r = by[d.who]
         if not r then
             r = { who = d.who, secs = 0, slows = 0, casts = 0, eats = 0, energy = 0, dmg = 0, heal = {}, got = 0,
-                  stints = {}, egive = {} }
+                  stints = {}, egive = {}, eby = {} }
             by[d.who] = r
             list[#list + 1] = r
         end
@@ -317,6 +327,14 @@ local function Drivers(b)
         r.slows, r.casts, r.eats = r.slows + d.slows, r.casts + d.casts, r.eats + d.eats
         r.energy, r.dmg = r.energy + d.energy, r.dmg + d.dmg
         for k, v in pairs(d.egive or {}) do r.egive[k] = (r.egive[k] or 0) + v end
+        for giver, sp in pairs(d.eby or {}) do
+            local to = r.eby[giver]
+            if not to then
+                to = {}
+                r.eby[giver] = to
+            end
+            for k, v in pairs(sp) do to[k] = (to[k] or 0) + v end
+        end
         for healer, v in pairs(d.heal) do
             r.heal[healer] = (r.heal[healer] or 0) + v
             r.got = r.got + v
@@ -351,8 +369,20 @@ local function DriverTip(b, r, class)
     for i = 1, #hs do Put(out, "sub", hs[i].k, Short(hs[i].v)) end
     return out
 end
-local function HealerTip(b, healer, v, class)
-    local out = { { kind = "head", left = healer, right = Short(v), class = class } }
+local function HealerTip(b, healer, v, class, energy)
+    local out = { { kind = "head", left = healer, right = v > 0 and Short(v) or nil, class = class } }
+    if energy then
+        local es, sum = {}, 0
+        for spell, x in pairs(energy) do
+            es[#es + 1] = { k = spell, v = x }
+            sum = sum + x
+        end
+        tsort(es, function(x, y) return x.v > y.v end)
+        Put(out, "row", T("sum.ab.energy.gave"), tostring(sum))
+        for i = 1, #es do Put(out, "sub", es[i].k, "+" .. es[i].v) end
+        if v <= 0 then return out end
+        Put(out, "sep")
+    end
     Put(out, "row", T("sum.ab.healrow"), Short(b.heals[healer] or v))
     local parts = {}
     for spell, x in pairs(b.hsp[healer] or {}) do parts[#parts + 1] = { k = spell, v = x } end
@@ -374,13 +404,32 @@ local function AbomView(b, classOf)
                       r.eats > 0 and { id = b.ids.eat or b.def.icons.eat, n = r.eats } or false },
             lines = DriverTip(b, r, class),
         }
-        local hs = {}
-        for healer, v in pairs(r.heal) do hs[#hs + 1] = { k = healer, v = v } end
-        tsort(hs, function(x, y) return x.v > y.v end)
+        local hs, seen = {}, {}
+        for healer, v in pairs(r.heal) do
+            hs[#hs + 1] = { k = healer, v = v, e = 0 }
+            seen[healer] = hs[#hs]
+        end
+        for giver, sp in pairs(r.eby or {}) do
+            local e = 0
+            for _, x in pairs(sp) do e = e + x end
+            local h = seen[giver]
+            if not h then
+                h = { k = giver, v = 0, e = 0 }
+                hs[#hs + 1] = h
+            end
+            h.e = e
+        end
+        tsort(hs, function(x, y)
+            if x.v ~= y.v then return x.v > y.v end
+            return x.e > y.e
+        end)
         for k = 1, #hs do
-            local hc = classOf and classOf(hs[k].k) or nil
-            rows[#rows + 1] = { who = hs[k].k, class = hc, sub = true, cells = b.power and { "", "", Short(hs[k].v) } or { "", Short(hs[k].v) },
-                                marks = { false, false }, lines = HealerTip(b, hs[k].k, hs[k].v, hc) }
+            local h = hs[k]
+            local hc = classOf and classOf(h.k) or nil
+            local heal = h.v > 0 and Short(h.v) or ""
+            rows[#rows + 1] = { who = h.k, class = hc, sub = true,
+                                cells = b.power and { "", h.e > 0 and tostring(h.e) or "", heal } or { "", heal },
+                                marks = { false, false }, lines = HealerTip(b, h.k, h.v, hc, h.e > 0 and r.eby[h.k] or nil) }
         end
     end
     local tip = { { kind = "head", left = T(b.def.label), right = Short(b.total) } }

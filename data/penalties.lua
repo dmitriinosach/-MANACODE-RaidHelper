@@ -127,6 +127,8 @@ ns.penaltyPresets = {
             { key = "lich.pull", boss = LICH, text = "sum.p.lich.pull", kind = "manual", gp = 200 },
             { key = "lich.bomb", boss = LICH, text = "sum.p.lich.bomb", kind = "death",
               srcs = { 39189 }, gp = 200 },
+            { key = "lich.winter", boss = LICH, text = "sum.p.lich.winter", kind = "death",
+              spells = { 68983, 73791, 73792, 73793 }, sure = "winter", gp = 400 },
             { key = "halion.meteor", boss = HALION, text = "sum.p.halion.meteor", kind = "death",
               spells = { 75879 }, gp = 400 },
             { key = "halion.breath", boss = HALION, text = "sum.p.halion.breath", kind = "death",

@@ -4,11 +4,11 @@ local format = string.format
 local concat = table.concat
 local tremove = table.remove
 local tsort = table.sort
-local tinsert = table.insert
 local DEFAULT = "spartans"
 local HIT_GAP = 2
 local DEATH_WINDOW = 6
 local MELEE_SHARE = 0.15
+local MAX_SHORT = 64
 local MELEE_CLASS = { WARRIOR = true, ROGUE = true, DEATHKNIGHT = true, PALADIN = true }
 local RANGED_CLASS = { HUNTER = true, MAGE = true, WARLOCK = true, PRIEST = true }
 local SKULL = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8"
@@ -18,101 +18,38 @@ local ICONS = {
     mindps = "Interface\\Icons\\Ability_Warrior_BattleShout",
     manual = "Interface\\Icons\\INV_Misc_Note_02",
 }
-local FIELDS = { on = true, mode = true, gp = true, wipe = true, step = true, reason = true }
+local SYS = {
+    gp = { sum = "gp", wipe = "wipe", step = "step" },
+    ep = { sum = "ep", wipe = "epwipe", step = "epstep" },
+    dkp = { sum = "dkp", wipe = "dkpwipe", step = "dkpstep" },
+}
+local NUMS = { gp = true, wipe = true, step = true, ep = true, epwipe = true, epstep = true, dkp = true,
+    dkpwipe = true, dkpstep = true }
+local FIELDS = { on = true, mode = true, short = true }
+for f in pairs(NUMS) do FIELDS[f] = true end
+local MODES = { once = true, each = true, grow = true }
 local Penalties = {}
 ns.Penalties = Penalties
+Penalties.SYS = SYS
+Penalties.NUMS = NUMS
 local function Store()
     return ns.GetDB().gp
+end
+local NONE = {}
+local function Mine()
+    local f = ns.GetDB().faults
+    return f and f.rules or NONE
 end
 function Penalties.FightKey(fight)
     return string.format("%s|%d", fight.boss, floor(fight.from))
 end
-function Penalties.Active()
-    local name = Store().preset
-    if ns.penaltyPresets[name] or Store().own[name] then return name end
-    return DEFAULT
-end
-function Penalties.IsOwn(name)
-    return Store().own[name] ~= nil
-end
-function Penalties.Names()
-    local out = {}
-    for name in pairs(ns.penaltyPresets) do out[#out + 1] = name end
-    for name in pairs(Store().own) do out[#out + 1] = name end
-    tsort(out)
-    return out
-end
-function Penalties.Label(name)
-    local p = ns.penaltyPresets[name]
-    return p and p.name or name
-end
-function Penalties.BaseOf(name)
-    local own = Store().own[name]
-    return own and own.base or nil
-end
-function Penalties.Select(name)
-    if ns.penaltyPresets[name] or Store().own[name] then Store().preset = name end
+function Penalties.Label()
+    local p = ns.penaltyPresets[DEFAULT]
+    return p and p.name or DEFAULT
 end
 function Penalties.Clean(name)
     local s = tostring(name or ""):gsub("|", ""):gsub("^%s+", ""):gsub("%s+$", "")
     return s
-end
-local function UpperA(b)
-    return "\208" .. string.char(b:byte() + 32)
-end
-local function UpperR(b)
-    return "\209" .. string.char(b:byte() - 32)
-end
-local function Lower(s)
-    s = s:lower():gsub("\208\129", "\209\145"):gsub("\208([\144-\159])", UpperA):gsub("\208([\160-\175])", UpperR)
-    return s
-end
-function Penalties.Taken(name, except)
-    local want = Lower(name)
-    for key, p in pairs(ns.penaltyPresets) do
-        if Lower(key) == want or Lower(p.name or key) == want then return true end
-    end
-    for own in pairs(Store().own) do
-        if own ~= except and Lower(own) == want then return true end
-    end
-    return false
-end
-local function Dup(t)
-    local c = {}
-    for f, v in pairs(t) do c[f] = v end
-    return c
-end
-function Penalties.Copy(name)
-    name = Penalties.Clean(name)
-    if name == "" or Penalties.Taken(name) then return false end
-    local active = Penalties.Active()
-    local own = Store().own[active]
-    local copy = { base = own and own.base or active, rules = {}, extra = {} }
-    if own then
-        for key, over in pairs(own.rules) do
-            local c = Dup(over)
-            if next(c) then copy.rules[key] = c end
-        end
-        for i = 1, #(own.extra or {}) do copy.extra[i] = Dup(own.extra[i]) end
-    end
-    Store().own[name] = copy
-    Store().preset = name
-    return true
-end
-function Penalties.Rename(old, name)
-    name = Penalties.Clean(name)
-    local own = Store().own[old]
-    if not own or name == "" or name == old or Penalties.Taken(name, old) then return false end
-    Store().own[old] = nil
-    Store().own[name] = own
-    if Store().preset == old then Store().preset = name end
-    return true
-end
-function Penalties.Delete(name)
-    if not Store().own[name] then return false end
-    Store().own[name] = nil
-    if Store().preset == name then Store().preset = DEFAULT end
-    return true
 end
 local function Merge(base, over)
     local r = setmetatable({}, { __index = base })
@@ -122,25 +59,9 @@ local function Merge(base, over)
     end
     return r
 end
-local function Insert(list, rule)
-    local at
-    for i = 1, #list do
-        if list[i].boss == rule.boss then at = i end
-    end
-    if at then tinsert(list, at + 1, rule) else list[#list + 1] = rule end
-end
-local function Extra(x, from)
-    local r = setmetatable({}, { __index = x })
-    r.kind = "manual"
-    r.text = x.reason
-    r.custom = from
-    r.on = x.on ~= false
-    return r
-end
 local baseOver, baseRules
-local function BaseRules(name)
-    local preset = ns.penaltyPresets[name] or ns.penaltyPresets[DEFAULT]
-    if preset ~= ns.penaltyPresets[DEFAULT] then return preset.rules end
+local function BaseRules()
+    local preset = ns.penaltyPresets[DEFAULT]
     local over = ns.GPGuild and ns.GPGuild.Overlay()
     if not over then return preset.rules end
     if baseOver == over then return baseRules end
@@ -149,35 +70,50 @@ local function BaseRules(name)
         local base = preset.rules[i]
         out[i] = over.rules[base.key] and Merge(base, over.rules[base.key]) or base
     end
-    for i = 1, #over.extra do Insert(out, Extra(over.extra[i], "guild")) end
     baseOver, baseRules = over, out
     return out
 end
-local function OwnExtra(own, key)
-    local list = own and own.extra
-    if not list then return nil end
-    for i = 1, #list do
-        if list[i].key == key then return list[i], i end
-    end
-    return nil
-end
 function Penalties.All()
-    local active = Penalties.Active()
-    local own = Store().own[active]
-    local rules = BaseRules(own and own.base or active)
+    local rules = BaseRules()
+    local mine = Mine()
     local out = {}
-    for i = 1, #rules do
-        local base = rules[i]
-        out[i] = Merge(base, own and own.rules[base.key])
-    end
-    if own and own.extra then
-        for i = 1, #own.extra do Insert(out, Extra(own.extra[i], "own")) end
-    end
+    for i = 1, #rules do out[i] = Merge(rules[i], mine[rules[i].key]) end
     return out
 end
-local function Was(rule, field)
+function Penalties.Amount(rule, sys, what)
+    local f = SYS[sys or "gp"] or SYS.gp
+    what = what or "sum"
+    local v = rule[f[what]]
+    if v == nil and f ~= SYS.gp then v = rule[SYS.gp[what]] end
+    return v
+end
+function Penalties.Reason(rule)
+    return ns.T(rule.text)
+end
+function Penalties.Short(rule)
+    if type(rule.short) == "string" and rule.short ~= "" then return rule.short end
+    return ns.L["sum.p." .. rule.key .. ".s"] or Penalties.Reason(rule)
+end
+local function ShortText(s)
+    if ns.GPGuild then return ns.GPGuild.Text(s, MAX_SHORT) end
+    return Penalties.Clean(s):sub(1, MAX_SHORT)
+end
+local ALT = {}
+for sys, f in pairs(SYS) do
+    if sys ~= "gp" then
+        for what, name in pairs(f) do ALT[name] = SYS.gp[what] end
+    end
+end
+local function Was(rule, field, over)
     if field == "on" then return rule.on ~= false end
     if field == "mode" then return rule.mode or "each" end
+    if field == "short" then return Penalties.Short(rule) end
+    local alt = ALT[field]
+    if alt and rule[field] == nil then
+        local v = over and over[alt]
+        if v == nil then v = rule[alt] end
+        return v
+    end
     return rule[field]
 end
 local function Find(rules, key)
@@ -187,83 +123,60 @@ local function Find(rules, key)
     return nil
 end
 function Penalties.Set(key, field, value)
-    local own = Store().own[Penalties.Active()]
-    if not own or not FIELDS[field] then return false end
-    if field == "reason" then value = ns.GPGuild and ns.GPGuild.Text(value) or Penalties.Clean(value) end
-    local x = OwnExtra(own, key)
-    if x then
-        if field == "on" then value = value and true or false end
-        if (field == "gp" or field == "reason") and (value == nil or value == "") then return false end
-        x[field] = value
-        return true
-    end
-    local base = Find(BaseRules(own.base), key)
+    if not FIELDS[field] then return false end
+    local base = Find(BaseRules(), key)
     if not base then return false end
-    local was = Was(base, field)
-    if field == "reason" and value == "" then value = nil end
-    local over = own.rules[key] or {}
-    if value == was then value = nil end
+    if field == "on" then value = value and true or false end
+    if field == "mode" and not MODES[value] then return false end
+    if field == "short" then
+        value = ShortText(value)
+        if value == "" then value = nil end
+    end
+    if NUMS[field] and value ~= nil then
+        if type(value) ~= "number" then return false end
+        value = math.max(0, floor(value + 0.5))
+    end
+    local mine = Mine()
+    if mine == NONE then return false end
+    local over = mine[key] or {}
+    if value ~= nil and value == Was(base, field, over) then value = nil end
     over[field] = value
-    own.rules[key] = next(over) and over or nil
+    mine[key] = next(over) and over or nil
     return true
 end
 function Penalties.IsChanged(key)
-    local own = Store().own[Penalties.Active()]
-    return own ~= nil and own.rules[key] ~= nil and next(own.rules[key]) ~= nil
+    local over = Mine()[key]
+    return over ~= nil and next(over) ~= nil
 end
-function Penalties.IsOwnRule(key)
-    return OwnExtra(Store().own[Penalties.Active()], key) ~= nil
+function Penalties.Changed()
+    local n = 0
+    for _, over in pairs(Mine()) do
+        if next(over) then n = n + 1 end
+    end
+    return n
 end
-function Penalties.AddRule(boss)
-    local own = Store().own[Penalties.Active()]
-    if not own or (type(boss) ~= "string" and type(boss) ~= "number") or boss == "" then return nil end
-    own.extra = own.extra or {}
-    local n, key = 0, nil
-    repeat
-        n = n + 1
-        key = string.format("x.%d.%d", time(), n)
-    until not OwnExtra(own, key) and not Find(BaseRules(own.base), key)
-    own.extra[#own.extra + 1] = { key = key, boss = boss, gp = 200, reason = ns.T("gpset.newrule") }
-    return key
-end
-function Penalties.RemoveRule(key)
-    local own = Store().own[Penalties.Active()]
-    local _, i = OwnExtra(own, key)
-    if not i then return false end
-    table.remove(own.extra, i)
+function Penalties.Reset(key)
+    local mine = Mine()
+    if not mine[key] then return false end
+    mine[key] = nil
     return true
 end
-function Penalties.Prune(name)
-    local own = Store().own[name]
-    if not own then return end
-    local rules = BaseRules(own.base)
-    for key, over in pairs(own.rules) do
+function Penalties.ResetAll()
+    local mine = Mine()
+    for key in pairs(mine) do mine[key] = nil end
+end
+function Penalties.Prune()
+    local rules = BaseRules()
+    local mine = Mine()
+    for key, over in pairs(mine) do
         local base = Find(rules, key)
         if base then
             for f, v in pairs(over) do
-                if Was(base, f) == v then over[f] = nil end
+                if Was(base, f, over) == v then over[f] = nil end
             end
-            if not next(over) then own.rules[key] = nil end
         end
+        if not base or not next(over) then mine[key] = nil end
     end
-    local list = own.extra or {}
-    for i = #list, 1, -1 do
-        if Find(rules, list[i].key) then table.remove(list, i) end
-    end
-end
-function Penalties.EpgpReason()
-    local r = Store().epgpReason
-    if type(r) ~= "string" then return ns.T("gp.epgp.default") end
-    return r
-end
-function Penalties.SetEpgpReason(text)
-    Store().epgpReason = Penalties.Clean(text)
-end
-function Penalties.Reset(key)
-    local own = Store().own[Penalties.Active()]
-    if not own or not own.rules[key] then return false end
-    own.rules[key] = nil
-    return true
 end
 local function ForBoss(rule, boss)
     return rule.boss == boss or rule.boss == ns.penaltyAny
@@ -569,7 +482,8 @@ local function Manual(fight)
     local byFight = Store().manual[Penalties.FightKey(fight)]
     return byFight or {}
 end
-function Penalties.Evaluate(s, fight)
+function Penalties.Evaluate(s, fight, sys)
+    sys = sys or (ns.Ledger and ns.Ledger.Key()) or "gp"
     local rules = Penalties.Rules(fight.boss)
     local fk = Penalties.FightKey(fight)
     local bump = Store().bump
@@ -579,6 +493,9 @@ function Penalties.Evaluate(s, fight)
         local rule = rules[r]
         local first
         local hits = {}
+        local sum = Penalties.Amount(rule, sys, "sum") or 0
+        local step = Penalties.Amount(rule, sys, "step") or 0
+        local wipe = Penalties.Amount(rule, sys, "wipe")
         for i = 1, #s.players do
             local p = s.players[i]
             local found = Detect(rule, p, s, fight)
@@ -595,20 +512,21 @@ function Penalties.Evaluate(s, fight)
                     local f = found[k]
                     local yellow = f.grade == "yellow"
                     if yellow then ny = ny + 1 else nr = nr + 1 end
-                    local gp = rule.gp or 0
-                    if rule.mode == "grow" then gp = gp + (rule.step or 0) * (nr - 1) end
+                    local gp = sum
+                    if rule.mode == "grow" then gp = gp + step * (nr - 1) end
                     local key = table.concat({ fk, p.name, rule.key, yellow and ("y" .. ny) or nr }, "|")
-                    local bumped = bump[key] == true and (yellow or rule.wipe ~= nil)
-                    if bumped and not yellow then gp = rule.wipe end
+                    local bumped = bump[key] == true and (yellow or wipe ~= nil)
+                    if bumped and not yellow then gp = wipe end
                     if yellow and not bumped then gp = 0 end
-                    events[k] = { key = key, t = f.t, gp = gp, bumped = bumped, info = f, grade = f.grade }
+                    events[k] = { key = key, t = f.t, n = gp, bumped = bumped, wipe = (bumped and not yellow) or nil, info = f,
+                        grade = f.grade }
                     if rule.firstGp and f.t and not yellow and (not first or f.t < first.t) then first = events[k] end
                 end
                 hits[#hits + 1] = { p = p, hit = { rule = rule, events = events, icon = RuleIcon(rule, s, p),
                     shed = ShedOf(rule, s, p) } }
             end
         end
-        if first and not first.bumped then first.gp = rule.firstGp end
+        if first and not first.bumped then first.n = rule.firstGp end
         for i = 1, #hits do
             local name = hits[i].p.name
             out[name] = out[name] or {}
@@ -619,7 +537,7 @@ function Penalties.Evaluate(s, fight)
     for name, list in pairs(out) do
         local sum = 0
         for i = 1, #list do
-            for k = 1, #list[i].events do sum = sum + list[i].events[k].gp end
+            for k = 1, #list[i].events do sum = sum + list[i].events[k].n end
         end
         totals[name] = sum
     end
@@ -656,8 +574,4 @@ function Penalties.Bump(key)
 end
 function Penalties.Unbump(key)
     Store().bump[key] = nil
-end
-function Penalties.Reason(rule)
-    if type(rule.reason) == "string" and rule.reason ~= "" then return rule.reason end
-    return ns.T(rule.text)
 end

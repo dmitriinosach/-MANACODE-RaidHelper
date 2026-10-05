@@ -292,7 +292,7 @@ end
 function Flasks.Norm(name)
     local o = Opt()
     local dur = Flasks.IsAlchemist(name) and 2 or 1
-    local norm = min(o.limit, ceil(o.hours / dur - 1e-9))
+    local norm = min(o.limit, ceil(o.hours - 1e-9))
     return max(1, norm), dur
 end
 function Flasks.Decide(name, now, stock)
