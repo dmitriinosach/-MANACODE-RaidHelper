@@ -19,8 +19,11 @@ local CHARS = {
     { name = "Syncpool", class = "PALADIN" },
 }
 local SERVER = nil
+local TOOLS = {}
 SERVER = "about.server"
+TOOLS[1] = { key = "about.tool", tip = "about.tip.tool", url = "https://github.com/dmitriinosach/-MANACODE-Update/releases" }
 About.DATA = ABOUT
+About.TOOLS = TOOLS
 About.MIRRORS = MIRRORS
 About.CHARS = CHARS
 local W = 460
@@ -144,6 +147,7 @@ local function Build()
     Kit.Text(frame.ver, "text.secondary")
     y = y + 22
     y = CopyRow(ns.T("about.release"), ABOUT.release, "about.tip.release", y)
+    for _, t in ipairs(TOOLS) do y = CopyRow(ns.T(t.key), t.url, t.tip, y) end
     y = CopyRow("Discord", ABOUT.discord, "about.tip.discord", y)
     y = CopyRow(ns.T("about.others"), About.Site(), "about.tip.others", y)
     for _, m in ipairs(MIRRORS) do

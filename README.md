@@ -1,4 +1,4 @@
-# Raid Helper 0.2.0-beta.14 — бета
+# Raid Helper 0.2.0-beta.15 — бета
 
 WoW 3.3.5a: разбор рейда по боевому логу (сводки, таймлайн, реплей, гпшница) и сбор состава. Окно — `/mrh`.
 Это бета: об ошибках — в Discord.
@@ -6,12 +6,12 @@ WoW 3.3.5a: разбор рейда по боевому логу (сводки, 
 **Установка.** Закрыть игру, распаковать архив в `Interface\AddOns`, запустить игру. Старую папку
 `HTP_FailWatch` и файл `HTP_FailWatch.lua` в `SavedVariables` удалить — запись не переносится.
 
-**Обновлялка** `RaidHelperUpdate.exe` — в папке аддона, работает и скопированной в другое место: папку игры найдёт или спросит.
-Окно: версия и «Обновить», канал стабильный/бета, галочки 3D-залов, автообновление, тестовая запись ([ветка data](https://github.com/dmitriinosach/-MANACODE-RaidHelper/tree/data)).
-Защитник Windows может ругаться на неподписанный exe — разрешите файл.
+**Обновлялка** — общая для аддонов ManaCode: ManacodeUpdate ([релизы](https://github.com/dmitriinosach/-MANACODE-Update/releases)),
+в архивах аддона её нет. Raid Helper в ней: «Установить»/«Обновить», канал стабильный/бета,
+«3D-залы реплея» → «Применить», «Тестовая запись…» ([ветка data](https://github.com/dmitriinosach/-MANACODE-RaidHelper/tree/data)).
 
-**Архивы.** `ManaCode_RaidHelper-v0.2.0-beta.14.zip` — полный: аддон и 3D-залы реплея папками рядом (`ManaCode_RaidHelper_ICC` — ЦЛК, `ManaCode_RaidHelper_RS` — Рубиновое святилище, `ManaCode_RaidHelper_TOC` — Испытание крестоносца), грузятся только при открытии реплея.
-`ManaCode_RaidHelper-lite-v0.2.0-beta.14.zip` — лёгкий, без залов: реплей рисует плоский пол. Обновлялка ставит залы по галочкам сама.
+**Архивы.** `ManaCode_RaidHelper-v0.2.0-beta.15.zip` — полный: аддон и 3D-залы реплея папками рядом (`ManaCode_RaidHelper_ICC` — ЦЛК, `ManaCode_RaidHelper_RS` — Рубиновое святилище, `ManaCode_RaidHelper_TOC` — Испытание крестоносца), грузятся только при открытии реплея.
+`ManaCode_RaidHelper-lite-v0.2.0-beta.15.zip` — лёгкий, без залов: реплей рисует плоский пол. ManacodeUpdate ставит залы по галочкам сама.
 
 С тестовой записью аддон рейды не пишет; вернуть запись — Настройки → «Обслуживание» →
 «Выйти из тестовой записи».
