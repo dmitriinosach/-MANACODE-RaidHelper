@@ -277,7 +277,7 @@ local function Handler(msg)
         local why, enc, at = ns.Recorder.LastClose()
         if why then
             ns.Print(format(ns.T("slash.status.closed"), date("%H:%M:%S", at),
-                format(ns.T("rec.close." .. why), enc or "")))
+                format(ns.T("rec.close." .. why), ns.EncName(enc))))
         else
             ns.Print(ns.T("slash.status.noclose"))
         end

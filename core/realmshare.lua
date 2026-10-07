@@ -4,11 +4,13 @@ local tonumber = tonumber
 local match = string.match
 local format = string.format
 local PREFIX = "MRH_RLM"
-local STEP = 1
+local STEP = 0.5
 local FRESH = 2.5
-local MIN_GAP = 0.8
+local FRESH_REALM = 6
+local MIN_GAP = 0.4
 local MAX_PEERS = 40
 local UNITS = 10000
+local MY_STEP = 0.5
 local BOSS_UNITS = { "boss1", "boss2" }
 local PATTERN = "^1:(%d+),(%d+),(%d+),([12])$"
 local S = { PREFIX = PREFIX }
@@ -16,7 +18,9 @@ ns.RealmShare = S
 local peers = {}
 local peerN = 0
 local elapsed = 0
-local stats = { sent = 0, got = 0, dropped = 0 }
+local myW, myT = 1, nil
+local auraSet
+local stats = { sent = 0, got = 0, dropped = 0, used = 0 }
 S.stats = stats
 local function InFight()
     local rd = ns.replayMech and ns.replayMech.realms
@@ -39,6 +43,12 @@ local function MyRealm()
     end
     return 1
 end
+local function Mine()
+    local now = GetTime()
+    if not myT or now - myT >= MY_STEP then myW, myT = MyRealm(), now end
+    return myW
+end
+S.Mine = Mine
 function S.Message()
     local px, py = GetPlayerMapPosition("player")
     if not px or (px == 0 and py == 0) then return nil end
@@ -82,10 +92,35 @@ function S.Pos(name)
     if p.level ~= (GetCurrentMapDungeonLevel() or 0) then return nil, nil end
     return p.x / UNITS, p.y / UNITS
 end
-function S.Realm(name)
+function S.Realm(name, age)
     local p = peers[name]
-    if not p or GetTime() - p.t > FRESH then return nil end
+    if not p or GetTime() - p.t > (age or FRESH) then return nil end
     return p.w
+end
+function S.Pick(name, px, py)
+    if peerN == 0 then return px, py, false end
+    local p = peers[name]
+    if not p then return px, py, false end
+    local sx, sy = S.Pos(name)
+    if not sx then return px, py, false end
+    if ((px or 0) == 0 and (py or 0) == 0) or p.w ~= Mine() then
+        stats.used = stats.used + 1
+        return sx, sy, true
+    end
+    return px, py, false
+end
+function S.AuraCount(name, spellId)
+    if peerN == 0 then return nil end
+    if not auraSet then
+        auraSet = {}
+        for _, def in pairs(ns.replayMech.realms or {}) do
+            for i = 1, #(def.aura or {}) do auraSet[def.aura[i]] = true end
+        end
+    end
+    if not auraSet[spellId] then return nil end
+    local w = S.Realm(name, FRESH_REALM)
+    if not w then return nil end
+    return w == 2 and 1 or 0
 end
 function S.Reset()
     peers, peerN = {}, 0

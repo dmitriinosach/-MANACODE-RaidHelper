@@ -35,7 +35,7 @@ local function specOfGroup(class, group, keep)
     if bestPts <= 0 then return nil end
     local key = TABS[class] and TABS[class][best]
     if key == "cat" and keep == "bear" then key = "bear" end
-    return key
+    return key, best
 end
 local function avgIlvl(unit)
     local sum, n = 0, 0
@@ -56,7 +56,8 @@ local function apply(m)
     local p = ns.Session.Player(m.name)
     local groups = GetNumTalentGroups(true) or 1
     local active = GetActiveTalentGroup(true) or 1
-    local main = specOfGroup(m.class, active, p.spec)
+    local main, tree = specOfGroup(m.class, active, p.spec)
+    p.tree = tree
     if main and canWrite(p.specSrc) then p.spec, p.specSrc = main, "inspect" end
     if groups > 1 then
         local other = specOfGroup(m.class, active == 1 and 2 or 1, p.off)
@@ -81,12 +82,18 @@ local function busy()
     if InspectFrame and InspectFrame:IsShown() then return true end
     return false
 end
+function I.Running()
+    if ns.Test.Active() then return false end
+    local raid, party = ns.Compat.GroupSize()
+    if raid > 0 then return ns.RaidCmd.Officer() end
+    return party > 0 and IsPartyLeader() and true or false
+end
 local ticker = ns.NewFrame("Frame")
 ticker:SetScript("OnUpdate", function(self, dt)
     acc = acc + dt
     if acc < STEP then return end
     acc = 0
-    if not ns.Session.Active() or busy() then return end
+    if not I.Running() or busy() then return end
     if pending and GetTime() - pendingAt < TIMEOUT then return end
     pending = nil
     local m = nextTarget()

@@ -38,6 +38,8 @@ local MINUS = "Interface\\Buttons\\UI-MinusButton-Up"
 local PAUSE = "Interface\\TimeManager\\PauseButton"
 local WHITE8 = "Interface\\Buttons\\WHITE8X8"
 local TRI_TEX = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_4"
+local FLASK_TEX = "Interface\\Icons\\INV_Alchemy_EndlessFlask_06"
+local FLASK_ICON = 12
 local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\"
 local ICONS = {
     { key = "log", label = "panel.log", tip = "panel.tip.log" },
@@ -60,6 +62,7 @@ local buckets = {}
 local alerts = {}
 local countAcc, drawAcc = COUNT_PERIOD, 0
 local cpuText, winText
+local flask = { key = -2 }
 local cpuOwn, cpuSkada, cpuMode = -1, -1, -1
 local winRate, winWorst, winMode = -1, -1, -1
 local baseSeen, eqElapsed = 0, 0
@@ -356,7 +359,8 @@ local function Width()
     end
     w = max(w, countText:GetStringWidth() + PAD * 2 + 4)
     if Saved().open and cpuText then
-        w = max(w, cpuText:GetStringWidth() + PAD * 2 + 4, winText:GetStringWidth() + PAD * 2 + 4)
+        w = max(w, cpuText:GetStringWidth() + PAD * 2 + 4, winText:GetStringWidth() + PAD * 2 + 4,
+            flask.row:GetWidth() + PAD * 2 + 4)
     end
     return w
 end
@@ -393,9 +397,27 @@ local function RefreshCpu()
     end
     cpuText:SetAlpha(live and 1 or 0.7)
 end
+local function RefreshFlasks()
+    local R = ns.FlaskReady
+    if not (R and flask.text and Saved().open) then return end
+    R.Tick()
+    local ready, total, known = R.Counts()
+    local key = (known and total > 0) and (ready * 100 + total) or -1
+    if key == flask.key then return end
+    flask.key = key
+    if key >= 0 then
+        flask.text:SetText(format("%d/%d", ready, total))
+        ns.Kit.Text(flask.text, ready >= total and "text.good" or "text.secondary")
+    else
+        flask.text:SetText(ns.T("flaskrow.none.text"))
+        ns.Kit.Text(flask.text, "text.secondary")
+    end
+    flask.row:SetWidth(FLASK_ICON + NUM_GAP + flask.text:GetStringWidth())
+end
 local function ApplySize()
     RefreshCounts()
     RefreshCpu()
+    RefreshFlasks()
     local w = Width()
     local h = PAD * 2 + ICON + ROWGAP + EQ_H + 2 + TEXTH
     local eqW = w - PAD * 2 - (EQ_BTN + EQ_GAP) * 2
@@ -407,7 +429,7 @@ local function ApplySize()
         for i = 1, #blocks do blocks[i].text:SetWidth(nw) end
         graphs:SetWidth(w - PAD * 2)
         graphs:Show()
-        h = h + ROWGAP + EQ_H + 2 + TEXTH * 2
+        h = h + ROWGAP + EQ_H + 2 + TEXTH * 3
     else
         graphs:Hide()
     end
@@ -558,6 +580,7 @@ local function OnUpdate(self, elapsed)
         countAcc = 0
         RefreshCounts()
         RefreshCpu()
+        RefreshFlasks()
         local w = Width()
         if abs(frame:GetWidth() - w) > 0.5 then ApplySize() end
         if pauseBtn.recKey ~= RecStateKey() then
@@ -711,9 +734,38 @@ local function Hoverable(fs, enter)
     h:SetScript("OnEnter", enter)
     h:SetScript("OnLeave", ns.Tip.Hide)
 end
+local function FlaskEnter(self)
+    local R = ns.FlaskReady
+    if not R then return end
+    RefreshFlasks()
+    ns.Tip.Show(self, R.TipRows())
+end
+local function BuildFlasks()
+    local row = CreateFrame("Frame", nil, graphs)
+    row:SetPoint("TOPLEFT", graphs, "BOTTOMLEFT", 0, -2)
+    row:SetHeight(TEXTH)
+    row:SetWidth(FLASK_ICON)
+    local icon = row:CreateTexture(nil, "ARTWORK")
+    icon:SetWidth(FLASK_ICON)
+    icon:SetHeight(FLASK_ICON)
+    icon:SetPoint("LEFT", 0, 0)
+    icon:SetTexture(FLASK_TEX)
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fs:SetPoint("LEFT", icon, "RIGHT", NUM_GAP, 0)
+    fs:SetHeight(TEXTH)
+    fs:SetJustifyH("LEFT")
+    ns.Kit.Text(fs, "text.secondary")
+    fs:SetText(ns.T("flaskrow.none.text"))
+    row:EnableMouse(true)
+    row:SetScript("OnEnter", FlaskEnter)
+    row:SetScript("OnLeave", ns.Tip.Hide)
+    flask.row, flask.text = row, fs
+end
 local function BuildCpu()
+    BuildFlasks()
     cpuText = graphs:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    cpuText:SetPoint("TOPLEFT", graphs, "BOTTOMLEFT", 0, -2)
+    cpuText:SetPoint("TOPLEFT", flask.row, "BOTTOMLEFT", 0, 0)
     cpuText:SetHeight(TEXTH)
     cpuText:SetJustifyH("LEFT")
     ns.Kit.Text(cpuText, "text.secondary")

@@ -3,7 +3,8 @@ root.Lead = root.Lead or {}
 local ns = root.Lead
 local B = {}
 ns.Bober = B
-local BOSSES = { "lich", "prof", "surf", "hal" }
+local LAST = { icc = "lich", rs = "hal" }
+local RAID_BOSSES = { icc = { surf = true, prof = true, lich = true }, rs = { hal = true } }
 local ROLE = { tank = "t", heal = "h", melee = "d", ranged = "d" }
 local PARSE = {
     { 100, "parse.p100" }, { 99, "parse.p99" }, { 95, "parse.p95" },
@@ -25,43 +26,21 @@ function B.Reset()
     cache = {}
     cached = 0
 end
-local function prefs()
-    local db = ns.Store.DB()
-    db.bober = db.bober or {}
-    return db.bober
-end
-local function defaultPick(tpl)
-    local key = tpl.base or tpl.key or ""
-    local big = (tpl.size or 25) > 10
-    if key:find("^rs") then return (big and "rh" or "qh") .. ".hal" end
-    return (big and "ih" or "jh") .. ".lich"
-end
 function B.Pick()
+    if not root.Bober then return nil end
     local tpl = ns.Session.Template()
-    local v = prefs()[tpl.key] or defaultPick(tpl)
-    local mode, boss = v:match("^(%a+)%.(%a+)$")
-    return mode, boss, v
-end
-function B.SetPick(v)
-    prefs()[ns.Session.Template().key] = v
-    B.Reset()
-    ns.Session.Changed()
+    local key = tpl.base or tpl.key or ""
+    local raid = key:find("^rs") and "rs" or "icc"
+    local mode = root.Bober.Mode(tpl.size, key:find("h$") ~= nil, raid == "rs")
+    local boss = RAID_BOSSES[raid][tpl.boss or ""] and tpl.boss or LAST[raid]
+    return mode, boss, mode .. "." .. boss
 end
 function B.Label(mode, boss)
     return ns.T("bbPick", ns.T("bbBoss_" .. boss), ns.T("bbMode_" .. mode))
 end
-function B.Options()
-    local bb = src()
-    local out = {}
-    if not bb then return out end
-    local tpl = ns.Session.Template()
-    for _, hard in ipairs({ true, false }) do
-        for _, boss in ipairs(BOSSES) do
-            local mode = bb.Mode(tpl.size, hard, boss == "hal")
-            out[#out + 1] = { key = mode .. "." .. boss, label = B.Label(mode, boss) }
-        end
-    end
-    return out
+function B.PickText()
+    local mode, boss = B.Pick()
+    return ns.T("bbBy", ns.T("bbBossBy_" .. boss), ns.T("bbMode_" .. mode))
 end
 local function roleOf(name, spec)
     local key = spec or ns.Session.Player(name).spec

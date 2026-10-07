@@ -14,7 +14,7 @@ local GUARD = 10
 local DEATHS_MAX = 4
 local GAP = 0.5
 local DUP = 4
-local QUEUE = 24
+local QUEUE = 32
 local STEP = 8
 local LINK = "^|c%x%x%x%x%x%x%x%x|H[^|]*|h[^|]*|h|r"
 local CHANNELS = { "RAID", "PARTY", "GUILD", "OFFICER", "WHISPER", "SAY" }
@@ -572,30 +572,32 @@ local function Forget(now)
         if now - t >= DUP then sentAt[k] = nil end
     end
 end
-function Proof.Send(ask, want)
-    local msgs = Proof.Messages(ask)
+function Proof.SendLines(msgs, want, target, pre)
     if #msgs == 0 then return 0, "empty" end
-    want = want or Proof.Channel()
-    local chat, target, err = Proof.Route(want, ask.name)
+    pre = pre or "proof"
+    local chat, to, err = Proof.Route(want, target)
     if err then
-        ns.Print(T(err))
+        ns.Print(T(pre .. err:sub(6)))
         return 0, err
     end
     local now = GetTime()
     Forget(now)
-    local key = chat .. "|" .. (target or "") .. "|" .. msgs[1]
+    local key = chat .. "|" .. (to or "") .. "|" .. #msgs .. "|" .. msgs[1]
     if sentAt[key] then
-        ns.Print(T("proof.err.dup"))
+        ns.Print(T(pre .. ".err.dup"))
         return 0, "dup"
     end
     if #queue + #msgs > QUEUE then
-        ns.Print(T("proof.err.busy"))
+        ns.Print(T(pre .. ".err.busy"))
         return 0, "busy"
     end
     sentAt[key] = now
-    if chat ~= want then ns.Print(format(T("proof.fallback"), Proof.Label(want), Proof.Label(chat))) end
-    for i = 1, #msgs do queue[#queue + 1] = { text = msgs[i], chat = chat, target = target } end
+    if chat ~= want then ns.Print(format(T(pre .. ".fallback"), Proof.Label(want), Proof.Label(chat))) end
+    for i = 1, #msgs do queue[#queue + 1] = { text = msgs[i], chat = chat, target = to } end
     if now >= nextAt then SendOne() end
     if queue[1] then pump:Show() end
     return #msgs, nil
+end
+function Proof.Send(ask, want)
+    return Proof.SendLines(Proof.Messages(ask), want or Proof.Channel(), ask.name)
 end

@@ -108,8 +108,8 @@ local function Wanted()
 end
 local function Busy()
     if InspectFrame and InspectFrame:IsShown() then return true end
-    local S = ns.Lead and ns.Lead.Session
-    return S ~= nil and S.Active ~= nil and S.Active() == true
+    local I = ns.Lead and ns.Lead.Inspect
+    return I ~= nil and I.Running ~= nil and I.Running() == true
 end
 local function Next(now)
     local due = false

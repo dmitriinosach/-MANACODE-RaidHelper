@@ -244,7 +244,7 @@ local function FightSegs(fight)
     return {}
 end
 function Store.Bare(fight)
-    if not fight or fight.foreign then return false end
+    if not fight then return false end
     local segs = ns.GetDB().segments
     local list = FightSegs(fight)
     for k = 1, #list do

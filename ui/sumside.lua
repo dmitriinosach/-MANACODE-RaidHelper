@@ -45,10 +45,12 @@ local function Inner()
     return p
 end
 function Side.Wheel(delta)
-    if not content then return end
+    if not content then return false end
     local most = max(0, content:GetHeight() - scroll:GetHeight())
+    local was = offset
     offset = max(0, min(most, offset - delta * WHEEL))
     scroll:SetVerticalScroll(offset)
+    return offset ~= was
 end
 local function PickDock()
     local left, right = nil, nil

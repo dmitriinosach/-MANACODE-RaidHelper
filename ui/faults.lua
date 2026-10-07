@@ -205,16 +205,27 @@ local function LogTexts(row)
     if row.want and row.n and row.want > row.n then n = format(ns.T("fp.log.of"), row.n, row.want) end
     return what, sys, n
 end
+local function RaidLabel(key)
+    local all = ns.Encounters and ns.Encounters.Fights() or {}
+    for i = #all, 1, -1 do
+        local r = all[i].raid
+        if r and (RaidKey(all[i]) == key or ns.Raid.DayKey(r) == key) then return ns.Raid.Label(r) end
+    end
+    return key
+end
 local function LogRaid()
-    if current then return RaidKey(current), ns.Raid and ns.Raid.Label and ns.Raid.Label(current.raid) or RaidKey(current) end
+    if current then
+        local r = current.raid
+        return RaidKey(current), r and ns.Raid.Label(r) or RaidKey(current), r and r.id and ns.Raid.DayKey(r) or nil
+    end
     local all = ns.Ledger.Log()
     local last = all[#all]
-    if last and last.raid then return last.raid, last.raid end
+    if last and last.raid then return last.raid, last.rl or RaidLabel(last.raid) end
     return nil, ns.T("fp.log.all")
 end
 local function PaintLog()
-    local raid, label = LogRaid()
-    local rows = ns.Ledger.Log(raid)
+    local raid, label, alt = LogRaid()
+    local rows = ns.Ledger.Log(raid, alt)
     log.title:SetText(format(ns.T("fp.log.raid"), label))
     local sums, parts = ns.Ledger.Sums(rows), {}
     for i = 1, #ns.Ledger.ORDER do

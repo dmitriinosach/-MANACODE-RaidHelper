@@ -59,8 +59,8 @@ ns.replayMech = {
             boss = { [39863] = 1, [40142] = 2 },
             gap = 3, pad = 1, join = 15,
             puddles = {
-                { aura = 74562, mark = 74567, realm = 1, base = 3, per = 2, max = 20, tone = "sem.rep.fire" },
-                { aura = 74792, mark = 74795, realm = 2, base = 3, per = 2, max = 20, tone = "sem.rep.shadow" },
+                { aura = 74562, mark = 74567, realm = 1, life = 60, base = 3, per = 2, max = 20, tone = "sem.rep.fire" },
+                { aura = 74792, mark = 74795, realm = 2, life = 60, base = 3, per = 2, max = 20, tone = "sem.rep.shadow" },
             },
             meteor = { hit = { 75879 }, join = 1, r = 8, burn = 3, flash = 1, realm = 1, tone = "sem.rep.fire" },
         },

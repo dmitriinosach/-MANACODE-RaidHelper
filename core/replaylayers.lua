@@ -89,7 +89,7 @@ end
 local function NewLayers()
     return {
         stK = {}, stS = {}, stFrom = {}, stTo = {}, ns = 0,
-        plX = {}, plY = {}, plFrom = {}, plTo = {}, plLast = {}, plR0 = {}, plR1 = {}, plN = {}, plDef = {}, np = 0,
+        plX = {}, plY = {}, plFrom = {}, plTo = {}, plLast = {}, plR0 = {}, plR1 = {}, plN = {}, plDef = {}, plBorn = {}, np = 0,
         hiT = {}, hiX = {}, hiY = {}, nh = 0,
         cnT = {}, cnTo = {}, cnX = {}, cnY = {}, cnHx = {}, cnHy = {}, cnLen = {}, cnDeg = {}, nc = 0,
         bT = {}, bX = {}, bY = {}, bR = {}, bN = {}, bS = {}, nb = 0, vT = {}, vK = {}, nv = 0, cnS = {},
@@ -264,7 +264,12 @@ local function PoolHit(c, def, key, ts, x, y)
     local w = 1
     while list[w] do
         local j = list[w]
-        local alive = ts - L.plLast[j] <= def.gap or (def.life and ts - L.plFrom[j] <= def.life)
+        local alive
+        if L.plBorn[j] then
+            alive = ts - L.plFrom[j] <= def.life
+        else
+            alive = ts - L.plLast[j] <= def.gap or (def.life and ts - L.plFrom[j] <= def.life)
+        end
         if alive then
             local dx, dy = x - L.plX[j], y - L.plY[j]
             local d = sqrt(dx * dx + dy * dy) / ppy
@@ -291,7 +296,11 @@ local function PoolHit(c, def, key, ts, x, y)
     local j = L.np + 1
     L.np = j
     local born = key ~= "" and c.born[key] or nil
-    L.plX[j], L.plY[j], L.plFrom[j], L.plLast[j] = x, y, born and born <= ts and born or ts, ts
+    if born and born > ts then born = nil end
+    local cast = def.cast and c.poolCast[def]
+    if not born and cast and def.life and ts - cast <= def.life then born = cast end
+    L.plX[j], L.plY[j], L.plFrom[j], L.plLast[j] = x, y, born or ts, ts
+    L.plBorn[j] = born ~= nil and def.life ~= nil
     L.plR0[j], L.plR1[j], L.plN[j], L.plDef[j], L.plTo[j] = def.r0, def.r0, 1, def, ts
     list[#list + 1] = j
 end
@@ -318,6 +327,16 @@ local function OnPool(c, ts, sub, srcGUID, src, dst, spell)
             PoolHit(c, def, key, ts, x, y)
             if DAMAGE[sub] then Hit(c, ts, dst, x, y) end
             return
+        end
+    end
+end
+local function OnPoolCast(c, ts, sub, srcGUID, spell)
+    local defs = c.poolDefs
+    if not defs or not spell or sub ~= "SPELL_CAST_SUCCESS" then return end
+    for i = 1, #defs do
+        local def = defs[i]
+        if def.cast and SpellKey(def.spell) == spell and (not def.src or ns.NpcKey(srcGUID) == ns.NpcKeyOf(def.src)) then
+            c.poolCast[def] = ts
         end
     end
 end
@@ -560,6 +579,7 @@ local function Dispatch(c, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFla
         OnOwn(c, ts, sub, src, sk)
         OnGone(c, ts, sub, srcKey, a1)
         OnPlatform(c, ts, sub, srcKey, a1)
+        OnPoolCast(c, ts, sub, srcGUID, sk)
         if sub == "SPELL_CAST_SUCCESS" then OnMelee(c, ts, srcGUID, srcKey, dst, sk) end
     elseif sub == "SPELL_MISSED" then
         OnAim(c, ts, dst, sk)
@@ -612,7 +632,7 @@ local function NewContext(scene)
         valkyr = D.valkyr.boss == fight.boss, boss = fight.boss,
         swT = {}, swK = {}, swG = {}, btT = {}, btK = {}, btG = {}, tgT = {}, tgK = {}, hold = TARGET_HOLD, tauT = {}, tauK = {},
         thT = {}, thK = {}, thG = {}, active = active, actT = {}, actG = {}, holders = {},
-        tankHits = {}, addBy = {}, addN = 0, pools = {}, born = {}, follow = {},
+        tankHits = {}, addBy = {}, addN = 0, pools = {}, born = {}, follow = {}, poolCast = {},
         hitAt = {}, coneTo = {}, coneDef = {}, coneG = {}, aimX = {}, aimY = {}, aimN = {}, aimOpen = {}, aimSpells = aimSpells,
         npcOf = {}, diedK = {}, diedT = {}, bossN = {}, bossG = {},
     }
@@ -992,8 +1012,10 @@ local function FinishPools(c)
     for j = 1, L.np do
         local def = L.plDef[j]
         if not def.follow then
-            if def.life then
-                L.plTo[j] = min(L.plFrom[j] + def.life, max(L.plLast[j], L.plFrom[j]) + max(def.tail, def.life))
+            if def.life and L.plBorn[j] then
+                L.plTo[j] = L.plFrom[j] + def.life
+            elseif def.life then
+                L.plTo[j] = min(L.plFrom[j] + def.life, L.plLast[j] + def.tail)
             else
                 L.plTo[j] = L.plLast[j] + def.tail
             end

@@ -20,6 +20,8 @@ local GPGAP = 12
 local BTNH = 20
 local BTNPAD = 24
 local BTNMIN = 60
+local CHATH = 16
+local CHATPAD = 14
 local WHEEL = 40
 local UNKNOWN_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local SKULL_ICON = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8"
@@ -41,6 +43,7 @@ local offset = 0
 local stats, panels, heads, tiles = {}, {}, {}, {}
 local wides = {}
 local failPanel
+local chatBtn
 local laid
 local Render
 local pens = {}
@@ -57,10 +60,12 @@ local function Icon(id)
     return id and ns.Effects.IconById(id) or UNKNOWN_ICON
 end
 local function PageWheel(delta)
-    if not content then return end
+    if not content then return false end
     local most = max(0, content:GetHeight() - host:GetHeight())
+    local was = offset
     offset = max(0, min(most, offset - delta * WHEEL))
     scroll:SetVerticalScroll(offset)
+    return offset ~= was
 end
 local function Stat(i)
     stats[i] = stats[i] or Badges.Total(content)
@@ -97,14 +102,14 @@ local function First(list, key)
     return ns.ReplayLink and ns.ReplayLink.First(list, key) or nil
 end
 local function Replay(m, t, kind)
-    if fight.foreign or ns.Store.Bare(fight) then return m end
+    if ns.Store.Bare(fight) then return m end
     m.fight, m.at = fight, t
     m.preview = ns.DeathPreview and ns.DeathPreview.Wants(kind) or nil
     if ns.TimelineLinks and m.lines then ns.TimelineLinks.Tag(m.lines, fight, t) end
     return m
 end
 local function Proof(p, test, deaths)
-    if not ns.Proof or fight.foreign then return nil end
+    if not ns.Proof then return nil end
     return ns.Proof.Ask(fight, p.name, pens[p.name], test, deaths)
 end
 local function Hidden(def)
@@ -114,7 +119,7 @@ local function DispelMark(d)
     local m = { icon = Icon(d.id), count = tostring(d.n), lines = Tips.Dispel(d) }
     local list = d.list or {}
     local first = list[1]
-    if not first or fight.foreign then return m end
+    if not first then return m end
     local links, seen = {}, {}
     for k = 1, #list do
         local who = list[k].who
@@ -275,11 +280,11 @@ local function PersonalModel(p, s)
         sub = sub,
         marks = Entries(p, s),
         lines = Tips.Player(p, s),
-        onClick = not fight.foreign and OpenTimeline or nil,
-        onRightClick = not fight.foreign and OpenManual or nil,
+        onClick = OpenTimeline,
+        onRightClick = OpenManual,
         onWheel = PageWheel,
     }
-    if ns.ExpectView and not fight.foreign then ns.ExpectView.Personal(fight, s, p, m) end
+    if ns.ExpectView then ns.ExpectView.Personal(fight, s, p, m) end
     return m
 end
 local function PullTotal(s, m)
@@ -324,6 +329,22 @@ local function MarksTotal(s, m)
     m.subs = m.subs or {}
     m.subs[#m.subs + 1] = format(ns.T("sum.marks.short"), table.concat(parts, ", "))
 end
+local function ChatButton(f)
+    if not (ns.ProofView and ns.ChatReport) then return end
+    if not chatBtn then
+        chatBtn = ns.ProofView.ReportButton(f, function(n)
+            if not (fight and summary) then return {} end
+            return ns.ChatReport.Summary(fight, summary, n)
+        end)
+        chatBtn:SetHeight(CHATH)
+        chatBtn:SetWidth(floor(chatBtn.text:GetStringWidth() + 0.5) + CHATPAD)
+    end
+    chatBtn:SetParent(f)
+    chatBtn:ClearAllPoints()
+    chatBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
+    chatBtn:SetFrameLevel(f:GetFrameLevel() + 2)
+    chatBtn:Show()
+end
 local function DrawStats(s, w)
     local sec = ns.Totals.Time(s)
     local cells = {
@@ -349,9 +370,12 @@ local function DrawStats(s, w)
             WipeTotal(s, m)
             MarksTotal(s, m)
         end
-        if c[1] == "sum.s.dps" or c[1] == "sum.s.hps" then m.lines = Tips.Combat(s, m.title, m.value) end
-        if c[1] == "sum.s.dps" and ns.ExpectView and not fight.foreign then ns.ExpectView.Total(fight, s, m) end
+        if c[1] == "sum.s.dps" or c[1] == "sum.s.hps" then
+            m.lines = Tips.Combat(s, m.title, m.value, c[1] == "sum.s.dps" and s.dmg or s.heal)
+        end
+        if c[1] == "sum.s.dps" and ns.ExpectView then ns.ExpectView.Total(fight, s, m) end
         f:SetModel(m)
+        if c[1] == "sum.s.dps" then ChatButton(f) end
         list[i] = f
     end
     return Grid.Place(list, MARGIN, MARGIN, w, TOTALMIN, GAP, true)
@@ -387,7 +411,8 @@ local function Inside()
     return not ns.SumSide or ns.SumSide.Inside()
 end
 local function SideWheel(delta)
-    if Inside() then PageWheel(delta) else ns.SumSide.Wheel(delta) end
+    if Inside() then return PageWheel(delta) end
+    return ns.SumSide.Wheel(delta)
 end
 local function HeadLine(f, font)
     local fs = f.head:CreateFontString(nil, "OVERLAY", font)
@@ -460,7 +485,7 @@ local function FailPanel()
     return f
 end
 local function FailItem(model)
-    if not model or fight.foreign then return nil end
+    if not model then return nil end
     local f = FailPanel()
     FailMode(f, Inside())
     Badges.Skin(f, style.red)
@@ -669,10 +694,10 @@ function View.Show(f)
     if not host then return end
     fight = f
     offset = 0
-    summary = f.foreign and f.sum or ns.Summary.Get(f)
+    summary = ns.Summary.Get(f)
     host:Show()
     Render()
-    if not summary and not f.foreign then
+    if not summary then
         ns.Summary.Compute(f, function(s)
             if fight ~= f then return end
             summary = s
@@ -706,7 +731,6 @@ function View.Refresh()
     Render()
 end
 function View.Fight()
-    if fight and fight.foreign then return nil end
     return fight
 end
 if ns.GPList then ns.GPList.OnChange(function() Render() end) end

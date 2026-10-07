@@ -1,5 +1,6 @@
 local ADDON, ns = ...
 local sqrt = math.sqrt
+local floor = math.floor
 local cos = math.cos
 local sin = math.sin
 local max = math.max
@@ -25,14 +26,18 @@ local POOL_DRAW = 48
 local MAX_PX = 4000
 local COUNT_PAD = 8
 local COUNT_H = 18
+local SW_GAP = 4
+local SW_KEY = { "phys", "twi" }
+local SW_TEXT = { "iso.world.physN", "iso.world.twiN" }
 local V = {}
 ns.ReplayRealmView = V
 local Kit = ns.Kit
 local Replay = ns.Replay
 local Core = ns.ReplayRealm
 local st = { mode = nil, orbs = {}, beams = {}, flashes = {}, pools = {}, booms = {}, byName = {}, used = 0, usedP = 0,
-             usedB = 0, show = { true, true }, hidden = { {}, {} } }
-local view, counter
+             usedB = 0, show = { true, true }, inW = { {}, {} }, swText = {}, swTip = {} }
+local view
+local sw = {}
 local hw, hh = 0, 0
 local function Saved()
     local settings = ns.GetDB().settings
@@ -69,13 +74,19 @@ function V.Build(v, marks)
     for i = 1, 2 do st.beams[i] = Tex(marks, LINE, "ARTWORK", "sem.rep.cutter") end
     for i = 1, 4 do st.orbs[i] = Tex(marks, CIRCLE, "ARTWORK", "sem.rep.orb") end
     for i = 1, FLASH_DRAW do st.flashes[i] = Tex(marks, RIM, "ARTWORK", "sem.rep.cutterHit") end
-    counter = Kit.Button(v)
-    counter:SetHeight(COUNT_H)
-    counter:SetWidth(120)
-    counter:SetPoint("TOPLEFT", v, "TOPLEFT", COUNT_PAD, -COUNT_PAD)
-    counter:SetFrameLevel(v:GetFrameLevel() + 8)
-    counter.tipTitle = false
-    counter:Hide()
+    for w = 1, 2 do
+        local b = Kit.Button(v)
+        b:SetHeight(COUNT_H)
+        b:SetWidth(120)
+        b:SetFrameLevel(v:GetFrameLevel() + 8)
+        b.tipTitle = false
+        b.key = SW_KEY[w]
+        b.onClick = function() V.SetMode(SW_KEY[w]) end
+        b:Hide()
+        sw[w] = b
+    end
+    sw[1]:SetPoint("TOPLEFT", v, "TOPLEFT", COUNT_PAD, -COUNT_PAD)
+    sw[2]:SetPoint("LEFT", sw[1], "RIGHT", SW_GAP, 0)
 end
 local function HideAll()
     for i = 1, #st.beams do st.beams[i]:Hide() end
@@ -88,7 +99,7 @@ end
 function V.Use(scene)
     if not view then return end
     HideAll()
-    if counter then counter:Hide() end
+    for w = 1, #sw do sw[w]:Hide() end
     st.byName, st.counted = {}, nil
     for k = 1, scene and #scene.tracks or 0 do st.byName[scene.tracks[k].name] = k end
 end
@@ -157,23 +168,39 @@ local function Recorder(scene, R, t)
     end
     return twi > phys and 2 or 1
 end
-local function Count(hid, shown)
-    if not counter then return end
-    local w = (not shown[2] and #hid[2] > 0) and 2 or ((not shown[1] and #hid[1] > 0) and 1 or nil)
-    if not w then
-        counter:Hide()
-        st.counted = nil
+local function Switch(R, t, shown)
+    if #sw == 0 then return end
+    if not (R.p2 and t >= R.p2) then
+        if st.counted then
+            for w = 1, 2 do sw[w]:Hide() end
+            st.counted = nil
+        end
         return
     end
-    tsort(hid[w])
-    local key = w .. ":" .. tconcat(hid[w], ",")
+    local inW = st.inW
+    tsort(inW[1])
+    tsort(inW[2])
+    local key = (shown[1] and "1" or "0") .. (shown[2] and "1" or "0") .. tconcat(inW[1], ",") .. "|" .. tconcat(inW[2], ",")
+    local shared = R.shared or {}
+    if next(shared) then key = key .. floor(t) end
     if st.counted == key then return end
     st.counted = key
-    st.countText = format(ns.T(w == 2 and "iso.world.inTwi" or "iso.world.inPhys"), #hid[w])
-    counter.text:SetText(st.countText)
-    counter:SetWidth(counter.text:GetStringWidth() + 16)
-    counter.tip = tconcat(hid[w], ", ")
-    counter:Show()
+    for w = 1, 2 do
+        local b, list = sw[w], inW[w]
+        st.swText[w] = format(ns.T(SW_TEXT[w]), #list)
+        b.text:SetText(st.swText[w])
+        b:SetWidth(b.text:GetStringWidth() + 16)
+        local via = {}
+        for i = 1, #list do
+            if Core.In(shared[list[i]], t) then via[#via + 1] = list[i] end
+        end
+        local tip = tconcat(list, ", ")
+        if #via > 0 then tip = tip .. "\n" .. format(ns.T("iso.world.shared"), tconcat(via, ", ")) end
+        st.swTip[w] = tip
+        b.tip = tip
+        b:SetActive(shown[w])
+        b:Show()
+    end
 end
 function V.Sample(scene, t, figs)
     local R = scene.layers and scene.layers.realm
@@ -182,7 +209,10 @@ function V.Sample(scene, t, figs)
             for k = 1, #figs do ns.ReplayFigs.Dusk(figs[k], false) end
             st.dusked = false
         end
-        if counter then counter:Hide() end
+        if st.counted then
+            for w = 1, #sw do sw[w]:Hide() end
+            st.counted = nil
+        end
         return
     end
     st.dusked = true
@@ -191,19 +221,17 @@ function V.Sample(scene, t, figs)
     local show = st.show
     show[1] = mode == "both" or mode == "phys" or (mode == "mine" and rec == 1)
     show[2] = mode == "both" or mode == "twi" or (mode == "mine" and rec == 2)
-    local hid = st.hidden
+    local inW = st.inW
     for w = 1, 2 do
-        for i = #hid[w], 1, -1 do hid[w][i] = nil end
+        for i = #inW[w], 1, -1 do inW[w][i] = nil end
     end
     local n = #scene.tracks
     for k = 1, n do
         local s = scene.states[k]
         local name = scene.tracks[k].name
         local w = RealmOf(R, name, s, t, rec)
-        if not show[w] then
-            if s.vis then hid[w][#hid[w] + 1] = name end
-            s.vis = false
-        end
+        if s.vis and not s.dead then inW[w][#inW[w] + 1] = name end
+        if not show[w] then s.vis = false end
         if figs[k] then ns.ReplayFigs.Dusk(figs[k], mode == "both" and w == 2) end
     end
     local b = scene.bossState
@@ -211,7 +239,7 @@ function V.Sample(scene, t, figs)
     if not phys and not twi then phys = true end
     if not ((phys and show[1]) or (twi and show[2])) then b.vis = false end
     if figs[n + 1] then ns.ReplayFigs.Dusk(figs[n + 1], mode == "both" and twi and not phys) end
-    Count(hid, show)
+    Switch(R, t, show)
 end
 function V.HideAdd(scene, a)
     local R = scene.layers and scene.layers.realm
@@ -338,8 +366,11 @@ function V.Place(scene, cam, t)
 end
 function V.Probe()
     local shown = { beams = 0, orbs = 0, flashes = st.used, pools = st.usedP, booms = st.usedB,
-                    show = { st.show[1], st.show[2] }, counter = counter and counter:IsShown() and st.countText or nil,
-                    tip = counter and counter.tip }
+                    show = { st.show[1], st.show[2] }, sw = {} }
+    for w = 1, #sw do
+        shown.sw[w] = { shown = sw[w]:IsShown(), active = sw[w].active == true, text = st.swText[w], tip = st.swTip[w],
+                        btn = sw[w] }
+    end
     for i = 1, #st.beams do if st.beams[i]:IsShown() then shown.beams = shown.beams + 1 end end
     for i = 1, #st.orbs do if st.orbs[i]:IsShown() then shown.orbs = shown.orbs + 1 end end
     return shown

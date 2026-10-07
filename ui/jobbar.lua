@@ -48,7 +48,7 @@ function JobBar.Attach(host, statusText)
     status = statusText
     lead = ns.ReplayLink and ns.ReplayLink.HeadFrame()
     fades = {}
-    local heads = { ReplayLink = true, ThreatView = true, ShareView = true }
+    local heads = { ReplayLink = true, ThreatView = true }
     for key in pairs(heads) do
         local f = ns[key] and ns[key].HeadFrame and ns[key].HeadFrame()
         if f then fades[#fades + 1] = f end

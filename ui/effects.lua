@@ -48,6 +48,8 @@ local query = ""
 local tools = {}
 local wanted, onTimeline = true, false
 local function Lower(text)
+    local ru = ns.AutoInvite and ns.AutoInvite.Lower
+    if ru then return ru(text) end
     return (strlower or string.lower)(text)
 end
 local function Filter(rows)

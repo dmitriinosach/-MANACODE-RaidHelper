@@ -240,7 +240,11 @@ function View.PaintRow(row, e)
     local a = e and e.data
     local x = row.ach
     if not a then
-        if x then HideDeco(x) end
+        if x then
+            HideDeco(x)
+            row.icon:SetDesaturated(false)
+            ns.Kit.Tone(row.val, "text.primary")
+        end
         return
     end
     x = x or Deco(row)

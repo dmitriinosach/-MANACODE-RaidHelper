@@ -537,7 +537,7 @@ function Threat.Load(fight, onDone)
         onDone(ready)
         return
     end
-    if fight.foreign or ns.Store.Bare(fight) then
+    if ns.Store.Bare(fight) then
         onDone(nil)
         return
     end

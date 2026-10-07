@@ -111,8 +111,8 @@ local function fillWait(r, w)
 end
 local function layout()
     local S = ns.Session
-    local un = S.Active() and S.Unassigned() or {}
-    local wait = S.Active() and ns.Whisper.Waiting() or {}
+    local un = S.Unassigned()
+    local wait = ns.Whisper.Waiting()
     local y = 4
     unPool:Reset()
     waitPool:Reset()
@@ -130,7 +130,7 @@ local function layout()
     if #un == 0 then
         emptyFs:ClearAllPoints()
         emptyFs:SetPoint("TOPLEFT", child, "TOPLEFT", 4, -y)
-        emptyFs:SetText(ns.T(S.Active() and "sideAllPlaced" or "sideNoGather"))
+        emptyFs:SetText(ns.T(S.InGroup() and "sideAllPlaced" or "sideNoGroup"))
         emptyFs:Show()
         y = y + 20
     else

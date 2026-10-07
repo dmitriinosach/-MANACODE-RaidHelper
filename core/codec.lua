@@ -13,8 +13,6 @@ local pairs = pairs
 local HUGE = math.huge
 local TWO32 = 4294967296
 local SHORT = 3
-local NET_DEPTH = 40
-local NET_TABLES = 60000
 local EXT_KEY = "&"
 local ESC = { ["~"] = "~t", [";"] = "~s" }
 local UNESC = { t = "~", s = ";" }
@@ -25,8 +23,6 @@ local ids, nid = {}, 0
 local strs, nstr = {}, 0
 local extOf = nil
 local dropKeys = nil
-local flat = false
-local onPath = {}
 local function Esc(s)
     if find(s, "[~;]") then return (gsub(s, "[~;]", ESC)) end
     return s
@@ -54,35 +50,23 @@ local function Storable(v)
     return tv == "string" or tv == "number" or tv == "boolean" or tv == "table"
 end
 local function Table(t)
-    if flat then
-        if onPath[t] then
-            n = n + 1
-            out[n] = "x;"
-            return
-        end
-    else
-        local id = ids[t]
-        if id then
-            n = n + 1
-            out[n] = "^" .. id .. ";"
-            return
-        end
+    local id = ids[t]
+    if id then
+        n = n + 1
+        out[n] = "^" .. id .. ";"
+        return
     end
     local path = extOf and extOf(t)
     if path then
         n = n + 1
-        out[n] = flat and ("{;|;q" .. EXT_KEY .. ";{;") or "&;{;"
+        out[n] = "&;{;"
         for i = 1, #path do Val(path[i]) end
         n = n + 1
-        out[n] = flat and "};};" or "};"
+        out[n] = "};"
         return
     end
-    if flat then
-        onPath[t] = true
-    else
-        nid = nid + 1
-        ids[t] = nid
-    end
+    nid = nid + 1
+    ids[t] = nid
     n = n + 1
     out[n] = "{;"
     local len = #t
@@ -108,7 +92,6 @@ local function Table(t)
     end
     n = n + 1
     out[n] = "};"
-    onPath[t] = nil
 end
 Val = function(v)
     local tv = type(v)
@@ -137,23 +120,21 @@ Val = function(v)
         out[n] = "x;"
     end
 end
-function Codec.Encode(v, ext, drop, plain)
+function Codec.Encode(v, ext, drop)
     n, nid, nstr = 0, 0, 0
-    extOf, dropKeys, flat = ext, drop, plain and true or false
+    extOf, dropKeys = ext, drop
     Val(v)
     local s = concat(out, "", 1, n)
     for i = n, 1, -1 do out[i] = nil end
     for k in pairs(ids) do ids[k] = nil end
     for k in pairs(strs) do strs[k] = nil end
-    for k in pairs(onPath) do onPath[k] = nil end
-    extOf, dropKeys, flat = nil, nil, false
+    extOf, dropKeys = nil, nil
     return s
 end
 Codec.EXT_KEY = EXT_KEY
 local stT, stI, stH, stK, stHK, stE = {}, {}, {}, {}, {}, {}
-function Codec.Decode(s, resolve, net)
+function Codec.Decode(s, resolve)
     if type(s) ~= "string" then return nil, false end
-    if net then resolve = nil end
     local tabs, ntab = {}, 0
     local list, nlist = {}, 0
     local top = 0
@@ -173,7 +154,6 @@ function Codec.Decode(s, resolve, net)
             nlist = nlist + 1
             list[nlist] = v
         elseif tag == "{" then
-            if net and (top >= NET_DEPTH or ntab >= NET_TABLES) then return nil, false end
             if cur then
                 top = top + 1
                 stT[top], stI[top], stH[top], stK[top], stHK[top], stE[top] = cur, idx, hash, key, hasKey, isExt
@@ -202,7 +182,6 @@ function Codec.Decode(s, resolve, net)
             hash = true
             put = false
         elseif tag == "^" then
-            if net then return nil, false end
             v = tabs[tonumber(body)]
         elseif tag == "q" then
             v = Unesc(body)
@@ -211,7 +190,6 @@ function Codec.Decode(s, resolve, net)
         elseif tag == "f" then
             v = false
         elseif tag == "&" then
-            if net then return nil, false end
             ext = true
             put = false
         elseif tag == "N" then
@@ -227,7 +205,6 @@ function Codec.Decode(s, resolve, net)
                     if key ~= nil and key == key then cur[key] = v end
                     hasKey = false
                 else
-                    if net and v ~= nil and not Keyable(v) and v == v then return nil, false end
                     key, hasKey = v, true
                 end
             else

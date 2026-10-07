@@ -69,6 +69,8 @@ local PCT_H = 10
 local PCT_GAP = 1
 local GROW_K = 1.15
 local MC_K = 1.3
+local MC_BODY = "sem.rep.mcBody"
+local MC_DISC = 1.3
 local GROW_TIME = 0.2
 local Figs = { KINDS = KINDS, ARC_N = ARC_N }
 ns.ReplayFigs = Figs
@@ -106,7 +108,7 @@ function Figs.ArcOk()
     return st.arcOk
 end
 local function Plate(fig)
-    local tok = fig.rimOver or (fig.mcOn and "sem.rep.mc")
+    local tok = fig.rimOver or (fig.mcOn and MC_BODY)
     if tok then
         Kit.Hue(fig.side, tok)
     else
@@ -115,6 +117,8 @@ local function Plate(fig)
 end
 function Figs.Rim(fig, over)
     if over ~= nil then fig.rimOver = over or nil end
+    local mc = fig.mcOn or false
+    if fig.mcPaint ~= mc then fig.mcPaint, fig.sQ = mc, nil end
     local tok = fig.rimOver or (fig.mcOn and "sem.rep.mc") or (fig.dusk and "sem.rep.duskRim") or fig.rimTok
     if tok == DD_TOKEN and Arc(fig) then tok = DD_ARC end
     fig.rimNow = tok
@@ -351,6 +355,10 @@ end
 local function PlaceSide(fig, w, flat, tall, lift)
     fig.sideWant = Column(fig.side, fig, w, flat, tall, lift)
     if not fig.sideWant then return end
+    if fig.mcOn then
+        Kit.Hue(fig.side, MC_BODY)
+        return
+    end
     local r, g, b = Kit.RGB("sem.rep.side")
     fig.side:SetVertexColor(fig.cr * r, fig.cg * g, fig.cb * b)
 end
@@ -382,7 +390,7 @@ local function Dead(fig, inner, flat)
 end
 local function Alive(fig)
     fig.icon:SetDesaturated(false)
-    Kit.Hue(fig.icon, fig.dusk and "sem.rep.dusk" or "sem.rep.icon")
+    Kit.Hue(fig.icon, fig.mcOn and "sem.rep.mcIcon" or fig.dusk and "sem.rep.dusk" or "sem.rep.icon")
 end
 function Figs.Dusk(fig, on)
     on = on and true or false
@@ -456,6 +464,9 @@ local function Draw(fig, dead, scale, flat, lift, hp)
     if chip then
         Put(fig.shadow, fig, d * CHIP_DROP_K, d * CHIP_DROP_K * flat, d * CHIP_DROP_X, -d * flat * CHIP_DROP_X)
         Kit.Hue(fig.shadow, "sem.rep.drop")
+    elseif fig.mcOn and not dead then
+        Put(fig.shadow, fig, d * MC_DISC, d * MC_DISC * flat, 0, lift * scale)
+        Kit.Hue(fig.shadow, MC_BODY)
     else
         Put(fig.shadow, fig, d * DROP_K, d * DROP_K * flat, 0, -d * flat * (DROP_K - 1))
         Kit.Hue(fig.shadow, "sem.rep.dropSoft")

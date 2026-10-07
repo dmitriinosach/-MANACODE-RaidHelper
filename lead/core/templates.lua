@@ -55,9 +55,6 @@ end
 function T.IsCustom(key)
     return store()[key] ~= nil
 end
-function T.Locked(key)
-    return ns.Session.Active() and ns.Session.Template().key == key
-end
 local function ownNo(t)
     return tonumber(tostring(t.key or ""):match("%d+$")) or 0
 end
@@ -103,19 +100,20 @@ function T.Edit(key)
     s[key] = { key = key, label = f.label, size = f.size, slots = copySlots(f.slots), base = key }
     return s[key]
 end
-local function editable(key)
-    if T.Locked(key) then return nil end
-    return T.Edit(key)
-end
+local editable = T.Edit
 local function slotOf(key, i)
     local t = T.Get(key)
     return t and i and t.slots[i]
 end
+local function changed(key)
+    ns.Session.Refit(key)
+    ns.Session.Changed()
+end
 function T.Reset(key)
-    if not T.IsFactory(key) or not T.IsCustom(key) or T.Locked(key) then return end
+    if not T.IsFactory(key) or not T.IsCustom(key) then return end
     store()[key] = nil
     ns.Session.Invalidate()
-    ns.Session.Changed()
+    changed(key)
 end
 local function copyTexts(list)
     if not list then return nil end
@@ -136,16 +134,15 @@ function T.Copy(key)
         slots = copySlots(src.slots), made = time(), base = src.base or (T.IsFactory(key) and key or nil) }
     local db = ns.Store.DB()
     if db.texts then db.texts[newKey] = copyTexts(db.texts[key]) end
-    if db.bober then db.bober[newKey] = db.bober[key] end
     ns.Session.Changed()
     return newKey
 end
 function T.Delete(key)
-    if T.IsFactory(key) or T.Locked(key) or not store()[key] then return end
+    if T.IsFactory(key) or not store()[key] then return end
+    if ns.Session.Template().key == key then ns.Session.SetTemplate(ns.TEMPLATES[1].key) end
     store()[key] = nil
     local db = ns.Store.DB()
     if db.texts then db.texts[key] = nil end
-    if db.bober then db.bober[key] = nil end
     ns.Session.Invalidate()
     ns.Session.Changed()
 end
@@ -176,6 +173,7 @@ function T.AddSlot(key, after, role)
     local n = #t.slots
     local pos = math.min(math.max(tonumber(after) or n, 0), n) + 1
     table.insert(t.slots, pos, { role = ns.ROLE_GROUP[role] and role or "dd" })
+    ns.Session.ShiftSlots(key, pos, 1)
     ns.Session.Changed()
     return pos
 end
@@ -184,6 +182,7 @@ function T.RemoveSlot(key, i)
     local t = editable(key)
     if not t then return end
     table.remove(t.slots, i)
+    ns.Session.ShiftSlots(key, i, -1)
     ns.Session.Changed()
 end
 function T.SetRole(key, i, role)
@@ -200,7 +199,7 @@ function T.SetRole(key, i, role)
         end
         s.specs = #keep > 0 and keep or nil
     end
-    ns.Session.Changed()
+    changed(key)
 end
 function T.SetCap(key, i, cap)
     local was = slotOf(key, i)
@@ -257,7 +256,7 @@ function T.ToggleSpec(key, i, spec, on)
     end
     if on then out[#out + 1] = spec end
     s.specs = #out > 0 and out or nil
-    ns.Session.Changed()
+    changed(key)
 end
 function T.SpecFits(role, spec)
     local r = ns.SPEC[spec] and ns.SPEC[spec].role

@@ -19,6 +19,7 @@ local HIT = {
 local CUT = { SPELL_DAMAGE = true, SPELL_MISSED = true }
 local EMOTE = "FW_EMOTE"
 local STACK = "FW_STACK"
+local PSRC = "FW_PSRC"
 local LEAVE = "SPELL_CAST_SUCCESS"
 local R = {}
 ns.ReplayRealm = R
@@ -38,7 +39,7 @@ function R.New(fight)
         leave = ns.SpellSet(rd.leave), split = ns.SpellSet(rd.split), cutHit = ns.SpellSet(cd and cd.hit),
         cutPulse = ns.SpellSet(cd and cd.pulse), cutStart = ns.SpellSet(cd and cd.start),
         pudAura = {}, pudMark = {}, marks = {}, puds = {}, meteorHit = ns.SpellSet(rd.meteor and rd.meteor.hit),
-        meteors = {},
+        meteors = {}, shared = {},
     }
     R.PudIndex(ctx)
     return ctx
@@ -94,6 +95,10 @@ function R.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1, a2)
         if id and ctx.aura[id] and src and ctx.players[src] then Add(ctx, src, ts, (tonumber(a2) or 0) > 0 and ON or OFF) end
         return
     end
+    if sub == PSRC then
+        if src and ctx.players[src] then R.Shared(ctx, src, ts, (tonumber(a1) or 0) > 0) end
+        return
+    end
     if sub == EMOTE then
         ctx.emotes[#ctx.emotes + 1] = { t = ts, src = src }
         return
@@ -134,6 +139,20 @@ function R.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1, a2)
     if CUT[sub] and (ctx.cutHit[sid] or pulse) and dst and P[dst] then
         local pair = sn and ctx.cd.pairs[sn]
         if pair then ctx.hits[#ctx.hits + 1] = { t = ts, name = dst, pair = pair, pulse = pulse == true } end
+    end
+end
+function R.Shared(ctx, name, ts, on)
+    local s = ctx.shared[name]
+    if not s then
+        s = { from = {}, to = {} }
+        ctx.shared[name] = s
+    end
+    local n = #s.from
+    local open = n > 0 and s.to[n] == nil
+    if on and not open then
+        s.from[n + 1] = ts
+    elseif not on and open then
+        s.to[n] = ts
     end
 end
 local function Order(e)
@@ -343,7 +362,7 @@ function R.Puddles(ctx, posAt, ppy)
         local d = defs[p.i]
         local x, y = posAt(p.name, p.t)
         if x then
-            out[#out + 1] = { x = x, y = y, r = min(d.max, d.base + d.per * p.n) * ppy, from = p.t, to = to,
+            out[#out + 1] = { x = x, y = y, r = min(d.max, d.base + d.per * p.n) * ppy, from = p.t, to = min(to, p.t + d.life),
                               realm = d.realm, tone = d.tone, n = p.n }
         end
     end
@@ -384,7 +403,11 @@ function R.Done(ctx, L, posAt, ppy)
     end
     local seg = (ctx.fight.seg or ctx.fight.segs) and ns.Encounters.Segs(ctx.fight)[1] or nil
     local me = seg and type(seg.raid) == "table" and seg.raid.who or nil
-    L.realm = { spans = spans, boss = boss, auras = auras, me = me, p2 = p2 }
+    for _, s in pairs(ctx.shared) do
+        local n = #s.from
+        if n > 0 and s.to[n] == nil then s.to[n] = to end
+    end
+    L.realm = { spans = spans, boss = boss, auras = auras, me = me, p2 = p2, shared = ctx.shared }
     L.cutter = R.Cutter(ctx, posAt, ppy)
     L.puddles = R.Puddles(ctx, posAt, ppy)
 end

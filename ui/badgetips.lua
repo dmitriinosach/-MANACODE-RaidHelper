@@ -182,13 +182,21 @@ local function Abilities(out, own, pets, total, rest)
     local more = max(0, #list - ABIL_TOP) + (rest and rest.n or 0)
     if more > 0 then Put(out, "sub", format(T("sum.ab.more"), more), nil, nil, "dim") end
 end
-function Tips.Combat(s, title, value)
+function Tips.Combat(s, title, value, amount)
     local out = {}
     Head(out, title, value)
-    local sec = ns.Totals.Time(s)
-    Put(out, "row", T("sum.tt.combat"), Clock(sec))
-    if s.dur - sec >= 1 then Put(out, "sub", T("sum.tt.idle"), Clock(s.dur - sec)) end
+    Put(out, "row", T("sum.tt.dur"), Clock(s.dur))
+    local act = ns.Totals.Active(s)
+    if s.dur - act >= 1 then
+        Put(out, "sub", T("sum.tt.combat"), Clock(act))
+        Put(out, "sub", T("sum.tt.idle"), Clock(s.dur - act))
+        if amount then Put(out, "sub", T("sum.tt.noidle"), Rate(amount, act)) end
+    end
     return out
+end
+local function NoIdle(out, n, s)
+    local act = ns.Totals.Active(s)
+    if s.dur - act >= 1 then Put(out, "sub", T("sum.tt.noidle"), Rate(n, act), nil, "dim") end
 end
 local function Effective(out, p, s)
     if not p.eff then return end
@@ -206,10 +214,15 @@ function Tips.Player(p, s)
     Head(out, p.name, T("sum.tt.role." .. p.role), p.class)
     if p.role == "heal" then
         Put(out, "row", T("sum.tt.heal"), Rate(p.heal, sec), Short(p.heal))
+        NoIdle(out, p.heal, s)
         Abilities(out, p.healBy, nil, p.heal, p.abRest)
     else
         Put(out, "row", T("sum.tt.dmg"), Rate(p.dmg, sec), Short(p.dmg))
         Put(out, "sub", T("sum.tt.boss"), Rate(p.bossDmg, sec), Short(p.bossDmg))
+        NoIdle(out, p.dmg, s)
+        if (p.ride or 0) > 0 then
+            Put(out, "sub", format(T("sum.tt.ride"), p.rideName or "?"), Short(p.ride), nil, "dim")
+        end
         Abilities(out, p.dmgBy, p.petBy, p.dmg, p.abRest)
         if p.role == "tank" and p.heal > 0 then Put(out, "row", T("sum.tt.heal"), Rate(p.heal, sec), Short(p.heal)) end
     end

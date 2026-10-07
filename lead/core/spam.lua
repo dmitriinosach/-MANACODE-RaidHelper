@@ -278,7 +278,7 @@ function P.Fits()
     return lastFits
 end
 function P.CanStart()
-    return ns.Session.Active() and not ns.Test.Active() and #activeChannels() > 0
+    return not ns.Test.Active() and #activeChannels() > 0
 end
 function P.Start()
     if running or not P.CanStart() then return end
@@ -287,6 +287,7 @@ function P.Start()
     for i, c in ipairs(activeChannels()) do
         nextAt[c.key] = now + (i - 1) * STAGGER
     end
+    ns.Session.TryConvert()
     ns.Session.Changed()
 end
 function P.Stop()
@@ -316,7 +317,7 @@ ticker:SetScript("OnUpdate", function(self, dt)
     acc = acc + dt
     if acc < 0.25 then return end
     acc = 0
-    if not ns.Session.Active() or ns.Session.NeedTotal() == 0 then
+    if ns.Session.NeedTotal() == 0 then
         P.Stop()
         return
     end

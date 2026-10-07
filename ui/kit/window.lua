@@ -179,6 +179,125 @@ function Kit.Caption(parent, text, width)
     fs.rule = rule
     return fs
 end
+local STRIP_H = 28
+local STRIP_PAD = 10
+local STRIP_GAP = 4
+local STRIP_ICON = 12
+local STRIP_CLOSE = 26
+local STRIP_TEXT_H = 14
+local ARROW_TEX = "Interface\\ChatFrame\\ChatFrameExpandArrow"
+local ARROW_A, ARROW_B = 0.125, 0.875
+function Kit.Arrow(tex, up)
+    local a, b = ARROW_A, ARROW_B
+    tex:SetTexture(ARROW_TEX)
+    if up then
+        tex:SetTexCoord(b, b, a, b, b, a, a, a)
+    else
+        tex:SetTexCoord(a, b, b, b, a, a, b, a)
+    end
+end
+function Kit.FoldButton(parent, up)
+    local b = Kit.IconButton(parent, ARROW_TEX, STRIP_ICON)
+    Kit.Arrow(b.icon, up)
+    local T = ns.T or tostring
+    b.tipTitle = T(up and "kit.strip.restore" or "kit.strip.fold")
+    b.tip = T(up and "kit.strip.restore.tip" or "kit.strip.fold.tip")
+    b.tipAnchor = "ANCHOR_TOP"
+    return b
+end
+local function Num(v)
+    if type(v) == "number" and v == v then return v end
+    return nil
+end
+local function StripLayout(s)
+    s.shut:ClearAllPoints()
+    s.shut:SetPoint("RIGHT", s, "RIGHT", 0, 0)
+    s.restore:ClearAllPoints()
+    s.restore:SetPoint("RIGHT", s.shut, "LEFT", 0, 0)
+    local anchor = s.restore
+    for i = #s.btns, 1, -1 do
+        local b = s.btns[i]
+        b:ClearAllPoints()
+        b:SetPoint("RIGHT", anchor, "LEFT", -STRIP_GAP, 0)
+        anchor = b
+    end
+    s.value:ClearAllPoints()
+    s.value:SetPoint("RIGHT", anchor, "LEFT", -STRIP_GAP * 2, 0)
+    s.label:ClearAllPoints()
+    s.label:SetPoint("LEFT", s, "LEFT", STRIP_PAD, 0)
+    s.label:SetPoint("RIGHT", s.value, "LEFT", -STRIP_GAP * 2, 0)
+end
+local function StripStop(s)
+    s:StopMovingOrSizing()
+    s:SetUserPlaced(false)
+    local l, t = s:GetLeft(), s:GetTop()
+    if not (l and t) then return end
+    local p = s.spec.place()
+    p.x, p.y = floor(l + 0.5), floor(t + 0.5)
+end
+function Kit.Strip(spec)
+    local s = CreateFrame("Button", spec.name, UIParent)
+    s.spec = spec
+    s.btns = {}
+    s:SetWidth(spec.width)
+    s:SetHeight(STRIP_H)
+    s:SetFrameStrata(spec.strata or "HIGH")
+    s:SetToplevel(true)
+    s:SetMovable(true)
+    s:SetClampedToScreen(true)
+    s:EnableMouse(true)
+    s:RegisterForDrag("LeftButton")
+    s:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    s:SetScript("OnDragStop", StripStop)
+    s:SetScript("OnDoubleClick", function() spec.onRestore() end)
+    s:Hide()
+    Kit.Window(s)
+    s.label = s:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    s.label:SetHeight(STRIP_TEXT_H)
+    s.label:SetJustifyH("LEFT")
+    Kit.Title(s.label)
+    s.value = s:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    s.value:SetHeight(STRIP_TEXT_H)
+    s.value:SetJustifyH("RIGHT")
+    Kit.Text(s.value, "text.secondary")
+    s.restore = Kit.FoldButton(s, true)
+    s.restore.onClick = function() spec.onRestore() end
+    s.shut = CreateFrame("Button", nil, s, "UIPanelCloseButton")
+    s.shut:SetWidth(STRIP_CLOSE)
+    s.shut:SetHeight(STRIP_CLOSE)
+    s.shut:SetScript("OnClick", function() spec.onClose() end)
+    StripLayout(s)
+    return s
+end
+function Kit.StripButton(s, tex)
+    local b = Kit.IconButton(s, tex, STRIP_ICON + 4)
+    b.tipAnchor = "ANCHOR_TOP"
+    s.btns[#s.btns + 1] = b
+    StripLayout(s)
+    return b
+end
+function Kit.StripValue(s, text, token)
+    s.value:SetText(text or "")
+    Kit.Text(s.value, token or "text.secondary")
+end
+function Kit.StripShow(s, x, y)
+    local p = s.spec.place()
+    x, y = Num(p.x) or x, Num(p.y) or y
+    s:ClearAllPoints()
+    if x and y then
+        s:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y)
+    else
+        s:SetPoint("TOP", UIParent, "TOP", 0, -STRIP_H * 4)
+    end
+    s:Show()
+end
+function Kit.TopLeftOf(f, lift)
+    local l, t = f:GetLeft(), f:GetTop()
+    local fe, pe = f:GetEffectiveScale(), UIParent:GetEffectiveScale()
+    if not (l and t and fe and pe) or pe <= 0 then return nil, nil end
+    local k = fe / pe
+    return floor(l * k + 0.5), floor((t + (lift or 0)) * k + 0.5)
+end
 Kit.OnTheme(function()
     for i = 1, #windows do PaintWindow(windows[i]) end
 end)

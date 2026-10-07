@@ -12,11 +12,11 @@ local SPECS = 4
 local BAR_H = 28
 local STRIP_H = 24
 local STRIP_GAP = 6
-local PICK_W = 190
+local INFO_GAP = 6
 local SORT_W = 150
 local SORT_TIME = 10
 local ICON_STEP = 13
-local pane, strip, bar, pickSel, barFs, sortBtn
+local pane, strip, bar, barFs, sortBtn
 local boxes = {}
 local ghost, dragFrom
 local menu, menuCatcher, menuMarks, menuBtns, menuSpecs, menuOffs, menuSlots
@@ -107,10 +107,7 @@ local function fillSlotButtons(btns, m, after)
 end
 local function isRS(tpl)
     if (tpl.size or 25) <= 10 then return false end
-    local key = tpl.base or tpl.key or ""
-    if key:find("^rs") then return true end
-    local _, boss = ns.Bober.Pick()
-    return boss == "hal"
+    return (tpl.base or tpl.key or ""):find("^rs") ~= nil
 end
 local function membersByGroup()
     local out = {}
@@ -159,7 +156,7 @@ local function sortOne()
 end
 local function sortStep()
     if sortWait or GetTime() > sortUntil then return end
-    if InCombatLockdown() or not officer() or not ns.Session.Active() then
+    if InCombatLockdown() or not officer() then
         sortUntil = 0
         return
     end
@@ -477,7 +474,7 @@ end
 local function openSeat(c)
     local S = ns.Session
     local i = c.slotIndex
-    if not i or not S.Active() then return end
+    if not i then return end
     local slot = S.Template().slots[i]
     local opts = {}
     for _, m in ipairs(S.Unassigned()) do
@@ -589,6 +586,7 @@ local function newCell(box, k)
     end)
     c:SetScript("OnEnter", function(self) if self.member or self.slotIndex then ns.TipShow(self) end end)
     c:SetScript("OnLeave", ns.TipHide)
+    ns.ReadyUI.Build(c)
     return c
 end
 local function clearCell(c, tok)
@@ -607,6 +605,7 @@ local function clearCell(c, tok)
     for _, t in ipairs(c.flags) do t:Hide() end
     c.mark:Hide()
     c.dead:Hide()
+    ns.ReadyUI.ClearCell(c)
     c.tipTitle, c.tip, c.tipDim = nil, nil, nil
 end
 local function fillGhost(c, i, tpl, tok)
@@ -634,10 +633,8 @@ local function fillGhost(c, i, tpl, tok)
     c.tipTitle = ns.T("tipNeed", slotLabel(slot))
     c.tip = slot.specs and specNames(slot.specs) or ns.T("tipAnySpec")
     local fits = 0
-    if S.Active() then
-        for _, m in ipairs(S.Unassigned()) do
-            if S.SlotFits(slot, m) then fits = fits + 1 end
-        end
+    for _, m in ipairs(S.Unassigned()) do
+        if S.SlotFits(slot, m) then fits = fits + 1 end
     end
     c.tipDim = fits > 0 and ns.T("tipSockClick", fits) or nil
 end
@@ -658,7 +655,7 @@ local function fillCell(c, m, tok)
         c.off:Show()
     end
     local slotI = S.SlotOf(m.name)
-    local noSlot = S.Active() and m.work and not slotI
+    local noSlot = m.work and not slotI
     c.name:SetText(m.name .. (noSlot and (" " .. ns.Hex("sem.notReady") .. "!|r") or ""))
     if m.online then ns.ClassText(c.name, m.class) else ns.Tone(c.name, "sem.offline") end
     if noSlot then c.warn:Show() end
@@ -716,6 +713,7 @@ local function fillCell(c, m, tok)
     lines[#lines + 1] = ver and ns.T("tipAddonVer", ver) or ns.T("tipAddonNone")
     c.tip = ns.Bober.Tip(table.concat(lines, "\n"), m.name, m.unit)
     c.tipDim = ns.T("tipRaidCell")
+    ns.ReadyUI.FillCell(c, m)
 end
 local function newBox(g)
     local b = ns.NewFrame("Frame", nil, pane)
@@ -756,12 +754,10 @@ end
 local function buildBar()
     bar = ns.MakePanel(pane)
     bar:SetHeight(BAR_H)
-    pickSel = ns.MakeSelect(bar)
-    pickSel:SetSize(PICK_W, 20)
-    pickSel:SetPoint("LEFT", bar, "LEFT", 6, 0)
-    pickSel.tipTitle = ns.T("bbPickTip")
-    pickSel.tip = ns.T("bbPickHow")
-    pickSel.onPick = function(key) ns.Bober.SetPick(key) end
+    bar:EnableMouse(true)
+    bar.tipAnchor = "ANCHOR_TOP"
+    bar:SetScript("OnEnter", function(self) if self.tip then ns.TipShow(self) end end)
+    bar:SetScript("OnLeave", ns.TipHide)
     sortBtn = ns.MakeKitButton(bar)
     sortBtn:SetSize(SORT_W, 20)
     sortBtn:SetPoint("RIGHT", bar, "RIGHT", -4, 0)
@@ -778,8 +774,8 @@ end
 local function fillStrip(raid)
     local S = ns.Session
     local open = ns.Side and ns.Side.Open()
-    local un = (raid and S.Active() and not open) and #S.Unassigned() or 0
-    local wait = (S.Active() and not open) and #ns.Whisper.Waiting() or 0
+    local un = (raid and not open) and #S.Unassigned() or 0
+    local wait = (not open) and #ns.Whisper.Waiting() or 0
     if un + wait == 0 then
         strip:Hide()
         return 0
@@ -790,7 +786,7 @@ local function fillStrip(raid)
     return STRIP_H + STRIP_GAP
 end
 local function fillSort(raid)
-    if not raid or not ns.Session.Active() then
+    if not raid then
         sortBtn:Hide()
         return
     end
@@ -814,25 +810,21 @@ local function fillBar(raid)
     fillSort(raid)
     barFs:ClearAllPoints()
     barFs:SetPoint("RIGHT", sortBtn, "LEFT", -8, 0)
+    barFs:SetPoint("LEFT", bar, "LEFT", 10, 0)
+    bar.tipTitle, bar.tip = nil, nil
     local r = raid and ns.Bober.Ready() and ns.Bober.Raid(ns.Session.Roster())
     if not raid then
-        pickSel:Hide()
-        barFs:SetPoint("LEFT", bar, "LEFT", 10, 0)
         barFs:SetText(ns.Hex("text.muted") .. ns.T("raidSoon") .. "|r")
         bar.predict = false
         return
     end
     if not r then
-        pickSel:Hide()
-        barFs:SetPoint("LEFT", bar, "LEFT", 10, 0)
         barFs:SetText("")
         bar.predict = false
         return
     end
-    pickSel:Show()
-    barFs:SetPoint("LEFT", pickSel, "RIGHT", 10, 0)
-    local _, _, key = ns.Bober.Pick()
-    pickSel:SetOptions(ns.Bober.Options(), key)
+    bar.tipTitle = ns.T("bbRaidTitle")
+    bar.tip = ns.Bober.PickText() .. "\n" .. ns.T("bbRaidHow")
     local text
     if r.have == 0 then
         text = ns.Hex("text.muted") .. ns.T("bbRaidNone") .. "|r"
@@ -859,6 +851,8 @@ local function placeBoxes(top)
     bar:ClearAllPoints()
     bar:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -(top + 2 * boxH + 2 * GAP))
     bar:SetWidth(W)
+    local infoTop = top + 2 * boxH + 2 * GAP + BAR_H + INFO_GAP
+    ns.RaidInfo.Place(pane, infoTop, W, ns.window.PANE_H - infoTop)
 end
 local function fillBox(b, list, gl, tpl, work, rs)
     local g = b.group
@@ -891,14 +885,16 @@ local function refresh()
     local S = ns.Session
     local tpl = S.Template()
     local raid = inRaid()
-    placeBoxes(fillStrip(raid))
+    local top = fillStrip(raid)
+    placeBoxes(top + ns.ReadyUI.FillStrip(pane, top))
     local groups = membersByGroup()
-    local ghosts = (S.Active() or not raid) and Lay.Ghosts(tpl, takenSlots(tpl)) or {}
+    local ghosts = Lay.Ghosts(tpl, takenSlots(tpl))
     local work, rs = Lay.Work(tpl.size), isRS(tpl)
     for g, b in ipairs(boxes) do
         fillBox(b, groups[g], ghosts[g] or {}, tpl, work, rs)
     end
     fillBar(raid)
+    ns.RaidInfo.Refresh()
 end
 local function onSize()
     if built then refresh() end
@@ -909,6 +905,7 @@ local function build()
         boxes[g] = newBox(g)
     end
     buildStrip()
+    ns.ReadyUI.BuildStrip(pane)
     buildBar()
     makeGhost()
     built = true
@@ -917,6 +914,7 @@ local function build()
     refresh()
 end
 ns.Session.OnChange(refresh)
+ns.ReadyBuffs.OnChange(refresh)
 if root.Version and root.Version.OnChange then root.Version.OnChange(refresh) end
 ns.window:OnSize(onSize)
 local function predictText()
@@ -934,5 +932,6 @@ ns.RaidPane = {
     SortLeft = function() return #Lay.Sort(sortList()) end,
     Menu = function() return menu end,
     BarText = function() return barFs and barFs:GetText() or "" end,
+    Bar = function() return bar end,
 }
 ns.window:OnBuild(build)

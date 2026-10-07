@@ -51,7 +51,10 @@ end
 function Cost.AH(item)
     local fn = _G.Atr_GetAuctionPrice
     if type(fn) ~= "function" then return nil, nil end
-    local ok, v = pcall(fn, item)
+    local id = Cost.Id(item)
+    local name = id and GetItemInfo and GetItemInfo(id)
+    local ok, v = pcall(fn, name or item)
+    if (not ok or type(v) ~= "number" or v <= 0) and name and name ~= item then ok, v = pcall(fn, item) end
     if not ok or type(v) ~= "number" or v <= 0 then return nil, nil end
     local stamp = _G.AUCTIONATOR_LAST_SCAN_TIME
     return v, type(stamp) == "number" and stamp or nil

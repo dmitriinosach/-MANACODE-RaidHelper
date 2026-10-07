@@ -3,7 +3,7 @@ root.Lead = root.Lead or {}
 local ns = root.Lead
 local PAD = 12
 local ROW_H = 18
-local pult, sel, count, testFs, roles, mainBtn, nextFs, runBtn, spamCap, readyBtn
+local pult, sel, count, testFs, roles, nextFs, runBtn, spamCap, readyBtn, buffBtn
 local timerPool, timerW
 local built = false
 local function tplOptions()
@@ -16,16 +16,8 @@ end
 local function refresh()
     if not built then return end
     local S = ns.Session
-    local active = S.Active()
     local tpl = S.Template()
     sel:SetOptions(tplOptions(), tpl.key)
-    if active then
-        sel:Disable()
-        sel.tip = ns.T("tipTplLocked")
-    else
-        sel:Enable()
-        sel.tip = nil
-    end
     local n, size = S.Count()
     count:SetText(n .. ns.Hex("text.secondary") .. "/" .. size .. "|r")
     if ns.Test.Active() then testFs:Show() else testFs:Hide() end
@@ -35,13 +27,6 @@ local function refresh()
         local have = total[grp] - need[grp]
         r.val:SetText(have .. "/" .. total[grp])
         ns.PaintText(r.val, need[grp] == 0 and "sem.ready" or "text.primary")
-    end
-    if active then
-        mainBtn:SetText(ns.T("btnFinish"))
-        mainBtn.tip = ns.T("tipFinish")
-    else
-        mainBtn:SetText(ns.T("btnCreate"))
-        mainBtn.tip = ns.T("tipCreate", ns.Tpl.Name(tpl))
     end
     local can = ns.RaidCmd.Officer()
     readyBtn.tip = not can and ns.T("tipNeedOfficer") or nil
@@ -55,7 +40,7 @@ local function refresh()
             local rowN = math.floor((k - 1) / 2)
             b:SetSize(half, 20)
             b:ClearAllPoints()
-            b:SetPoint("TOPLEFT", readyBtn, "BOTTOMLEFT", col * (half + 6), -8 - rowN * 24)
+            b:SetPoint("TOPLEFT", buffBtn, "BOTTOMLEFT", col * (half + 6), -8 - rowN * 24)
             local d = ns.Timers.Duration(t.sec)
             b:SetText(ns.T(t.kind == "pull" and "timerPull" or "timerBreak", d))
             b.tipTitle = ns.T(t.kind == "pull" and "tipPull" or "tipBreak", d)
@@ -66,7 +51,7 @@ local function refresh()
     end
     timerPool:HideExtras()
     local rowsN = ns.Timers.HasDBM() and math.ceil(#ns.Timers.List() / 2) or 0
-    if ns.PultMarks then ns.PultMarks.Place(readyBtn, rowsN > 0 and -(rowsN * 24 + 4 + 20) or -20) end
+    if ns.PultMarks then ns.PultMarks.Place(buffBtn, rowsN > 0 and -(rowsN * 24 + 4 + 20) or -20) end
     local P = ns.Spam
     if P.Running() then
         runBtn:SetText(ns.T("btnStop"))
@@ -88,7 +73,7 @@ local function refresh()
             runBtn.tip = nil
         else
             runBtn:Disable()
-            runBtn.tip = ns.T(ns.Test.Active() and "tipTestSpam" or (active and "tipNoChannels" or "tipCreateFirst"))
+            runBtn.tip = ns.T(ns.Test.Active() and "tipTestSpam" or "tipNoChannels")
         end
     end
 end
@@ -122,15 +107,8 @@ local function build()
         roles[grp] = r
         prev = r.label
     end
-    mainBtn = ns.MakeKitButton(pult)
-    mainBtn:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -12)
-    mainBtn:SetWidth(w)
-    mainBtn:SetHeight(26)
-    mainBtn.onClick = function()
-        if ns.Session.Active() then ns.Session.Finish() else ns.Session.Start() end
-    end
     spamCap = ns.Caption(pult, ns.T("pultSpam"), w)
-    spamCap:SetPoint("TOPLEFT", mainBtn, "BOTTOMLEFT", 0, -20)
+    spamCap:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -20)
     nextFs = pult:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     nextFs:SetPoint("TOPLEFT", spamCap, "BOTTOMLEFT", 0, -8)
     nextFs:SetWidth(w)
@@ -148,7 +126,16 @@ local function build()
     readyBtn:SetPoint("TOPLEFT", raidCap, "BOTTOMLEFT", 0, -8)
     readyBtn:SetWidth(w)
     readyBtn:SetText(ns.T("btnReady"))
-    readyBtn.onClick = function() ns.RaidCmd.Ready() end
+    readyBtn.onClick = function()
+        if ns.RaidCmd.Ready() and root.Shell and root.Shell.Open then root.Shell.Open("raid") end
+    end
+    buffBtn = ns.MakeKitButton(pult)
+    buffBtn:SetPoint("TOPLEFT", readyBtn, "BOTTOMLEFT", 0, -6)
+    buffBtn:SetWidth(w)
+    buffBtn:SetText(ns.T("btnBuffCheck"))
+    buffBtn.tipTitle = ns.T("btnBuffCheck")
+    buffBtn.tip = ns.T("tipBuffCheck")
+    buffBtn.onClick = function() ns.ReadyUI.Check() end
     timerW = w
     timerPool = ns.NewPool(function() return ns.MakeKitButton(pult) end)
     if ns.PultMarks then ns.PultMarks.Build(pult, w) end

@@ -197,17 +197,7 @@ function refresh()
     if not built or not pult:IsVisible() then return end
     local M = ns.Marks
     keep:SetChecked(M.Enabled())
-    local who = M.InRaid() and ns.Keeper.Who()
-    local status
-    if not M.Enabled() then
-        status = ns.T("marksStatusOff")
-    elseif who and who ~= UnitName("player") then
-        status = ns.T("marksStatusPeer", who)
-    elseif M.Active() then
-        status = ns.T("marksStatusMine")
-    elseif M.InRaid() and not M.CanMark() then
-        status = ns.T("marksStatusRights")
-    end
+    local status = M.Status()
     keep.tipDim = status
     keepFs:SetText(status or "")
     layout()

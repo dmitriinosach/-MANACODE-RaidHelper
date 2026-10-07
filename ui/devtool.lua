@@ -161,13 +161,27 @@ local function Map()
     if WorldMapFrame and WorldMapFrame:IsShown() then out[4] = T("dev.map.world") end
     Out(out, true)
 end
-local function Floors()
+local FLOOR_KEEP = 60
+local function RaidPoints()
+    local pts = {}
+    for i = 1, GetNumRaidMembers() or 0 do
+        local px, py = GetPlayerMapPosition("raid" .. i)
+        if (px or 0) > 0 or (py or 0) > 0 then
+            pts[UnitName("raid" .. i) or ("raid" .. i)] = { floor(px * 10000 + 0.5) / 10000, floor(py * 10000 + 0.5) / 10000 }
+        end
+    end
+    return pts
+end
+local function Floors(quiet)
     if WorldMapFrame and WorldMapFrame:IsShown() then
-        Out({ T("dev.floors.world") }, true)
-        return
+        if not quiet then Out({ T("dev.floors.world") }, true) end
+        return false
     end
     local was, area = GetCurrentMapDungeonLevel() or 0, GetCurrentMapAreaID() or 0
     local levels = GetNumDungeonMapLevels() or 0
+    local snap = { at = date("%Y-%m-%d %H:%M:%S"), t = GetTime(), zone = GetRealZoneText(), sub = GetSubZoneText and GetSubZoneText(),
+        map = GetMapInfo(), area = area, was = was, levels = levels, combat = UnitAffectingCombat and UnitAffectingCombat("player") and true or nil,
+        floors = {} }
     local out = { format(T("dev.floors.head"), GetRealZoneText() or "?", tostring(GetMapInfo() or "?"), area, was,
         levels) }
     for level = 0, levels do
@@ -175,10 +189,12 @@ local function Floors()
         local now = GetCurrentMapDungeonLevel() or 0
         if not ok or now ~= level then
             out[#out + 1] = format(T("dev.floors.no"), level, now)
+            snap.floors[#snap.floors + 1] = { level = level, stuck = now }
         else
             local x, y = GetPlayerMapPosition("player")
             local on, n = RaidOnMap()
             out[#out + 1] = format(T("dev.floors.row"), level, x or 0, y or 0, on, n)
+            snap.floors[#snap.floors + 1] = { level = level, me = { x or 0, y or 0 }, on = on, n = n, pts = RaidPoints() }
         end
     end
     if (GetCurrentMapAreaID() or 0) ~= area then SetMapToCurrentZone() end
@@ -186,8 +202,53 @@ local function Floors()
         if was > 0 then SetDungeonMapLevel(was) else SetMapToCurrentZone() end
     end
     out[#out + 1] = format(T("dev.floors.back"), GetCurrentMapDungeonLevel() or 0)
-    Out(out, true)
+    local db = ns.GetDB()
+    db.floorProbes = db.floorProbes or {}
+    local list = db.floorProbes
+    list[#list + 1] = snap
+    while #list > FLOOR_KEEP do table.remove(list, 1) end
+    if not quiet then Out(out, true) end
+    return true
 end
+local floatBtn
+local function FloatText()
+    if not floatBtn then return end
+    local list = ns.GetDB().floorProbes
+    floatBtn:SetText(format(T("dev.floatfloors.btn"), list and #list or 0))
+end
+local function MakeFloat()
+    local b = Kit.Button(UIParent, "ManaCodeRaidHelperFloorProbe", "main")
+    b:SetWidth(110)
+    b:SetHeight(24)
+    b:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
+    b:SetFrameStrata("HIGH")
+    b:SetMovable(true)
+    b:SetClampedToScreen(true)
+    b:RegisterForDrag("LeftButton")
+    b:SetScript("OnDragStart", b.StartMoving)
+    b:SetScript("OnDragStop", b.StopMovingOrSizing)
+    b.onClick = function()
+        Floors(true)
+        FloatText()
+    end
+    floatBtn = b
+end
+local function ShowFloat(on)
+    if on and not floatBtn then MakeFloat() end
+    if floatBtn then
+        if on then floatBtn:Show() else floatBtn:Hide() end
+    end
+    FloatText()
+end
+local function ToggleFloat()
+    local s = ns.GetDB().settings
+    s.floorBtn = not s.floorBtn or nil
+    ShowFloat(s.floorBtn)
+    Out({ T(s.floorBtn and "dev.floatfloors.on" or "dev.floatfloors.off") }, false)
+end
+ns.OnReady(function()
+    if ns.GetDB().settings.floorBtn then ShowFloat(true) end
+end)
 local function Cmds()
     local out = { T("dev.cmd.head") }
     local C = ns.ServerCmd
@@ -466,7 +527,8 @@ local function BuildChecks(y, inner)
     Group(T("dev.g.checks"), y, inner)
     y = y - CAP
     local checks = {
-        { "range", Range }, { "models", Models }, { "map", Map }, { "floors", Floors },
+        { "range", Range }, { "models", Models }, { "map", Map }, { "floors", function() Floors() end },
+        { "floatfloors", ToggleFloat },
         { "cmd", Cmds }, { "auto", Auto }, { "lock", Lock },
         { "calib", Calib }, { "methods", Methods }, { "cpu", Cpu },
         { "cpulast", CpuLast }, { "probe", FrameProbe }, { "dummy", Dummy },

@@ -3,7 +3,7 @@ local floor = math.floor
 local abs = math.abs
 local format = string.format
 local tsort = table.sort
-local TOTALS_VERSION = 34
+local TOTALS_VERSION = 36
 local TRASH_VERSION = 2
 local ABIL_KEEP = 10
 local TRASH_KEY = "#trash"
@@ -11,14 +11,13 @@ local FROZEN = "frozen"
 local SKIP_HP = { "FW_HP" }
 local MAX_TAIL = 9
 local TO_SLACK = 0.01
-local LINK_MAX = 8
 local ROOTS = { "summaries", "buffsGiven", "actions", "achDefs", "bossPhases", "penaltyPresets", "immunities",
                 "defensives", "shieldSpells", "shieldEat", "shieldPassive", "consumeCast", "consumeCreate",
                 "consumeEnchant", "consumeAura", "vehicles", "fixates", "taunts", "tankSpells", "scriptedKills", "bossParts" }
 local COMMON = { "buffsGiven", "actions", "immunities", "defensives", "shieldSpells", "shieldEat", "shieldPassive",
                  "consumeCast", "consumeCreate", "consumeEnchant", "consumeAura", "vehicles", "fixates", "taunts", "tankSpells",
                  "scriptedKills", "bosses", "trashBosses", "bossParts", "bossWin", "bossSurvive", "pullTimer", "deathDeps" }
-local DROP = { byName = true, track = true, set = true, rides = true }
+local DROP = { byName = true, track = true, set = true, rides = true, apart = true }
 local STAT_ZERO = { n = true, hits = true, amount = true, cleansed = true, max = true }
 local STAT_LIST = { times = true, notes = true }
 local Digest = {}
@@ -218,78 +217,6 @@ local function Prune(seg, i)
     for key in pairs(seg.totals) do
         if key ~= TRASH_KEY and not live[key] then seg.totals[key] = nil end
     end
-end
-local function ResolveData(path)
-    for i = 1, #ROOTS do
-        if ROOTS[i] == path[1] then return Resolve(path) end
-    end
-    return nil
-end
-local function Copy(t, seen)
-    local c = seen[t]
-    if c then return c end
-    c = {}
-    seen[t] = c
-    for k, v in pairs(t) do
-        if type(v) == "table" then v = Copy(v, seen) end
-        c[k] = v
-    end
-    return c
-end
-local function Linked(mark, seen)
-    local path = mark[ns.Codec.EXT_KEY]
-    if next(mark, ns.Codec.EXT_KEY) ~= nil or next(mark) ~= ns.Codec.EXT_KEY then return nil end
-    if type(path) ~= "table" or #path < 1 or #path > LINK_MAX then return nil end
-    for k, v in pairs(path) do
-        local tv = type(v)
-        if type(k) ~= "number" or k < 1 or k > #path or (tv ~= "string" and tv ~= "number") then return nil end
-    end
-    local t = ResolveData(path)
-    return t and Copy(t, seen) or nil
-end
-local function Relink(t, seen)
-    for k, v in pairs(t) do
-        if type(v) == "table" then
-            if v[ns.Codec.EXT_KEY] ~= nil then
-                local c = Linked(v, seen)
-                if not c then return false end
-                t[k] = c
-            elseif not Relink(v, seen) then
-                return false
-            end
-        end
-    end
-    return true
-end
-function Digest.Blob(fight)
-    local e = Entry(fight)
-    if not e then return nil end
-    ExtIndex()
-    local raw, ok = ns.Codec.Decode(e.s, Resolve)
-    if not ok or type(raw) ~= "table" then return nil end
-    return ns.Codec.Encode(raw, ExtOf, DROP, true)
-end
-local function Sane(s)
-    if type(s) ~= "table" or type(s.players) ~= "table" or type(s.badges) ~= "table" then return false end
-    if type(s.blocks) ~= "table" or type(s.dur) ~= "number" then return false end
-    for i = 1, #s.players do
-        local p = s.players[i]
-        if type(p) ~= "table" or type(p.name) ~= "string" or type(p.badges) ~= "table"
-            or type(p.role) ~= "string" then
-            return false
-        end
-    end
-    return true
-end
-function Digest.Decode(blob)
-    if type(blob) ~= "string" then return nil end
-    local s, ok = ns.Codec.Decode(blob, nil, true)
-    if not ok or type(s) ~= "table" or s[ns.Codec.EXT_KEY] ~= nil or not Relink(s, {}) or not Sane(s) then
-        return nil
-    end
-    s = Unpack(s)
-    s.ach = s.ach or {}
-    return s
 end
 function Digest.Save(fight, s)
     local seg = SegOf(fight)

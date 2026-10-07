@@ -65,6 +65,43 @@ local function diffItem(n)
         run = function() R.SetDifficulty(n) end,
     }
 end
+local function openMarks()
+    ns.Marks.SetOpen(true)
+    if root.Shell and root.Shell.Open then root.Shell.Open("raid") end
+end
+local markItems
+local function marksRow()
+    if not markItems then
+        markItems = { {
+            check = true,
+            label = "", title = "", tip = "",
+            state = function() return true, nil, ns.Marks.Enabled() end,
+            run = function() ns.Marks.SetEnabled(not ns.Marks.Enabled()) end,
+        } }
+        for i = 1, ns.Marks.COUNT do
+            markItems[#markItems + 1] = {
+                label = "", title = "",
+                icon = function(tex) ns.Icon.Mark(tex, i) end,
+                tip = function() return ns.Marks.Describe(i) end,
+                state = function()
+                    local e = ns.Marks.View(i)
+                    local on = e and e.owner and e.now and true or false
+                    if not ns.Marks.CanMark() then return false, ns.T("tipNeedOfficer"), on end
+                    return true, nil, on
+                end,
+                run = function() if ns.Marks.Target(i) == "none" then openMarks() end end,
+                alt = function() ns.Marks.Release(i) end,
+            }
+        end
+    end
+    local keep = markItems[1]
+    keep.label, keep.title, keep.tip = ns.T("marksKeep"), ns.T("marksKeepTitle"), ns.T("tipMarksKeep")
+    for i = 1, ns.Marks.COUNT do
+        local it = markItems[i + 1]
+        it.title, it.hint = ns.T("mark" .. i), ns.T("marksTipHow")
+    end
+    return { title = ns.T("actMarksRow"), items = markItems, status = ns.Marks.Status }
+end
 function R.Rows()
     local breaks, pulls = {}, {}
     for _, t in ipairs(ns.Timers.List()) do
@@ -99,6 +136,7 @@ function R.Rows()
                 run = function() ns.Marks.ClearAll() end,
             },
         } },
+        marksRow(),
         { title = ns.T("actDiffRow"), items = diffs },
     }
 end

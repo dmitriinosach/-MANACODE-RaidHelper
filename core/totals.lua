@@ -102,5 +102,8 @@ function Totals.Finish(t, s)
     s.combat = max(1, (t.to - t.from) - idle)
 end
 function Totals.Time(s)
+    return s.dur
+end
+function Totals.Active(s)
     return s.combat or s.dur
 end

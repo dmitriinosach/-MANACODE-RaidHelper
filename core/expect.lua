@@ -62,7 +62,7 @@ local function Build(fight, s, mode, boss)
     local guids = Guids(fight, names)
     local res = { mode = mode, boss = boss, kill = fight.killed and true or false, by = {}, sum = 0, got = 0,
         all = 0, have = 0, of = 0 }
-    local dur = math.max(1, s.combat or s.dur)
+    local dur = math.max(1, ns.Totals.Time(s))
     for i = 1, #list do
         local p = list[i]
         local role = ROLE[p.role] or "d"

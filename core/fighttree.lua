@@ -89,6 +89,7 @@ local function Put(st, f, rk)
     if f.raid then
         if f.raid.heroic then raid.heroic = true end
         if not raid.id and f.raid.id then raid.id = f.raid.id end
+        if not raid.map and f.raid.map then raid.map = f.raid.map end
     end
     if f.from < raid.from then raid.from = f.from end
     if f.to > raid.to then raid.to = f.to end

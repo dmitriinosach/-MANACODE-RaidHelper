@@ -73,7 +73,28 @@ end
 local function NewPlayer(name)
     return { name = name, class = ns.Encounters.ClassOf(name), all = 0, cut = 0, enc = 0, boss = 0, heal = 0,
              deaths = 0, deathBy = {}, flask = 0, elixir = 0, potion = 0, food = 0, scroll = 0, other = 0,
-             stone = 0, used = {} }
+             stone = 0, used = {}, tries = 0, prio = 0, prioBy = {}, bad = 0, badHits = 0, badBy = {}, kicks = 0,
+             cures = 0, purges = 0, first = 0, firstBy = {}, buffN = 0, buffSec = 0, buffBy = {}, rod = 0, rodBy = {} }
+end
+local function TimeOf(fights)
+    local t = { combat = 0, wipe = 0, idle = 0, gaps = 0 }
+    for k = 1, #fights do
+        local f = fights[k]
+        local dur = max(0, f.to - f.from)
+        t.combat = t.combat + dur
+        if not f.killed then t.wipe = t.wipe + dur end
+        if not t.long or dur > t.long.to - t.long.from then t.long = f end
+        local prev = fights[k - 1]
+        local gap = prev and f.from - prev.to or 0
+        if gap > 0 and gap <= SESSION_GAP then
+            t.idle = t.idle + gap
+            t.gaps = t.gaps + 1
+            if not t.longest or gap > t.longest.dur then
+                t.longest = { dur = gap, from = prev.to, to = f.from, after = prev, before = f }
+            end
+        end
+    end
+    return t
 end
 local function NewSum(raid, segs)
     local res = {
@@ -92,13 +113,16 @@ local function NewSum(raid, segs)
             res.cut, res.cutAt = f.boss, f.from
         end
         for name in pairs(f.players) do
-            if not res.byName[name] then
-                local p = NewPlayer(name)
+            local p = res.byName[name]
+            if not p then
+                p = NewPlayer(name)
                 res.byName[name] = p
                 res.players[#res.players + 1] = p
             end
+            p.tries = p.tries + 1
         end
     end
+    res.time = TimeOf(fights)
     local endAt
     for k = 1, #segs do
         local seg = segs[k].seg
@@ -198,8 +222,77 @@ end
 function RaidSum.TrashOf(ref)
     return ns.Digest.Trash(ref.i, ref.seg)
 end
+local PRIO = { damageTo = "prio", oozes = "prio", usefulTo = "prio", taken = "bad" }
+local function Part(p, key, f, label, v, hits)
+    p[key] = p[key] + v
+    local by = p[key .. "By"]
+    local k = tostring(f.boss) .. "|" .. label
+    local e = by[k]
+    if not e then
+        e = { boss = f.boss, label = label, v = 0, hits = 0 }
+        by[k] = e
+    end
+    e.v = e.v + v
+    e.hits = e.hits + hits
+    if key == "bad" then p.badHits = p.badHits + hits end
+end
+local function Credit(st, f, s)
+    local byName = st.byName
+    for i = 1, #(s.blocks or {}) do
+        local b = s.blocks[i]
+        local def = b.def
+        local key = def and PRIO[def.kind]
+        if key and b.by then
+            local label = def.plain or def.label or def.kind
+            for who, v in pairs(b.by) do
+                local p = byName[who]
+                if p and v > 0 then Part(p, key, f, label, v, b.hits and b.hits[who] or 0) end
+            end
+        end
+    end
+    local firstAt, firstWho
+    for k = 1, #s.players do
+        local sp = s.players[k]
+        local p = byName[sp.name]
+        if p then
+            p.kicks = p.kicks + (sp.interrupts or 0)
+            if sp.disp and next(sp.disp) then
+                for _, d in pairs(sp.disp) do
+                    for _, w in pairs(d.what or {}) do
+                        if w.purge then p.purges = p.purges + w.n else p.cures = p.cures + w.n end
+                    end
+                end
+            else
+                p.cures = p.cures + (sp.dispels or 0)
+            end
+            if sp.role == "dps" then
+                for key, e in pairs(sp.buffed or {}) do
+                    local b = p.buffBy[key]
+                    if not b then
+                        b = { n = 0, sec = 0, by = {} }
+                        p.buffBy[key] = b
+                    end
+                    b.n, b.sec = b.n + e.n, b.sec + e.sec
+                    p.buffN, p.buffSec = p.buffN + e.n, p.buffSec + e.sec
+                    for giver, n in pairs(e.by) do b.by[giver] = (b.by[giver] or 0) + n end
+                end
+            end
+            for sk, n in pairs(sp.rod or {}) do
+                p.rod = p.rod + n
+                p.rodBy[sk] = (p.rodBy[sk] or 0) + n
+            end
+            local at = sp.deathAt and sp.deathAt[1]
+            if at and (not firstAt or at < firstAt) then firstAt, firstWho = at, p end
+        end
+    end
+    if firstWho then
+        firstWho.first = firstWho.first + 1
+        firstWho.firstBy[f.boss] = (firstWho.firstBy[f.boss] or 0) + 1
+    end
+end
 local function Settle(st, f, s)
     local byName = st.byName
+    Credit(st, f, s)
     for k = 1, #s.players do
         local sp = s.players[k]
         local p = byName[sp.name]
@@ -319,9 +412,11 @@ function RaidSum.GP(res)
     if res.gp then return res.gp, res.gpOffer, res.gpIssued end
     if not (ns.Penalties and ns.Penalties.Evaluate) then return nil, 0, 0 end
     local by, offer, given = {}, 0, 0
+    local faults, byRule = {}, {}
     for k = 1, #res.sums do
         local e = res.sums[k]
         local pens = ns.Penalties.Evaluate(e.s, e.fight)
+        local fk = ns.Penalties.FightKey(e.fight)
         for name, hits in pairs(pens) do
             local row = by[name]
             if not row then
@@ -330,8 +425,20 @@ function RaidSum.GP(res)
             end
             for h = 1, #hits do
                 local evs = hits[h].events
+                local rule = hits[h].rule
+                local fl = byRule[rule.key]
+                if not fl then
+                    fl = { rule = rule, n = 0, red = 0, gp = 0, by = {}, tries = {} }
+                    byRule[rule.key] = fl
+                    faults[#faults + 1] = fl
+                end
+                fl.tries[fk] = true
                 for x = 1, #evs do
                     local gp = evs[x].n or 0
+                    fl.n = fl.n + 1
+                    if evs[x].grade ~= "yellow" then fl.red = fl.red + 1 end
+                    fl.gp = fl.gp + gp
+                    fl.by[name] = (fl.by[name] or 0) + 1
                     row.offer = row.offer + gp
                     row.n = row.n + 1
                     offer = offer + gp
@@ -345,11 +452,20 @@ function RaidSum.GP(res)
             end
         end
     end
-    res.gp, res.gpOffer, res.gpIssued = by, offer, given
+    tsort(faults, function(a, b)
+        if a.n ~= b.n then return a.n > b.n end
+        if a.gp ~= b.gp then return a.gp > b.gp end
+        return a.rule.key < b.rule.key
+    end)
+    res.gp, res.gpOffer, res.gpIssued, res.faults = by, offer, given, faults
     return by, offer, given
 end
+function RaidSum.Faults(res)
+    if not RaidSum.GP(res) then return nil end
+    return res.faults
+end
 function RaidSum.GPDirty()
-    for _, res in pairs(cache) do res.gp = nil end
+    for _, res in pairs(cache) do res.gp, res.faults = nil, nil end
 end
 local function LastRecord(raid)
     local last = raid.to

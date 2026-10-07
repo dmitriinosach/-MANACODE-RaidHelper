@@ -372,6 +372,33 @@ function Bar.Build(ui, run, width)
     Bar.UpdatePlay()
     return ROW_H
 end
+function Bar.Advance(elapsed)
+    local run = st.run
+    local scene = run and run.scene
+    if not (scene and run.playing) then return end
+    run.t = run.t + elapsed * run.speed
+    run.marksDirty = true
+    if run.t >= scene.to then
+        run.t = scene.to
+        run.playing = false
+        Bar.UpdatePlay()
+    end
+end
+function Bar.Now()
+    local run = st.run
+    local scene = run and run.scene
+    if not scene then return nil, nil end
+    local d = run.t - scene.pull
+    return run.playing and true or false, d >= 0 and floor(d) or -ceil(-d)
+end
+function Bar.PlayLook(playing)
+    return playing and PAUSE_TEX or PLAY_TEX, ns.T(playing and "iso.pause" or "iso.play")
+end
+function Bar.ClockText(sec)
+    local scene = st.run and st.run.scene
+    if not scene then return "" end
+    return format(ns.T("iso.clock"), Clock(sec), Clock(scene.to - scene.pull))
+end
 function Bar.Probe()
     local shown = {}
     for i = 1, #pool do

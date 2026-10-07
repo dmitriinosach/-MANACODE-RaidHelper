@@ -3,8 +3,8 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 0.2.0-beta.12
-## X-Date: 2026-10-05
+## Version: 0.2.0-beta.13
+## X-Date: 2026-10-07
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
 ## OptionalDeps: Auctionator
@@ -111,6 +111,7 @@ core\devmarks.lua
 core\gpguild.lua
 core\ledger.lua
 core\proof.lua
+core\chatreport.lua
 core\mindctl.lua
 core\phases.lua
 core\stackeps.lua
@@ -133,6 +134,7 @@ core\achievements.lua
 core\digest.lua
 core\fighttree.lua
 core\raidsummary.lua
+core\discord.lua
 core\trash.lua
 core\raidmodel.lua
 core\raidcost.lua
@@ -155,10 +157,10 @@ core\ranging.lua
 core\realmshare.lua
 core\threat.lua
 core\deathpreview.lua
-core\share.lua
 core\flasks.lua
 core\flaskrole.lua
 core\flasktrade.lua
+core\flaskready.lua
 core\autoinvite.lua
 core\memguard.lua
 core\cpumeter.lua
@@ -198,7 +200,10 @@ ui\summary.lua
 ui\gpsettings.lua
 ui\faults.lua
 ui\gpmini.lua
+ui\minirows.lua
+ui\shellmini.lua
 ui\fightlist.lua
+ui\discord.lua
 ui\raidsummary.lua
 ui\jobbar.lua
 ui\timeline.lua
@@ -235,7 +240,6 @@ ui\replaygeo.lua
 ui\replayiso.lua
 ui\replaybars.lua
 ui\deathpreview.lua
-ui\share.lua
 ui\settingsitems.lua
 ui\threatview.lua
 ui\sumhide.lua
@@ -254,6 +258,8 @@ lead\locale\enUS.lua
 lead\data\specs.lua
 lead\data\templates.lua
 lead\data\slang.lua
+lead\data\buffs.lua
+lead\data\readybuffs.lua
 lead\core\store.lua
 lead\core\pool.lua
 lead\core\sfx.lua
@@ -270,11 +276,15 @@ lead\core\keeper.lua
 lead\core\marks.lua
 lead\core\raidcmd.lua
 lead\core\bober.lua
+lead\core\buffs.lua
+lead\core\readybuffs.lua
 lead\ui\kit.lua
 lead\ui\window.lua
 lead\ui\pult.lua
 lead\ui\pultmarks.lua
 lead\ui\spam.lua
+lead\ui\raidinfo.lua
+lead\ui\readybuffs.lua
 lead\ui\raid.lua
 lead\ui\tpl.lua
 lead\ui\prefs.lua

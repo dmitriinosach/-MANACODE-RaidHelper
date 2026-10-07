@@ -32,10 +32,12 @@ local function Backdrop(raid)
     Kit.RaidArtSet(art, host, raid and raid.map and ns.raidArt and ns.raidArt[raid.map] or nil)
 end
 local function PageWheel(delta)
-    if not content then return end
+    if not content then return false end
     local most = max(0, content:GetHeight() - host:GetHeight())
+    local was = offset
     offset = max(0, min(most, offset - delta * WHEEL))
     scroll:SetVerticalScroll(offset)
+    return offset ~= was
 end
 function View.Title(raid)
     return format(ns.T("rsum.title"), raid and raid.name or ns.T("raid.none"))
@@ -127,7 +129,8 @@ local function Inside()
     return not ns.SumSide or ns.SumSide.Inside()
 end
 local function SideWheel(delta)
-    if Inside() then PageWheel(delta) else ns.SumSide.Wheel(delta) end
+    if Inside() then return PageWheel(delta) end
+    return ns.SumSide.Wheel(delta)
 end
 local function SplitGP(details)
     local rest, gp = {}, nil
@@ -221,6 +224,7 @@ function View.Attach(frame)
     scroll:EnableMouseWheel(true)
     scroll:SetScript("OnMouseWheel", function(_, delta) PageWheel(delta) end)
     host:Hide()
+    if ns.DiscordView then ns.DiscordView.Attach(host) end
     if ns.SumSide then ns.SumSide.Watch("raid", host, function() Render() end) end
 end
 function View.Show(raid)

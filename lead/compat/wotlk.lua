@@ -48,6 +48,13 @@ function C.SpellIcon(id)
     local _, _, tex = GetSpellInfo(id)
     return tex
 end
+function C.Buff(unit, i)
+    local name, _, _, _, _, _, _, caster, _, _, id = UnitAura(unit, i, "HELPFUL")
+    return name, caster, id
+end
+function C.SpellName(id)
+    return (GetSpellInfo(id))
+end
 function C.PlaySound(ref)
     PlaySound(ref)
     return true

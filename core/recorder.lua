@@ -76,6 +76,7 @@ local NPC_UNITS = { "mouseover", "target", "targettarget", "focus" }
 local inVehicle = {}
 local vehicleFight = false
 local auraStacks = {}
+local posShared = {}
 local clockOff = nil
 local clockAt = 0
 local lastNow = 0
@@ -248,8 +249,8 @@ function Recorder.Pause(waitIdle)
     ForgetWpn()
     CloseSegment("pause", nil)
     pauseWaitIdle = waitIdle or fighting
-    local name, kind = GetInstanceInfo()
-    pauseZone = kind == "raid" and name or nil
+    local name = GetInstanceInfo()
+    pauseZone = ZoneWanted() and name or nil
     pauseLeft = pauseZone == nil
 end
 function Recorder.Resume(why)
@@ -307,6 +308,7 @@ local function ResetSegmentState()
     wipe(inVehicle)
     vehicleFight = false
     wipe(auraStacks)
+    wipe(posShared)
     wipe(bossTarget)
     wipe(bossTick)
     wipe(npcRound)
@@ -634,6 +636,8 @@ local function PollAuras(k, guid)
             name, count = n, c
         end
         local c = name and ((count and count > 0) and count or 1) or 0
+        local share = ns.RealmShare
+        if share then c = share.AuraCount(slotName[k], poll[i]) or c end
         local stacks = auraStacks[i]
         if not stacks then
             stacks = {}
@@ -655,9 +659,14 @@ local function PutSlot(live, k, now, withPos, forceHp, forcePos)
     end
     if withPos then
         local px, py = GetPlayerMapPosition(unit)
-        if (px or 0) == 0 and (py or 0) == 0 and ns.RealmShare then
-            local sx, sy = ns.RealmShare.Pos(name)
-            if sx then px, py = sx, sy end
+        local share = ns.RealmShare
+        if share then
+            local shared
+            px, py, shared = share.Pick(name, px, py)
+            if (posShared[name] or false) ~= shared then
+                posShared[name] = shared
+                ns.Store.Append(Now(), "FW_PSRC", guid, name, 0, nil, nil, 0, shared and 1 or 0)
+            end
         end
         local x, y = floor((px or 0) * 10000 + 0.5), floor((py or 0) * 10000 + 0.5)
         if forcePos or polledX[name] ~= x or polledY[name] ~= y then
@@ -814,8 +823,8 @@ local function PauseStep()
     if EachTarget(BossFighting) then Recorder.Resume("boss") end
 end
 local function PauseZone()
-    local name, kind = GetInstanceInfo()
-    if kind ~= "raid" then
+    local name = GetInstanceInfo()
+    if not ZoneWanted() then
         pauseLeft = true
     elseif pauseLeft or name ~= pauseZone then
         Recorder.Resume("zone")

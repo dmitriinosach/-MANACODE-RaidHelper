@@ -136,7 +136,7 @@ local function NewSummary(fight, def)
         lead = math.max(fight.from - LEAD, ns.Encounters.Lead and ns.Encounters.Lead(fight) or 0),
         dmg = 0, bossDmg = 0, heal = 0, deaths = 0, dispels = 0, interrupts = 0,
         players = {}, blocks = {}, badges = {}, icons = {}, extra = {},
-        spellIds = {}, soaked = {}, given = {}, earned = {}, rides = {},
+        spellIds = {}, soaked = {}, given = {}, earned = {}, rides = {}, apart = {},
     }
     for key in pairs(ns.vehicles or {}) do s.rides[key] = true end
     local own, common = def.badges or {}, ns.buffsGiven or {}
@@ -191,7 +191,10 @@ local function NewSummary(fight, def)
         local bd = blocks[i]
         local b = { def = bd, total = 0, by = {}, split = {}, names = {} }
         FillN(b.names, bd.names)
-        if bd.npc and bd.kind == "abom" then s.rides[NpcKeyOf(bd.npc)] = true end
+        if bd.npc and bd.kind == "abom" then
+            s.rides[NpcKeyOf(bd.npc)] = true
+            s.apart[NpcKeyOf(bd.npc)] = true
+        end
         if bd.soak then
             b.hits = {}
             FillN(s.soaked, bd.names)
@@ -885,6 +888,82 @@ local function ShedClose(s, fight)
         end
     end
 end
+local Buffed = { IDS = { 57933, 10060, 49016 }, SKIP = { [57934] = true, [59628] = true } }
+function Buffed.Event(s, fight, sub, ts, id, sk, src, dst)
+    local set = Buffed.set
+    if not set then
+        set = {}
+        for i = 1, #Buffed.IDS do set[SpellKey(Buffed.IDS[i])] = Buffed.IDS[i] end
+        Buffed.set = set
+    end
+    local key = set[sk]
+    if not key or Buffed.SKIP[id or 0] or ts > fight.to or ts < s.lead then return end
+    local e = dst.buffed and dst.buffed[key]
+    if sub == "SPELL_AURA_REMOVED" then
+        if e and e.on then
+            e.sec = e.sec + math.max(0, ts - e.on)
+            e.on = nil
+        end
+        return
+    end
+    if not src or src == dst then return end
+    if not e then
+        dst.buffed = dst.buffed or {}
+        e = { n = 0, sec = 0, by = {} }
+        dst.buffed[key] = e
+    end
+    e.n = e.n + 1
+    e.by[src.name] = (e.by[src.name] or 0) + 1
+    if not e.on then e.on = math.max(ts, fight.from) end
+end
+function Buffed.End(p, fight)
+    for _, e in pairs(p.buffed or {}) do
+        if e.on then e.sec = e.sec + math.max(0, fight.to - e.on) end
+        e.on = nil
+        e.sec = math.floor(e.sec + 0.5)
+    end
+end
+Buffed.ROD_AURA = { 69762 }
+Buffed.ROD_CAST = { 72762 }
+Buffed.ROD_SKIP = { [61969] = true }
+local function RodSets()
+    if Buffed.rodAura then return Buffed.rodAura, Buffed.rodCast end
+    local aura, cast = {}, {}
+    local function Add(set, id)
+        if id and not Buffed.ROD_SKIP[id] then set[SpellKey(id) or id] = true end
+    end
+    local function AddAll(set, list)
+        for i = 1, #(list or {}) do Add(set, list[i]) end
+    end
+    local rd = ns.replayData or {}
+    for i = 1, #(rd.states or {}) do
+        if rd.states[i].imp and type(rd.states[i].name) == "number" then Add(aura, rd.states[i].name) end
+    end
+    AddAll(aura, rd.control and rd.control.ids)
+    local mech = ns.replayMech or {}
+    for _, list in pairs(mech.chase or {}) do
+        for i = 1, #list do
+            AddAll(aura, list[i].aura)
+            AddAll(aura, list[i].spawn)
+        end
+    end
+    for _, sl in pairs(mech.souls or {}) do AddAll(aura, sl.aura) end
+    for _, rl in pairs(mech.realms or {}) do
+        for i = 1, #(rl.puddles or {}) do Add(aura, rl.puddles[i].aura) end
+    end
+    AddAll(aura, Buffed.ROD_AURA)
+    AddAll(cast, Buffed.ROD_CAST)
+    Buffed.rodAura, Buffed.rodCast = aura, cast
+    return aura, cast
+end
+function Buffed.Rod(fight, sub, ts, sk, dst)
+    if ts < fight.from or ts > fight.to then return end
+    local aura, cast = RodSets()
+    local set = sub == "SPELL_AURA_APPLIED" and aura or cast
+    if not set[sk] then return end
+    dst.rod = dst.rod or {}
+    dst.rod[sk] = (dst.rod[sk] or 0) + 1
+end
 local function Finish(s, fight, hpLines)
     ShedClose(s, fight)
     for i = 1, #s.blocks do
@@ -918,6 +997,7 @@ local function Finish(s, fight, hpLines)
         local p = s.players[i]
         p.deaths = #p.deathAt
         p.recent = nil
+        Buffed.End(p, fight)
         s.dmg = s.dmg + p.dmg
         s.bossDmg = s.bossDmg + p.bossDmg
         s.interrupts = s.interrupts + p.interrupts
@@ -1113,8 +1193,6 @@ local function GunEnd(s, fight)
         local p = ep.rider and s.byName[ep.rider]
         local who = p and ep.rider or nobody
         if p then
-            p.dmg = p.dmg + ep.dmg
-            p.bossDmg = p.bossDmg + ep.boss
             local st = vi and p.badges[vi]
             if st and not st.seen then
                 st.live = true
@@ -1387,6 +1465,13 @@ local function Build(fight)
                 and s.given[sk] then
                 Given(s, fight, p, dst, sk, tonumber(a1), ts)
             end
+            if dst and sk and (sub == "SPELL_AURA_APPLIED" or sub == "SPELL_AURA_REFRESH" or sub == "SPELL_AURA_REMOVED") then
+                Buffed.Event(s, fight, sub, ts, tonumber(a1), sk, srcName and byName[srcName], dst)
+            end
+            if dst and sk and srcFlags and band(srcFlags, F_BY_PLAYER) == 0 and not (srcName and byName[srcName])
+                and (sub == "SPELL_AURA_APPLIED" or sub == "SPELL_CAST_START") then
+                Buffed.Rod(fight, sub, ts, sk, dst)
+            end
             if acts and (acts.subs[sub] or (sk and acts.spells[sk])) then
                 ns.Actions.Feed(acts, ts, sub, who, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a4, a5)
             end
@@ -1416,7 +1501,8 @@ local function Build(fight)
                 if sub:find("_DAMAGE", 1, true) then
                     local env = sub == "ENVIRONMENTAL_DAMAGE"
                     local amount = tonumber(swing and a1 or env and a2 or a4) or 0
-                    if rwho and not env and not dst and dstFlags and band(dstFlags, F_HOSTILE) > 0 then
+                    local apart = srcKey ~= nil and s.apart[srcKey] == true
+                    if who and not apart and not env and not dst and dstFlags and band(dstFlags, F_HOSTILE) > 0 then
                         ns.RaidPart.Hit(rp, rwho, dstGUID, dstFlags, amount - math.max(0, tonumber(swing and a2 or a5) or 0))
                     end
                     if useful and dstName and ((dstKey and useful.names[dstKey]) or (who and useful.freed[who]))
@@ -1430,7 +1516,10 @@ local function Build(fight)
                             tonumber(swing and a2 or a5) or 0, swing and "#swing" or tostring(a2),
                             sub == "SPELL_PERIODIC_DAMAGE", abHit)
                     end
-                    if p and not dst and dstFlags and (band(dstFlags, F_HOSTILE) > 0
+                    if apart and p and not dst and dstFlags and band(dstFlags, F_HOSTILE) > 0 then
+                        p.ride = (p.ride or 0) + amount
+                        p.rideName = p.rideName or srcName
+                    elseif p and not dst and dstFlags and (band(dstFlags, F_HOSTILE) > 0
                         or (fight.boss == ns.ENC.dummy and IsBoss(fight, dstGUID))) then
                         p.dmg = p.dmg + amount
                         ns.Totals.Act(tt, ts, sub)
@@ -1784,6 +1873,10 @@ function Summary.Full(fight)
     if ns.Achievements and not s.ach then s.ach = ns.Achievements.Build(fight) end
     if ns.Digest then ns.Digest.Save(fight, s) end
     return Summary.Keep(fight, s)
+end
+function Summary.Busy(fight)
+    local key = running[fight]
+    return key ~= nil and ns.Jobs.Busy(key)
 end
 function Summary.Compute(fight, onDone)
     local have = Summary.Load(fight)

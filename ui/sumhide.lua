@@ -17,11 +17,13 @@ local LABEL_PAD = 30
 local RESET_H = 20
 local BTN_PAD = 24
 local ZONE_OTHER = "?"
+local RAID = ns.RaidModel and ns.RaidModel.HIDE or "#raid"
 local Hide = {}
 ns.SumHide = Hide
 local Kit = ns.Kit
 local T = ns.T
 local cache = {}
+local cacheLang
 local gear, catcher, pop
 local checks, caps = {}, {}
 local popBoss
@@ -63,15 +65,35 @@ local function Collect(out, list, kind)
 end
 function Hide.Items(boss)
     if not boss then return {} end
+    if cacheLang ~= ns.lang then
+        cache = {}
+        cacheLang = ns.lang
+    end
     local list = cache[boss]
     if list then return list end
     list = {}
+    if boss == RAID then
+        Collect(list, ns.RaidModel and ns.RaidModel.DEFS, "block")
+        cache[boss] = list
+        return list
+    end
     local def = ns.summaries and ns.summaries[boss]
     if not def then return list end
     Collect(list, def.blocks, "block")
     Collect(list, def.badges, "badge")
     cache[boss] = list
     return list
+end
+function Hide.Name(boss)
+    if boss == RAID then return T("set.show.raid") end
+    return ns.EncName(boss)
+end
+function Hide.Label(boss, key)
+    local list = Hide.Items(boss)
+    for i = 1, #list do
+        if list[i].key == key then return list[i].label end
+    end
+    return key
 end
 local function Default(boss, key)
     local list = Hide.Items(boss)
@@ -93,6 +115,8 @@ end
 local function Changed()
     local SV = ns.SummaryView
     if SV and SV.IsShown and SV.IsShown() then SV.Refresh() end
+    local RV = ns.RaidSummaryView
+    if RV and RV.IsShown and RV.IsShown() then RV.Refresh() end
     for i = 1, #watchers do watchers[i]() end
 end
 function Hide.Set(boss, key, hidden)
@@ -129,6 +153,7 @@ function Hide.Zones()
     return out
 end
 function Hide.Bosses(zone)
+    if zone == RAID then return { RAID } end
     local zones = ns.summaryZones or {}
     local out, listed = {}, {}
     for i = 1, #zones do
@@ -219,7 +244,7 @@ local function Fill()
     local boss = popBoss
     if not boss or not pop then return end
     local list = Hide.Items(boss)
-    pop.title:SetText(format(T("sum.hide.title"), boss))
+    pop.title:SetText(format(T("sum.hide.title"), Hide.Name(boss)))
     local w = max(POP_MIN, pop.title:GetStringWidth() + PAD * 2 + 4)
     local y = PAD + HEAD
     local used, capN, kind = 0, 0, nil
@@ -290,12 +315,20 @@ local function GearClick(b)
         Hide.Open(b.boss)
     end
 end
-function Hide.SetFight(f)
+local function SetBoss(boss)
     if not gear then return end
-    local boss = f and f.boss
     gear.boss = boss and #Hide.Items(boss) > 0 and boss or nil
     if gear.boss then gear:Show() else gear:Hide() end
     if Hide.IsOpen() and popBoss ~= gear.boss then Hide.Close() end
+end
+function Hide.SetFight(f)
+    SetBoss(f and f.boss)
+end
+local function Sync()
+    local RV, SV = ns.RaidSummaryView, ns.SummaryView
+    if RV and RV.IsShown and RV.IsShown() then return SetBoss(RAID) end
+    local f = SV and SV.IsShown and SV.IsShown() and SV.Fight and SV.Fight() or nil
+    SetBoss(f and f.boss)
 end
 function Hide.Head(host)
     local b = Kit.Button(host)
@@ -312,8 +345,7 @@ function Hide.Head(host)
     b.tip = T("sum.hide.btn.tip")
     b.onClick = GearClick
     gear = b
-    local SV = ns.SummaryView
-    Hide.SetFight(SV and SV.IsShown and SV.IsShown() and SV.Fight and SV.Fight() or nil)
+    Sync()
     return b
 end
 function Hide.HeadFrame()
@@ -323,10 +355,17 @@ Hide.OnChange(function()
     if Hide.IsOpen() then Fill() end
 end)
 if ns.SummaryView then
-    hooksecurefunc(ns.SummaryView, "Show", function(f) Hide.SetFight(f) end)
+    hooksecurefunc(ns.SummaryView, "Show", Sync)
     hooksecurefunc(ns.SummaryView, "Hide", function()
         Hide.Close()
-        Hide.SetFight(nil)
+        Sync()
+    end)
+end
+if ns.RaidSummaryView then
+    hooksecurefunc(ns.RaidSummaryView, "Show", Sync)
+    hooksecurefunc(ns.RaidSummaryView, "Hide", function()
+        Hide.Close()
+        Sync()
     end)
 end
 local S = ns.Settings
@@ -335,6 +374,7 @@ local zone, boss
 local function AllZones()
     local out = Hide.Zones()
     if #Hide.Bosses(ZONE_OTHER) > 0 then out[#out + 1] = ZONE_OTHER end
+    out[#out + 1] = RAID
     return out
 end
 local function Zone()
@@ -351,14 +391,11 @@ local function Boss()
     end
     return list[1]
 end
-local function Plain(name)
-    return function() return name end
-end
 local function ZoneOptions()
     local out, list = {}, AllZones()
     for i = 1, #list do
         local z = list[i]
-        out[i] = { key = z, label = z == ZONE_OTHER and "set.show.other" or z }
+        out[i] = { key = z, label = (z == ZONE_OTHER and "set.show.other") or (z == RAID and "set.show.raid") or z }
     end
     return out
 end
@@ -366,7 +403,7 @@ local function BossOptions()
     local out, list = {}, Hide.Bosses(Zone())
     for i = 1, #list do
         local key = list[i]
-        out[i] = { key = key, label = function() return ns.EncName(key) end }
+        out[i] = { key = key, label = function() return Hide.Name(key) end }
     end
     return out
 end
@@ -385,6 +422,7 @@ do
     local names = {}
     for name in pairs(ns.summaries or {}) do names[#names + 1] = name end
     table.sort(names)
+    names[#names + 1] = RAID
     for n = 1, #names do
         local name = names[n]
         local list = Hide.Items(name)
@@ -400,7 +438,7 @@ do
             end
             order = order + 1
             items[#items + 1] = { kind = "check", key = name .. "|" .. it.key, order = order, shown = Mine,
-                label = Plain(it.label), default = not it.off,
+                label = function() return Hide.Label(name, it.key) end, default = not it.off,
                 get = function() return not Hide.IsHidden(name, it.key) end,
                 set = function(on) Hide.Set(name, it.key, not on) end }
         end

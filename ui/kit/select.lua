@@ -93,7 +93,7 @@ local function ShowList(sel, options, value, onPick, owner, title)
         b:SetText(opt.label or opt.key)
         b.tip = opt.tip
         b.tipTitle = opt.tipTitle
-        b.active = (value ~= nil and opt.key == value)
+        if type(value) == "table" then b.active = value[opt.key] == true else b.active = value ~= nil and opt.key == value end
         b.tint = opt.color
         if opt.disabled then b:Disable() else b:Enable() end
         b.onClick = function()
@@ -180,14 +180,16 @@ function Kit.Select(parent)
     return b
 end
 function Kit.Menu(items, anchor)
-    local options, title, value = {}, nil, nil
+    local options, title, value = {}, nil, {}
     for i = 1, #items do
         local it = items[i]
         if it.isTitle and not title and #options == 0 then
             title = it.text
-        elseif not it.isTitle then
+        elseif it.isTitle then
+            options[#options + 1] = { key = i, label = it.text, disabled = true, tipTitle = false }
+        else
             options[#options + 1] = { key = i, label = it.text, disabled = it.disabled, tip = it.tip, tipTitle = false }
-            if it.checked then value = i end
+            if it.checked then value[i] = true end
         end
     end
     ShowList(anchor, options, value, function(key)

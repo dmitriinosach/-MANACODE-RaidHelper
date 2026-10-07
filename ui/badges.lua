@@ -389,13 +389,14 @@ local function DrawRows(f)
     end
     if f.onDraw then f.onDraw(f) end
 end
+local function PageFirst(self, delta)
+    return not self.modal and self.onWheel ~= nil and self.onWheel(delta) == true
+end
 local function DetailWheel(self, delta)
+    if PageFirst(self, delta) then return end
     local most = max(0, #self.list - self.lineCount)
     local want = (self.offset or 0) - delta
-    if most == 0 or want < 0 or want > most then
-        if self.onWheel then self.onWheel(delta) end
-        return
-    end
+    if most == 0 or want < 0 or want > most then return end
     self.offset = want
     DrawRows(self)
 end
@@ -474,6 +475,9 @@ function Badges.Detail(parent, modal)
         self.list = m.rows or {}
         self.empty = m.empty
         self.onWheel = m.onWheel
+        if self.paint and self.paint ~= m.paint then
+            for k = 1, #self.rows do self.paint(self.rows[k], nil) end
+        end
         self.paint = m.paint
         self.offset = 0
         Grow(self, LINES)
@@ -1072,12 +1076,10 @@ local function DrawWide(f)
     if f.onDraw then f.onDraw(f) end
 end
 local function WideWheel(self, delta)
+    if PageFirst(self, delta) then return end
     local most = max(0, #self.list - self.lineCount)
     local want = (self.offset or 0) - delta
-    if most == 0 or want < 0 or want > most then
-        if self.onWheel then self.onWheel(delta) end
-        return
-    end
+    if most == 0 or want < 0 or want > most then return end
     self.offset = want
     DrawWide(self)
 end

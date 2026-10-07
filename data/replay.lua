@@ -159,6 +159,7 @@ ns.replayData = {
             51514, 20066,
         },
         soft = { prio = 50, ids = { 1604 } },
+        spin = { [33786] = true },
     },
     shields = {
         [1022] = "hand", [5599] = "hand", [10278] = "hand",
@@ -179,10 +180,10 @@ ns.replayData = {
     },
     pools = {
         [ns.ENC.lichking] = {
-            { spell = 72762, life = 30, tail = 0, r0 = 4, rmax = 30, gap = 30, by = "src", tone = "sem.rep.defile" },
+            { spell = 72762, life = 30, tail = 1, r0 = 4, rmax = 30, gap = 30, by = "src", tone = "sem.rep.defile" },
         },
         [ns.ENC.deathwhisper] = {
-            { spell = 49938, life = 10, tail = 0, r0 = 8, rmax = 8, gap = 10, tone = "sem.rep.shadow" },
+            { spell = 49938, src = 36855, cast = true, life = 10, tail = 1, r0 = 8, rmax = 8, gap = 10, tone = "sem.rep.shadow" },
         },
         [ns.ENC.marrowgar] = {
             { spell = 69138, tail = 3, r0 = 5, rmax = 5, gap = 3, tone = "sem.rep.frost" },
@@ -192,13 +193,13 @@ ns.replayData = {
             { spell = 70341, tail = 8, r0 = 4, rmax = 16, gap = 20, by = "src", tone = "sem.rep.ooze" },
         },
         [ns.ENC.anubarak] = {
-            { spell = 67857, life = 900, tail = 0, r0 = 6, rmax = 6, gap = 900, by = "src", tone = "sem.rep.frost" },
-            { spell = 67856, life = 900, tail = 0, r0 = 6, rmax = 6, gap = 900, by = "src", tone = "sem.rep.frost" },
-            { spell = 67855, life = 900, tail = 0, r0 = 6, rmax = 6, gap = 900, by = "src", tone = "sem.rep.frost" },
-            { spell = 66193, life = 900, tail = 0, r0 = 6, rmax = 6, gap = 900, by = "src", tone = "sem.rep.frost" },
+            { spell = 67857, life = 900, tail = 5, r0 = 6, rmax = 6, gap = 900, by = "src", tone = "sem.rep.frost" },
+            { spell = 67856, life = 900, tail = 5, r0 = 6, rmax = 6, gap = 900, by = "src", tone = "sem.rep.frost" },
+            { spell = 67855, life = 900, tail = 5, r0 = 6, rmax = 6, gap = 900, by = "src", tone = "sem.rep.frost" },
+            { spell = 66193, life = 900, tail = 5, r0 = 6, rmax = 6, gap = 900, by = "src", tone = "sem.rep.frost" },
         },
         [ns.ENC.rotface] = {
-            { spell = 69774, life = 20, tail = 0, r0 = 6, rmax = 6, gap = 20, tone = "sem.rep.ooze" },
+            { spell = 69774, life = 30, tail = 3, r0 = 6, rmax = 6, gap = 30, tone = "sem.rep.ooze" },
         },
         [ns.ENC.ignis] = {
             { spell = 63475, src = 33221, tail = 2, r0 = 13, rmax = 13, gap = 45, by = "src", tone = "sem.rep.fire" },
@@ -419,7 +420,8 @@ do
     local D = ns.replayData
     for _, list in ipairs({ D.control, D.control.soft }) do
         for i = 1, #list.ids do
-            D.states[#D.states + 1] = { name = list.ids[i], icon = list.ids[i], prio = list.prio, cc = true }
+            D.states[#D.states + 1] = { name = list.ids[i], icon = list.ids[i], prio = list.prio, cc = true,
+                                        spin = D.control.spin[list.ids[i]] }
         end
     end
     for _, tint in ipairs(D.tints) do

@@ -450,7 +450,7 @@ local function Detect(rule, p, s, fight)
         end
     elseif kind == "mindps" then
         if p.role == "dps" and Applies(rule, fight) then
-            local dps = p.dmg / (s.combat or s.dur)
+            local dps = p.dmg / ns.Totals.Time(s)
             if dps < (rule.dps or 0) then out[1] = { t = nil, amount = dps, need = rule.dps } end
         end
     elseif kind == "earlypull" then
@@ -482,6 +482,12 @@ local function Manual(fight)
     local byFight = Store().manual[Penalties.FightKey(fight)]
     return byFight or {}
 end
+local function OnceOf(found)
+    for k = 1, #found do
+        if found[k].grade ~= "yellow" then return found[k] end
+    end
+    return found[1]
+end
 function Penalties.Evaluate(s, fight, sys)
     sys = sys or (ns.Ledger and ns.Ledger.Key()) or "gp"
     local rules = Penalties.Rules(fight.boss)
@@ -506,16 +512,17 @@ function Penalties.Evaluate(s, fight, sys)
                 end
             end
             if #found > 0 then
-                if rule.mode == "once" then found = { found[1] } end
-                local events, nr, ny = {}, 0, 0
+                if rule.mode == "once" then found = { OnceOf(found) } end
+                local events, nr, ny, paid = {}, 0, 0, 0
                 for k = 1, #found do
                     local f = found[k]
                     local yellow = f.grade == "yellow"
                     if yellow then ny = ny + 1 else nr = nr + 1 end
-                    local gp = sum
-                    if rule.mode == "grow" then gp = gp + step * (nr - 1) end
                     local key = table.concat({ fk, p.name, rule.key, yellow and ("y" .. ny) or nr }, "|")
                     local bumped = bump[key] == true and (yellow or wipe ~= nil)
+                    local gp = sum
+                    if not yellow or bumped then paid = paid + 1 end
+                    if rule.mode == "grow" then gp = gp + step * (paid - 1) end
                     if bumped and not yellow then gp = wipe end
                     if yellow and not bumped then gp = 0 end
                     events[k] = { key = key, t = f.t, n = gp, bumped = bumped, wipe = (bumped and not yellow) or nil, info = f,
@@ -526,7 +533,11 @@ function Penalties.Evaluate(s, fight, sys)
                     shed = ShedOf(rule, s, p) } }
             end
         end
-        if first and not first.bumped then first.n = rule.firstGp end
+        if first and not first.bumped then
+            local orig = Find(BaseRules(), rule.key)
+            local base = tonumber(orig and orig.gp) or 0
+            first.n = base > 0 and floor(rule.firstGp * sum / base + 0.5) or rule.firstGp
+        end
         for i = 1, #hits do
             local name = hits[i].p.name
             out[name] = out[name] or {}

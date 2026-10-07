@@ -15,6 +15,7 @@ ns.ReplayLink = RL
 RL.LEAD = LEAD
 RL.TEX = PLAY_TEX
 local head
+local save
 local function Clock(sec)
     local m = floor(sec / 60)
     return format("%d:%02d", m, floor(sec - m * 60))
@@ -98,6 +99,8 @@ function RL.SaveHead(host, anchor)
         end
         Kit.Confirm(ns.T("save.ask"), ns.T("save.btn"), function() ReloadUI() end)
     end
+    save = b
+    if head and not head:IsShown() then b:Hide() end
     return b
 end
 function RL.HeadFrame()
@@ -107,6 +110,9 @@ function RL.SetFight(f)
     if not head then return end
     head.fight = f
     if f then head:Show() else head:Hide() end
+    if save then
+        if f then save:Show() else save:Hide() end
+    end
     if f and ns.ReplayIso then
         head:Enable()
         Kit.Tint(head.icon, "text.good")

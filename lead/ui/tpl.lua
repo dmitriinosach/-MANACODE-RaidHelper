@@ -10,7 +10,7 @@ local DEL_WINDOW = 4
 local pane, listPool, rowPool, checkPool
 local left, mid, right, scroll, child
 local nameE, sizeSel, copyBtn, delBtn, resetBtn, addBtn
-local roleSel, grpSel, capE, rmBtn, lockFs, emptyFs
+local roleSel, grpSel, capE, rmBtn, emptyFs
 local markCap, markBtns
 local curKey, curSlot
 local delAsk, delAskAt = nil, 0
@@ -18,9 +18,6 @@ local built = false
 local function unfocus()
     if nameE then nameE:ClearFocus() end
     if capE then capE:ClearFocus() end
-end
-local function locked(key)
-    return ns.Session.Active() and ns.Session.Template().key == key
 end
 local function roleOptions()
     local out = {}
@@ -121,7 +118,6 @@ local function refresh()
     local T = ns.Tpl
     if not curKey or not T.Exists(curKey) then curKey = ns.Session.Template().key end
     local tpl = T.Get(curKey)
-    local lock = locked(curKey)
     listPool:Reset()
     local y = 12
     for _, t in ipairs(T.List()) do
@@ -163,19 +159,18 @@ local function refresh()
     if own then
         resetBtn:Hide()
         delBtn:Show()
-        if lock then delBtn:Disable() delBtn.tip = ns.T("tipTplEditLocked") else delBtn:Enable() delBtn.tip = nil end
+        delBtn:Enable()
     else
         delBtn:Hide()
         resetBtn:Show()
-        if T.IsCustom(curKey) and not lock then
+        if T.IsCustom(curKey) then
             resetBtn:Enable()
             resetBtn.tip = nil
         else
             resetBtn:Disable()
-            resetBtn.tip = ns.T(lock and "tipTplEditLocked" or "tipTplNotEdited")
+            resetBtn.tip = ns.T("tipTplNotEdited")
         end
     end
-    if lock then sizeSel:Disable() sizeSel.tip = ns.T("tipTplEditLocked") else sizeSel:Enable() sizeSel.tip = nil end
     rowPool:Reset()
     local groups = ns.Layout.Groups(tpl)
     for i, s in ipairs(tpl.slots) do
@@ -213,7 +208,6 @@ local function refresh()
     rowPool:HideExtras()
     child:SetHeight(math.max(1, #tpl.slots * ROW_H))
     addBtn.tipTitle = ns.T("btnAddSlot")
-    if lock then addBtn:Disable() addBtn.tip = ns.T("tipTplEditLocked") else addBtn:Enable() addBtn.tip = nil end
     checkPool:Reset()
     local slot = curSlot and tpl.slots[curSlot]
     if not slot then
@@ -255,21 +249,11 @@ local function refresh()
                         unfocus()
                         ns.Tpl.ToggleSpec(curKey, curSlot, sp.key, v)
                     end
-                    c:EnableMouse(not lock)
-                    c:SetAlpha(lock and 0.5 or 1)
                 end
             end
         end
-        if lock then
-            roleSel:Disable() rmBtn:Disable()
-            capE:EnableMouse(false)
-        else
-            roleSel:Enable() rmBtn:Enable()
-            capE:EnableMouse(true)
-        end
     end
     checkPool:HideExtras()
-    if lock then lockFs:Show() else lockFs:Hide() end
 end
 local function build()
     pane = ns.window:Pane("tpl")
@@ -433,12 +417,6 @@ local function build()
     emptyFs:SetPoint("TOP", right, "TOP", 0, -40)
     emptyFs:SetText(ns.T("tplPickSlot"))
     ns.PaintText(emptyFs, "text.muted")
-    lockFs = pane:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    lockFs:SetPoint("BOTTOMLEFT", left, "BOTTOMLEFT", 10, 10)
-    lockFs:SetWidth(LEFT_W - 20)
-    lockFs:SetJustifyH("LEFT")
-    lockFs:SetText(ns.T("tipTplEditLocked"))
-    ns.PaintText(lockFs, "text.warn")
     built = true
     pane:SetScript("OnShow", refresh)
     refresh()

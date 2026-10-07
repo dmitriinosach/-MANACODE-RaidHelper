@@ -26,10 +26,11 @@ function S.Invalidate()
 end
 local function gather()
     local ch = ns.Store.Char()
-    local g = ch.gather
+    if ch.gather then ch.gather = nil end
+    local g = ch.lead
     if not g then
-        g = { active = false, tpl = ns.TEMPLATES[1].key, assign = {}, text = 1 }
-        ch.gather = g
+        g = { tpl = ns.TEMPLATES[1].key, assign = {}, text = 1 }
+        ch.lead = g
     end
     g.assign = g.assign or {}
     g.fields = g.fields or { prog = "", reqKind = "none", req = "", loot = "none", time = "" }
@@ -39,41 +40,81 @@ end
 function S.State()
     return gather()
 end
-function S.Active()
-    return gather().active
-end
 function S.Template()
     return ns.Tpl.Get(gather().tpl)
 end
+function S.InGroup()
+    local raid, party = ns.Compat.GroupSize()
+    return raid > 0 or party > 0 or ns.Test.Active()
+end
+local function bestSlot(tpl, assign, m)
+    local spec = S.Player(m.name).spec
+    local named, loose, any
+    for i, slot in ipairs(tpl.slots) do
+        if not assign[i] and S.SlotFits(slot, m) then
+            any = any or i
+            if not slot.specs then
+                loose = loose or i
+            elseif spec then
+                named = named or i
+            end
+        end
+    end
+    return named or loose or any
+end
 function S.SetTemplate(key)
     local g = gather()
-    if g.active or not ns.Tpl.Exists(key) or g.tpl == key then return end
+    if not ns.Tpl.Exists(key) or g.tpl == key then return end
+    local old = ns.Tpl.Get(g.tpl)
+    local known, rest = {}, {}
+    for i = 1, old and #old.slots or 0 do
+        local name = g.assign[i]
+        if name then
+            local list = S.Player(name).spec and known or rest
+            list[#list + 1] = name
+        end
+    end
     g.tpl = key
     g.text = 1
+    g.assign = {}
     S.Invalidate()
+    local tpl = S.Template()
+    for _, list in ipairs({ known, rest }) do
+        for _, name in ipairs(list) do
+            local m = S.Member(name)
+            local i = m and bestSlot(tpl, g.assign, m)
+            if i then g.assign[i] = name end
+        end
+    end
     S.Changed()
+end
+function S.Refit(key)
+    local g = gather()
+    if key and key ~= g.tpl then return end
+    local tpl = S.Template()
+    for i, name in pairs(g.assign) do
+        local slot = tpl.slots[i]
+        local m = S.Member(name)
+        if not slot or (m and not S.SlotFits(slot, m)) then g.assign[i] = nil end
+    end
+end
+function S.ShiftSlots(key, at, delta)
+    local g = gather()
+    if key ~= g.tpl then return end
+    local out = {}
+    for i, name in pairs(g.assign) do
+        if i < at then
+            out[i] = name
+        elseif delta > 0 or i > at then
+            out[i + delta] = name
+        end
+    end
+    g.assign = out
 end
 function S.TryConvert()
-    if not gather().active or ns.Test.Active() then return end
+    if not (ns.Spam and ns.Spam.Running()) or ns.Test.Active() then return end
     local raid, party = ns.Compat.GroupSize()
     if raid == 0 and party > 0 and IsPartyLeader() then ConvertToRaid() end
-end
-function S.Start()
-    local g = gather()
-    g.active = true
-    g.assign = {}
-    g.waiting = {}
-    S.TryConvert()
-    S.Changed()
-end
-function S.Finish()
-    local g = gather()
-    g.active = false
-    g.assign = {}
-    g.waiting = {}
-    g.pins = {}
-    if ns.Spam then ns.Spam.Stop() end
-    S.Changed()
 end
 function S.Field(k)
     return gather().fields[k]
@@ -157,8 +198,13 @@ function S.Roster()
         for i = 1, party do
             local unit = "party" .. i
             local _, t = UnitClass(unit)
-            out[#out + 1] = { name = UnitName(unit), class = t, sub = 1, unit = unit, work = true,
-                online = UnitIsConnected(unit) and true or false, rank = 0 }
+            local name = UnitName(unit)
+            if not name or name == UNKNOWNOBJECT then
+                out.unknown = true
+            else
+                out[#out + 1] = { name = name, class = t, sub = 1, unit = unit, work = true,
+                    online = UnitIsConnected(unit) and true or false, rank = 0 }
+            end
         end
     end
     rosterCache, rosterAt = out, GetTime()
@@ -283,6 +329,7 @@ function S.FreeSlotsFor(m, limit)
 end
 function S.Unassigned()
     local out = {}
+    if not S.InGroup() then return out end
     for _, m in ipairs(S.Roster()) do
         if not S.SlotOf(m.name) then out[#out + 1] = m end
     end
@@ -349,7 +396,6 @@ function S.FlaskRole(name)
     local p = ns.Store.DB().players[name]
     local sp = p and p.spec and ns.SPEC[p.spec]
     if sp then return sp.role, sp.class end
-    if not S.Active() then return nil end
     local i = S.SlotOf(name)
     local slot = i and S.Template().slots[i]
     local role = slot and slot.role
@@ -357,9 +403,3 @@ function S.FlaskRole(name)
     return nil
 end
 if root.Flasks and root.Flasks.RoleSource then root.Flasks.RoleSource("lead", S.FlaskRole, 20) end
-function S.InviteCap()
-    if not S.Active() then return nil end
-    local tpl = S.Template()
-    return tpl and (tpl.size or #tpl.slots) or nil
-end
-if root.AutoInvite and root.AutoInvite.CapSource then root.AutoInvite.CapSource(S.InviteCap) end

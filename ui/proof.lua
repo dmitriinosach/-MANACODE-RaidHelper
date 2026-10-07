@@ -88,6 +88,49 @@ function View.Menu(anchor)
     ns.Tip.Hide()
     ns.Kit.Menu(menu, anchor)
 end
+function View.ReportMenu(anchor, build)
+    local R = ns.ChatReport
+    local menu = { { text = T("report.menu"), isTitle = true, notCheckable = true } }
+    local cur = R.Channel()
+    for i = 1, #R.CHANNELS do
+        local c = R.CHANNELS[i]
+        menu[#menu + 1] = {
+            text = T("report.ch." .. c),
+            checked = c == cur,
+            func = function()
+                local lines = build(R.Size())
+                if #lines < 2 then
+                    ns.Print(T("report.none"))
+                    return
+                end
+                R.Send(lines, c)
+            end,
+        }
+    end
+    menu[#menu + 1] = { text = T("report.menu.n"), isTitle = true, notCheckable = true }
+    local n = R.Size()
+    for i = 1, #R.SIZES do
+        local k = R.SIZES[i]
+        menu[#menu + 1] = {
+            text = format(T("report.n"), k),
+            checked = k == n,
+            func = function()
+                R.SetSize(k)
+                View.ReportMenu(anchor, build)
+            end,
+        }
+    end
+    ns.Tip.Hide()
+    ns.Kit.Menu(menu, anchor)
+end
+function View.ReportButton(parent, build)
+    local b = ns.Kit.Button(parent, nil, "quiet")
+    b.text:SetText(T("report.btn"))
+    b.tipTitle = T("report.btn")
+    b.tip = T("report.tip")
+    b.onClick = function(self) View.ReportMenu(self, build) end
+    return b
+end
 local function ButtonEnter(self)
     if self.ask then ns.Tip.Show(self, View.Lines(self.ask)) end
 end

@@ -256,6 +256,13 @@ end
 function M.Active()
     return prefs().on and M.InRaid() and M.CanMark() and ns.Keeper.Mine()
 end
+function M.Status()
+    if not M.Enabled() then return ns.T("marksStatusOff") end
+    local who = M.InRaid() and ns.Keeper.Who()
+    if who and who ~= UnitName("player") then return ns.T("marksStatusPeer", who) end
+    if M.Active() then return ns.T("marksStatusMine") end
+    if M.InRaid() and not M.CanMark() then return ns.T("marksStatusRights") end
+end
 local function keep()
     last = M.Plan()
     pending = false

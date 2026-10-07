@@ -44,6 +44,10 @@ local BOMB_H = 20
 local BOMB_ICON = 16
 local BOMB_EDGE = 3
 local BOMB_PAD = 6
+local SPIN_TEX = "Creature\\VOIDWALKER\\TORNADO2C"
+local SPIN_K = 2.2
+local SPIN_RATE = 2 * math.pi * 1.25
+local SPIN_H = 0.5
 local V = {}
 ns.ReplayLayersView = V
 local Kit = ns.Kit
@@ -61,6 +65,8 @@ local hw, hh = 0, 0
 local top1, top2, top3, topN = {}, {}, {}, {}
 local flagSpike, flagMc, flagLift, flagHalo, flagGrow = {}, {}, {}, {}, {}
 local flagLook = {}
+local flagSpin = {}
+local spinFigs = {}
 local memo = { L = nil, from = 0, to = -1, np = 0, fk = 0, nfx = 0 }
 local fxList = {}
 local focusName
@@ -210,6 +216,11 @@ function V.Attach(fig)
     fig.halo:SetPoint("TOPLEFT", fig, "TOPLEFT", -4, 4)
     fig.halo:SetPoint("BOTTOMRIGHT", fig, "BOTTOMRIGHT", 4, -4)
     fig.halo:Hide()
+    fig.spin = fig:CreateTexture(nil, "OVERLAY")
+    fig.spin:SetTexture(SPIN_TEX)
+    fig.spin:SetPoint("CENTER", fig.icon, "CENTER", 0, 0)
+    Kit.Hue(fig.spin, "sem.rep.cyclone")
+    fig.spin:Hide()
 end
 function V.Role(fig)
     memo.L = nil
@@ -219,6 +230,8 @@ function V.Role(fig)
     if fxRow.owner == fig then fxRow.key = nil end
     fig.spike:Hide()
     fig.halo:Hide()
+    fig.spin:Hide()
+    fig.spinOn = nil
 end
 function V.Clear(fig)
     if not fig.bd then return end
@@ -511,6 +524,7 @@ local function Collect(L, n, t, fk)
         flagSpike[k], flagMc[k], flagLift[k], flagHalo[k] = false, false, false, false
         flagGrow[k] = false
         flagLook[k] = false
+        flagSpin[k] = false
     end
     local np, nx, nfx = 0, huge, 0
     for i = 1, L.ns do
@@ -547,6 +561,7 @@ local function Collect(L, n, t, fk)
             end
             if def.spike then flagSpike[k] = true end
             if def.mc then flagMc[k] = true end
+            if def.spin then flagSpin[k] = true end
             if def.lift then flagLift[k] = true end
             if def.link then
                 np = np + 1
@@ -639,7 +654,29 @@ local function Decorate(fig, k)
     fig.grow = flagGrow[k]
     fig.look = flagLook[k] or nil
     if flagHalo[k] then fig.halo:Show() else fig.halo:Hide() end
+    local spin = flagSpin[k]
+    if fig.spinOn ~= spin then
+        if spin then fig.spin:Show() else fig.spin:Hide() end
+    end
+    fig.spinOn = spin
     if topN[k] > 0 then stats.badges = stats.badges + min(BADGES, topN[k]) end
+end
+local function PlaceSpin(t)
+    for i = 1, #spinFigs do
+        local fig = spinFigs[i]
+        local tex = fig.spin
+        local w = floor(fig.icon:GetWidth() * SPIN_K + 0.5)
+        if fig.spinW ~= w then
+            fig.spinW = w
+            tex:SetWidth(max(1, w))
+            tex:SetHeight(max(1, w))
+        end
+        local a = t * SPIN_RATE + i
+        local c, s = math.cos(a) * SPIN_H, math.sin(a) * SPIN_H
+        tex:SetTexCoord(0.5 - c - s, 0.5 + s - c, 0.5 - c + s, 0.5 + s + c,
+            0.5 + c - s, 0.5 - s - c, 0.5 + c + s, 0.5 - s + c)
+    end
+    stats.spins = #spinFigs
 end
 local function PlacePacts(figs, np)
     local n = 0
@@ -723,9 +760,11 @@ function V.Place(scene, cam, t, figs)
         memo.L, memo.from = L, t
         stats.badges, stats.fx = 0, 0
         stats.collects = stats.collects + 1
+        for i = #spinFigs, 1, -1 do spinFigs[i] = nil end
         for k = 1, n do
             local fig = figs[k]
             if fig.bd then Decorate(fig, k) end
+            if fig.spinOn then spinFigs[#spinFigs + 1] = fig end
         end
         local owner = fk > 0 and figs[fk].bd and figs[fk] or nil
         DecorateFx(owner, memo.nfx)
@@ -738,6 +777,7 @@ function V.Place(scene, cam, t, figs)
         DecorateFx(owner, memo.nfx)
     end
     PlacePacts(figs, memo.np)
+    PlaceSpin(t)
 end
 function V.Focus(name)
     if focusName == name then return end

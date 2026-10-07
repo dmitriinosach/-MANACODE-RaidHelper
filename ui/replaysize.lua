@@ -1,5 +1,6 @@
 local _, ns = ...
 local floor = math.floor
+local format = string.format
 local max = math.max
 local min = math.min
 local MIN_W = 696
@@ -7,6 +8,7 @@ local MIN_H = 420
 local MARGIN = 24
 local GRIP = 16
 local MAX_BTN = 32
+local STRIP_W = 320
 local TITLE_LEVEL = 2
 local BTN_LEVEL = 4
 local BIGGER = "Interface\\Buttons\\UI-Panel-BiggerButton-"
@@ -154,9 +156,14 @@ local function BuildTitle(frame, close, head)
     b:SetScript("OnLeave", Kit.TipHide)
     b:SetScript("OnClick", function() Size.Toggle() end)
     st.maxBtn = b
+    local fold = Kit.FoldButton(frame, false)
+    fold:SetPoint("RIGHT", b, "LEFT", 0, 0)
+    fold:SetFrameLevel(frame:GetFrameLevel() + BTN_LEVEL)
+    fold.onClick = function() Size.Fold() end
+    st.foldBtn = fold
     local title = CreateFrame("Button", nil, frame)
     title:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    title:SetPoint("RIGHT", b, "LEFT", 0, 0)
+    title:SetPoint("RIGHT", fold, "LEFT", 0, 0)
     title:SetHeight(head)
     title:SetFrameLevel(frame:GetFrameLevel() + TITLE_LEVEL)
     title:RegisterForDrag("LeftButton")
@@ -192,8 +199,85 @@ function Size.Restore()
     end
     Decor()
 end
+local function StripPlace()
+    local settings = ns.GetDB().settings
+    if type(settings.iso) ~= "table" then settings.iso = {} end
+    if type(settings.iso.strip) ~= "table" then settings.iso.strip = {} end
+    return settings.iso.strip
+end
+local function PaintStrip()
+    local s = st.strip
+    local playing, sec = ns.ReplayBar.Now()
+    if playing == nil then
+        Kit.StripValue(s, "")
+        st.shownSec, st.shownPlay = nil, nil
+        return
+    end
+    if sec ~= st.shownSec then
+        st.shownSec = sec
+        Kit.StripValue(s, ns.ReplayBar.ClockText(sec))
+    end
+    if playing ~= st.shownPlay then
+        st.shownPlay = playing
+        local tex, tip = ns.ReplayBar.PlayLook(playing)
+        st.play.icon:SetTexture(tex)
+        st.play.tipTitle = tip
+        if st.play.hovered then Kit.TipShow(st.play) end
+    end
+end
+local function StripTick(_, elapsed)
+    ns.ReplayBar.Advance(elapsed)
+    PaintStrip()
+end
+local function DropStrip()
+    if st.strip then st.strip:Hide() end
+end
+local function BuildStrip()
+    local s = Kit.Strip({
+        name = "HTP_FailWatchReplayIsoBar",
+        width = STRIP_W,
+        strata = "DIALOG",
+        place = StripPlace,
+        onRestore = function() Size.Unfold() end,
+        onClose = function()
+            DropStrip()
+            ns.ReplayIso.Hide()
+        end,
+    })
+    st.play = Kit.StripButton(s, ns.ReplayBar.PlayLook(false))
+    st.play.onClick = function()
+        ns.ReplayBar.TogglePlay()
+        PaintStrip()
+    end
+    s:SetScript("OnUpdate", ns.Prof.Wrap("ui.iso", StripTick))
+    st.strip = s
+end
+function Size.Fold()
+    local f = st.frame
+    local Iso = ns.ReplayIso
+    if not f or not f:IsShown() or st.sizing or not (Iso and Iso.Scene()) then return end
+    if not st.strip then BuildStrip() end
+    local _, playing = Iso.Now()
+    local x, y = Kit.TopLeftOf(f)
+    f:Hide()
+    Iso.SetPlaying(playing)
+    local fight = Iso.Scene().fight
+    st.strip.label:SetText(format(ns.T("iso.strip"), ns.FightList and ns.FightList.Title(fight) or ns.EncName(fight.boss)))
+    st.shownSec, st.shownPlay = nil, nil
+    PaintStrip()
+    Kit.StripShow(st.strip, x, y)
+end
+function Size.Unfold()
+    DropStrip()
+    local Iso = ns.ReplayIso
+    if Iso.Shown() then st.frame:Show() else Iso.Show() end
+end
+function Size.IsFolded()
+    return st.strip ~= nil and st.strip:IsShown() and true or false
+end
 function Size.Refit()
     if not st.frame then return end
+    if st.frame:IsShown() then DropStrip() end
     if Saved().max then
         Maximize()
         Decor()
@@ -223,5 +307,5 @@ function Size.Probe()
     local s = Saved()
     local mw, mh = Limit(nil, nil)
     return { grip = st.grip, maxBtn = st.maxBtn, title = st.title, max = s.max == true, vw = st.vw, vh = st.vh,
-             maxW = mw, maxH = mh, sizing = st.sizing }
+             maxW = mw, maxH = mh, sizing = st.sizing, foldBtn = st.foldBtn, strip = st.strip, play = st.play }
 end

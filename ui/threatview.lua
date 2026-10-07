@@ -444,7 +444,7 @@ function TV.HeadFrame()
 end
 function TV.SetFight(f)
     if not btn then return end
-    if f and not f.foreign then btn:Show() else btn:Hide() end
+    if f then btn:Show() else btn:Hide() end
 end
 function TV.Show(f)
     if not host or not f then return end
@@ -463,7 +463,7 @@ function TV.Show(f)
     end)
 end
 function TV.OpenAt(f, t)
-    if not f or f.foreign then return end
+    if not f then return end
     if ns.Shell then ns.Shell.Open("log") end
     ns.Timeline.ShowThreat(f)
     if not (host and t and host:IsShown()) then return end

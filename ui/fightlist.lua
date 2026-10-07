@@ -70,6 +70,15 @@ local INST_ICON = {
     ["Око Вечности"] = LFG .. "Malygos",
     ["Обсидиановое святилище"] = LFG .. "ChamberOfAspects",
     ["Логово Ониксии"] = LFG .. "OnyxiaEncounter",
+    ["Icecrown Citadel"] = LFG .. "IcecrownCitadel",
+    ["The Ruby Sanctum"] = LFG .. "RubySanctum",
+    ["Ulduar"] = LFG .. "Ulduar",
+    ["Trial of the Crusader"] = LFG .. "ArgentRaid",
+    ["Trial of the Grand Crusader"] = LFG .. "ArgentRaid",
+    ["Naxxramas"] = LFG .. "Naxxramas",
+    ["The Eye of Eternity"] = LFG .. "Malygos",
+    ["The Obsidian Sanctum"] = LFG .. "ChamberOfAspects",
+    ["Onyxia's Lair"] = LFG .. "OnyxiaEncounter",
 }
 local STEP = { raid = RAIDH + 2, enc = ENCH + 1, wipe = WIPEH + 1 }
 local FL = {}
@@ -570,7 +579,7 @@ local function Faults(f)
     if not (ns.Summary and ns.Penalties) then return nil end
     local s = ns.Summary.Get(f)
     if not s then
-        if asked ~= f then
+        if asked ~= f or not (ns.Summary.Busy and ns.Summary.Busy(f)) then
             asked = f
             ns.Summary.Compute(f, function()
                 asked = nil
@@ -788,7 +797,6 @@ local function AttachNav(host, title, status)
     local play = ns.ReplayLink.Head(host, nav)
     play = ns.ReplayLink.SaveHead(host, play)
     local last = ns.ThreatView and ns.ThreatView.Head(host, play) or play
-    if ns.ShareView then ns.ShareView.Head(host, last) end
     if ns.SumHide then ns.SumHide.Head(host) end
     if status then status:SetPoint("LEFT", last, "RIGHT", NAVGAP * 2, 0) end
 end

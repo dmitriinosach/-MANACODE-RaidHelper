@@ -28,7 +28,7 @@ ns.Shell = Shell
 local entries = {}
 local order = {}
 local commands = {}
-local frame, strip, close, grip, pageBg, zoomOut, zoomIn, about
+local frame, strip, close, grip, pageBg, zoomOut, zoomIn, about, fold
 local current
 local sizing, sizedW, sizedH, moving
 local sizeX, sizeY, sizeW, sizeH, sizeMaxW, sizeMaxH
@@ -258,10 +258,18 @@ local function MakeZoom(label, tip, delta, font)
     Kit.StyleButton(b)
     return b
 end
+local function ZoomSize()
+    local tt = TabLook()
+    return min(ZOOM, tt.h - tt.rim + 2)
+end
 local function PlaceZoom()
     if not zoomOut then return end
     local tt = TabLook()
-    local size = min(ZOOM, tt.h - tt.rim + 2)
+    local size = ZoomSize()
+    fold:SetWidth(size)
+    fold:SetHeight(size)
+    fold:ClearAllPoints()
+    fold:SetPoint("RIGHT", frame, "TOPRIGHT", -(tt.x - CLOSE_EDGE + CLOSE + TABGAP), Line())
     zoomIn:SetWidth(size)
     zoomIn:SetHeight(size)
     zoomOut:SetWidth(size)
@@ -306,7 +314,7 @@ local function LayoutTabs()
     tsort(order, TabOrder)
     local tt = TabLook()
     local x = tt.x
-    local rx = tt.x - CLOSE_EDGE + CLOSE + TABGAP
+    local rx = tt.x - CLOSE_EDGE + CLOSE + TABGAP + ZoomSize() + TABGAP
     local textW = TABMIN
     for i = 1, #order do
         local e = order[i]
@@ -444,7 +452,24 @@ local function BuildGrip()
     end)
     grip:SetScript("OnUpdate", ns.Prof.Wrap("ui.other", Sizing))
 end
+local function Unfold()
+    Saved().mini = nil
+    if ns.ShellMini then ns.ShellMini.Hide() end
+end
+local function Fold(x, y)
+    if not ns.ShellMini then return end
+    if frame and frame:IsShown() then
+        x, y = Kit.TopLeftOf(frame, TabLook().h)
+        Saved().mini = true
+        frame:Hide()
+    end
+    ns.ShellMini.Show(x, y)
+end
 local function BuildStrip()
+    fold = Kit.FoldButton(frame, false)
+    fold:SetFrameLevel(frame:GetFrameLevel() + TABLEVEL)
+    fold.tip = ns.T("mini.fold.tip")
+    fold.onClick = function() Fold() end
     strip = CreateFrame("Frame", nil, frame)
     strip:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 0)
     strip:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 0)
@@ -516,6 +541,7 @@ local function Build()
     BuildGrip()
     Place()
     frame:SetScript("OnShow", function()
+        Unfold()
         if ns.CpuMeter then ns.CpuMeter.WinCheck() end
     end)
     frame:SetScript("OnHide", function()
@@ -557,6 +583,14 @@ function Shell.Open(key)
 end
 function Shell.Hide()
     if frame then frame:Hide() end
+    Unfold()
+end
+function Shell.Fold()
+    if Shell.IsFolded() then return end
+    if frame and frame:IsShown() then Fold() end
+end
+function Shell.IsFolded()
+    return ns.ShellMini ~= nil and ns.ShellMini.IsShown()
 end
 function Shell.IsOpen(key)
     if not frame or not frame:IsShown() then return false end
@@ -647,3 +681,8 @@ function Shell.Note()
     return note.text
 end
 Kit.OnTheme(OnTheme)
+if ns.OnReady then
+    ns.OnReady(function()
+        if Saved().mini then Fold() end
+    end)
+end

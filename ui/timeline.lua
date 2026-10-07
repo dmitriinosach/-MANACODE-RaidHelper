@@ -1694,7 +1694,7 @@ function TL.ShowFight(f)
 end
 local threatBack
 function TL.ShowThreat(f)
-    if not (frame and f and ns.ThreatView) or f.foreign then return end
+    if not (frame and f and ns.ThreatView) then return end
     if fight ~= f then SelectFight(f) end
     if not ns.ThreatView.IsShown() then threatBack = player end
     player, data = nil, nil
@@ -1715,18 +1715,4 @@ function TL.LeaveThreat()
     local back = threatBack
     threatBack = nil
     if back and fight.players[back] then SelectPlayer(back) else SelectFight(fight) end
-end
-function TL.ShowForeign(f)
-    if not (frame and f and f.foreign and ns.SummaryView) then return end
-    fight, player, data = nil, nil, nil
-    if ns.ThreatView then ns.ThreatView.Hide() end
-    if ns.RaidSummaryView then ns.RaidSummaryView.Hide() end
-    if ns.EffectPanel then ns.EffectPanel.SetTimeline(false) end
-    ReleaseAll()
-    ruler:Hide()
-    canvas:GetParent():Hide()
-    statusText:SetText("")
-    titleText:SetText(format(ns.T("share.title"), f.foreign.inner, f.foreign.who))
-    TL.RefreshLists()
-    ns.SummaryView.Show(f)
 end

@@ -13,9 +13,9 @@ ns.AutoInvite = Auto
 Auto.DEF = DEF
 local on = false
 local listeners = {}
-local capSources = {}
 local pending = {}
 local queue = {}
+local waits = {}
 local said = {}
 local told = {}
 local toldAt = 0
@@ -51,9 +51,6 @@ end
 function Auto.OnChange(fn)
     listeners[#listeners + 1] = fn
 end
-function Auto.CapSource(fn)
-    capSources[#capSources + 1] = fn
-end
 function Auto.IsOn()
     return on
 end
@@ -67,7 +64,15 @@ function Auto.SetWordsText(text)
         if w ~= "" then list[#list + 1] = w end
     end
     local v = concat(list, ", ")
-    Opt().words = v ~= "" and v:sub(1, WORDS_MAX) or DEF.words
+    local n, at = 0, #v + 1
+    for i = 1, #v do
+        local c = v:byte(i)
+        if c < 128 or c >= 192 then
+            n = n + 1
+            if n > WORDS_MAX then at = i break end
+        end
+    end
+    Opt().words = v ~= "" and v:sub(1, at - 1) or DEF.words
     Notify()
 end
 function Auto.GuildOnly()
@@ -109,12 +114,10 @@ function Auto.CanInvite()
     if party > 0 then return IsPartyLeader() and true or false end
     return true
 end
-function Auto.Cap()
-    for i = 1, #capSources do
-        local n = tonumber(capSources[i]())
-        if n and n > 0 then return n < RAID_MAX and n or RAID_MAX end
-    end
-    return RAID_MAX
+function Auto.Waiting()
+    local n = 0
+    for _ in pairs(waits) do n = n + 1 end
+    return n
 end
 local function InGroup(name)
     return (UnitInRaid(name) or UnitInParty(name)) and true or false
@@ -200,11 +203,14 @@ function Auto.Try(name)
         return "rights"
     end
     said.rights = nil
-    local cap = Auto.Cap()
-    if Members() + Pending() >= cap then
-        SayOnce("full" .. cap, format(ns.T("ainv.full"), cap))
-        return "full"
+    if Members() + Pending() >= RAID_MAX then
+        if not waits[name] then
+            waits[name] = GetTime()
+            ns.Print(format(ns.T("ainv.wait"), RAID_MAX, name, Auto.Waiting()))
+        end
+        return "waiting"
     end
+    waits[name] = nil
     local raid = Group()
     if raid == 0 and Members() + Pending() >= PARTY_MAX then
         queue[name] = GetTime()
@@ -227,12 +233,21 @@ local function Drain()
     table.sort(list, function(a, b) return queue[a] < queue[b] end)
     queue = {}
     for i = 1, #list do Auto.Try(list[i]) end
+    list = {}
+    for name in pairs(waits) do
+        if InGroup(name) then waits[name] = nil else list[#list + 1] = name end
+    end
+    table.sort(list, function(a, b) return waits[a] < waits[b] end)
+    for i = 1, #list do
+        if Members() + Pending() >= RAID_MAX then break end
+        Auto.Try(list[i])
+    end
 end
 function Auto.Switch(v)
     v = v and true or false
     if on == v then return end
     on = v
-    pending, queue, said = {}, {}, {}
+    pending, queue, waits, said = {}, {}, {}, {}
     if on then
         guild = nil
         if Opt().guild and IsInGuild and IsInGuild() and GuildRoster then GuildRoster() end
@@ -248,11 +263,12 @@ function Auto.Switch(v)
 end
 local f = CreateFrame("Frame")
 f:RegisterEvent("CHAT_MSG_WHISPER")
+f:RegisterEvent("CHAT_MSG_GUILD")
 f:RegisterEvent("PARTY_MEMBERS_CHANGED")
 f:RegisterEvent("RAID_ROSTER_UPDATE")
 f:RegisterEvent("GUILD_ROSTER_UPDATE")
 f:SetScript("OnEvent", function(_, event, msg, author)
-    if event == "CHAT_MSG_WHISPER" then
+    if event == "CHAT_MSG_WHISPER" or event == "CHAT_MSG_GUILD" then
         Auto.Whisper(author, msg)
     elseif event == "GUILD_ROSTER_UPDATE" then
         guild = nil

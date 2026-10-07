@@ -169,6 +169,15 @@ end
 local DRUNK = { flask = true, elixir = true, potion = true }
 local ICON_ROW = 15
 local ICON_TIP = 14
+local function SpName(sp)
+    local name = sp.id and GetItemInfo and GetItemInfo(sp.id)
+    if name then return name end
+    if sp.spell and GetLocale() ~= "ruRU" and GetSpellInfo then
+        name = GetSpellInfo(sp.spell)
+        if name then return name end
+    end
+    return sp.item
+end
 local function Inline(id, size, spell)
     local tex = ns.RaidCost.Icon(id, spell)
     if not tex then return "" end
@@ -209,7 +218,7 @@ local function UseTip(res, pr, p)
         local sp = pr.by[list[k].k]
         if sp and DRUNK[sp.cat] then
             any = true
-            tip[#tip + 1] = { kind = "row", left = Inline(sp.id, ICON_TIP, sp.spell) .. " " .. list[k].k,
+            tip[#tip + 1] = { kind = "row", left = Inline(sp.id, ICON_TIP, sp.spell) .. " " .. SpName(sp),
                               right = format("x%d", list[k].v) }
         end
     end
@@ -251,7 +260,7 @@ end
 local function SpentRow(res, pr, sp)
     local each = not sp.free and pr.c[sp.item] or nil
     local cost = each and each * sp.n or nil
-    local tip = { { kind = "head", left = ns.ItemName(sp.id, sp.item), right = T("rsum.cat." .. sp.cat) } }
+    local tip = { { kind = "head", left = SpName(sp), right = T("rsum.cat." .. sp.cat) } }
     Put(tip, "note", sp.free and T("rsum.tt.free") or PriceNote(sp, each))
     Put(tip, "sep")
     local by = Pairs(sp.by)
@@ -261,7 +270,7 @@ local function SpentRow(res, pr, sp)
                           right = each and ns.RaidCost.Gold(each * by[k].v) or nil, class = p and p.class }
     end
     local note = (cost and ns.RaidCost.Amount(cost)) or (sp.free and T("rsum.free")) or T("rsum.noprice")
-    return { who = ns.ItemName(sp.id, sp.item), icon = ns.RaidCost.Icon(sp.id, sp.spell), text = format("x%d", sp.n), note = note,
+    return { who = SpName(sp), icon = ns.RaidCost.Icon(sp.id, sp.spell), text = format("x%d", sp.n), note = note,
              noteIcon = cost and ns.RaidCost.GOLD_ICON or nil, noteLit = cost ~= nil, v = sp.n, lines = tip }, cost
 end
 local function Spent(res, pr)
@@ -312,6 +321,277 @@ end
 local function NoData(d)
     return #d.rows == 0 and d.empty == T("rsum.none")
 end
+local function Int(v)
+    return format("%d", v)
+end
+local function Dur(sec)
+    sec = floor(max(0, sec) + 0.5)
+    if sec >= HOUR then return format(T("rsum.dur.h"), floor(sec / HOUR), floor(sec % HOUR / 60)) end
+    if sec >= 60 then return format(T("rsum.dur.m"), floor(sec / 60), sec % 60) end
+    return format(T("rsum.dur.s"), sec)
+end
+local function Pct(part, whole)
+    return format("%.0f%%", part / max(1, whole) * 100)
+end
+local function Pl(n, key)
+    local forms = T(key)
+    local one, few, many = forms:match("^([^|]*)|([^|]*)|([^|]*)$")
+    if not one then return forms end
+    return ns.PluralPick(n, one, few, many)
+end
+local function Count(n, key, fmt)
+    return format(T(fmt), n, Pl(n, key))
+end
+local function PartName(e)
+    return format("%s (%s)", T(e.label), ns.EncName(e.boss))
+end
+local function PartLines(tip, by, hits)
+    local list = {}
+    for _, e in pairs(by) do list[#list + 1] = { e = e, s = PartName(e) } end
+    tsort(list, function(a, b)
+        if a.e.v ~= b.e.v then return a.e.v > b.e.v end
+        return a.s < b.s
+    end)
+    for k = 1, #list do
+        local e = list[k].e
+        tip[#tip + 1] = { kind = "row", left = list[k].s, mid = hits and e.hits > 0 and format("x%d", e.hits) or nil,
+                          right = Short(e.v) }
+    end
+end
+local function Parts(res, key, label)
+    local list = Ranked(res, key)
+    local total = Sum(res, key)
+    local rows = {}
+    for i = 1, #list do
+        local p = list[i]
+        local share = Pct(p[key], total)
+        local tip = { { kind = "head", left = p.name, class = p.class } }
+        Put(tip, "row", T("rsum.tt.dmg"), Short(p[key]))
+        Put(tip, "row", T("rsum.tt.share"), share)
+        if key == "bad" then Put(tip, "row", T("rsum.tt.hits"), Int(p.badHits)) end
+        Put(tip, "sep")
+        PartLines(tip, p[key .. "By"], key == "bad")
+        local note = key == "bad" and Count(p.badHits, "rsum.w.hits", "rsum.n.word") or share
+        rows[i] = { who = p.name, class = p.class, text = Short(p[key]), note = note, v = p[key], lines = tip }
+    end
+    return { key = key == "bad" and "puddles" or key, title = format(T("rsum.title.sum"), T(label), Short(total)),
+             rows = rows, empty = T("rsum.none") }
+end
+local function ByV(a, b)
+    if a.v ~= b.v then return a.v > b.v end
+    return a.who < b.who
+end
+local function Saver(res)
+    local rows, total = {}, 0
+    for i = 1, #res.players do
+        local p = res.players[i]
+        local v = p.kicks + p.cures + p.purges
+        if v > 0 then
+            total = total + v
+            local tip = { { kind = "head", left = p.name, class = p.class } }
+            Put(tip, "row", T("rsum.tt.kicks"), Int(p.kicks))
+            Put(tip, "row", T("rsum.tt.cures"), Int(p.cures))
+            Put(tip, "row", T("rsum.tt.purges"), Int(p.purges))
+            local parts = {}
+            if p.kicks > 0 then parts[#parts + 1] = format(T("rsum.saver.kicks"), p.kicks) end
+            if p.cures + p.purges > 0 then parts[#parts + 1] = format(T("rsum.saver.cures"), p.cures + p.purges) end
+            rows[#rows + 1] = { who = p.name, class = p.class, text = concat(parts, ", "), v = v, lines = tip }
+        end
+    end
+    tsort(rows, ByV)
+    return { key = "saver", title = format(T("rsum.title.sum"), T("rsum.d.saver"), Int(total)), rows = rows,
+             empty = T("rsum.none") }
+end
+local function Alive(res)
+    local rows = {}
+    for i = 1, #res.players do
+        local p = res.players[i]
+        if p.deaths == 0 and p.tries > 0 then
+            local tip = { { kind = "head", left = p.name, class = p.class } }
+            Put(tip, "row", T("rsum.tt.tries"), Int(p.tries))
+            Put(tip, "row", T("rsum.tt.deaths"), "0")
+            rows[#rows + 1] = { who = p.name, class = p.class, text = Count(p.tries, "rsum.w.tries.acc", "rsum.alive.n"),
+                                v = p.tries, lines = tip }
+        end
+    end
+    tsort(rows, ByV)
+    return { key = "alive", title = format(T("rsum.title.sum"), T("rsum.d.alive"), Int(#rows)), rows = rows,
+             empty = T(#res.players > 0 and "rsum.noalive" or "rsum.none") }
+end
+local function First(res)
+    local list = Ranked(res, "first")
+    local rows = {}
+    for i = 1, #list do
+        local p = list[i]
+        local tip = { { kind = "head", left = p.name, class = p.class } }
+        Put(tip, "row", T("rsum.tt.first"), Int(p.first))
+        Put(tip, "row", T("rsum.tt.tries"), Int(p.tries))
+        Put(tip, "row", T("rsum.tt.deaths"), Int(p.deaths))
+        Put(tip, "sep")
+        local by = Pairs(p.firstBy)
+        for k = 1, #by do Put(tip, "row", by[k].s, Int(by[k].v)) end
+        rows[i] = { who = p.name, class = p.class,
+                    text = format(T("rsum.first.n"), p.first, p.tries, Pl(p.tries, "rsum.w.tries.gen")), v = p.first,
+                    lines = tip }
+    end
+    return { key = "first", title = T("rsum.d.first"), rows = rows,
+             empty = T(#res.players > 0 and "rsum.nodeaths" or "rsum.none") }
+end
+local FAULT_WHO = 10
+local function RuleName(rule)
+    local text = ns.Penalties.Reason(rule)
+    if rule.boss == nil or rule.boss == ns.penaltyAny then return text end
+    return format("%s: %s", ns.EncName(rule.boss), text)
+end
+local function FaultTip(res, fl)
+    local tip = { { kind = "head", left = RuleName(fl.rule) } }
+    Put(tip, "row", T("rsum.tt.faults"), Int(fl.n))
+    Put(tip, "row", T("rsum.tt.red"), Int(fl.red))
+    Put(tip, "row", T("rsum.tt.yellow"), Int(fl.n - fl.red))
+    Put(tip, "row", T("rsum.tt.offer"), Int(fl.gp))
+    local tries = 0
+    for _ in pairs(fl.tries) do tries = tries + 1 end
+    Put(tip, "row", T("rsum.tt.ftries"), Int(tries))
+    Put(tip, "sep")
+    local by = Pairs(fl.by)
+    for k = 1, min(#by, FAULT_WHO) do
+        local p = res.byName[by[k].k]
+        tip[#tip + 1] = { kind = "row", left = by[k].k, right = format("x%d", by[k].v), class = p and p.class }
+    end
+    if #by > FAULT_WHO then Put(tip, "note", format(T("rsum.tt.more"), #by - FAULT_WHO)) end
+    return tip
+end
+local function Fault(res)
+    local faults = ns.Penalties and ns.RaidSummary.Faults(res)
+    if not faults then return { key = "fault", title = T("rsum.d.fault"), rows = {}, empty = T("rsum.none") } end
+    local rows = {}
+    for i = 1, #faults do
+        local fl = faults[i]
+        rows[i] = { who = RuleName(fl.rule), text = Count(fl.n, "rsum.w.times", "rsum.n.word"),
+                    note = fl.gp > 0 and format(T("rsum.gp.n"), fl.gp) or nil, v = fl.n, lines = FaultTip(res, fl) }
+    end
+    local title = faults[1] and format(T("rsum.title.fault"), ns.Penalties.Short(faults[1].rule)) or T("rsum.d.fault")
+    return { key = "fault", title = title, rows = rows, empty = T("rsum.nogpyet") }
+end
+local function FightName(f)
+    return format("%s %s, %s", ns.EncName(f.boss), date("%H:%M", f.from),
+        T(f.killed and "rsum.tt.killed" or "rsum.tt.wiped"))
+end
+local function TimeRows(res, t, whole)
+    local tip = { { kind = "head", left = T("rsum.time.combat"), right = Dur(t.combat) } }
+    Put(tip, "row", T("rsum.tt.tries"), Int(res.tries))
+    Put(tip, "row", T("rsum.tt.kills"), Int(res.tries - res.wipes))
+    if t.long then
+        Put(tip, "row", T("rsum.tt.longtry"), FightName(t.long) .. " — " .. Dur(t.long.to - t.long.from))
+    end
+    Put(tip, "row", T("rsum.tt.ofall"), Pct(t.combat, whole))
+    local combat = { who = T("rsum.time.combat"), text = Dur(t.combat),
+                     note = format(T("rsum.time.share"), Pct(t.combat, whole)), v = t.combat, lines = tip }
+    tip = { { kind = "head", left = T("rsum.time.idle"), right = Dur(t.idle) } }
+    Put(tip, "row", T("rsum.tt.gaps"), Int(t.gaps))
+    if t.gaps > 0 then Put(tip, "row", T("rsum.tt.avg"), Dur(t.idle / t.gaps)) end
+    Put(tip, "row", T("rsum.tt.ofall"), Pct(t.idle, whole))
+    return combat, { who = T("rsum.time.idle"), text = Dur(t.idle),
+                     note = format(T("rsum.time.share"), Pct(t.idle, whole)), v = t.idle, lines = tip }
+end
+local function Time(res)
+    local t = res.time
+    local rows = {}
+    if t and t.combat > 0 then
+        rows[1], rows[2] = TimeRows(res, t, t.combat + t.idle)
+        local tip = { { kind = "head", left = T("rsum.time.wipe"), right = Dur(t.wipe) } }
+        Put(tip, "row", T("rsum.t.wipes"), Int(res.wipes))
+        Put(tip, "row", T("rsum.tt.ofcombat"), Pct(t.wipe, t.combat))
+        rows[3] = { who = T("rsum.time.wipe"), text = Dur(t.wipe), note = format(T("rsum.time.wipes"), res.wipes),
+                    v = t.wipe, lines = tip }
+        local g = t.longest
+        if g then
+            tip = { { kind = "head", left = T("rsum.time.longest"), right = Dur(g.dur) } }
+            Put(tip, "row", T("rsum.tt.from"), date("%H:%M:%S", g.from))
+            Put(tip, "row", T("rsum.tt.to"), date("%H:%M:%S", g.to))
+            Put(tip, "row", T("rsum.tt.after"), FightName(g.after))
+            Put(tip, "row", T("rsum.tt.before"), FightName(g.before))
+            rows[4] = { who = T("rsum.time.longest"), text = Dur(g.dur),
+                        note = format("%s–%s", date("%H:%M", g.from), date("%H:%M", g.to)), v = g.dur, lines = tip }
+        end
+    end
+    return { key = "time", title = T("rsum.d.time"), rows = rows, empty = T("rsum.none") }
+end
+local function BySpell(map, field)
+    local list = {}
+    for k, e in pairs(map) do list[#list + 1] = { k = k, v = field and e[field] or e, e = e, s = ns.SpellName(k) } end
+    tsort(list, function(a, b)
+        if a.v ~= b.v then return a.v > b.v end
+        return a.s < b.s
+    end)
+    return list
+end
+local function Buffed(res)
+    local list = Ranked(res, "buffN")
+    local rows = {}
+    for i = 1, #list do
+        local p = list[i]
+        local tip = { { kind = "head", left = p.name, class = p.class } }
+        Put(tip, "row", T("rsum.tt.buffs"), Int(p.buffN))
+        Put(tip, "row", T("rsum.tt.buffsec"), Dur(p.buffSec))
+        local by = BySpell(p.buffBy, "n")
+        local parts = {}
+        for k = 1, #by do
+            local e = by[k].e
+            parts[#parts + 1] = Inline(nil, ICON_ROW, by[k].k) .. Int(e.n)
+            Put(tip, "sep")
+            tip[#tip + 1] = { kind = "row", left = Inline(nil, ICON_TIP, by[k].k) .. " " .. by[k].s,
+                              mid = format("x%d", e.n), right = Dur(e.sec) }
+            local givers = Pairs(e.by)
+            for g = 1, #givers do
+                local gp = res.byName[givers[g].k]
+                tip[#tip + 1] = { kind = "row", left = "  " .. givers[g].k, right = format("x%d", givers[g].v),
+                                  class = gp and gp.class }
+            end
+        end
+        rows[i] = { who = p.name, class = p.class, text = concat(parts, "  "), v = p.buffN, lines = tip }
+    end
+    local n = Sum(res, "buffN")
+    return { key = "buffed", title = format(T("rsum.title.buffed"), T("rsum.d.buffed"), n, Pl(n, "rsum.w.buffs")),
+             rows = rows, empty = T("rsum.none") }
+end
+local ROD_TOP = 5
+local function Rod(res)
+    local list = Ranked(res, "rod")
+    local rows = {}
+    for i = 1, min(ROD_TOP, #list) do
+        local p = list[i]
+        local tip = { { kind = "head", left = p.name, class = p.class } }
+        Put(tip, "row", T("rsum.tt.rod"), Int(p.rod))
+        Put(tip, "sep")
+        local by = BySpell(p.rodBy)
+        for k = 1, #by do Put(tip, "row", by[k].s, Int(by[k].v)) end
+        rows[i] = { who = p.name, class = p.class, text = Count(p.rod, "rsum.w.times", "rsum.rod.n"), v = p.rod,
+                    lines = tip }
+    end
+    return { key = "rod", title = T("rsum.d.rod"), rows = rows, empty = T("rsum.none") }
+end
+Model.HIDE = "#raid"
+Model.DEFS = {
+    { key = "all", label = "rsum.d.all" },
+    { key = "enc", label = "rsum.d.enc" },
+    { key = "boss", label = "rsum.d.boss" },
+    { key = "cut", label = "rsum.d.cut" },
+    { key = "prio", label = "rsum.d.prio" },
+    { key = "heal", label = "rsum.d.heal" },
+    { key = "saver", label = "rsum.d.saver" },
+    { key = "deaths", label = "rsum.d.deaths" },
+    { key = "alive", label = "rsum.d.alive" },
+    { key = "first", label = "rsum.d.first" },
+    { key = "fault", label = "rsum.d.fault" },
+    { key = "puddles", label = "rsum.d.puddles" },
+    { key = "rod", label = "rsum.d.rod" },
+    { key = "buffed", label = "rsum.d.buffed" },
+    { key = "time", label = "rsum.d.time" },
+    { key = "gp", label = "rsum.d.gp" },
+    { key = "drunk", label = "rsum.title.drunk" },
+    { key = "spent", label = "rsum.d.spent" },
+}
 function Model.Build(res)
     local pr = Prices(res)
     local all = Damage(res, "all", "rsum.d.all")
@@ -326,14 +606,28 @@ function Model.Build(res)
         list[#list + 1] = Tip(Damage(res, "cut", "rsum.d.cut"),
             format(T("rsum.note.cut"), ns.EncName(res.cut), date("%H:%M", res.cutAt)))
     end
+    list[#list + 1] = Parts(res, "prio", "rsum.d.prio")
     list[#list + 1] = Heal(res)
+    list[#list + 1] = Saver(res)
     list[#list + 1] = Deaths(res)
+    list[#list + 1] = Alive(res)
+    list[#list + 1] = First(res)
+    list[#list + 1] = Fault(res)
+    list[#list + 1] = Parts(res, "bad", "rsum.d.puddles")
+    list[#list + 1] = Rod(res)
+    list[#list + 1] = Buffed(res)
+    list[#list + 1] = Time(res)
     list[#list + 1] = GP(res)
     list[#list + 1] = Drunk(res, pr)
     list[#list + 1] = Spent(res, pr)
+    local byKey = {}
+    for i = 1, #list do byKey[list[i].key] = list[i] end
+    local Hide = ns.SumHide
     local details = {}
-    for i = 1, #list do
-        if not NoData(list[i]) then details[#details + 1] = list[i] end
+    for i = 1, #Model.DEFS do
+        local key = Model.DEFS[i].key
+        local d = byKey[key]
+        if d and not NoData(d) and not (Hide and Hide.IsHidden(Model.HIDE, key)) then details[#details + 1] = d end
     end
     return { totals = Totals(res), details = details }
 end

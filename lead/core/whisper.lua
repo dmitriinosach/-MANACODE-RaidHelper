@@ -9,6 +9,7 @@ local UTF8 = "[" .. string.char(192) .. "-" .. string.char(255) .. "]["
 local ENDING = 4
 local STEM = 6
 local WAIT_MAX = 25
+local WAIT_TTL = 3 * 3600
 local TEXT_MAX = 120
 local lowerMap
 local function lower(s)
@@ -88,6 +89,10 @@ end
 local function waiting()
     local g = ns.Session.State()
     g.waiting = g.waiting or {}
+    local old = time() - WAIT_TTL
+    for name, w in pairs(g.waiting) do
+        if (w.at or 0) < old then g.waiting[name] = nil end
+    end
     return g.waiting
 end
 function W.Waiting()
@@ -101,10 +106,6 @@ end
 function W.Drop(name)
     waiting()[name] = nil
     ns.Session.Changed()
-end
-function W.Clear()
-    local g = ns.Session.State()
-    g.waiting = {}
 end
 local function learn(name, spec, off)
     local p = ns.Session.Player(name)
@@ -141,7 +142,7 @@ local function settle(name, w)
     W.Place(name, w.spec)
 end
 function W.Take(name, text)
-    if not ns.Session.Active() or type(name) ~= "string" or name == "" then return end
+    if type(name) ~= "string" or name == "" then return end
     local spec, off, gs = W.Parse(text)
     if not spec then return end
     if ns.Session.Member(name) then
@@ -198,7 +199,6 @@ f:SetScript("OnEvent", function(self, event, msg, author)
         W.Take(author, msg)
         return
     end
-    if not ns.Session.Active() then return end
     local list = waiting()
     local moved = false
     for name, w in pairs(list) do

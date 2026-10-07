@@ -105,7 +105,10 @@ end
 function Raid.Key(raid)
     if not raid then return "solo" end
     if raid.id then return tostring(raid.id) end
-    return raid.name .. "|" .. raid.day .. "|" .. tostring(raid.size)
+    return Raid.DayKey(raid)
+end
+function Raid.DayKey(raid)
+    return tostring(raid.name) .. "|" .. tostring(raid.day) .. "|" .. tostring(raid.size)
 end
 function Raid.Label(raid)
     if not raid then return ns.T("raid.none") end

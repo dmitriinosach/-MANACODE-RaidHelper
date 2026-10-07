@@ -4,24 +4,27 @@ local WINDOW = 30
 local IDLE_END = 3
 local AFFIL_RAID = 0x7
 local AFFIL_MINE = 0x1
-local FRIENDLY = 0x10
+local HOSTILE = 0x40
 local SPELL_DMG = 1
 local SWING_DMG = 2
 local HEAL = 3
 local CURVE_MAX = 64
+local TYPE_PLAYER = 0x400
+local OWNERS_MAX = 400
 local KIND = {
     SWING_DAMAGE = SWING_DMG,
     RANGE_DAMAGE = SPELL_DMG,
     SPELL_DAMAGE = SPELL_DMG,
     SPELL_PERIODIC_DAMAGE = SPELL_DMG,
+    SPELL_BUILDING_DAMAGE = SPELL_DMG,
     DAMAGE_SHIELD = SPELL_DMG,
     DAMAGE_SPLIT = SPELL_DMG,
     SPELL_HEAL = HEAL,
     SPELL_PERIODIC_HEAL = HEAL,
 }
-local Meter = { dmg = {}, heal = {}, curve = {} }
+local Meter = { dmg = {}, heal = {}, curve = {}, who = {} }
 ns.Meter = Meter
-local dmg, heal, curve = Meter.dmg, Meter.heal, Meter.curve
+local dmg, heal, curve, who = Meter.dmg, Meter.heal, Meter.curve, Meter.who
 for i = 1, WINDOW do
     dmg[i], heal[i] = 0, 0
 end
@@ -32,6 +35,13 @@ local acc = 0
 local watching = false
 local affil = AFFIL_MINE
 local inRaid = false
+local wants = {}
+local split = false
+local owners = {}
+local ownersN = 0
+local RAID_UNITS, RAID_PETS, PARTY_UNITS, PARTY_PETS = {}, {}, {}, {}
+for i = 1, 40 do RAID_UNITS[i], RAID_PETS[i] = "raid" .. i, "raidpet" .. i end
+for i = 1, 4 do PARTY_UNITS[i], PARTY_PETS[i] = "party" .. i, "partypet" .. i end
 local fighting = false
 local fightAt, fightDur = 0, 0
 local fightDmg, fightHeal = 0, 0
@@ -132,11 +142,52 @@ local function ClearCurve()
     for i = #curve, 1, -1 do curve[i] = nil end
     curveStep, curveTick = 1, 0
 end
+local function Own(guid, name)
+    if not guid or not name or owners[guid] == name then return end
+    if not owners[guid] then
+        ownersN = ownersN + 1
+        if ownersN > OWNERS_MAX then
+            wipe(owners)
+            ownersN = 1
+        end
+    end
+    owners[guid] = name
+end
+local apart = nil
+local function Apart()
+    if apart then return apart end
+    apart = {}
+    for key in pairs(ns.vehicles or {}) do apart[ns.NpcKeyOf(key)] = true end
+    for _, def in pairs(ns.summaries or {}) do
+        local blocks = def.blocks or {}
+        for i = 1, #blocks do
+            if blocks[i].kind == "abom" and blocks[i].npc then apart[ns.NpcKeyOf(blocks[i].npc)] = true end
+        end
+    end
+    return apart
+end
+local function ScanPets()
+    local n = GetNumRaidMembers()
+    if n > 0 then
+        for i = 1, n do Own(UnitGUID(RAID_PETS[i]), UnitName(RAID_UNITS[i])) end
+        return
+    end
+    Own(UnitGUID("pet"), UnitName("player"))
+    for i = 1, GetNumPartyMembers() do Own(UnitGUID(PARTY_PETS[i]), UnitName(PARTY_UNITS[i])) end
+end
 local function FightStart()
     fighting = true
     fightAt = GetTime()
     fightDmg, fightHeal = 0, 0
     ClearCurve()
+    if split then
+        wipe(who)
+        ScanPets()
+    end
+end
+local function Credit(srcGUID, srcName, srcFlags, n)
+    local name = band(srcFlags, TYPE_PLAYER) ~= 0 and srcName or owners[srcGUID]
+    if name then who[name] = (who[name] or 0) + n end
 end
 local function StepCurve()
     curveTick = curveTick + 1
@@ -152,9 +203,21 @@ local function StepCurve()
     for i = half + 1, n do curve[i] = nil end
     curveStep = curveStep * 2
 end
-frame:SetScript("OnEvent", ns.Prof.Wrap("hot.log", function(_, _, _, sub, _, _, srcFlags, _, _, dstFlags, a1, _, _, a4, a5)
+frame:SetScript("OnEvent", ns.Prof.Wrap("hot.log", function(_, event, _, sub, srcGUID, srcName, srcFlags, dstGUID, _,
+                                                         dstFlags, a1, _, _, a4, a5)
+    if event == "UNIT_PET" then
+        ScanPets()
+        return
+    end
     local kind = KIND[sub]
-    if not kind or not srcFlags or not dstFlags or band(srcFlags, affil) == 0 then return end
+    if not kind then
+        if split and sub == "SPELL_SUMMON" and srcFlags and band(srcFlags, affil) ~= 0
+            and band(srcFlags, TYPE_PLAYER) ~= 0 then
+            Own(dstGUID, srcName)
+        end
+        return
+    end
+    if not srcFlags or not dstFlags or band(srcFlags, affil) == 0 then return end
     local n
     if kind == HEAL then
         if band(dstFlags, affil) == 0 then return end
@@ -165,13 +228,22 @@ frame:SetScript("OnEvent", ns.Prof.Wrap("hot.log", function(_, _, _, sub, _, _, 
         if not fighting then FightStart() end
         fightHeal = fightHeal + n
     else
-        if band(dstFlags, FRIENDLY) ~= 0 then return end
+        if band(dstFlags, AFFIL_RAID) ~= 0 then return end
+        if band(dstFlags, HOSTILE) == 0 then
+            local key = ns.NpcKey(dstGUID)
+            if not (key and ns.dummies and ns.dummies[key]) then return end
+        end
+        if band(srcFlags, TYPE_PLAYER) == 0 then
+            local key = ns.NpcKey(srcGUID)
+            if key and Apart()[key] then return end
+        end
         n = Amount(kind == SWING_DMG and a1 or a4)
         if n <= 0 then return end
         dmg[slot] = dmg[slot] + n
         dmgSum = dmgSum + n
         if not fighting then FightStart() end
         fightDmg = fightDmg + n
+        if split then Credit(srcGUID, srcName, srcFlags, n) end
     end
     silence = 0
     if span == 0 then span = 1 end
@@ -195,7 +267,7 @@ local function Advance()
     if fighting then
         StepCurve()
         silence = silence + 1
-        if silence >= IDLE_END and not UnitAffectingCombat("player") then
+        if silence >= IDLE_END and not GroupFighting() then
             fighting = false
             fightDur = GetTime() - fightAt
         end
@@ -215,11 +287,13 @@ function Meter.Reset()
     slot, dmgSum, healSum, span, acc = 1, 0, 0, 0, 0
     fighting, fightAt, fightDur, fightDmg, fightHeal, silence = false, 0, 0, 0, 0, 0
     ClearCurve()
+    wipe(who)
     inRaid = GetNumRaidMembers() > 0
     affil = inRaid and AFFIL_RAID or AFFIL_MINE
 end
-function Meter.Watch(on)
-    on = on and true or false
+function Meter.Want(key, on)
+    wants[key] = on and true or nil
+    on = next(wants) ~= nil
     if on == watching then return end
     watching = on
     if on then
@@ -229,5 +303,22 @@ function Meter.Watch(on)
     else
         frame:UnregisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
         frame:Hide()
+    end
+end
+function Meter.Watch(on)
+    Meter.Want("panel", on)
+end
+function Meter.Split(on)
+    on = on and true or false
+    if on == split then return end
+    split = on
+    if on then
+        ScanPets()
+        frame:RegisterEvent("UNIT_PET")
+    else
+        frame:UnregisterEvent("UNIT_PET")
+        wipe(who)
+        wipe(owners)
+        ownersN = 0
     end
 end

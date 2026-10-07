@@ -241,6 +241,7 @@ local function Append(row)
 end
 local function Write(fight, name, sys, fact, want, reason, kind, keys, hot)
     Append({ t = time(), by = Me(), raid = RaidOf(fight), fk = fight and ns.Penalties.FightKey(fight) or nil,
+        rl = fight and fight.raid and ns.Raid and ns.Raid.Label and ns.Raid.Label(fight.raid) or nil,
         boss = fight and fight.boss or nil, who = name, s = sys.key, n = fact, want = want, r = reason, kind = kind,
         hot = hot, keys = keys })
 end
@@ -345,17 +346,18 @@ function Ledger.Undo(key)
     end
     Store().done[key] = nil
     local row = RowOf(key)
-    Append({ t = time(), by = Me(), raid = row and row.raid, fk = row and row.fk, boss = row and row.boss,
+    Append({ t = time(), by = Me(), raid = row and row.raid, fk = row and row.fk, rl = row and row.rl, boss = row and row.boss,
         who = rec.who, s = rec.s, n = -rec.n, r = reason, kind = "undo", hot = rec.hot, keys = { key } })
     Changed()
     return true
 end
-function Ledger.Log(raid)
+function Ledger.Log(raid, alt)
     local log = Store().log
     if not raid then return log end
     local out = {}
     for i = 1, #log do
-        if log[i].raid == raid then out[#out + 1] = log[i] end
+        local r = log[i].raid
+        if r == raid or (alt and r == alt) then out[#out + 1] = log[i] end
     end
     return out
 end
