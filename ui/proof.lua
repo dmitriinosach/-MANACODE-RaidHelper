@@ -88,9 +88,9 @@ function View.Menu(anchor)
     ns.Tip.Hide()
     ns.Kit.Menu(menu, anchor)
 end
-function View.ReportMenu(anchor, build)
+function View.ReportMenu(anchor, build, title)
     local R = ns.ChatReport
-    local menu = { { text = T("report.menu"), isTitle = true, notCheckable = true } }
+    local menu = { { text = T(title or "report.menu"), isTitle = true, notCheckable = true } }
     local cur = R.Channel()
     for i = 1, #R.CHANNELS do
         local c = R.CHANNELS[i]
@@ -116,7 +116,7 @@ function View.ReportMenu(anchor, build)
             checked = k == n,
             func = function()
                 R.SetSize(k)
-                View.ReportMenu(anchor, build)
+                View.ReportMenu(anchor, build, title)
             end,
         }
     end

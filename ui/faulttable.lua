@@ -83,7 +83,7 @@ local function Head(f, c)
     h.proof:SetText(L.small and "" or ns.T("ft.col.proof"))
     for i = 1, 3 do
         At(h.hot[i], h, c.hot[i], L.hotw)
-        h.hot[i]:SetText(ns.T("ft.col." .. ns.Ledger.HOT[i]))
+        h.hot[i]:SetText(L.hotw > 0 and ns.T("ft.col." .. ns.Ledger.HOT[i]) or "")
     end
 end
 local function ListOf(r)
@@ -216,7 +216,7 @@ local function Row(f, k)
     r.undo.onClick = UndoClick
     if ns.ProofView then r.proof = ns.ProofView.Button(r, L.small and 13 or 16) end
     r.hot = {}
-    for i = 1, 3 do
+    for i = 1, L.hotw > 0 and 3 or 0 do
         local b = ns.MakeButton(r, f.prefix .. "Hot" .. i .. "_" .. k, "hot")
         b:SetHeight(L.rowh - 4)
         b:SetWidth(L.hotw - 6)
@@ -239,7 +239,7 @@ local function Blank(r)
     r.doneText:Hide()
     r.undo:Hide()
     if r.proof then r.proof:Hide() end
-    for i = 1, 3 do r.hot[i]:Hide() end
+    for i = 1, #r.hot do r.hot[i]:Hide() end
 end
 local function Main(r, c, L, kind, n, tip)
     r.main:ClearAllPoints()
@@ -270,7 +270,7 @@ local function Done(r, c, L, n, tip, undo)
 end
 local function Hots(r, c, L, ev)
     local unit = ns.Ledger.Unit()
-    for i = 1, 3 do
+    for i = 1, #r.hot do
         local b, kind = r.hot[i], ns.Ledger.HOT[i]
         local n = ns.Ledger.HotSum(kind)
         b:ClearAllPoints()

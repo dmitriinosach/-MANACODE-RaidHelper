@@ -195,9 +195,10 @@ ns.buffsGiven = {
     { kind = "given", spells = { 49016 }, id = 49016, tip = "sum.b.given" },
     { kind = "given", spells = { 54646 }, id = 54646, tip = "sum.b.given" },
     { kind = "given", spells = { 10278 }, id = 10278, tip = "sum.b.given" },
-    { kind = "given", spells = { 1044 }, id = 1044, tip = "sum.b.given" },
+    { kind = "given", spells = { 1044 }, id = 1044, self = true, tip = "sum.b.given" },
     { kind = "given", spells = { 6940 }, id = 6940, tip = "sum.b.given" },
-    { kind = "given", spells = { 1038 }, id = 1038, tip = "sum.b.given" },
+    { kind = "given", spells = { 1038 }, id = 1038, self = true, tip = "sum.b.given" },
+    { kind = "given", spells = { 29166 }, id = 29166, self = true, tip = "sum.b.given" },
 }
 do
     local given = #ns.buffsGiven

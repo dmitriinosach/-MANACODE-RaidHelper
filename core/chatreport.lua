@@ -60,24 +60,26 @@ function Report.Lines(head, sec, list, n)
     end
     return out
 end
-function Report.Summary(fight, s, n)
+function Report.Summary(fight, s, n, heal)
     local list = {}
     for i = 1, #s.players do
         local p = s.players[i]
-        if (p.dmg or 0) > 0 then list[#list + 1] = { who = p.name, v = p.dmg } end
+        local v = (heal and p.heal or p.dmg) or 0
+        if v > 0 then list[#list + 1] = { who = p.name, v = v } end
     end
-    local head = format(T("report.head"), ns.EncName(fight.boss), T(fight.killed and "report.kill" or "report.wipe"),
-        Clock(s.dur))
+    local head = format(T(heal and "report.head.heal" or "report.head"), ns.EncName(fight.boss),
+        T(fight.killed and "report.kill" or "report.wipe"), Clock(s.dur))
     return Report.Lines(head, ns.Totals.Time(s), list, n)
 end
-function Report.Live(n)
+function Report.Live(n, heal)
     local M = ns.Meter
     local list = {}
-    for who, v in pairs(M and M.who or {}) do
+    local by = M and (heal and M.heals or M.who) or {}
+    for who, v in pairs(by) do
         if v > 0 then list[#list + 1] = { who = who, v = v } end
     end
     local sec = M and M.FightTime() or 1
-    return Report.Lines(format(T("report.head.live"), Clock(sec)), sec, list, n)
+    return Report.Lines(format(T(heal and "report.head.live.heal" or "report.head.live"), Clock(sec)), sec, list, n)
 end
 function Report.Send(lines, want)
     if not KNOWN[want or ""] or #lines < 2 then return 0 end

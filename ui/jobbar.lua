@@ -53,6 +53,8 @@ function JobBar.Attach(host, statusText)
         local f = ns[key] and ns[key].HeadFrame and ns[key].HeadFrame()
         if f then fades[#fades + 1] = f end
     end
+    local save = ns.ReplayLink and ns.ReplayLink.SaveFrame and ns.ReplayLink.SaveFrame()
+    if save then fades[#fades + 1] = save end
     bar = CreateFrame("Frame", nil, host)
     bar:SetHeight(BAR_H)
     bar:SetPoint("RIGHT", statusText, "RIGHT", 0, 0)

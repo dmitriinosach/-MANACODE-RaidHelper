@@ -22,9 +22,9 @@ local KIND = {
     SPELL_HEAL = HEAL,
     SPELL_PERIODIC_HEAL = HEAL,
 }
-local Meter = { dmg = {}, heal = {}, curve = {}, who = {} }
+local Meter = { dmg = {}, heal = {}, curve = {}, who = {}, heals = {} }
 ns.Meter = Meter
-local dmg, heal, curve, who = Meter.dmg, Meter.heal, Meter.curve, Meter.who
+local dmg, heal, curve, who, heals = Meter.dmg, Meter.heal, Meter.curve, Meter.who, Meter.heals
 for i = 1, WINDOW do
     dmg[i], heal[i] = 0, 0
 end
@@ -182,12 +182,13 @@ local function FightStart()
     ClearCurve()
     if split then
         wipe(who)
+        wipe(heals)
         ScanPets()
     end
 end
-local function Credit(srcGUID, srcName, srcFlags, n)
+local function Credit(srcGUID, srcName, srcFlags, n, into)
     local name = band(srcFlags, TYPE_PLAYER) ~= 0 and srcName or owners[srcGUID]
-    if name then who[name] = (who[name] or 0) + n end
+    if name then into[name] = (into[name] or 0) + n end
 end
 local function StepCurve()
     curveTick = curveTick + 1
@@ -227,6 +228,7 @@ frame:SetScript("OnEvent", ns.Prof.Wrap("hot.log", function(_, event, _, sub, sr
         healSum = healSum + n
         if not fighting then FightStart() end
         fightHeal = fightHeal + n
+        if split then Credit(srcGUID, srcName, srcFlags, n, heals) end
     else
         if band(dstFlags, AFFIL_RAID) ~= 0 then return end
         if band(dstFlags, HOSTILE) == 0 then
@@ -243,7 +245,7 @@ frame:SetScript("OnEvent", ns.Prof.Wrap("hot.log", function(_, event, _, sub, sr
         dmgSum = dmgSum + n
         if not fighting then FightStart() end
         fightDmg = fightDmg + n
-        if split then Credit(srcGUID, srcName, srcFlags, n) end
+        if split then Credit(srcGUID, srcName, srcFlags, n, who) end
     end
     silence = 0
     if span == 0 then span = 1 end
@@ -288,6 +290,7 @@ function Meter.Reset()
     fighting, fightAt, fightDur, fightDmg, fightHeal, silence = false, 0, 0, 0, 0, 0
     ClearCurve()
     wipe(who)
+    wipe(heals)
     inRaid = GetNumRaidMembers() > 0
     affil = inRaid and AFFIL_RAID or AFFIL_MINE
 end
@@ -318,6 +321,7 @@ function Meter.Split(on)
     else
         frame:UnregisterEvent("UNIT_PET")
         wipe(who)
+        wipe(heals)
         wipe(owners)
         ownersN = 0
     end

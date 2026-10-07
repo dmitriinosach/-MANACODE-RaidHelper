@@ -23,11 +23,12 @@ function Expect.RaidOf(fight)
 end
 function Expect.ModeOf(fight)
     local B = ns.Bober
-    local boss = B and B.CODE[fight.boss]
+    if not B then return nil, nil end
+    local boss, zone = B.Code(fight.boss)
     if not boss then return nil, nil end
     local raid = Expect.RaidOf(fight)
     if not raid then return nil, nil end
-    return B.Mode(raid.size, raid.heroic, boss == "hal"), boss
+    return B.Mode(zone, raid.size, raid.heroic), boss
 end
 local function Guids(fight, names)
     local want, left, out = {}, 0, {}

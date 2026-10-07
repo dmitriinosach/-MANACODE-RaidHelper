@@ -1,42 +1,56 @@
 local _, ns = ...
 local strmatch, strsub, gmatch, gsub, format = string.match, string.sub, string.gmatch, string.gsub, string.format
 local floor, max, min = math.floor, math.max, math.min
-local tsort, tinsert = table.sort, table.insert
-local FORMAT = 12
+local tsort, tconcat = table.sort, table.concat
+local FORMAT = 13
 local INDEX_KEY = "bober.index"
-local MODES = { "ih", "iu", "in", "rh", "rn", "jh", "ju", "jn", "qh", "qn" }
-local RS = { rh = true, rn = true, qh = true, qn = true }
-local CELL = { surf = 1, prof = 2, lich = 3, hal = 1 }
-local ICC_BOSSES = { "surf", "prof", "lich" }
-local RS_BOSSES = { "hal" }
+local ZONES = {
+    icc = { "marrowgar", "deathwhisper", "saurfang", "festergut", "rotface", "putricide", "council", "lanathel",
+        "valithria", "sindragosa", "lichking" },
+    rs = { "halion" },
+    toc = { "northrendbeasts", "jaraxxus", "champions", "valkyr", "anubarak" },
+}
+local LAST = { icc = "lichking", rs = "halion", toc = "anubarak" }
+local CARD = { icc = { "saurfang", "putricide", "lichking" }, rs = { "halion" }, toc = { "anubarak" } }
+local ENC_ALIAS = { beasts = "northrendbeasts", twins = "valkyr" }
 local ROLE_ORDER = { "t", "h", "d" }
 local Bober = {}
 ns.Bober = Bober
 Bober.FORMAT = FORMAT
-Bober.ICC_BOSSES = ICC_BOSSES
-Bober.RS_BOSSES = RS_BOSSES
-Bober.CODE = {
-    [37813] = "surf",
-    [36678] = "prof",
-    [36597] = "lich",
-    [39863] = "hal",
-}
+Bober.ZONES = ZONES
 local recs = {}
-local arch = {}
+local blocks = {}
+local files = {}
 local benchCache = {}
 local byName
 local indexWait = {}
-local modeList
+local codes
+local function Root()
+    local r = PlayerRaids13
+    return type(r) == "table" and r or nil
+end
 local function Meta()
-    local m = PlayerRaidsMeta
+    local r = Root()
+    local m = r and r.meta
     return type(m) == "table" and m or nil
+end
+local function Players()
+    local r = Root()
+    local p = r and r.players
+    return type(p) == "table" and p or nil
 end
 function Bober.State()
     local m = Meta()
-    if not m or type(PlayerRaidsData) ~= "table" then return "none", nil end
-    local v = tonumber(m.v)
+    local v = m and tonumber(m.v)
+    if not v then
+        local old = PlayerRaidsMeta
+        v = type(old) == "table" and tonumber(old.v)
+        if v and v ~= FORMAT then return "format", v end
+        return "none", nil
+    end
     if v ~= FORMAT then return "format", v end
-    if not m.baked or m.baked == "" or next(PlayerRaidsData) == nil then return "none", v end
+    local p = Players()
+    if not m.baked or m.baked == "" or not p or next(p) == nil then return "none", v end
     return "ok", v
 end
 function Bober.Ready()
@@ -54,46 +68,62 @@ function Bober.IdFromGuid(guid)
     if type(guid) ~= "string" or #guid < 8 then return nil end
     return tonumber(strsub(guid, 7), 16)
 end
-function Bober.IsRS(mode)
-    return RS[mode] or false
+function Bober.Mode(zone, size, heroic)
+    return zone .. ((size or 25) > 10 and "25" or "10") .. (heroic and "h" or "n")
 end
-function Bober.Mode(size, heroic, rs)
-    local big = (size or 25) > 10
-    if rs then
-        if big then return heroic and "rh" or "rn" end
-        return heroic and "qh" or "qn"
-    end
-    if big then return heroic and "ih" or "in" end
-    return heroic and "jh" or "jn"
+function Bober.Zone(mode)
+    return strmatch(mode or "", "^(%a+)")
 end
 function Bober.Bosses(mode)
-    return RS[mode] and RS_BOSSES or ICC_BOSSES
+    return CARD[Bober.Zone(mode) or ""] or CARD.icc
 end
-local function ModeOrder()
-    if modeList then return modeList end
-    local m = Meta()
-    local raw = m and m.modes
-    if type(raw) == "table" then raw = table.concat(raw, ",") end
-    local list = {}
-    for mode in gmatch(type(raw) == "string" and raw or "", "%a+") do list[#list + 1] = mode end
-    if #list == 0 then list = MODES end
-    modeList = list
-    return list
+function Bober.Last(mode)
+    return LAST[Bober.Zone(mode) or ""] or LAST.icc
 end
-local function Cell(c)
-    if not c or c == "" then return false end
-    local role, v, p, g, i, o = strmatch(c, "^([dht])(%d*):?(%d*):?(%d*):?(%d*):?(%d*)$")
-    if not role then return false end
-    return { role = role, value = tonumber(v), parse = tonumber(p), gear = tonumber(g), ilvl = tonumber(i),
-        our = tonumber(o) }
-end
-local function Hist(s)
-    local out = {}
-    for mode, boss, kills in gmatch(s or "", "(%a+)%.(%a+)%.(%d+)") do
-        out[mode] = out[mode] or {}
-        out[mode][boss] = tonumber(kills)
+function Bober.Code(npc)
+    if not codes and ns.ENC then
+        local zoneOf, byNpc = {}, {}
+        for zone, list in pairs(ZONES) do
+            for i = 1, #list do zoneOf[list[i]] = zone end
+        end
+        for key, id in pairs(ns.ENC) do
+            local code = ENC_ALIAS[key] or key
+            if zoneOf[code] then byNpc[id] = code end
+        end
+        codes = { zone = zoneOf, npc = byNpc }
     end
-    return out
+    if not codes then return nil, nil end
+    local code = npc and codes.npc[npc]
+    if not code then return nil, nil end
+    return code, codes.zone[code]
+end
+local function ModeInfo(sn, mode)
+    local key = sn .. "." .. mode
+    local hit = files[key]
+    if hit ~= nil then return hit or nil end
+    local r = Root()
+    local m = r and type(r.modes) == "table" and r.modes[key]
+    if type(m) ~= "table" or type(m.players) ~= "table" then
+        files[key] = false
+        return nil
+    end
+    local list, index = {}, {}
+    for code in gmatch(type(m.bosses) == "string" and m.bosses or "", "[^,%s]+") do
+        list[#list + 1] = code
+        index[code] = #list
+    end
+    if #list == 0 then
+        for i, code in ipairs(ZONES[Bober.Zone(mode) or ""] or {}) do index[code] = i end
+    end
+    hit = { file = m, index = index }
+    files[key] = hit
+    return hit
+end
+local function Cell(c, il)
+    if not c or c == "" then return false end
+    local role, v, p, i, flag = strmatch(c, "^([dht])(%d*):?(%d*):?(%d*):?(%w*)$")
+    if not role then return false end
+    return { role = role, value = tonumber(v), parse = tonumber(p), ilvl = tonumber(i) or il, unbuff = flag == "u" }
 end
 local function Stat(s)
     if not s or s == "" then return nil end
@@ -103,88 +133,101 @@ local function Stat(s)
     if not st.better and not st.top then return nil end
     return st
 end
-local function Season(block)
-    local sn, gs, last, spec, raids, _, _, list, _, _, _, _, stat = strsplit(";", block)
-    local s = { season = tonumber(sn), gs = tonumber(gs), last = last, spec = spec, raids = {}, byMode = {},
-        stat = Stat(stat) }
-    local r = { strsplit(",", raids or "") }
-    local order = ModeOrder()
-    for i = 1, #order do s.raids[order[i]] = tonumber(r[i]) or 0 end
-    for entry in gmatch(list or "", "[^/]+") do
-        local body = strmatch(entry, "^(.-),#%-?%d+$") or entry
-        local date, mode, _, c1, c2, c3 = strsplit(",", body)
-        if mode then
-            local byMode = s.byMode[mode]
-            if not byMode then
-                byMode = {}
-                s.byMode[mode] = byMode
-            end
-            byMode[#byMode + 1] = { date = date, mode = mode, cells = { Cell(c1), Cell(c2), Cell(c3) } }
-        end
+local function Season(id, sn, raw)
+    local gs, last, spec, raids, _, _, _, _, stat = strsplit(";", raw)
+    local s = { id = id, season = sn, gs = tonumber(gs), last = last, spec = spec ~= "" and spec or nil, raids = {},
+        stat = Stat(stat), modes = {} }
+    for entry in gmatch(raids or "", "[^,]+") do
+        local mode, n = strmatch(entry, "^(%w+)%.(%d+)")
+        if mode then s.raids[mode] = tonumber(n) end
     end
     return s
 end
+local function Block(id, sn)
+    local key = id * 100 + sn
+    local hit = blocks[key]
+    if hit ~= nil then return hit or nil end
+    local r = Root()
+    local f = r and type(r.seasons) == "table" and r.seasons[sn]
+    local raw = type(f) == "table" and type(f.players) == "table" and f.players[id]
+    hit = type(raw) == "string" and raw ~= "" and Season(id, sn, raw) or false
+    blocks[key] = hit
+    return hit or nil
+end
+local function RaidDate(info, rid)
+    local t = info.file.raids
+    local raw = type(t) == "table" and rid and t[rid]
+    return type(raw) == "string" and strmatch(raw, "^(%d*)") or ""
+end
+local function Raids(s, mode)
+    local hit = s.modes[mode]
+    if hit then return hit end
+    local out = {}
+    local info = ModeInfo(s.season, mode)
+    local raw = info and info.file.players[s.id]
+    local list = type(raw) == "string" and strmatch(raw, "^[^|]*|[^|]*|(.*)$")
+    for entry in gmatch(list or "", "[^/]+") do
+        local parts = { strsplit(",", entry) }
+        local rid, il = tonumber(parts[1]), tonumber(parts[2])
+        local cells = {}
+        for b = 3, #parts do cells[b - 2] = Cell(parts[b], il) end
+        out[#out + 1] = { rid = rid, ilvl = il, cells = cells, index = info.index, date = RaidDate(info, rid) }
+    end
+    s.modes[mode] = out
+    return out
+end
+local function Hist(s)
+    local out = {}
+    for entry in gmatch(s or "", "[^/]+") do
+        local mode, boss, kills = strmatch(entry, "^(%w+)%.(%a+)%.(%d+)")
+        if mode then
+            out[mode] = out[mode] or {}
+            out[mode][boss] = tonumber(kills)
+        end
+    end
+    return out
+end
 local function Row(id, raw)
-    local name, class, _, hist, rest = strmatch(raw, "^([^|]*)|([^|]*)|([^|]*)|([^|]*)|[^|]*|[^|]*|?(.*)$")
+    local name, class, _, hist = strmatch(raw, "^([^|]*)|([^|]*)|([^|]*)|([^|]*)")
     if not name then return nil end
-    local rec = { id = id, name = name, class = class, hist = Hist(hist) }
-    local block = rest and strmatch(rest, "^([^|]+)")
-    if block and block ~= "" then rec.cur = Season(block) end
-    return rec
+    local m = Meta()
+    local cur = m and tonumber(m.season)
+    return { id = id, name = name, class = class, hist = Hist(hist), cur = cur and Block(id, cur) or nil }
 end
 function Bober.Get(id)
     if not id or not Bober.Ready() then return nil end
     local hit = recs[id]
     if hit ~= nil then return hit or nil end
-    local raw = PlayerRaidsData[id]
+    local raw = Players()[id]
     local rec = type(raw) == "string" and Row(id, raw) or nil
     recs[id] = rec or false
     return rec
 end
-local function Archived(rec, sn)
-    local t = type(PlayerRaidsArchive) == "table" and PlayerRaidsArchive[sn]
-    if type(t) ~= "table" then return nil end
-    local key = rec.id * 100 + sn
-    local hit = arch[key]
-    if hit == nil then
-        local raw = t[rec.id]
-        hit = type(raw) == "string" and raw ~= "" and Season(raw) or false
-        arch[key] = hit
-    end
-    return hit or nil
-end
-local function Blocks(rec)
+local function SeasonList()
     local m = Meta()
     local cur = m and tonumber(m.season)
     local list = {}
-    for _, sn in ipairs(m and m.seasons or {}) do
+    for _, sn in ipairs(m and type(m.seasons) == "table" and m.seasons or {}) do
         sn = tonumber(sn)
         if sn then list[#list + 1] = sn end
     end
     if cur and #list == 0 then list[1] = cur end
     tsort(list, function(a, b) return a > b end)
+    return list
+end
+local function Blocks(rec)
     local out = {}
+    local list = SeasonList()
     for i = 1, #list do
-        local sn = list[i]
-        local s
-        if sn == cur then s = rec.cur else s = Archived(rec, sn) end
+        local s = Block(rec.id, list[i])
         if s then out[#out + 1] = s end
     end
     return out
 end
-local function RaidIlvl(raid)
-    local best
-    for b = 1, 3 do
-        local c = raid.cells[b]
-        if c and c.ilvl and (not best or c.ilvl > best) then best = c.ilvl end
-    end
-    return best
-end
 local function MainRole(s, mode)
     local n = { d = 0, h = 0, t = 0 }
-    for _, raid in ipairs(s.byMode[mode] or {}) do
-        for b = 1, 3 do
-            local c = raid.cells[b]
+    for _, raid in ipairs(Raids(s, mode)) do
+        for _, c in pairs(raid.cells) do
             if c and n[c.role] then n[c.role] = n[c.role] + 1 end
         end
     end
@@ -203,12 +246,12 @@ local function SpecRole(spec)
 end
 function Bober.Role(rec, mode)
     if not rec then return nil end
-    local blocks = Blocks(rec)
+    local list = Blocks(rec)
     local spec
-    for i = 1, #blocks do
-        local r = MainRole(blocks[i], mode)
+    for i = 1, #list do
+        local r = MainRole(list[i], mode)
         if r then return r end
-        spec = spec or blocks[i].spec
+        spec = spec or list[i].spec
     end
     if spec then return SpecRole(spec) end
     return nil
@@ -234,16 +277,16 @@ local function PickRecent(list)
 end
 function Bober.Stat(rec, mode, boss, role)
     local out = {}
-    local bi = CELL[boss]
-    if not rec or not bi then return out end
+    if not rec or not boss then return out end
     out.role = role or Bober.Role(rec, mode) or "d"
     local list = {}
-    local blocks = Blocks(rec)
-    for k = 1, #blocks do
-        for _, raid in ipairs(blocks[k].byMode[mode] or {}) do
-            local c = raid.cells[bi]
-            if c and c.value and c.role == out.role then
-                list[#list + 1] = { v = c.value, il = RaidIlvl(raid), date = tonumber(raid.date) or 0 }
+    local all = Blocks(rec)
+    for k = 1, #all do
+        for _, raid in ipairs(Raids(all[k], mode)) do
+            local bi = raid.index[boss]
+            local c = bi and raid.cells[bi]
+            if c and c.value and c.role == out.role and not c.unbuff then
+                list[#list + 1] = { v = c.value, il = raid.ilvl or c.ilvl, date = tonumber(raid.date) or 0 }
             end
         end
     end
@@ -263,10 +306,9 @@ function Bober.BestParse(rec, mode)
     if not s then return nil, nil end
     local role = MainRole(s, mode)
     local best
-    for _, raid in ipairs(s.byMode[mode] or {}) do
-        for b = 1, 3 do
-            local c = raid.cells[b]
-            local p = c and c.role == role and (c.parse or c.our)
+    for _, raid in ipairs(Raids(s, mode)) do
+        for _, c in pairs(raid.cells) do
+            local p = c and c.role == role and not c.unbuff and c.parse
             if p and (not best or p > best) then best = p end
         end
     end
@@ -278,13 +320,15 @@ function Bober.Kills(rec, mode, boss)
 end
 function Bober.Bench(mode, boss)
     local m = Meta()
-    local all = m and m.bench
-    if type(all) ~= "table" or not mode or not boss then return nil end
+    local cur = m and tonumber(m.season)
+    if not cur or not mode or not boss then return nil end
     local key = mode .. "." .. boss
     local hit = benchCache[key]
     if hit ~= nil then return hit or nil end
     local out = false
-    local raw = all[key]
+    local info = ModeInfo(cur, mode)
+    local all = info and info.file.bench
+    local raw = type(all) == "table" and all[boss]
     if type(raw) == "string" then
         local c, _, _, n = strsplit("|", raw)
         local cuts = {}
@@ -308,7 +352,8 @@ local function Put(map, name, id)
 end
 local function BuildIndex(step)
     local map, prevs = {}, {}
-    for id, raw in pairs(PlayerRaidsData) do
+    local all = Players() or {}
+    for id, raw in pairs(all) do
         if step then step() end
         local name, prev = strmatch(raw, "^([^|]*)|[^|]*|([^|]*)")
         if name then
@@ -323,7 +368,7 @@ local function BuildIndex(step)
     local own = type(PlayerRaidsDB) == "table" and PlayerRaidsDB.names
     if type(own) == "table" then
         for id, name in pairs(own) do
-            if type(name) == "string" and PlayerRaidsData[id] then map[name] = id end
+            if type(name) == "string" and all[id] then map[name] = id end
         end
     end
     return map
@@ -366,13 +411,26 @@ function Bober.Indexed()
     return byName ~= nil
 end
 function Bober.Reset()
-    recs, arch, benchCache, byName, modeList = {}, {}, {}, nil, nil
+    recs, blocks, files, benchCache, byName = {}, {}, {}, {}, nil
+end
+local function LoadedModes()
+    local m = Meta()
+    local cur = m and tonumber(m.season)
+    local r = Root()
+    local out = {}
+    for key in pairs(cur and r and type(r.modes) == "table" and r.modes or {}) do
+        local sn, mode = strmatch(tostring(key), "^(%d+)%.(%w+)$")
+        if tonumber(sn) == cur then out[#out + 1] = mode end
+    end
+    tsort(out)
+    return #out > 0 and tconcat(out, ", ") or "-"
 end
 function Bober.Diag()
     local st, v = Bober.State()
     if st == "ok" then
         local m = Meta()
-        return format(ns.T("bober.diag.ok"), Bober.Baked() or "?", tonumber(m.count) or 0, byName and ns.T("bober.diag.indexed") or "")
+        return format(ns.T("bober.diag.ok"), Bober.Baked() or "?", tonumber(m.count) or 0, tostring(m.season),
+            LoadedModes(), byName and ns.T("bober.diag.indexed") or "")
     end
     if st == "format" then return format(ns.T("bober.diag.format"), tostring(v), FORMAT) end
     return ns.T("bober.diag.none")

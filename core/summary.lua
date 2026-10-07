@@ -1221,7 +1221,7 @@ local function Given(s, fight, p, dst, sk, id, ts)
         st.pulled[st.n] = true
     end
     s.icons[i] = s.icons[i] or bd.id or id
-    local g = s.got and s.got[sk]
+    local g = dst ~= p and s.got and s.got[sk]
     if not g then return end
     local got = dst.badges[g]
     got.n = got.n + 1
@@ -1461,8 +1461,8 @@ local function Build(fight)
                            pet = band(srcFlags, F_PLAYER) == 0,
                            owner = srcGUID and owners[srcGUID] or nil }
             end
-            if sub == "SPELL_CAST_SUCCESS" and p and dst and sk and srcName == who and dstName ~= who
-                and s.given[sk] then
+            if sub == "SPELL_CAST_SUCCESS" and p and dst and sk and srcName == who
+                and s.given[sk] and (dstName ~= who or s.badges[s.given[sk]].self) then
                 Given(s, fight, p, dst, sk, tonumber(a1), ts)
             end
             if dst and sk and (sub == "SPELL_AURA_APPLIED" or sub == "SPELL_AURA_REFRESH" or sub == "SPELL_AURA_REMOVED") then

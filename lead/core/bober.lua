@@ -3,8 +3,8 @@ root.Lead = root.Lead or {}
 local ns = root.Lead
 local B = {}
 ns.Bober = B
-local LAST = { icc = "lich", rs = "hal" }
-local RAID_BOSSES = { icc = { surf = true, prof = true, lich = true }, rs = { hal = true } }
+local LAST = { icc = "lichking", rs = "halion" }
+local RAID_BOSSES = { icc = { saurfang = true, putricide = true, lichking = true }, rs = { halion = true } }
 local ROLE = { tank = "t", heal = "h", melee = "d", ranged = "d" }
 local PARSE = {
     { 100, "parse.p100" }, { 99, "parse.p99" }, { 95, "parse.p95" },
@@ -31,7 +31,7 @@ function B.Pick()
     local tpl = ns.Session.Template()
     local key = tpl.base or tpl.key or ""
     local raid = key:find("^rs") and "rs" or "icc"
-    local mode = root.Bober.Mode(tpl.size, key:find("h$") ~= nil, raid == "rs")
+    local mode = root.Bober.Mode(raid, tpl.size, key:find("h$") ~= nil)
     local boss = RAID_BOSSES[raid][tpl.boss or ""] and tpl.boss or LAST[raid]
     return mode, boss, mode .. "." .. boss
 end
@@ -74,7 +74,7 @@ local function tipLines(bb, rec, mode, boss, role)
     local out = { ns.T("bbTipHead", ns.T("bbMode_" .. mode)) }
     local s = rec.cur
     out[#out + 1] = ns.T("bbTipRaids", s and s.raids[mode] or 0)
-    local last = bb.IsRS(mode) and "hal" or "lich"
+    local last = bb.Last(mode)
     out[#out + 1] = ns.T("bbTipKills", ns.T("bbBoss_" .. last), bb.Kills(rec, mode, last))
     local parts = {}
     for _, b in ipairs(bb.Bosses(mode)) do

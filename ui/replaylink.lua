@@ -106,6 +106,9 @@ end
 function RL.HeadFrame()
     return head
 end
+function RL.SaveFrame()
+    return save
+end
 function RL.SetFight(f)
     if not head then return end
     head.fight = f

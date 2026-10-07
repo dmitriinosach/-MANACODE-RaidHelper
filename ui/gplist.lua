@@ -12,6 +12,8 @@ GPList.PAGE = { rowh = 22, headh = 18, whenw = 44, mainw = 92, proofw = 30, hotw
     icon = 16, iconw = 36 }
 GPList.COMPACT = { rowh = 20, headh = 16, whenw = 0, mainw = 52, proofw = 22, hotw = 38, checkw = 0, namew = 78,
     icon = 13, iconw = 28, small = true }
+GPList.MINI = { rowh = 18, headh = 14, whenw = 0, mainw = 46, proofw = 18, hotw = 0, checkw = 0, namew = 74,
+    icon = 12, iconw = 24, small = true }
 local listeners = {}
 function GPList.OnChange(fn)
     listeners[#listeners + 1] = fn

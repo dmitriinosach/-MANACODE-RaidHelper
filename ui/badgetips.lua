@@ -241,13 +241,29 @@ local function Signed(sec)
 end
 local function Buffs(st, def)
     local out = {}
-    local got = def.kind == "got"
     Head(out, format(T(def.tip), ns.SpellName(def.spells[1])))
     Put(out, "row", T("sum.tt.count"), tostring(st.n))
-    local pulls = 0
+    local by, order = {}, {}
+    for k = 1, st.n do
+        local who = st.notes[k]
+        if who then
+            if not by[who] then order[#order + 1] = who end
+            by[who] = (by[who] or 0) + 1
+        end
+    end
+    tsort(order, function(a, b)
+        if by[a] ~= by[b] then return by[a] > by[b] end
+        return a < b
+    end)
+    local enc = ns.Encounters
+    for k = 1, #order do
+        local who = order[k]
+        out[#out + 1] = { kind = "row", left = who, right = tostring(by[who]),
+                          class = enc and enc.ClassOf and enc.ClassOf(who) or nil }
+    end
+    Put(out, "sep")
     for k = 1, min(TIMES, st.n) do
         local pull = st.pulled ~= nil and st.pulled[k] == true
-        if pull then pulls = pulls + 1 end
         Put(out, "sub", Signed(st.times[k]), st.notes[k], pull and T("sum.tt.pull") or nil, pull and "good" or nil)
     end
     if st.n > TIMES then Put(out, "sub", (format(T("sum.tip.more"), st.n - TIMES):gsub("^%s+", ""))) end
