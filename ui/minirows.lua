@@ -24,6 +24,7 @@ local function ClassOf(who, s)
     local known = s and s.byName and s.byName[who]
     return (ns.Encounters and ns.Encounters.ClassOf(who)) or (known and known.class) or nil
 end
+Rows.ClassOf = ClassOf
 local function Note(out, text, tone)
     out[#out + 1] = { kind = "note", left = text, tone = tone or "text.note" }
 end
@@ -92,22 +93,32 @@ local function Value(b, who, v)
     if (HIT_KINDS[kind] or b.def.soak) and b.hits then return format("%s x%d", Short(v), b.hits[who] or 0) end
     return Short(v)
 end
-local function BlockRows(b, s, out)
+function Rows.Cells(b, s)
     local view = TARGET_KINDS[b.def.kind] and ns.Targets and ns.Targets.View(b, function(who) return ClassOf(who, s) end)
-    local label = ns.T(b.label or b.def.label)
-    local count = COUNT_KINDS[b.def.kind]
-    local head = { kind = "head", left = label, val = count and tostring(b.total) or Short(max(0, b.total)) }
-    out[#out + 1] = head
+    local cells, keep = {}, view and Columns(b, view) or {}
+    if not view then return nil, cells, keep end
+    for i = 1, #view.rows do cells[view.rows[i].who] = view.rows[i] end
+    return #keep > 0 and Pick(view.cols, keep) or nil, cells, keep
+end
+function Rows.ByWho(b)
     local list = {}
     for who, v in pairs(b.by) do
         if v > 0 then list[#list + 1] = { who = who, v = v } end
     end
     ByValue(list)
-    local cells, keep = {}, view and Columns(b, view) or {}
-    if view then
-        if #keep > 0 then head.val = Pick(view.cols, keep) .. "  " .. head.val end
-        for i = 1, #view.rows do cells[view.rows[i].who] = view.rows[i] end
-    end
+    return list
+end
+function Rows.Pick(r, keep)
+    return Pick(r.cells, keep)
+end
+local function BlockRows(b, s, out)
+    local label = ns.T(b.label or b.def.label)
+    local count = COUNT_KINDS[b.def.kind]
+    local head = { kind = "head", left = label, val = count and tostring(b.total) or Short(max(0, b.total)) }
+    out[#out + 1] = head
+    local list = Rows.ByWho(b)
+    local cols, cells, keep = Rows.Cells(b, s)
+    if cols then head.val = cols .. "  " .. head.val end
     local top = list[1] and list[1].v or 1
     local shown = min(BLOCK_ROWS, #list)
     for i = 1, shown do
@@ -179,8 +190,7 @@ local function OverOf(s, i)
     end
     return nil
 end
-local function StackRows(s, i, over, out)
-    local bd = s.badges[i]
+function Rows.Over(s, i)
     local list = {}
     for k = 1, #s.players do
         local p = s.players[k]
@@ -193,6 +203,11 @@ local function StackRows(s, i, over, out)
         if a.peak ~= b.peak then return a.peak > b.peak end
         return a.who < b.who
     end)
+    return list
+end
+local function StackRows(s, i, over, out)
+    local bd = s.badges[i]
+    local list = Rows.Over(s, i)
     out[#out + 1] = { kind = "head", left = format(ns.T("mini.over"), ns.T(bd.tip or ""), over), val = tostring(#list) }
     local top = list[1] and list[1].v or 1
     for k = 1, min(BLOCK_ROWS, #list) do
@@ -204,23 +219,33 @@ local function StackRows(s, i, over, out)
     if #list > BLOCK_ROWS then Note(out, format(ns.T("mini.more"), #list - BLOCK_ROWS)) end
     if #list == 0 then Note(out, ns.T("stk.never"), "text.good") end
 end
-function Rows.Targets(out, f, s)
-    local n = 0
+function Rows.Important(f, s)
+    local out = {}
     local spells, npcs = RuleKeys(f.boss)
     for i = 1, #s.blocks do
         local b = s.blocks[i]
         local hidden = ns.SumHide and ns.SumHide.Hidden(f.boss, b.def)
         if b.by and not hidden and (TARGET_KINDS[b.def.kind] or Linked(b.def, spells, npcs)) then
-            n = n + 1
-            BlockRows(b, s, out)
+            out[#out + 1] = { b = b }
         end
     end
     for i = 1, #(s.badges or {}) do
         local over = OverOf(s, i)
-        if over then
-            n = n + 1
-            StackRows(s, i, over, out)
-        end
+        if over then out[#out + 1] = { i = i, over = over } end
     end
-    if n == 0 then Note(out, ns.T("mini.notargets")) end
+    return out
+end
+function Rows.IsCount(b)
+    return COUNT_KINDS[b.def.kind] == true
+end
+function Rows.HasHits(b)
+    return (HIT_KINDS[b.def.kind] or b.def.soak) and b.hits ~= nil or false
+end
+function Rows.Targets(out, f, s)
+    local list = Rows.Important(f, s)
+    for k = 1, #list do
+        local e = list[k]
+        if e.b then BlockRows(e.b, s, out) else StackRows(s, e.i, e.over, out) end
+    end
+    if #list == 0 then Note(out, ns.T("mini.notargets")) end
 end

@@ -7,6 +7,7 @@ local BTN_W = 74
 local BTN_PAD = 16
 local HEAD_PAD = 6
 local HEAD_Y = -19
+local GEAR_GAP = 4
 local Kit = ns.Kit
 local T = ns.T
 local DV = {}
@@ -33,11 +34,21 @@ local function Click()
     end
     DV.Send(res)
 end
+local function Place(b, host)
+    local gear = ns.SumHide and ns.SumHide.HeadFrame and ns.SumHide.HeadFrame()
+    b:ClearAllPoints()
+    if gear then
+        b:SetPoint("RIGHT", gear, "LEFT", -GEAR_GAP, 0)
+    else
+        b:SetPoint("RIGHT", host:GetParent() or host, "TOPRIGHT", -HEAD_PAD, HEAD_Y)
+    end
+end
 function DV.Attach(host)
     if btn then return end
     local b = Kit.Button(host)
     b:SetHeight(BTN_H)
-    b:SetPoint("RIGHT", host:GetParent() or host, "TOPRIGHT", -HEAD_PAD, HEAD_Y)
+    Place(b, host)
+    b:HookScript("OnShow", function(self) Place(self, host) end)
     b.text:SetText(T("dc.btn"))
     b:SetWidth(max(BTN_W, floor(b.text:GetStringWidth() + BTN_PAD)))
     b.tipTitle = T("dc.head")

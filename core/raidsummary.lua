@@ -98,7 +98,7 @@ local function TimeOf(fights)
 end
 local function NewSum(raid, segs)
     local res = {
-        key = raid.key, name = raid.name, size = raid.size, heroic = raid.heroic, id = raid.id,
+        key = raid.key, name = raid.name, size = raid.size, heroic = raid.heroic, id = raid.id, map = raid.map,
         from = raid.from, to = raid.to, busy = 0, sessions = 0, tries = raid.tries, wipes = 0,
         passed = raid.passed, encs = #raid.encs, known = raid.map and ns.raidEncounters
             and ns.raidEncounters[raid.map] or nil,

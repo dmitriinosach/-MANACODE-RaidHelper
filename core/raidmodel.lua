@@ -273,9 +273,18 @@ local function SpentRow(res, pr, sp)
     return { who = SpName(sp), icon = ns.RaidCost.Icon(sp.id, sp.spell), text = format("x%d", sp.n), note = note,
              noteIcon = cost and ns.RaidCost.GOLD_ICON or nil, noteLit = cost ~= nil, v = sp.n, lines = tip }, cost
 end
-local function Spent(res, pr)
-    local rows = {}
-    local total, gold = 0, 0
+function Model.Cost(res)
+    local pr = Prices(res)
+    local gold = 0
+    for i = 1, #res.spent do
+        local sp = res.spent[i]
+        local each = not sp.free and pr.c[sp.item]
+        if each then gold = gold + each * sp.n end
+    end
+    return gold > 0 and gold or nil
+end
+local function Groups(res)
+    local total = 0
     local groups, order = {}, {}
     for i = 1, #res.spent do
         local sp = res.spent[i]
@@ -289,7 +298,35 @@ local function Spent(res, pr)
         g.list[#g.list + 1] = sp
         if not sp.free then total = total + sp.n end
     end
-    tsort(order, function(a, b) return ns.RaidCost.CatOrder(a.cat) < ns.RaidCost.CatOrder(b.cat) end)
+    tsort(order, function(a, b)
+        local ca, cb = ns.RaidCost.CatOrder(a.cat), ns.RaidCost.CatOrder(b.cat)
+        if ca ~= cb then return ca < cb end
+        return a.cat < b.cat
+    end)
+    return order, total
+end
+function Model.SpentGroups(res)
+    local pr = Prices(res)
+    local order = Groups(res)
+    local out = {}
+    for i = 1, #order do
+        local g = order[i]
+        local items, sum = {}, 0
+        for k = 1, #g.list do
+            local sp = g.list[k]
+            local each = not sp.free and pr.c[sp.item] or nil
+            local cost = each and each * sp.n or nil
+            if cost then sum = sum + cost end
+            items[k] = { name = SpName(sp), icon = ns.RaidCost.Icon(sp.id, sp.spell), n = sp.n, cost = cost }
+        end
+        out[i] = { cat = g.cat, n = g.n, cost = sum > 0 and sum or nil, items = items }
+    end
+    return out
+end
+local function Spent(res, pr)
+    local rows = {}
+    local gold = 0
+    local order, total = Groups(res)
     local head = ns.Kit and ns.Kit.Hex("text.title") or ""
     for i = 1, #order do
         local g = order[i]
