@@ -1,4 +1,4 @@
-local _, ns = ...
+local ADDON, ns = ...
 local Kit = ns.Kit
 local ceil = math.ceil
 local floor = math.floor
@@ -7,6 +7,7 @@ local min = math.min
 local LAYERS = { "BACKGROUND", "BORDER", "ARTWORK" }
 local MAX_TILES = 60
 local MAX_STRIPS = 40
+local MIN_MARK = 0.5
 local windows = {}
 function Kit.Back(f)
     local b = f.kitBack
@@ -113,7 +114,15 @@ function Kit.ApplyDecor(f, list)
             Kit.Fill(tx, d)
             tx:SetDrawLayer(layer)
             local pad = d.inset or 0
-            if d.h then
+            local shown = true
+            if d.at then
+                local dw, dh = d.w or 64, d.h or 64
+                local k = min(1, (w - 2 * (d.x or 0)) / dw, (h - 2 * (d.y or 0)) / dh)
+                tx:SetPoint(d.at, f, d.at, d.x or 0, d.y or 0)
+                tx:SetWidth(max(1, dw * k))
+                tx:SetHeight(max(1, dh * k))
+                shown = k >= MIN_MARK
+            elseif d.h then
                 tx:SetPoint("TOPLEFT", f, "TOPLEFT", pad, -(d.y or pad))
                 tx:SetPoint("TOPRIGHT", f, "TOPRIGHT", -pad, -(d.y or pad))
                 tx:SetHeight(d.h)
@@ -121,7 +130,7 @@ function Kit.ApplyDecor(f, list)
                 tx:SetPoint("TOPLEFT", f, "TOPLEFT", pad, -pad)
                 tx:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -pad, pad)
             end
-            tx:Show()
+            if shown then tx:Show() else tx:Hide() end
         end
     end
     local pool = f.kitDecor
@@ -196,14 +205,170 @@ function Kit.Arrow(tex, up)
         tex:SetTexCoord(a, b, b, b, a, a, b, a)
     end
 end
+local function Box(list, x, y, w, h, top)
+    list[#list + 1] = { x, y, w, top }
+    list[#list + 1] = { x, y + h - 1, w, 1 }
+    list[#list + 1] = { x, y, 1, h }
+    list[#list + 1] = { x + w - 1, y, 1, h }
+    return list
+end
+local GLYPHS = {
+    fold = Box({ { 5, 5, 6, 5 } }, 0, 1, 12, 10, 1),
+    unfold = Box({}, 0, 1, 12, 10, 3),
+    max = Box({}, 0, 0, 12, 12, 2),
+    unmax = Box({ { 3, 0, 9, 2 }, { 11, 0, 1, 8 }, { 3, 0, 1, 4 }, { 9, 7, 3, 1 } }, 0, 4, 9, 8, 2),
+}
+local function GlyphStyle(b)
+    Kit.StyleButton(b)
+    local token = "window.glyph"
+    if b.btnDisabled then
+        token = "window.glyphOff"
+    elseif b.hovered or b.pressed then
+        token = "window.glyphLit"
+    end
+    for i = 1, #b.glyph do Kit.Paint(b.glyph[i], token) end
+    local d = b.pressed and 1 or 0
+    b.icon:ClearAllPoints()
+    b.icon:SetPoint("CENTER", b, "CENTER", d, -d)
+end
+function Kit.Glyph(b, key)
+    local list = GLYPHS[key]
+    b.glyphKey = key
+    for i = 1, #list do
+        local g = list[i]
+        local t = b.glyph[i]
+        if not t then
+            t = b:CreateTexture(nil, "OVERLAY")
+            b.glyph[i] = t
+        end
+        t:ClearAllPoints()
+        t:SetWidth(g[3])
+        t:SetHeight(g[4])
+        t:SetPoint("TOPLEFT", b.icon, "TOPLEFT", g[1], -g[2])
+        t:Show()
+    end
+    for i = #list + 1, #b.glyph do b.glyph[i]:Hide() end
+    GlyphStyle(b)
+end
+function Kit.GlyphButton(parent, key)
+    local b = Kit.IconButton(parent, nil, STRIP_ICON)
+    b.icon:SetTexture(nil)
+    b.glyph = {}
+    b.kitStyle = GlyphStyle
+    b.tipAnchor = "ANCHOR_TOP"
+    Kit.Glyph(b, key)
+    return b
+end
 function Kit.FoldButton(parent, up)
-    local b = Kit.IconButton(parent, ARROW_TEX, STRIP_ICON)
-    Kit.Arrow(b.icon, up)
+    local b = Kit.GlyphButton(parent, up and "unfold" or "fold")
     local T = ns.T or tostring
     b.tipTitle = T(up and "kit.strip.restore" or "kit.strip.fold")
     b.tip = T(up and "kit.strip.restore.tip" or "kit.strip.fold.tip")
-    b.tipAnchor = "ANCHOR_TOP"
     return b
+end
+function Kit.MaxLook(b, on)
+    local T = ns.T or tostring
+    Kit.Glyph(b, on and "unmax" or "max")
+    b.tipTitle = T(on and "kit.win.unmax" or "kit.win.max")
+    b.tip = T(on and "kit.win.unmax.tip" or "kit.win.max.tip")
+    if b.hovered then Kit.TipShow(b) end
+end
+function Kit.MaxButton(parent)
+    local b = Kit.GlyphButton(parent, "max")
+    Kit.MaxLook(b, false)
+    return b
+end
+local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\kit\\"
+local GRIP_TEX = ART .. "grip"
+local GRIP_CURSOR = ART .. "grip_cursor"
+local GRIP_BLANK = ART .. "blank"
+local GRIP_BADGE = 24
+local GRIP_ARROW = 25 / 32
+local badge
+local badgeOwner
+local function BadgeFollow(self)
+    local u = UIParent:GetEffectiveScale()
+    local x, y = GetCursorPosition()
+    self:ClearAllPoints()
+    self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x / u, y / u)
+    SetCursor(GRIP_BLANK)
+end
+local function Badge()
+    if badge then return badge end
+    badge = CreateFrame("Frame", nil, UIParent)
+    badge:SetFrameStrata("TOOLTIP")
+    badge:SetWidth(GRIP_BADGE)
+    badge:SetHeight(GRIP_BADGE)
+    badge:Hide()
+    local arrow = badge:CreateTexture(nil, "OVERLAY")
+    arrow:SetTexture(GRIP_CURSOR)
+    arrow:SetTexCoord(0, GRIP_ARROW, 0, GRIP_ARROW)
+    arrow:SetAllPoints(badge)
+    badge:SetScript("OnUpdate", BadgeFollow)
+    badge:SetScript("OnHide", function() ResetCursor() end)
+    return badge
+end
+local function BadgeShow(g)
+    local f = Badge()
+    badgeOwner = g
+    BadgeFollow(f)
+    f:Show()
+end
+local function BadgeHide(g)
+    if badgeOwner ~= g then return end
+    badgeOwner = nil
+    Badge():Hide()
+end
+local function GripDown(self, button)
+    if button == "LeftButton" then
+        self.held = true
+        Kit.Tint(self.tex, "window.gripPress")
+    end
+    if self.onDown then self.onDown(self, button) end
+end
+local function GripUp(self, button)
+    local over = self:IsMouseOver()
+    self.held = nil
+    Kit.Tint(self.tex, over and "window.gripLit" or "window.grip")
+    if not over then BadgeHide(self) end
+    if self.onUp then self.onUp(self, button) end
+end
+local function GripEnter(self)
+    BadgeShow(self)
+    if not self.held then Kit.Tint(self.tex, "window.gripLit") end
+    Kit.TipShow(self)
+end
+local function GripLeave(self)
+    Kit.TipHide()
+    if self.held then return end
+    Kit.Tint(self.tex, "window.grip")
+    BadgeHide(self)
+end
+local function GripHide(self)
+    self.held = nil
+    Kit.Tint(self.tex, "window.grip")
+    BadgeHide(self)
+end
+function Kit.Grip(parent, size)
+    local g = CreateFrame("Button", nil, parent)
+    g:SetWidth(size)
+    g:SetHeight(size)
+    g.tex = g:CreateTexture(nil, "ARTWORK")
+    g.tex:SetTexture(GRIP_TEX)
+    g.tex:SetAllPoints(g)
+    Kit.Tint(g.tex, "window.grip")
+    local hi = g:CreateTexture(nil, "HIGHLIGHT")
+    hi:SetTexture(GRIP_TEX)
+    hi:SetAllPoints(g)
+    hi:SetBlendMode("ADD")
+    Kit.Tint(hi, "window.gripGlow")
+    g:SetScript("OnMouseDown", GripDown)
+    g:SetScript("OnMouseUp", GripUp)
+    g:SetScript("OnEnter", GripEnter)
+    g:SetScript("OnLeave", GripLeave)
+    g:SetScript("OnHide", GripHide)
+    Badge()
+    return g
 end
 local function Num(v)
     if type(v) == "number" and v == v then return v end

@@ -571,7 +571,9 @@ local function BuildAnim(y, inner)
         View.btn[r[1]] = b
     end
     bossText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    Kit.Text(bossText, "text.bright")
     seqText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    Kit.Text(seqText, "text.bright")
     for i, fs in ipairs({ bossText, seqText }) do
         fs:SetPoint("TOPLEFT", frame, "TOPLEFT", x + ARROW + 4, y - 12 - (i - 1) * (ROW + 16))
         fs:SetWidth(w - ARROW * 2 - 8)

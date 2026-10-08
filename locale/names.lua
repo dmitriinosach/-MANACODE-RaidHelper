@@ -44,6 +44,11 @@ local NAMES = {
     ["zone.TheRubySanctum"] = { "Рубиновое святилище", "The Ruby Sanctum" },
     ["zone.TheArgentColiseum"] = { "Испытание крестоносца", "Trial of the Crusader" },
     ["zone.Ulduar"] = { "Ульдуар", "Ulduar" },
+    ["zone.Naxxramas"] = { "Наксрамас", "Naxxramas" },
+    ["zone.TheEyeofEternity"] = { "Око Вечности", "The Eye of Eternity" },
+    ["zone.TheObsidianSanctum"] = { "Обсидиановое святилище", "The Obsidian Sanctum" },
+    ["zone.OnyxiasLair"] = { "Логово Ониксии", "Onyxia's Lair" },
+    ["zone.VaultofArchavon"] = { "Склеп Аркавона", "Vault of Archavon" },
 }
 local L = ns.L
 local LEN = ns.LEN

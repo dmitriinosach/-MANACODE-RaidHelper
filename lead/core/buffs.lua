@@ -58,7 +58,7 @@ local function fits(src, m)
     return m.tree == src.tree
 end
 function B.Item(def, list)
-    local it = { def = def, have = 0, src = {}, unsure = {}, pals = 0 }
+    local it = { def = def, have = 0, src = {}, unsure = {} }
     local got, maybe = {}, {}
     for k, src in ipairs(def.src) do
         local who = {}
@@ -79,16 +79,68 @@ function B.Item(def, list)
     end
     for _, m in ipairs(list) do
         if maybe[m.name] then it.unsure[#it.unsure + 1] = m end
-        if def.bless and m.class == "PALADIN" then it.pals = it.pals + 1 end
     end
     return it
+end
+local PAL = "PALADIN"
+local function palSrc(it)
+    for _, s in ipairs(it.src) do
+        if s.def.cls == PAL then return s.def end
+    end
+    return nil
+end
+local function bless(g, list)
+    local free = {}
+    for _, m in ipairs(list) do
+        if m.class == PAL then free[#free + 1] = m end
+    end
+    g.pals = #free
+    for _, it in ipairs(g.items) do
+        for _, s in ipairs(it.src) do
+            if s.def.cls ~= PAL and #s.who > 0 then it.closed = true end
+        end
+    end
+    for pass = 1, 2 do
+        for _, it in ipairs(g.items) do
+            local src = palSrc(it)
+            if src and not it.closed and (pass == 2 or src.tree) then
+                for k, m in ipairs(free) do
+                    if fits(src, m) then
+                        it.closed = true
+                        table.remove(free, k)
+                        break
+                    end
+                end
+            end
+        end
+    end
+end
+function B.Group(def, list)
+    local g = { def = def, group = true, items = {}, need = #def.items, closed = 0, pals = 0, unsure = {} }
+    for k, sub in ipairs(def.items) do g.items[k] = B.Item(sub, list) end
+    if def.bless then
+        bless(g, list)
+    else
+        for _, it in ipairs(g.items) do it.closed = it.have > 0 end
+    end
+    local seen = {}
+    for _, it in ipairs(g.items) do
+        if it.closed then g.closed = g.closed + 1 end
+        for _, m in ipairs(it.unsure) do
+            if not it.closed and not seen[m.name] then
+                seen[m.name] = true
+                g.unsure[#g.unsure + 1] = m
+            end
+        end
+    end
+    return g
 end
 function B.Rows(list)
     list = list or B.Members()
     local out = {}
     for r, row in ipairs(ns.BUFF_ROWS) do
         local items = {}
-        for k, def in ipairs(row.items) do items[k] = B.Item(def, list) end
+        for k, def in ipairs(row.items) do items[k] = def.items and B.Group(def, list) or B.Item(def, list) end
         out[r] = { key = row.key, items = items }
     end
     return out

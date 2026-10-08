@@ -43,6 +43,17 @@ local function TrashDeaths(res)
     for i = 1, #res.players do n = n + (res.players[i].deathBy[ns.RaidSummary.TRASH] or 0) end
     return n
 end
+local function Unbuffed(res)
+    local list, kills = {}, 0
+    for i = 1, #res.sums do
+        local e = res.sums[i]
+        if e.fight.killed then
+            kills = kills + 1
+            if ns.ZoneBuff and e.s.zoneBuff == ns.ZoneBuff.OFF then list[#list + 1] = e.fight end
+        end
+    end
+    return list, kills
+end
 local function Totals(res)
     local deaths, heal = Sum(res, "deaths"), Sum(res, "heal")
     local hours = Dec(res.busy / HOUR, 1)
@@ -59,13 +70,23 @@ local function Totals(res)
     Put(encTip, "row", T("rsum.tt.passed"), tostring(res.passed))
     Put(encTip, "row", T("rsum.tt.tried"), tostring(res.encs))
     if res.known then Put(encTip, "row", T("rsum.tt.known"), tostring(res.known)) end
+    local unbuffed, kills = Unbuffed(res)
+    local encSubs
+    if #unbuffed > 0 then
+        encSubs = { format(T("zb.raid"), #unbuffed, kills) }
+        Put(encTip, "row", T("zb.raid.tip"), format(T("zb.of"), #unbuffed, kills))
+        for i = 1, #unbuffed do
+            local f = unbuffed[i]
+            Put(encTip, "row", ns.EncName(f.boss), date("%d.%m %H:%M", f.from), "dim")
+        end
+    end
     return {
         { title = T("rsum.t.time"), value = format(T("rsum.hours"), hours), sub = sub, color = "text.accent",
           lines = timeTip },
         { title = T("rsum.t.wipes"), value = tostring(res.wipes), sub = format(T("rsum.t.tries"), res.tries),
           color = "sem.wipe" },
         { title = T("rsum.t.encs"), value = format("%d/%d", res.passed, max(res.known or 0, res.encs)),
-          sub = T("rsum.t.killed"), color = "sem.win", lines = encTip },
+          sub = T("rsum.t.killed"), subs = encSubs, color = "sem.win", lines = encTip, unbuff = #unbuffed > 0 },
         { title = T("rsum.t.deaths"), value = tostring(deaths),
           sub = res.trash > 0 and format(T("rsum.t.trashdeaths"), TrashDeaths(res)) or nil, color = "sem.death" },
         { title = T("rsum.t.heal"), value = Short(heal), color = "sem.heal" },
@@ -170,13 +191,7 @@ local DRUNK = { flask = true, elixir = true, potion = true }
 local ICON_ROW = 15
 local ICON_TIP = 14
 local function SpName(sp)
-    local name = sp.id and GetItemInfo and GetItemInfo(sp.id)
-    if name then return name end
-    if sp.spell and GetLocale() ~= "ruRU" and GetSpellInfo then
-        name = GetSpellInfo(sp.spell)
-        if name then return name end
-    end
-    return sp.item
+    return ns.ConsumableName(sp.id, sp.spell, sp.item)
 end
 local function Inline(id, size, spell)
     local tex = ns.RaidCost.Icon(id, spell)
@@ -608,6 +623,89 @@ local function Rod(res)
     end
     return { key = "rod", title = T("rsum.d.rod"), rows = rows, empty = T("rsum.none") }
 end
+local AWARD_TILE = 3
+local AWARD_TOP = 5
+local FIRST_TOP = 10
+Model.AWARD_TILE = AWARD_TILE
+local function SniffText(f)
+    local sec = format(T("rsum.aw.sec"), Dec(f.t, 1))
+    return f.kill and format(T("rsum.aw.killed"), sec) or sec
+end
+local function SniffRows(res)
+    local rows = {}
+    for i = 1, #res.players do
+        local p = res.players[i]
+        if p.jopo > 0 then
+            local tip = { { kind = "head", left = p.name, class = p.class } }
+            Put(tip, "row", T("rsum.tt.jopo"), Int(p.jopo))
+            Put(tip, "row", T("rsum.tt.jopokill"), Int(p.jopoKill))
+            Put(tip, "sep")
+            for k = 1, #p.jopoBy do
+                local f = p.jopoBy[k]
+                Put(tip, "row", format("%s %s", ns.EncName(f.boss), date("%H:%M", f.from)), SniffText(f),
+                    f.kill and "bad" or nil)
+            end
+            local text = p.jopoKill > 0 and format(T("rsum.aw.jopokill"), p.jopo, p.jopoKill) or format("x%d", p.jopo)
+            rows[#rows + 1] = { who = p.name, class = p.class, text = text, v = p.jopoKill * 1000 + p.jopo,
+                                n = p.jopo, lines = tip }
+        end
+    end
+    tsort(rows, ByV)
+    return rows
+end
+local function TopRows(res)
+    local list = Ranked(res, "boss")
+    local total = Sum(res, "boss")
+    local rows = {}
+    for i = 1, min(AWARD_TOP, #list) do
+        local p = list[i]
+        local share = format("%.1f%%", p.boss / max(1, total) * 100)
+        rows[i] = { who = p.name, class = p.class, text = Short(p.boss), v = p.boss, lines = DamageTip(res, p, share) }
+    end
+    return rows
+end
+local function Award(rows, key, label, desc, limit, badge, text)
+    if #rows == 0 then return nil end
+    local who = {}
+    local title = T(label)
+    local tip = { { kind = "head", left = title } }
+    Put(tip, "note", desc)
+    Put(tip, "sep")
+    for i = 1, min(limit or #rows, #rows) do
+        local r = rows[i]
+        local t = text and text(r) or r.text
+        who[i] = { name = r.who, class = r.class, text = t, lines = r.lines }
+        tip[#tip + 1] = { kind = "row", left = r.who, right = t, class = r.class }
+    end
+    local id = ns.awardIcons and ns.awardIcons[key]
+    return { key = key, title = title, desc = desc, icon = id and ns.SpellIcon(id) or nil, badge = badge(rows[1]),
+             who = who, tile = AWARD_TILE, lines = tip }
+end
+local function BadgeV(r)
+    return Int(r.n or r.v)
+end
+local function BadgeShort(r)
+    return Short(r.v)
+end
+local function Times(r)
+    return format("x%d", r.n or r.v)
+end
+local function TriesN(r)
+    return Count(r.v, "rsum.w.tries.nom", "rsum.n.word")
+end
+local function Awards(res)
+    local d = ns.pullSniff
+    local out = {}
+    out.jopo = Award(SniffRows(res), "jopo", "rsum.d.jopo", format(T("rsum.aw.jopo"), d and d.hit or 0), nil, BadgeV)
+    out.top5 = Award(TopRows(res), "top5", "rsum.d.top5", T("rsum.aw.top5"), AWARD_TOP, BadgeShort)
+    out.buffed = Award(Buffed(res).rows, "buffed", "rsum.d.buffed", T("rsum.aw.buffed"), AWARD_TOP, BadgeV, Times)
+    out.rod = Award(Rod(res).rows, "rod", "rsum.d.rod", T("rsum.aw.rod"), AWARD_TOP, BadgeV, Times)
+    out.first = Award(First(res).rows, "first", "rsum.d.first", T("rsum.aw.first"), FIRST_TOP, BadgeV)
+    out.alive = Award(Alive(res).rows, "alive", "rsum.d.alive", T("rsum.aw.alive"), nil, BadgeV, TriesN)
+    local bad = Parts(res, "bad", "rsum.d.puddles").rows
+    out.puddles = Award(bad, "puddles", "rsum.d.puddles", T("rsum.aw.puddles"), AWARD_TOP, BadgeShort)
+    return out
+end
 Model.HIDE = "#raid"
 Model.DEFS = {
     { key = "all", label = "rsum.d.all" },
@@ -618,16 +716,18 @@ Model.DEFS = {
     { key = "heal", label = "rsum.d.heal" },
     { key = "saver", label = "rsum.d.saver" },
     { key = "deaths", label = "rsum.d.deaths" },
-    { key = "alive", label = "rsum.d.alive" },
-    { key = "first", label = "rsum.d.first" },
     { key = "fault", label = "rsum.d.fault" },
-    { key = "puddles", label = "rsum.d.puddles" },
-    { key = "rod", label = "rsum.d.rod" },
-    { key = "buffed", label = "rsum.d.buffed" },
     { key = "time", label = "rsum.d.time" },
     { key = "gp", label = "rsum.d.gp" },
     { key = "drunk", label = "rsum.title.drunk" },
     { key = "spent", label = "rsum.d.spent" },
+    { key = "top5", label = "rsum.d.top5", award = true },
+    { key = "jopo", label = "rsum.d.jopo", award = true },
+    { key = "buffed", label = "rsum.d.buffed", award = true },
+    { key = "rod", label = "rsum.d.rod", award = true },
+    { key = "first", label = "rsum.d.first", award = true },
+    { key = "alive", label = "rsum.d.alive", award = true },
+    { key = "puddles", label = "rsum.d.puddles", award = true },
 }
 function Model.Build(res)
     local pr = Prices(res)
@@ -647,12 +747,7 @@ function Model.Build(res)
     list[#list + 1] = Heal(res)
     list[#list + 1] = Saver(res)
     list[#list + 1] = Deaths(res)
-    list[#list + 1] = Alive(res)
-    list[#list + 1] = First(res)
     list[#list + 1] = Fault(res)
-    list[#list + 1] = Parts(res, "bad", "rsum.d.puddles")
-    list[#list + 1] = Rod(res)
-    list[#list + 1] = Buffed(res)
     list[#list + 1] = Time(res)
     list[#list + 1] = GP(res)
     list[#list + 1] = Drunk(res, pr)
@@ -660,11 +755,18 @@ function Model.Build(res)
     local byKey = {}
     for i = 1, #list do byKey[list[i].key] = list[i] end
     local Hide = ns.SumHide
-    local details = {}
+    local won = Awards(res)
+    local details, awards = {}, {}
     for i = 1, #Model.DEFS do
-        local key = Model.DEFS[i].key
-        local d = byKey[key]
-        if d and not NoData(d) and not (Hide and Hide.IsHidden(Model.HIDE, key)) then details[#details + 1] = d end
+        local def = Model.DEFS[i]
+        local key = def.key
+        local shown = not (Hide and Hide.IsHidden(Model.HIDE, key))
+        if def.award then
+            if shown and won[key] then awards[#awards + 1] = won[key] end
+        else
+            local d = byKey[key]
+            if d and shown and not NoData(d) then details[#details + 1] = d end
+        end
     end
-    return { totals = Totals(res), details = details }
+    return { totals = Totals(res), details = details, awards = awards }
 end

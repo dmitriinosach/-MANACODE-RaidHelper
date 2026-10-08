@@ -5,6 +5,7 @@ local SpellKey = ns.SpellKey
 local SpellOf = ns.SpellOf
 local NpcKey = ns.NpcKey
 local NpcKeyOf = ns.NpcKeyOf
+local TR = ns.TankRole
 local F_PLAYER = 0x400
 local F_BY_PLAYER = 0x100
 local F_HOSTILE = 0x40
@@ -14,16 +15,6 @@ local PROGRESS_EVERY = 256
 local LEAD = 35
 local SHIELD_LEAD = 60
 local TAIL = 5
-local TANK_SHARE = 0.15
-local TANK_SHARE_STRICT = 0.25
-local TAUNT_TAKEN_SHARE = 0.08
-local TAKEN_SHARE_STRICT = 0.16
-local TANK_CASTS = 5
-local TANK_MAX = 3
-local TANK_HOLD = 0.3
-local TANK_SUB = "FW_TANKSNAP"
-local TANK_KINDS = { "strong", "weak", "mt", "unseen" }
-local SIGN_SUBS = { SPELL_AURA_APPLIED = true, SPELL_AURA_REFRESH = true, SPELL_AURA_REMOVED = true, [TANK_SUB] = true }
 local IMMUNE_WINDOW = 1.5
 local SHED_FULL = 20
 local SHED_RELINK = 0.3
@@ -717,89 +708,6 @@ local function DeathBadges(s)
         end
     end
 end
-local function TankFeed(s, byName, boss, ts, sub, dstName, a1, a2, a3, a4)
-    if sub == TANK_SUB then
-        local marks = { a1, a2, a3, a4 }
-        for k = 1, #TANK_KINDS do
-            for name in tostring(marks[k] or ""):gmatch("[^,]+") do
-                local p = byName[name]
-                if p then
-                    s.tankSnap = true
-                    if p.tankSnap ~= "mt" and p.tankSnap ~= "strong" then p.tankSnap = TANK_KINDS[k] end
-                end
-            end
-        end
-        return
-    end
-    local p = dstName and byName[dstName]
-    if not p then return end
-    local auras = ns.tankAuras and ns.tankAuras[boss]
-    local sk = auras and SpellOf(sub, a1)
-    if sk and auras[sk] then
-        if sub == "SPELL_AURA_REMOVED" then
-            if p.tankAuraAt then p.tankHold = (p.tankHold or 0) + ts - p.tankAuraAt end
-            p.tankAuraAt = nil
-        elseif not p.tankAuraAt then
-            p.tankAuraAt = math.max(ts, s.from)
-        end
-    end
-    local sg = ns.tankSigns and ns.tankSigns[tonumber(a1)]
-    if sg and sub ~= "SPELL_AURA_REMOVED" and p.class == sg.class then
-        if p.tankSign ~= "strong" then p.tankSign = sg.weak and "weak" or "strong" end
-        if sub == "SPELL_AURA_APPLIED" and ts >= s.from then p.tankOn = true end
-    end
-end
-local function IsTank(s, p, melee, taken)
-    local share = melee > 0 and p.bossMelee / melee or 0
-    local took = taken > 0 and p.npcTaken / taken or 0
-    local mark = p.tankSnap
-    if (p.tankHold or 0) >= TANK_HOLD * s.dur then return true end
-    if s.tankSnap then
-        if mark == "strong" or mark == "mt" or (mark == "weak" and (p.tankCasts > 0 or p.bossMelee > 0)) then
-            return true
-        end
-        if p.tankOn and (share >= TANK_SHARE or took >= TAUNT_TAKEN_SHARE) then return true end
-        if mark ~= "unseen" then return false end
-    end
-    if p.tankCasts >= TANK_CASTS or (p.tankSign and share >= TANK_SHARE) then return true end
-    return p.taunts > 0 and (p.tankCasts > 0 or share >= TANK_SHARE_STRICT or took >= TAKEN_SHARE_STRICT)
-end
-local function MoreTank(a, b)
-    if a.bossMelee ~= b.bossMelee then return a.bossMelee > b.bossMelee end
-    if a.tankCasts ~= b.tankCasts then return a.tankCasts > b.tankCasts end
-    return a.npcTaken > b.npcTaken
-end
-local function Roles(s)
-    local melee = 0
-    local taken = 0
-    for i = 1, #s.players do
-        local p = s.players[i]
-        melee = melee + p.bossMelee
-        taken = taken + p.npcTaken
-        if p.tankAuraAt then
-            p.tankHold = (p.tankHold or 0) + math.max(0, s.from + s.dur - p.tankAuraAt)
-            p.tankAuraAt = nil
-        end
-    end
-    local tanks = {}
-    for i = 1, #s.players do
-        local p = s.players[i]
-        if IsTank(s, p, melee, taken) then
-            tanks[#tanks + 1] = p
-        elseif p.heal > p.dmg then
-            p.role = "heal"
-        end
-    end
-    tsort(tanks, MoreTank)
-    for i = 1, #tanks do
-        local p = tanks[i]
-        if i <= TANK_MAX then
-            p.role = "tank"
-        elseif p.heal > p.dmg then
-            p.role = "heal"
-        end
-    end
-end
 local function ShedAura(st, bd, sub, ts, id, from, im)
     local list = st.hangs
     local h = list and list[#list]
@@ -964,6 +872,34 @@ function Buffed.Rod(fight, sub, ts, sk, dst)
     dst.rod = dst.rod or {}
     dst.rod[sk] = (dst.rod[sk] or 0) + 1
 end
+local function MainBoss(fight, key)
+    return key ~= nil and (key == fight.boss or (ns.bosses ~= nil and ns.bosses[key] == fight.boss))
+end
+local function SniffHit(fight, dst, ts, srcKey)
+    if not dst.sniffT and ts >= fight.from and MainBoss(fight, srcKey) then dst.sniffT = ts end
+end
+local function Sniffed(s, fight)
+    local d = ns.pullSniff
+    local t0 = s.pull and s.pull.t or fight.from
+    local melee = 0
+    for i = 1, #s.players do melee = melee + (s.players[i].bossMelee or 0) end
+    for i = 1, #s.players do
+        local p = s.players[i]
+        local at = p.sniffT
+        p.sniffT = nil
+        local held = d ~= nil and melee > 0 and (p.bossMelee or 0) >= d.share * melee
+        if d and p.role ~= "tank" and not held then
+            local hit = at ~= nil and at - t0 <= d.hit
+            local info = p.deathInfo[1]
+            local killer = info and info.killer
+            local kill = info ~= nil and info.t - t0 <= d.kill and killer ~= nil and MainBoss(fight, killer.srcKey)
+            if hit or kill then
+                local sec = math.max(0, (hit and at or info.t) - t0)
+                p.jopo = { t = math.floor(sec * 10 + 0.5) / 10, kill = kill or nil }
+            end
+        end
+    end
+end
 local function Finish(s, fight, hpLines)
     ShedClose(s, fight)
     for i = 1, #s.blocks do
@@ -972,7 +908,8 @@ local function Finish(s, fight, hpLines)
     end
     UsefulEnd(s)
     DropScripted(s, fight.boss)
-    Roles(s)
+    TR.Roles(s)
+    Sniffed(s, fight)
     ns.DeathGrade.Run(s, fight, hpLines)
     DeathBadges(s)
     for i = 1, #s.extra do
@@ -1254,6 +1191,7 @@ local function Build(fight)
     local s, byName = NewSummary(fight, def)
     local acts = ns.Actions and ns.Actions.Begin(s, fight)
     local rf = ns.RFury and ns.RFury.Begin(s, fight)
+    local zb = ns.ZoneBuff and ns.ZoneBuff.Begin(fight)
     local shades = ns.Shades and ns.Shades.Begin(s, fight)
     local mech = ns.ReplayMech and ns.ReplayMech.Begin(s, fight)
     local pu = ns.Putri and ns.Putri.Begin(s, fight, ns.GetDB().pets or {})
@@ -1351,7 +1289,8 @@ local function Build(fight)
             s.marks[#s.marks + 1] = { t = ts, key = a1, text = a2 }
         end
         if rf and (rf.subs[sub] or rf.dead[srcName or ""]) then ns.RFury.Feed(rf, ts, sub, srcName, dstName, a1, a2, a3) end
-        if SIGN_SUBS[sub] and ts >= from and ts <= fight.to then TankFeed(s, byName, fight.boss, ts, sub, dstName, a1, a2, a3, a4) end
+        if zb and zb.subs[sub] then ns.ZoneBuff.Feed(zb, ts, sub, a1, a2) end
+        if TR.SUBS[sub] and ts >= from and ts <= fight.to then TR.Feed(s, byName, fight.boss, ts, sub, dstName, a1, a2, a3, a4, a5, a6, a7) end
         if sub == "FW_ACH" and ts >= fight.from and ts <= to then
             Earned(s, byName, tonumber(a1), srcName, ts)
             if ts <= fight.to then ns.RaidPart.Got(rp, tonumber(a1), srcName, ts) end
@@ -1540,12 +1479,13 @@ local function Build(fight)
                         dst.npcTaken = dst.npcTaken + amount
                         ns.Totals.Act(tt, ts, sub)
                         if swing and IsBoss(fight, srcGUID) then dst.bossMelee = dst.bossMelee + 1 end
+                        if swing then SniffHit(fight, dst, ts, srcKey) end
                     end
                     if dst then
                         ns.Totals.Absorbed(tt, ts, dstName, swing and 1 or env and a4 or a3, amount,
                             tonumber(swing and a6 or env and a7 or a9) or 0)
                         local hit = { t = ts, spell = swing and "#melee" or env and ns.EnvName(a1) or a2,
-                                      key = swing and "#melee" or env and ns.EnvName(a1) or sk,
+                                      key = swing and "#melee" or env and ns.EnvKey(a1) or sk,
                                       src = srcName, srcKey = srcKey, mc = mcSrc,
                                       id = not swing and not env and tonumber(a1) or nil,
                                       amount = amount, over = tonumber(swing and a2 or env and a3 or a5) }
@@ -1581,6 +1521,7 @@ local function Build(fight)
                         ns.Totals.Absorbed(tt, ts, dstName, swing and 1 or a3, 0, tonumber(swing and a2 or a5) or 0)
                     end
                     if dst and swing and IsBoss(fight, srcGUID) then dst.bossMelee = dst.bossMelee + 1 end
+                    if dst and swing then SniffHit(fight, dst, ts, srcKey) end
                     if p and not dst and dstKey and s.soaked[dstKey] and (swing and a1 or a4) == "ABSORB" then
                         DamageTo(s, p, who, dstName, dstKey, tonumber(swing and a2 or a5) or 0, srcName, swing, a2, nil,
                             swing and MELEE_ID or a1, srcKey)
@@ -1837,6 +1778,7 @@ local function Build(fight)
     ns.Totals.Finish(tt, s)
     Finish(s, fight, hpLines)
     if rf then ns.RFury.Finish(rf) end
+    if zb then s.zoneBuff = ns.ZoneBuff.Finish(zb) end
     if et then ns.EffTime.Finish(et, s) end
     s.rp = ns.RaidPart.Close(rp, s.players)
     for i = 1, #s.blocks do
@@ -1846,6 +1788,7 @@ local function Build(fight)
     return s
 end
 Summary.Build = Build
+Summary.Sniff = { Hit = SniffHit, Done = Sniffed }
 Summary.Shed = { Aura = ShedAura, By = ShedBy, Close = ShedClose }
 local function JobKey(fight)
     local key = running[fight]
@@ -1877,6 +1820,10 @@ end
 function Summary.Busy(fight)
     local key = running[fight]
     return key ~= nil and ns.Jobs.Busy(key)
+end
+function Summary.Failed(fight)
+    local key = running[fight]
+    return key ~= nil and ns.Jobs.Failed(key) or nil
 end
 function Summary.Compute(fight, onDone)
     local have = Summary.Load(fight)

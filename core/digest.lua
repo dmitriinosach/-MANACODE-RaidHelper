@@ -3,7 +3,7 @@ local floor = math.floor
 local abs = math.abs
 local format = string.format
 local tsort = table.sort
-local TOTALS_VERSION = 37
+local TOTALS_VERSION = 41
 local TRASH_VERSION = 2
 local ABIL_KEEP = 10
 local TRASH_KEY = "#trash"
@@ -16,7 +16,8 @@ local ROOTS = { "summaries", "buffsGiven", "actions", "achDefs", "bossPhases", "
                 "consumeEnchant", "consumeAura", "vehicles", "fixates", "taunts", "tankSpells", "scriptedKills", "bossParts" }
 local COMMON = { "buffsGiven", "actions", "immunities", "defensives", "shieldSpells", "shieldEat", "shieldPassive",
                  "consumeCast", "consumeCreate", "consumeEnchant", "consumeAura", "vehicles", "fixates", "taunts", "tankSpells",
-                 "scriptedKills", "bosses", "trashBosses", "bossParts", "bossWin", "bossSurvive", "pullTimer", "deathDeps" }
+                 "scriptedKills", "bosses", "trashBosses", "bossParts", "bossWin", "bossSurvive", "pullTimer", "deathDeps",
+                 "pullSniff" }
 local DROP = { byName = true, track = true, set = true, rides = true, apart = true }
 local STAT_ZERO = { n = true, hits = true, amount = true, cleansed = true, max = true }
 local STAT_LIST = { times = true, notes = true }
@@ -225,8 +226,13 @@ function Digest.Save(fight, s)
     local blob = ns.Codec.Encode(Pack(s), ExtOf, DROP)
     seg.totals = seg.totals or {}
     if ns.Encounters.Ready() then Prune(seg, fight.seg) end
-    seg.totals[Key(fight)] = { sig = Digest.Sig(fight.boss), to = fight.to, n = Count(fight.players), s = blob }
+    seg.totals[Key(fight)] = { sig = Digest.Sig(fight.boss), to = fight.to, n = Count(fight.players), s = blob,
+                               zb = s.zoneBuff }
     return #blob
+end
+function Digest.ZoneBuff(fight)
+    local e = Entry(fight)
+    return e and e.zb or nil
 end
 function Digest.Size(fight)
     local e = Entry(fight)

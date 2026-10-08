@@ -5,6 +5,10 @@ local T = {}
 ns.Tpl = T
 T.ROLES = { "tank", "heal", "melee", "ranged", "dd", "hybrid" }
 T.NAME_MAX = 48
+function T.Cap(slot)
+    if not slot then return nil end
+    return slot.cap or (slot.capKey and ns.T(slot.capKey)) or nil
+end
 local function copySlots(slots)
     local out = {}
     for i, s in ipairs(slots) do
@@ -13,7 +17,7 @@ local function copySlots(slots)
             specs = {}
             for k, v in ipairs(s.specs) do specs[k] = v end
         end
-        out[i] = { role = s.role, specs = specs, cap = s.cap, mark = s.mark, grp = s.grp }
+        out[i] = { role = s.role, specs = specs, cap = s.cap, capKey = s.capKey, mark = s.mark, grp = s.grp }
     end
     return out
 end
@@ -206,10 +210,11 @@ function T.SetCap(key, i, cap)
     if not was then return end
     cap = T.Clean(cap)
     if cap == "" then cap = nil end
-    if was.cap == cap then return end
+    if T.Cap(was) == cap then return end
     local t = editable(key)
     if not t then return end
     t.slots[i].cap = cap
+    t.slots[i].capKey = nil
     ns.Session.Changed()
 end
 function T.SetMark(key, i, mark)

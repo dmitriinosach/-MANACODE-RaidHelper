@@ -81,7 +81,7 @@ local clockOff = nil
 local clockAt = 0
 local lastNow = 0
 local seen, kept = 0, 0
-local slotUnit, slotGuid, slotName, slotPlayer, slotPet = {}, {}, {}, {}, {}
+local slotUnit, slotGuid, slotName, slotPlayer, slotPet, slotMana = {}, {}, {}, {}, {}, {}
 local slots = 0
 local rosterDirty = true
 local mapArea, mapLevel, mapName = nil, nil, nil
@@ -154,7 +154,9 @@ local function Listen(on)
         frame:RegisterEvent("CHAT_MSG_RAID_BOSS_EMOTE")
         frame:RegisterEvent("INSPECT_TALENT_READY")
         for i = 1, #ACH_EVENTS do frame:RegisterEvent(ACH_EVENTS[i]) end
+        ns.RecCast.Listen(true)
     else
+        ns.RecCast.Listen(false)
         for i = 1, #ACH_EVENTS do frame:UnregisterEvent(ACH_EVENTS[i]) end
         frame:UnregisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
         frame:UnregisterEvent("CHAT_MSG_RAID_BOSS_EMOTE")
@@ -318,6 +320,7 @@ local function ResetSegmentState()
     wipe(polledMax)
     wipe(polledX)
     wipe(polledY)
+    ns.RecMana.Reset()
     frameHp, framePos = true, true
     mapArea, mapLevel, mapName = nil, nil, nil
     wipe(dead)
@@ -461,6 +464,7 @@ local function AddSlot(unit, isPlayer, pet)
     slotName[slots] = UnitName(unit) or UNKNOWN
     slotPlayer[slots] = isPlayer
     slotPet[slots] = pet or false
+    slotMana[slots] = isPlayer and ns.RecMana.Wanted(slotName[slots], unit) or false
 end
 local function ReadRoster()
     slots = 0
@@ -657,6 +661,7 @@ local function PutSlot(live, k, now, withPos, forceHp, forcePos)
         polledHp[name], polledMax[name] = hp, hpMax
         ns.RecCodec.Hp(live, now, name, hp, hpMax, forceHp)
     end
+    if slotMana[k] then ns.RecMana.Put(live, unit, name, now, forceHp) end
     if withPos then
         local px, py = GetPlayerMapPosition(unit)
         local share = ns.RealmShare

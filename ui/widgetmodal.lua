@@ -1,8 +1,9 @@
 local _, ns = ...
 local max = math.max
 local min = math.min
-local SCREEN = 0.8
-local MARGIN = 40
+local MARGIN = 24
+local ZOOM = 1.25
+local WIDEN = 1.15
 local WIDTH_DETAIL = 440
 local WIDTH_WIDE = 560
 local BAR_R = 5
@@ -100,17 +101,23 @@ function Modal.Open(source)
     for _, other in pairs(panels) do
         if other ~= f then other:Hide() end
     end
-    local ui = UIParent
-    local lines, top, step = ns.Badges.Reach(f, ui:GetHeight() * SCREEN)
-    f.fixed = max(1, min(#(m.rows or {}), lines))
-    local scale = source:GetEffectiveScale() / ui:GetEffectiveScale()
+    local shell = ns.Shell and ns.Shell.Frame and ns.Shell.Frame()
+    local box = (shell and shell:IsShown()) and shell or UIParent
+    local px = box:GetEffectiveScale()
+    local boxW, boxH = box:GetWidth() * px, box:GetHeight() * px
     local least = source.wide and WIDTH_WIDE or WIDTH_DETAIL
+    local want = max(source:GetWidth(), least) * WIDEN
+    local eff = source:GetEffectiveScale() * ZOOM
+    if want + MARGIN * 2 > boxW / eff then eff = boxW / (want + MARGIN * 2) end
+    f:SetScale(eff / f:GetParent():GetEffectiveScale())
+    local lines, top, step = ns.Badges.Reach(f, boxH / eff - MARGIN * 2)
+    f.fixed = max(1, min(#(m.rows or {}), lines))
     f:SetModel(m)
     if source.wide then f:Share(source) end
-    f:Layout(min(max(source:GetWidth() * scale, least), ui:GetWidth() - MARGIN * 2))
+    f:Layout(min(want, boxW / eff - MARGIN * 2))
     if f.fold then top = top + step end
     f:ClearAllPoints()
-    f:SetPoint("CENTER", dim, "CENTER", 0, 0)
+    f:SetPoint("CENTER", box, "CENTER", 0, 0)
     f.bar:ClearAllPoints()
     f.bar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -BAR_R, -top)
     f.bar:SetHeight(f.fixed * step)

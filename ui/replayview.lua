@@ -85,6 +85,7 @@ function View.Refresh()
     WorldRow()
     st.heal:SetChecked(api.Heal())
     st.follow:SetChecked(ns.ReplayFollow.On())
+    st.casts:SetChecked(ns.ReplayUnitsView.CastsAll())
     if st.sound then st.sound:SetChecked(ns.ReplayBarsView.Sound()) end
 end
 local function Pick(key, opt)
@@ -193,6 +194,8 @@ function View.Build(ui, run, api)
     st.heal = Move(Check(menu, "iso.focusheal", y, function(on) api.SetHeal(on) end), y)
     y = y + ROW
     st.follow = Move(Check(menu, "iso.follow", y, function(on) ns.ReplayFollow.SetOn(on) end), y)
+    y = y + ROW
+    st.casts = Move(Check(menu, "iso.castsall", y, function(on) ns.ReplayUnitsView.SetCastsAll(on) end), y)
     y = y + ROW
     if ns.ReplayBarsView then
         st.sound = Move(Check(menu, "iso.barsound", y, function(on) ns.ReplayBarsView.SetSound(on) end), y)

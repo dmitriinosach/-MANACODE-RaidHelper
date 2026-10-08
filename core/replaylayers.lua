@@ -1104,6 +1104,8 @@ function Layers.Build(scene)
     local cu = CU and CU.New(fight)
     local np = ns.NpcPos and ns.NpcPos.New(scene, c)
     local ph = ns.Phases.New(fight)
+    local RU = ns.ReplayUnits
+    local ru = RU and RU.New(scene)
     local segs = ns.Encounters.Segs(fight)
     local span = max(1, fight.to - fight.from)
     for o = 1, #segs do
@@ -1112,6 +1114,7 @@ function Layers.Build(scene)
             ns.Jobs.Step()
             ns.Jobs.Progress(ts - fight.from, span)
             if ph then ns.Phases.Feed(ph, ts, sub, a1) end
+            if ru then RU.Event(ru, ts, sub, src, dst, a1, a2, a4) end
             Dispatch(c, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4)
             FC.Event(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4, a5)
             MK.Event(mc, ts, sub, src, dst, a1)
@@ -1139,6 +1142,7 @@ function Layers.Build(scene)
     if sp then SP.Done(sp, c.L, scene) end
     if sw then SW.Done(sw, c.L, scene) end
     if cu then CU.Done(cu, c.L, scene) end
+    if RU then RU.Build(scene, segs, ru) end
     FC.Done(fc, c.L, feedRes)
     MK.Done(mc, c.L, feedRes)
     if rm and #rm.marks > 0 then c.L.marks = MK.Merge(c.L.marks, rm.marks) end

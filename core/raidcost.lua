@@ -19,10 +19,10 @@ function Cost.Items()
     items = {}
     local seen = {}
     local function Add(map)
-        for _, c in pairs(map or {}) do
+        for spell, c in pairs(map or {}) do
             if not c.free and c.id and not seen[c.item] then
                 seen[c.item] = true
-                items[#items + 1] = { item = c.item, id = c.id, cat = c.cat }
+                items[#items + 1] = { item = c.item, id = c.id, cat = c.cat, spell = tonumber(spell) }
             end
         end
     end

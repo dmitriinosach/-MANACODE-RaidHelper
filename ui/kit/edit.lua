@@ -4,6 +4,9 @@ local edits = {}
 local function PaintEdit(e)
     local g = Kit.Theme().edit
     Kit.Backdrop(e.kitFrame or e, g, e.focused and g.borderFocus or g.border)
+    local t, h = g.text, Kit.C["text.halo"]
+    e:SetTextColor(t[1], t[2], t[3])
+    if h and e.SetShadowColor then e:SetShadowColor(h[1], h[2], h[3], h[4] or 1) end
 end
 local function SetValue(self, text)
     self.quiet = true

@@ -3,8 +3,8 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 0.2.0-beta.16
-## X-Date: 2026-10-07
+## Version: 1.0.0
+## X-Date: 2026-10-08
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
 ## OptionalDeps: Auctionator
@@ -38,6 +38,7 @@ data\replayclass.lua
 data\replaycue.lua
 data\defensives.lua
 data\procs.lua
+data\otheraddons.lua
 data\bosses\icc\marrowgar.lua
 data\bosses\icc\deathwhisper.lua
 data\bosses\icc\gunship.lua
@@ -92,7 +93,10 @@ core\decode.lua
 core\recfilter.lua
 core\store.lua
 core\buffsnap.lua
+core\zonebuff.lua
 core\specs.lua
+core\recmana.lua
+core\reccast.lua
 core\recorder.lua
 core\meter.lua
 core\effects.lua
@@ -117,6 +121,7 @@ core\phases.lua
 core\stackeps.lua
 core\actions.lua
 core\rfury.lua
+core\tankrole.lua
 core\shades.lua
 core\putri.lua
 core\valkyr.lua
@@ -151,6 +156,7 @@ core\replayspread.lua
 core\replayswarm.lua
 core\replayclass.lua
 core\replaycue.lua
+core\replayunits.lua
 core\replaylayers.lua
 core\npcpos.lua
 core\ranging.lua
@@ -190,6 +196,7 @@ ui\stacktips.lua
 ui\badges.lua
 ui\widgetmodal.lua
 ui\grid.lua
+ui\awards.lua
 ui\expect.lua
 ui\proof.lua
 ui\achievements.lua
@@ -227,6 +234,7 @@ ui\replayspread.lua
 ui\replayswarm.lua
 ui\replayclass.lua
 ui\replaycue.lua
+ui\replayunits.lua
 ui\replaysoul.lua
 ui\replayfeed.lua
 ui\replaymodels.lua

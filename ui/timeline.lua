@@ -406,6 +406,7 @@ local function DrawRuler()
             local mark = rulerPool[used]
             if not mark then
                 mark = ruler:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                ns.Kit.Text(mark, "text.bright")
                 mark:SetJustifyH("LEFT")
                 rulerPool[used] = mark
             end
@@ -1273,9 +1274,11 @@ end
 local function BuildFrame(host)
     frame = host
     titleText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    ns.Kit.Text(titleText, "text.title")
     titleText:SetPoint("TOPLEFT", MARGIN, -12)
     titleText:SetText(ns.T("tl.title"))
     statusText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ns.Kit.Text(statusText, "text.bright")
     statusText:SetPoint("LEFT", titleText, "RIGHT", 16, 0)
     statusText:SetPoint("RIGHT", frame, "TOPRIGHT", -320, -19)
     statusText:SetJustifyH("LEFT")

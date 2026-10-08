@@ -3,10 +3,6 @@ root.Lead = root.Lead or {}
 local ns = root.Lead
 local I = {}
 ns.Inspect = I
-local STEP = 2
-local TIMEOUT = 4
-local FRESH = 600
-local INSPECT_RANGE = 1
 local MIN_ITEMS = 15
 local SLOTS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 }
 local PRIORITY = { hand = 3, inspect = 2, whisper = 1 }
@@ -22,9 +18,6 @@ local TABS = {
     WARLOCK     = { "affli", "demo", "destro" },
     WARRIOR     = { nil, "fury", "pwar" },
 }
-local pending, pendingAt, lastAsked
-local acc = 0
-hooksecurefunc("NotifyInspect", function(unit) lastAsked = unit end)
 local function specOfGroup(class, group, keep)
     local best, bestPts = nil, -1
     for t = 1, 3 do
@@ -66,52 +59,22 @@ local function apply(m)
     p.ilvl = avgIlvl(m.unit) or p.ilvl
     p.inspectedAt = time()
 end
-local function nextTarget()
-    local now = time()
-    for _, m in ipairs(ns.Session.Roster()) do
-        local p = ns.Session.Player(m.name)
-        local stale = not p.inspectedAt or now - p.inspectedAt > FRESH
-        if stale and m.online and m.unit and not UnitIsUnit(m.unit, "player")
-            and CanInspect(m.unit) and CheckInteractDistance(m.unit, INSPECT_RANGE) then
-            return m
-        end
-    end
-end
-local function busy()
-    if InCombatLockdown() then return true end
-    if InspectFrame and InspectFrame:IsShown() then return true end
-    return false
-end
 function I.Running()
     if ns.Test.Active() then return false end
     local raid, party = ns.Compat.GroupSize()
     if raid > 0 then return ns.RaidCmd.Officer() end
     return party > 0 and IsPartyLeader() and true or false
 end
-local ticker = ns.NewFrame("Frame")
-ticker:SetScript("OnUpdate", function(self, dt)
-    acc = acc + dt
-    if acc < STEP then return end
-    acc = 0
-    if not I.Running() or busy() then return end
-    if pending and GetTime() - pendingAt < TIMEOUT then return end
-    pending = nil
-    local m = nextTarget()
-    if not m then return end
-    pending, pendingAt = m, GetTime()
-    NotifyInspect(m.unit)
-end)
-local ev = ns.NewFrame("Frame")
-ns.Listen(ev, "INSPECT_TALENT_READY")
-ev:SetScript("OnEvent", function()
-    local m = pending
-    if not m then return end
-    pending = nil
-    if lastAsked ~= m.unit or UnitName(m.unit) ~= m.name then return end
-    apply(m)
-    if not (InspectFrame and InspectFrame:IsShown()) then ClearInspectPlayer() end
+local function read(unit, name)
+    local m = ns.Session.Member(name)
+    if not m or m.fake or not m.class then return end
+    apply({ name = name, class = m.class, unit = unit })
     ns.Session.Changed()
-end)
+end
+if root.Specs then
+    root.Specs.Want(I.Running)
+    root.Specs.OnRead(read)
+end
 function I.Ilvl(name)
     return ns.Session.Player(name).ilvl
 end

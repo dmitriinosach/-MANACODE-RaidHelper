@@ -111,7 +111,7 @@ local function IsFall(s, e, fall)
     return not (ns.Summary.Unseated and ns.Summary.Unseated(s, e.p, e.d.t, RIDE_GAP))
 end
 local function Jumped(s, list)
-    local fall = ns.EnvName("FALLING")
+    local fall = ns.EnvKey("FALLING")
     for i = 1, #list do
         if IsFall(s, list[i], fall) then
             local n = 0

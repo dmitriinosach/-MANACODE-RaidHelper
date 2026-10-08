@@ -13,11 +13,11 @@ local function RowEnter(self)
         GameTooltip:SetHyperlink(self.tipLink)
         GameTooltip:AddLine(" ")
     else
-        local t = ns.Kit.C["tip.title"]
+        local t = ns.Kit.GameColor("tip.title")
         GameTooltip:AddLine(self.tipTitle, t[1], t[2], t[3])
     end
     if self.tipLines then
-        local d = ns.Kit.C["tip.dim"]
+        local d = ns.Kit.GameColor("tip.dim")
         for i = 1, #self.tipLines do
             GameTooltip:AddLine(self.tipLines[i], d[1], d[2], d[3])
         end

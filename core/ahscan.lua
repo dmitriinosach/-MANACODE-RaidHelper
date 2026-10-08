@@ -45,7 +45,7 @@ function Scan.IsPaused()
 end
 function Scan.Progress()
     local it = st.queue[st.i]
-    return st.on and st.i or 0, #st.queue, it and it.item or nil, st.page + 1, max(1, st.pages)
+    return st.on and st.i or 0, #st.queue, it and ns.ConsumableName(it.id, it.spell, it.item) or nil, st.page + 1, max(1, st.pages)
 end
 function Scan.Get(id)
     if not id then return nil end

@@ -36,8 +36,6 @@ if S and S.Section then
               run = function() A.Switch(not A.IsOn()) end },
             { kind = "field", key = "words", label = "ainv.set.words", tip = "ainv.set.words.tip", width = 220,
               maxLetters = 120, default = A.DEF.words, get = A.WordsText, set = A.SetWordsText },
-            { kind = "check", key = "guild", label = "ainv.set.guild", tip = "ainv.set.guild.tip", default = false,
-              get = A.GuildOnly, set = A.SetGuildOnly },
         },
     })
 end

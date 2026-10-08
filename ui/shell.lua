@@ -17,6 +17,7 @@ local CLOSE = 28
 local CLOSE_EDGE = 5
 local INSET = 6
 local GRIP = 16
+local MAX_EDGE = 8
 local TABLEVEL = 6
 local DEFAULT = "log"
 local ZOOM = 22
@@ -28,7 +29,7 @@ ns.Shell = Shell
 local entries = {}
 local order = {}
 local commands = {}
-local frame, strip, close, grip, pageBg, zoomOut, zoomIn, about, fold
+local frame, strip, close, grip, pageBg, zoomOut, zoomIn, about, fold, maxBtn
 local current
 local sizing, sizedW, sizedH, moving
 local sizeX, sizeY, sizeW, sizeH, sizeMaxW, sizeMaxH
@@ -208,9 +209,34 @@ local function OnSizing()
     end
     if e and e.page then SizePage(e) end
 end
+local function Maximize()
+    local sw, sh = Screen()
+    if not sw then return end
+    local th = TabLook().h
+    frame:ClearAllPoints()
+    frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", MAX_EDGE, sh - MAX_EDGE - th)
+    frame:SetWidth(max(MIN_W, floor(sw - clampRight - MAX_EDGE * 2)))
+    frame:SetHeight(max(MIN_H, floor(sh - th - MAX_EDGE * 2)))
+    OnSizing()
+    Kit.ApplyDecor(frame)
+end
+local function MaxLook()
+    if maxBtn then Kit.MaxLook(maxBtn, Saved().max == true) end
+end
+local function DropMax()
+    local s = Saved()
+    if not s.max then return end
+    s.max, s.norm = nil, nil
+    MaxLook()
+end
 local function Fit()
     local mw, mh = MaxSize()
     if mw < math.huge then frame:SetMaxResize(mw, mh) end
+    if Saved().max then
+        Maximize()
+        Placed()
+        return
+    end
     local w, h = frame:GetWidth(), frame:GetHeight()
     local nw, nh = min(max(w, MIN_W), mw), min(max(h, MIN_H), mh)
     local changed = nw ~= w or nh ~= h
@@ -266,10 +292,14 @@ local function PlaceZoom()
     if not zoomOut then return end
     local tt = TabLook()
     local size = ZoomSize()
+    maxBtn:SetWidth(size)
+    maxBtn:SetHeight(size)
+    maxBtn:ClearAllPoints()
+    maxBtn:SetPoint("RIGHT", frame, "TOPRIGHT", -(tt.x - CLOSE_EDGE + CLOSE + TABGAP), Line())
     fold:SetWidth(size)
     fold:SetHeight(size)
     fold:ClearAllPoints()
-    fold:SetPoint("RIGHT", frame, "TOPRIGHT", -(tt.x - CLOSE_EDGE + CLOSE + TABGAP), Line())
+    fold:SetPoint("RIGHT", maxBtn, "LEFT", -TABGAP, 0)
     zoomIn:SetWidth(size)
     zoomIn:SetHeight(size)
     zoomOut:SetWidth(size)
@@ -314,7 +344,7 @@ local function LayoutTabs()
     tsort(order, TabOrder)
     local tt = TabLook()
     local x = tt.x
-    local rx = tt.x - CLOSE_EDGE + CLOSE + TABGAP + ZoomSize() + TABGAP
+    local rx = tt.x - CLOSE_EDGE + CLOSE + TABGAP + (ZoomSize() + TABGAP) * 2
     local textW = TABMIN
     for i = 1, #order do
         local e = order[i]
@@ -375,6 +405,7 @@ local function StartSizing(button)
         moving = false
         frame:StopMovingOrSizing()
     end
+    DropMax()
     Pin()
     sizeX, sizeY = Cursor()
     sizeW, sizeH = frame:GetWidth(), frame:GetHeight()
@@ -404,6 +435,7 @@ local function Sizing()
 end
 local function StartMove()
     if sizing or moving then return end
+    DropMax()
     moving = true
     frame:StartMoving()
 end
@@ -415,6 +447,33 @@ local function StopMove()
     Pin()
     SavePlace()
     Placed()
+end
+local function ToggleMax()
+    if not frame or sizing then return end
+    local s = Saved()
+    if s.max then
+        local n = s.norm
+        s.max, s.norm = nil, nil
+        if type(n) == "table" and n.w and n.h then
+            frame:SetWidth(n.w)
+            frame:SetHeight(n.h)
+            if n.x and n.y then
+                frame:ClearAllPoints()
+                frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", n.x, n.y)
+            end
+        end
+        Fit()
+        OnSizing()
+        Kit.ApplyDecor(frame)
+    else
+        Pin()
+        s.norm = { x = frame:GetLeft(), y = frame:GetTop(),
+                   w = floor(frame:GetWidth() + 0.5), h = floor(frame:GetHeight() + 0.5) }
+        s.max = true
+        Fit()
+    end
+    SavePlace()
+    MaxLook()
 end
 local function Place()
     local p = INSET + Pad()
@@ -436,20 +495,14 @@ local function Place()
     Clamp()
 end
 local function BuildGrip()
-    grip = CreateFrame("Button", nil, frame)
-    grip:SetWidth(GRIP)
-    grip:SetHeight(GRIP)
+    grip = Kit.Grip(frame, GRIP)
     grip:SetFrameLevel(frame:GetFrameLevel() + 70)
-    local tex = grip:CreateTexture(nil, "OVERLAY")
-    tex:SetAllPoints()
-    tex:SetTexture(Kit.Theme().window.gripTex)
-    Kit.Tint(tex, "window.grip")
-    grip:SetScript("OnMouseDown", function(_, button) StartSizing(button) end)
-    grip:SetScript("OnMouseUp", function()
+    grip.onDown = function(_, button) StartSizing(button) end
+    grip.onUp = function()
         if not sizing then return end
         Sizing()
         if sizing then StopSizing() end
-    end)
+    end
     grip:SetScript("OnUpdate", ns.Prof.Wrap("ui.other", Sizing))
 end
 local function Unfold()
@@ -470,7 +523,11 @@ local function BuildStrip()
     fold:SetFrameLevel(frame:GetFrameLevel() + TABLEVEL)
     fold.tip = ns.T("mini.fold.tip")
     fold.onClick = function() Fold() end
-    strip = CreateFrame("Frame", nil, frame)
+    maxBtn = Kit.MaxButton(frame)
+    maxBtn:SetFrameLevel(frame:GetFrameLevel() + TABLEVEL)
+    maxBtn.onClick = function() ToggleMax() end
+    MaxLook()
+    strip = CreateFrame("Button", nil, frame)
     strip:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 0)
     strip:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 0)
     strip:SetFrameLevel(frame:GetFrameLevel() + TABLEVEL - 1)
@@ -478,6 +535,7 @@ local function BuildStrip()
     strip:RegisterForDrag("LeftButton")
     strip:SetScript("OnDragStart", StartMove)
     strip:SetScript("OnDragStop", StopMove)
+    strip:SetScript("OnDoubleClick", function() ToggleMax() end)
     close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     close:SetWidth(CLOSE)
     close:SetHeight(CLOSE)
@@ -588,6 +646,15 @@ end
 function Shell.Fold()
     if Shell.IsFolded() then return end
     if frame and frame:IsShown() then Fold() end
+end
+function Shell.ToggleMax()
+    if frame and frame:IsShown() then ToggleMax() end
+end
+function Shell.IsMax()
+    return Saved().max == true
+end
+function Shell.Probe()
+    return { frame = frame, strip = strip, maxBtn = maxBtn, fold = fold, grip = grip }
 end
 function Shell.IsFolded()
     return ns.ShellMini ~= nil and ns.ShellMini.IsShown()

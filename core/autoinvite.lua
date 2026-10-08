@@ -7,7 +7,7 @@ local PARTY_MAX = 5
 local HOLD = 60
 local SAY_GAP = 1.5
 local WORDS_MAX = 120
-local DEF = { words = "+, инв, inv, invite", guild = false }
+local DEF = { words = "+, инв, inv, invite" }
 local Auto = {}
 ns.AutoInvite = Auto
 Auto.DEF = DEF
@@ -19,7 +19,6 @@ local waits = {}
 local said = {}
 local told = {}
 local toldAt = 0
-local guild
 local wordSet
 local wordSrc
 local function LowA(a)
@@ -75,14 +74,6 @@ function Auto.SetWordsText(text)
     Opt().words = v ~= "" and v:sub(1, at - 1) or DEF.words
     Notify()
 end
-function Auto.GuildOnly()
-    return Opt().guild
-end
-function Auto.SetGuildOnly(v)
-    Opt().guild = v and true or false
-    if v and IsInGuild and IsInGuild() and GuildRoster then GuildRoster() end
-    Notify()
-end
 local function Words()
     local src = Opt().words
     if wordSet and wordSrc == src then return wordSet end
@@ -95,7 +86,7 @@ local function Words()
 end
 function Auto.Match(text)
     local set = Words()
-    local s = Lower(tostring(text or "")):match("^%s*(.-)%s*$")
+    local s = gsub(Lower(tostring(text or "")), "%+%++", "+"):match("^%s*(.-)%s*$")
     if s == "" then return false end
     if set[s] then return true end
     for w in gmatch(s, "%S+") do
@@ -149,18 +140,6 @@ local function Ignored(name)
     end
     return false
 end
-local function ReadGuild()
-    guild = {}
-    if not (IsInGuild and IsInGuild()) then return end
-    for i = 1, (GetNumGuildMembers(true) or 0) do
-        local n = GetGuildRosterInfo(i)
-        if n then guild[Lower(n)] = true end
-    end
-end
-local function InGuild(name)
-    if not guild then ReadGuild() end
-    return guild[Lower(name)] == true
-end
 local function SayOnce(key, text)
     if said[key] then return end
     said[key] = true
@@ -197,7 +176,6 @@ function Auto.Try(name)
     if InGroup(name) then return "member" end
     if pending[name] or queue[name] then return "pending" end
     if Ignored(name) then return "ignored" end
-    if Opt().guild and not InGuild(name) then return "guild" end
     if not Auto.CanInvite() then
         SayOnce("rights", ns.T("ainv.norights"))
         return "rights"
@@ -224,7 +202,11 @@ function Auto.Try(name)
 end
 function Auto.Whisper(author, text)
     if not on or not Auto.Match(text) then return nil end
-    return Auto.Try(author)
+    local v = Auto.Try(author)
+    if v == "member" or v == "self" or v == "ignored" then
+        SayOnce("why" .. v .. tostring(author), format(ns.T("ainv.why." .. v), tostring(author)))
+    end
+    return v
 end
 local function Drain()
     if not on or (GetNumRaidMembers() or 0) == 0 then return end
@@ -249,10 +231,7 @@ function Auto.Switch(v)
     on = v
     pending, queue, waits, said = {}, {}, {}, {}
     if on then
-        guild = nil
-        if Opt().guild and IsInGuild and IsInGuild() and GuildRoster then GuildRoster() end
-        local key = Opt().guild and "ainv.on.guild" or "ainv.on"
-        ns.Print(format(ns.T(key), Opt().words))
+        ns.Print(format(ns.T("ainv.on"), Opt().words))
         local raid, party = Group()
         if raid == 0 and party + 1 >= PARTY_MAX then Convert() end
     else
@@ -266,12 +245,9 @@ f:RegisterEvent("CHAT_MSG_WHISPER")
 f:RegisterEvent("CHAT_MSG_GUILD")
 f:RegisterEvent("PARTY_MEMBERS_CHANGED")
 f:RegisterEvent("RAID_ROSTER_UPDATE")
-f:RegisterEvent("GUILD_ROSTER_UPDATE")
 f:SetScript("OnEvent", function(_, event, msg, author)
     if event == "CHAT_MSG_WHISPER" or event == "CHAT_MSG_GUILD" then
         Auto.Whisper(author, msg)
-    elseif event == "GUILD_ROSTER_UPDATE" then
-        guild = nil
     elseif on then
         Expire()
         local raid, party = Group()

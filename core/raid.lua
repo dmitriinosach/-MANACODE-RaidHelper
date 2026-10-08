@@ -110,9 +110,13 @@ end
 function Raid.DayKey(raid)
     return tostring(raid.name) .. "|" .. tostring(raid.day) .. "|" .. tostring(raid.size)
 end
+function Raid.Title(raid)
+    if not raid then return ns.T("raid.none") end
+    return raid.map and rawget(ns.L, "zone." .. raid.map) or raid.name or ns.T("raid.none")
+end
 function Raid.Label(raid)
     if not raid then return ns.T("raid.none") end
-    return format("%s, %d %s", raid.name, raid.size, ns.T("raid.people"))
+    return format("%s, %d %s", Raid.Title(raid), raid.size, ns.T("raid.people"))
 end
 local function FillSeg(seg, me, locks)
     local raid = seg.raid

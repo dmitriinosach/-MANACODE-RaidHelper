@@ -210,13 +210,15 @@ function R.Label(it)
     for _, id in ipairs(it.ids) do out[#out + 1] = spellName(id) or ("#" .. id) end
     return table.concat(out, ns.T("rdyOr"))
 end
-local function short(list)
+local function short(list, n)
+    n = n or GIVERS
     local out = {}
-    for i = 1, math.min(#list, GIVERS) do out[i] = list[i] end
+    for i = 1, math.min(#list, n) do out[i] = list[i] end
     local s = table.concat(out, ", ")
-    if #list > GIVERS then s = s .. " +" .. (#list - GIVERS) end
+    if #list > n then s = s .. " +" .. (#list - n) end
     return s
 end
+R.Short = short
 local function chatLine(label, givers, who)
     local head = ns.T("rdyChatLine", label, short(givers))
     local s, n = head, 0
@@ -268,9 +270,16 @@ local f = ns.NewFrame("Frame")
 ns.Listen(f, "READY_CHECK")
 ns.Listen(f, "READY_CHECK_FINISHED")
 ns.Listen(f, "PLAYER_REGEN_DISABLED")
+ns.Listen(f, "UNIT_AURA")
 local acc, shown = 0, false
-f:SetScript("OnEvent", function(_, ev)
-    if ev == "READY_CHECK" then
+local dirty = false
+f:SetScript("OnEvent", function(_, ev, unit)
+    if ev == "UNIT_AURA" then
+        if result and not checking and type(unit) == "string"
+            and (unit == "player" or unit:find("^raid%d") or unit:find("^party%d")) then
+            dirty = true
+        end
+    elseif ev == "READY_CHECK" then
         checking, acc = true, 0
         R.Scan()
     elseif ev == "READY_CHECK_FINISHED" then
@@ -288,6 +297,11 @@ f:SetScript("OnUpdate", function(_, dt)
     if checking then
         R.Scan()
         return
+    end
+    if dirty and R.Active() then
+        dirty = false
+        local at = result.at
+        if R.Scan() and result then result.at = at end
     end
     local on = R.Active()
     if shown and not on then notify() end

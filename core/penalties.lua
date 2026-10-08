@@ -379,7 +379,8 @@ local function Detect(rule, p, s, fight)
         for i = 1, n do
             local d = p.deathInfo[i]
             local theirs = d.why == "dep"
-            if not d.tail and not theirs and (kind == "anydeath" or (not d.nogp and DeathMatch(rule, d))) then
+            local mine = not rule.own or (d.killer and d.killer.src == p.name)
+            if not d.tail and not theirs and mine and (kind == "anydeath" or (not d.nogp and DeathMatch(rule, d))) then
                 out[#out + 1] = { t = d.t }
             end
         end
@@ -461,8 +462,9 @@ local function Detect(rule, p, s, fight)
 end
 local function RuleIcon(rule, s, p)
     if rule.kind == "death" or rule.kind == "anydeath" then return SKULL end
+    if rule.icon then return rule.icon end
     if rule.kind == "killer" and rule.spells then
-        return s.spellIds[ns.SpellKey(rule.spells[1])] or 71340
+        return s.spellIds[ns.SpellKey(rule.spells[1])] or tonumber(rule.spells[1]) or ICONS.manual
     end
     if rule.kind == "expect" then
         local duty = rule.by and p and rule.by[p.class]

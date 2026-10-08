@@ -204,6 +204,7 @@ local Jobs = {}
 ns.Jobs = Jobs
 local queue = {}
 local jobByKey = {}
+local failed = setmetatable({}, { __mode = "k" })
 local frameStart = 0
 local budget = JOB_BUDGET
 local ticks = 0
@@ -258,6 +259,7 @@ local function OverBudget()
     return spent > budget or spent < 0
 end
 function Jobs.Run(key, fn, onDone, prof, urgent)
+    failed[key] = nil
     local job = jobByKey[key]
     if job then
         if onDone then job.done[#job.done + 1] = onDone end
@@ -282,6 +284,9 @@ function Jobs.Run(key, fn, onDone, prof, urgent)
 end
 function Jobs.Busy(key)
     return jobByKey[key] ~= nil
+end
+function Jobs.Failed(key)
+    return failed[key]
 end
 function Jobs.Cancel(key)
     local job = jobByKey[key]
@@ -354,6 +359,7 @@ local function Notify()
 end
 local function Finish(job, ok, ...)
     Drop(job)
+    if not ok then failed[job.key] = tostring((...)) end
     if job.prof and ns.Prof.on then ns.Prof.Add(job.prof .. ".total", job.spent) end
     if win then Prof.OnceEnd(job.prof or "job") end
     local done = job.done
@@ -379,7 +385,7 @@ jobFrame:SetScript("OnUpdate", Prof.Wrap("hot.bg", function(self)
         if win then Prof.Once(job.prof or "job", spent) end
         if not ok then
             ns.Print(tostring(a))
-            Finish(job, false)
+            Finish(job, false, a)
         elseif coroutine.status(job.co) == "dead" then
             Finish(job, true, a, b, c)
         end
@@ -397,6 +403,9 @@ function ns.T(key)
 end
 function ns.EnvName(kind)
     return ns.L["env." .. tostring(kind)] or ns.L["env.OTHER"]
+end
+function ns.EnvKey(kind)
+    return "#env." .. tostring(kind)
 end
 function ns.Print(text)
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99Raid Helper:|r " .. text)

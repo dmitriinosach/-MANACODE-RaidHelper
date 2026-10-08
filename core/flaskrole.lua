@@ -1,14 +1,11 @@
 local _, ns = ...
-local tonumber = tonumber
 local AURAS = 40
 local RANK = { tank = 3, ap = 2, sp = 1 }
 local Role = {}
 ns.FlaskRole = Role
 local F = ns.Flasks
-local talents = {}
 local names = {}
 local asked
-local seen
 local function Names(class)
     local out = names[class]
     if out then return out end
@@ -35,7 +32,9 @@ function Role.Aura(name, class)
     return best
 end
 local function FromTalents(name, class)
-    local kind = talents[name]
+    local map = ns.flaskTalent[class or ""]
+    local t = map and ns.Specs.Of(name)
+    local kind = t and map[t]
     if kind == "form" then return Role.Aura(name, class) end
     return kind
 end
@@ -49,32 +48,16 @@ function Role.Want(name)
 end
 function Role.Ask(name)
     if InspectOpen() then return false end
-    local unit = F.UnitOf(name)
-    if CanInspect and not CanInspect(unit, false) then return false end
     asked = name
-    NotifyInspect(unit)
-    return seen == name
+    return ns.Specs.Ask(F.UnitOf(name))
 end
 function Role.Ready()
     local name = asked
     asked = nil
-    if not name or seen ~= name then return nil end
-    local map = ns.flaskTalent[F.ClassOf(name) or ""]
-    if not map then return nil end
-    local group = GetActiveTalentGroup and GetActiveTalentGroup(true) or nil
-    local best, top = nil, 0
-    for tab = 1, #map do
-        local _, _, points = GetTalentTabInfo(tab, true, false, group)
-        points = tonumber(points) or 0
-        if points > top then best, top = tab, points end
-    end
-    if not InspectOpen() and ClearInspectPlayer then ClearInspectPlayer() end
-    if best then talents[name] = map[best] end
+    if not name then return nil end
+    ns.Specs.Read()
+    if ns.Specs.Last() ~= name then return nil end
     return name
 end
-local function Seen(unit)
-    seen = unit and UnitName(unit) or nil
-end
-hooksecurefunc("NotifyInspect", Seen)
 F.RoleSource("talent", FromTalents, 3)
 F.RoleSource("aura", Role.Aura, 5)

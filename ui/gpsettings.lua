@@ -133,6 +133,7 @@ local function Row(i)
     r:EnableMouseWheel(true)
     r:SetScript("OnMouseWheel", function(_, delta) View.Scroll(delta) end)
     r.head = r:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    ns.Kit.Text(r.head, "text.title")
     r.head:SetPoint("LEFT", 4, 0)
     r.check = ns.Kit.Check(r, "HTP_FailWatchGPCheck" .. i)
     r.check:SetWidth(22)
@@ -293,6 +294,7 @@ local function TopButton(parent, name, width, label, onClick, kind)
 end
 local function HotBox(kind, anchor)
     local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    ns.Kit.Text(label, "text.title")
     label:SetPoint("LEFT", anchor, "RIGHT", 14, 0)
     label:SetText(ns.Ledger.HotLabel(kind))
     local box = ns.Kit.Edit(frame, false, "HTP_FailWatchGPHot" .. kind)
@@ -316,6 +318,7 @@ end
 function View.Attach(host)
     frame = host
     local searchLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    ns.Kit.Text(searchLabel, "text.title")
     searchLabel:SetPoint("TOPLEFT", PAD, -12)
     searchLabel:SetText(ns.T("gpset.search"))
     searchBox = ns.Kit.Edit(frame, false, "HTP_FailWatchGPSearch")
@@ -337,6 +340,7 @@ function View.Attach(host)
         last = proofBtn
     end
     local hotTitle = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    ns.Kit.Text(hotTitle, "text.title")
     hotTitle:SetPoint("LEFT", last, "RIGHT", 24, 0)
     hotTitle:SetText(ns.T("gpset.hot"))
     local anchor = hotTitle
@@ -362,6 +366,7 @@ function View.Attach(host)
     }
     for i = 1, #cols do
         local fs = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        ns.Kit.Text(fs, "text.title")
         fs:SetPoint("TOPLEFT", PAD + cols[i][3], -(HEAD - 14))
         fs:SetText(cols[i][2])
         heads[cols[i][1]] = fs
@@ -372,8 +377,10 @@ function View.Attach(host)
     listBox:EnableMouseWheel(true)
     listBox:SetScript("OnMouseWheel", function(_, delta) View.Scroll(delta) end)
     pageText = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    ns.Kit.Text(pageText, "text.off")
     pageText:SetPoint("BOTTOMRIGHT", -PAD, 10)
     local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    ns.Kit.Text(hint, "text.off")
     hint:SetPoint("BOTTOMLEFT", PAD, 10)
     hint:SetText(ns.T("gpset.hint"))
     if ns.GPGuild then ns.GPGuild.OnChange(function() View.Opened() end) end

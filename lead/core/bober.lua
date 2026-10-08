@@ -70,27 +70,36 @@ local function day(d)
     if not y then return nil end
     return dd .. "." .. m .. "." .. y
 end
-local function tipLines(bb, rec, mode, boss, role)
-    local out = { ns.T("bbTipHead", ns.T("bbMode_" .. mode)) }
+local function facts(bb, rec, mode, role)
     local s = rec.cur
-    out[#out + 1] = ns.T("bbTipRaids", s and s.raids[mode] or 0)
     local last = bb.Last(mode)
-    out[#out + 1] = ns.T("bbTipKills", ns.T("bbBoss_" .. last), bb.Kills(rec, mode, last))
-    local parts = {}
+    local f = { raids = s and s.raids[mode] or 0, last = last, kills = bb.Kills(rec, mode, last), avgs = {} }
     for _, b in ipairs(bb.Bosses(mode)) do
         local st = bb.Stat(rec, mode, b, role)
-        if st.avg then parts[#parts + 1] = ns.T("bbBoss_" .. b) .. " " .. short(st.avg) end
+        if st.avg then f.avgs[#f.avgs + 1] = { boss = b, avg = st.avg } end
     end
-    if #parts > 0 then
-        out[#out + 1] = ns.T(role == "h" and "bbTipAvgH" or "bbTipAvgD", table.concat(parts, ", "))
-    end
-    local seen = day(s and s.last)
-    if seen then out[#out + 1] = ns.T("bbTipLast", seen) end
+    f.seen = day(s and s.last)
     local st = s and s.stat
-    if st and st.place and st.topOf then
-        out[#out + 1] = ns.T("bbTipPlace", st.place, st.topOf, tostring(st.top or "?"))
+    if st and st.place and st.topOf then f.place, f.topOf, f.top = st.place, st.topOf, tostring(st.top or "?") end
+    return f
+end
+local function tipLines(info)
+    local out = { ns.T("bbTipHead", ns.T("bbMode_" .. info.mode)) }
+    local f = info.facts
+    if not f then
+        out[2] = ns.T("bbTipNone")
+        return out
     end
-    out[#out + 1] = ns.T("bbTipBaked", bb.Baked() or "?")
+    out[#out + 1] = ns.T("bbTipRaids", f.raids)
+    out[#out + 1] = ns.T("bbTipKills", ns.T("bbBoss_" .. f.last), f.kills)
+    local parts = {}
+    for _, a in ipairs(f.avgs) do parts[#parts + 1] = ns.T("bbBoss_" .. a.boss) .. " " .. short(a.avg) end
+    if #parts > 0 then
+        out[#out + 1] = ns.T(info.role == "h" and "bbTipAvgH" or "bbTipAvgD", table.concat(parts, ", "))
+    end
+    if f.seen then out[#out + 1] = ns.T("bbTipLast", f.seen) end
+    if f.place then out[#out + 1] = ns.T("bbTipPlace", f.place, f.topOf, f.top) end
+    out[#out + 1] = ns.T("bbTipBaked", info.baked or "?")
     return out
 end
 function B.Info(name, unit, spec)
@@ -109,11 +118,12 @@ function B.Info(name, unit, spec)
         info.role = roleOf(name, spec) or bb.Role(rec, mode) or "d"
         local st = bb.Stat(rec, mode, boss, info.role)
         info.exp, info.n = st.avg, st.n
-        info.lines = tipLines(bb, rec, mode, boss, info.role)
+        info.facts = facts(bb, rec, mode, info.role)
+        info.baked = bb.Baked()
     else
         info.role = roleOf(name, spec)
-        info.lines = { ns.T("bbTipHead", ns.T("bbMode_" .. mode)), ns.T("bbTipNone") }
     end
+    info.lines = tipLines(info)
     if cached >= CACHE_MAX then B.Reset() end
     cached = cached + 1
     cache[ck] = info
@@ -148,6 +158,39 @@ function B.Tip(base, name, unit, spec)
     end
     for _, l in ipairs(info.lines) do lines[#lines + 1] = l end
     return table.concat(lines, "\n")
+end
+function B.Baked()
+    local bb = src()
+    return bb and bb.Baked() or nil
+end
+function B.Rows(name, unit, spec)
+    local info = B.Info(name, unit, spec)
+    if not info then return nil end
+    local out = { { kind = "head", left = ns.T("bbRowHead", ns.T("bbMode_" .. info.mode)) } }
+    local f = info.facts
+    if not f then
+        out[2] = { kind = "note", left = ns.T("bbRowNone") }
+        return out
+    end
+    local heal = info.role == "h"
+    if info.exp then
+        out[#out + 1] = { kind = "row", left = ns.T(heal and "bbRowExpH" or "bbRowExpD", ns.T("bbBoss_" .. info.boss)),
+            right = short(info.exp) }
+        out[#out + 1] = { kind = "sub", left = ns.T("bbRowExpN", info.n or 0) }
+    end
+    out[#out + 1] = { kind = "row", left = ns.T("bbRowRaids"), right = tostring(f.raids) }
+    out[#out + 1] = { kind = "row", left = ns.T("bbRowKills", ns.T("bbBoss_" .. f.last)), right = tostring(f.kills) }
+    if f.seen then out[#out + 1] = { kind = "row", left = ns.T("bbRowLast"), right = f.seen } end
+    if f.place then
+        out[#out + 1] = { kind = "row", left = ns.T("bbRowPlace"), right = ns.T("bbRowPlaceV", f.place, f.topOf, f.top) }
+    end
+    if #f.avgs > 0 then
+        out[#out + 1] = { kind = "row", left = ns.T(heal and "bbRowAvgH" or "bbRowAvgD") }
+        for _, a in ipairs(f.avgs) do
+            out[#out + 1] = { kind = "sub", left = ns.T("bbBoss_" .. a.boss), right = short(a.avg) }
+        end
+    end
+    return out
 end
 function B.Sum(members)
     local out = { sum = 0, have = 0, of = 0 }

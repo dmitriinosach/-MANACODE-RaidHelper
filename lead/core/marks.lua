@@ -128,7 +128,7 @@ local function candidates(i)
             if n and not seen[n] then
                 seen[n] = true
                 d = d + 1
-                out[#out + 1] = { name = n, src = "slot", slot = k, cap = s.cap, role = s.role, depth = d }
+                out[#out + 1] = { name = n, src = "slot", slot = k, cap = ns.Tpl.Cap(s), role = s.role, depth = d }
             end
         end
     end
@@ -449,16 +449,20 @@ function M.KeyRelease()
     ns.say(ns.T("keysNoPin"))
     return "none"
 end
-BINDING_HEADER_RAIDLEAD = ns.T("keysHeader")
-BINDING_NAME_RAIDLEAD_MARK1 = ns.T("keysMark1")
-BINDING_NAME_RAIDLEAD_MARK2 = ns.T("keysMark2")
-BINDING_NAME_RAIDLEAD_MARK3 = ns.T("keysMark3")
-BINDING_NAME_RAIDLEAD_MARK4 = ns.T("keysMark4")
-BINDING_NAME_RAIDLEAD_MARK5 = ns.T("keysMark5")
-BINDING_NAME_RAIDLEAD_MARK6 = ns.T("keysMark6")
-BINDING_NAME_RAIDLEAD_MARK7 = ns.T("keysMark7")
-BINDING_NAME_RAIDLEAD_MARK8 = ns.T("keysMark8")
-BINDING_NAME_RAIDLEAD_RELEASE = ns.T("keysRelease")
+local function Bindings()
+    BINDING_HEADER_RAIDLEAD = ns.T("keysHeader")
+    BINDING_NAME_RAIDLEAD_MARK1 = ns.T("keysMark1")
+    BINDING_NAME_RAIDLEAD_MARK2 = ns.T("keysMark2")
+    BINDING_NAME_RAIDLEAD_MARK3 = ns.T("keysMark3")
+    BINDING_NAME_RAIDLEAD_MARK4 = ns.T("keysMark4")
+    BINDING_NAME_RAIDLEAD_MARK5 = ns.T("keysMark5")
+    BINDING_NAME_RAIDLEAD_MARK6 = ns.T("keysMark6")
+    BINDING_NAME_RAIDLEAD_MARK7 = ns.T("keysMark7")
+    BINDING_NAME_RAIDLEAD_MARK8 = ns.T("keysMark8")
+    BINDING_NAME_RAIDLEAD_RELEASE = ns.T("keysRelease")
+end
+Bindings()
+if root.OnReady then root.OnReady(Bindings) end
 function M.Grab()
     local n = 0
     for _, m in ipairs(ns.Session.Roster()) do

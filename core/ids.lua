@@ -80,6 +80,15 @@ function ns.ItemName(id, fallback)
     local name = id and GetItemInfo and GetItemInfo(id)
     return name or fallback or ("#" .. tostring(id))
 end
+function ns.ConsumableName(id, spell, item)
+    local name = id and GetItemInfo and GetItemInfo(id)
+    if name then return name end
+    if spell and (GetLocale() ~= "ruRU" or ns.lang ~= "ruRU") then
+        name = GetSpellInfo(spell)
+        if name then return name end
+    end
+    return item or ("#" .. tostring(id))
+end
 function ns.NpcKeyOf(id)
     if not id then return nil end
     if not built then Build() end
@@ -119,11 +128,11 @@ end
 function ns.NpcName(key)
     if key == nil then return "" end
     if type(key) == "string" then return key end
-    return npcNames[key] or rawget(ns.L, "npc." .. key) or ("#" .. tostring(key))
+    return rawget(ns.L, "npc." .. key) or npcNames[key] or ("#" .. tostring(key))
 end
 function ns.SpellName(id)
     if not id then return "" end
-    local name = spellNames[id] or GetSpellInfo(id)
+    local name = GetSpellInfo(id) or spellNames[id]
     return name or ("#" .. tostring(id))
 end
 function ns.SpellIcon(id)

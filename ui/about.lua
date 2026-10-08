@@ -26,6 +26,7 @@ About.DATA = ABOUT
 About.TOOLS = TOOLS
 About.MIRRORS = MIRRORS
 About.CHARS = CHARS
+About.ADDONS = ns.otherAddons or {}
 local W = 460
 local PAD = 16
 local ROW_H = 22
@@ -33,6 +34,10 @@ local ROW_X = 110
 local ROW_GAP = 6
 local KEY_W = 46
 local ICON = 16
+local TILE_GAP = 8
+local TILE_W = (W - PAD * 2 - TILE_GAP) / 2
+local TILE_H = 76
+local TILE_IN = 8
 local frame
 function About.Site()
     local page = ABOUT.sitePage[GetLocale and GetLocale() or ""] or ABOUT.sitePage.other
@@ -48,22 +53,16 @@ local function Unselect(self)
     self:HighlightText(0, 0)
     self:SetCursorPosition(0)
 end
-local function CopyRow(label, url, tipKey, y)
-    if not url or url == "" then return y end
-    local fs = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y - 5)
-    fs:SetText(label)
-    Kit.Text(fs, "text.title")
-    local e = Kit.Edit(frame)
+local function LinkField(parent, url, width, height, tipTitle, tipKey)
+    local e = Kit.Edit(parent)
     e:SetFontObject("GameFontHighlightSmall")
     e:SetTextInsets(6, KEY_W, 3, 3)
-    e:SetWidth(W - ROW_X - PAD)
-    e:SetHeight(ROW_H)
-    e:SetPoint("TOPLEFT", frame, "TOPLEFT", ROW_X, -y)
+    e:SetWidth(width)
+    e:SetHeight(height)
     e:SetValue(url)
     e:SetCursorPosition(0)
     e.url = url
-    e.tipTitle = label
+    e.tipTitle = tipTitle
     e.tip = ns.T(tipKey or "about.tip.link")
     e.onChange = function()
         if e:GetText() ~= url then e:SetValue(url) end
@@ -74,6 +73,16 @@ local function CopyRow(label, url, tipKey, y)
     key:SetPoint("RIGHT", e, "RIGHT", -7, 0)
     key:SetText(ns.T("about.copy"))
     Kit.Text(key, "text.muted")
+    return e
+end
+local function CopyRow(label, url, tipKey, y)
+    if not url or url == "" then return y end
+    local fs = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y - 5)
+    fs:SetText(label)
+    Kit.Text(fs, "text.title")
+    local e = LinkField(frame, url, W - ROW_X - PAD, ROW_H, label, tipKey)
+    e:SetPoint("TOPLEFT", frame, "TOPLEFT", ROW_X, -y)
     frame.rows[#frame.rows + 1] = { label = label, url = url, edit = e }
     return y + ROW_H + ROW_GAP
 end
@@ -85,6 +94,51 @@ local function Line(text, token, font, y)
     fs:SetText(text)
     Kit.Text(fs, token)
     return fs, y + (fs:GetStringHeight() or 12) + ROW_GAP
+end
+local function Loc(t)
+    return t[ns.lang] or t.enUS or t.ruRU or ""
+end
+function About.Installed(folder)
+    local _, _, _, _, _, reason = GetAddOnInfo(folder)
+    return reason ~= "MISSING"
+end
+local function Tile(a, x, y)
+    local p = Kit.Plate(frame)
+    p:SetWidth(TILE_W)
+    p:SetHeight(TILE_H)
+    p:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -y)
+    local state = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    state:SetPoint("TOPRIGHT", p, "TOPRIGHT", -TILE_IN, -7)
+    state:SetJustifyH("RIGHT")
+    local name = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    name:SetPoint("TOPLEFT", p, "TOPLEFT", TILE_IN, -7)
+    name:SetPoint("RIGHT", state, "LEFT", -6, 0)
+    name:SetJustifyH("LEFT")
+    name:SetText(Loc(a.name))
+    Kit.Text(name, "text.title")
+    local desc = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    desc:SetPoint("TOPLEFT", p, "TOPLEFT", TILE_IN, -22)
+    desc:SetWidth(TILE_W - TILE_IN * 2)
+    desc:SetHeight(24)
+    desc:SetJustifyH("LEFT")
+    desc:SetJustifyV("TOP")
+    desc:SetText(Loc(a.desc))
+    Kit.Text(desc, "text.secondary")
+    local e = LinkField(p, a.url, TILE_W - 12, 20, Loc(a.name), nil)
+    e:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", 6, 6)
+    return { addon = a, plate = p, name = name, desc = desc, state = state, edit = e }
+end
+local function Addons(y)
+    if #About.ADDONS == 0 then return y end
+    frame.addonsHead = Kit.Caption(frame, ns.T("about.others"), W - PAD * 2)
+    frame.addonsHead:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y - ROW_GAP)
+    y = y + ROW_GAP + 20
+    for i, a in ipairs(About.ADDONS) do
+        local col = (i - 1) % 2
+        local row = math.floor((i - 1) / 2)
+        frame.tiles[i] = Tile(a, PAD + col * (TILE_W + TILE_GAP), y + row * (TILE_H + TILE_GAP))
+    end
+    return y + math.ceil(#About.ADDONS / 2) * (TILE_H + TILE_GAP) - TILE_GAP + ROW_GAP
 end
 local function Chars(y)
     local head
@@ -125,7 +179,7 @@ local function Build()
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
     Kit.Window(frame)
     tinsert(UISpecialFrames, "HTP_FailWatchAbout")
-    frame.rows, frame.chars = {}, {}
+    frame.rows, frame.chars, frame.tiles = {}, {}, {}
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 2, 2)
     close:SetScript("OnClick", function() frame:Hide() end)
@@ -149,7 +203,7 @@ local function Build()
     y = CopyRow(ns.T("about.release"), ABOUT.release, "about.tip.release", y)
     for _, t in ipairs(TOOLS) do y = CopyRow(ns.T(t.key), t.url, t.tip, y) end
     y = CopyRow("Discord", ABOUT.discord, "about.tip.discord", y)
-    y = CopyRow(ns.T("about.others"), About.Site(), "about.tip.others", y)
+    y = CopyRow(ns.T("about.site"), About.Site(), "about.tip.others", y)
     for _, m in ipairs(MIRRORS) do
         if m.url and m.url ~= "" then
             if not frame.mirrors then
@@ -158,12 +212,19 @@ local function Build()
             y = CopyRow(m.label, m.url, nil, y)
         end
     end
+    y = Addons(y)
     y = Chars(y)
     frame:SetHeight(y + 14)
     frame:Hide()
 end
 local function Refresh()
     if not frame then return end
+    for _, t in ipairs(frame.tiles) do
+        local on = About.Installed(t.addon.folder)
+        t.on = on
+        t.state:SetText(ns.T(on and "about.addon.on" or "about.addon.off"))
+        Kit.Text(t.state, on and "text.good" or "text.muted")
+    end
     local mine = ns.AddonVersion and ns.AddonVersion() or "?"
     local new = ns.Version and ns.Version.Newest and ns.Version.Newest()
     local newer = new and ns.Version.Compare and ns.Version.Compare(new, mine) == 1

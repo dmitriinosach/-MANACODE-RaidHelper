@@ -31,8 +31,9 @@ function GPList.Icon(id)
     return id and ns.Effects and ns.Effects.IconById(id) or UNKNOWN_ICON
 end
 function GPList.ClassRGB(class)
-    local cc = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
-    if cc then return cc.r, cc.g, cc.b end
+    if class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class] then
+        return ns.Kit.ClassColor(class)
+    end
     local c = ns.Badges.style.noClass
     return c[1], c[2], c[3]
 end

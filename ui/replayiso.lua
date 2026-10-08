@@ -11,13 +11,11 @@ local sin = math.sin
 local pi = math.pi
 local PAD = 12
 local FEED_W = 220
-local LEFT = PAD + FEED_W + PAD
 local HEAD = 30
 local BAR_GAP = 8
 local PLAYER_H = ns.ReplayBar.ROW_H
 local BARS_GAP = 4
 local FOOT = 22
-local TITLE_BTNS = 70
 local STATUS_GRIP = 24
 local STATUS_PERIOD = 0.5
 local STILL = { after = 0.5, step = 0.1 }
@@ -117,6 +115,19 @@ local dim = { viewW = Size.MIN_W, viewH = Size.MIN_H, k = 1 }
 dim.sideH = dim.viewH + BAR_GAP + PLAYER_H
 dim.barsH = floor(dim.sideH / 3)
 dim.h = HEAD + dim.sideH + FOOT
+local Box = {}
+function Box.SideX()
+    return PAD + Size.Edge()
+end
+function Box.LeftX()
+    return Box.SideX() + FEED_W + PAD
+end
+function Box.HeadH()
+    return HEAD + Size.Edge()
+end
+function Box.FootH()
+    return FOOT + Size.Edge()
+end
 local ui = {}
 local run = {
     t = 0, playing = false, speed = 1, mode = "none", camDirty = true, fitZoom = 1, bossDrawn = false,
@@ -201,7 +212,7 @@ local function ConfigFigure(fig, tr, scene)
     fig.sQ, fig.mQ, fig.rank, fig.sDead = nil, nil, nil, nil
     if tr then
         fig.name = tr.name
-        fig.cr, fig.cg, fig.cb = Kit.ClassColor(tr.class)
+        fig.cr, fig.cg, fig.cb = Kit.ClassColor(tr.class, true)
         LayersView.Role(fig, tr.class, run.roles[tr.name])
         Figs.Config(fig, tr.class, run.roles[tr.name])
     else
@@ -736,6 +747,7 @@ local function Tick(self, elapsed)
     ns.ReplayCueView.Place(scene, cam, run.t)
     Soul.Place(base, scene, run.t)
     PlaceFigures(elapsed)
+    ns.ReplayUnitsView.Place(scene, run.t, figs, #scene.tracks)
     ns.ReplayFeed.Update(run.t - scene.pull)
     PlaceDeaths()
     run.marksDirty = false
@@ -810,6 +822,7 @@ local function ApplyFocus()
     end
     for k = 1, run.figCount do figs[k].alpha = nil end
     LayersView.Focus(run.focus)
+    ns.ReplayUnitsView.Focus(run.focus)
     if run.focus then
         ui.focus:SetText(format(ns.T("iso.focus"), run.focus))
         ui.focus:Show()
@@ -862,24 +875,28 @@ local function Resume()
     UpdatePlay()
 end
 local function Around()
-    return (run.narrow and PAD * 2 or LEFT + PAD), HEAD + BAR_GAP + PLAYER_H + FOOT
+    local side = Box.SideX()
+    return (run.narrow and side * 2 or Box.LeftX() + side), Box.HeadH() + BAR_GAP + PLAYER_H + Box.FootH()
 end
 local function FrameWidth()
-    local w = Around() + dim.viewW
-    ui.frame:SetWidth(w)
-    ui.title:SetWidth(w - TITLE_BTNS)
+    ui.frame:SetWidth(Around() + dim.viewW)
+end
+local function PlaceBody()
+    ui.side:ClearAllPoints()
+    ui.side:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", Box.SideX(), -Box.HeadH())
+    ui.view:ClearAllPoints()
+    if run.narrow then
+        ui.side:Hide()
+        ui.view:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", Box.SideX(), -Box.HeadH())
+    else
+        ui.side:Show()
+        ui.view:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", Box.LeftX(), -Box.HeadH())
+    end
 end
 local function Narrow(narrow)
     if run.narrow == narrow then return end
     run.narrow = narrow
-    ui.view:ClearAllPoints()
-    if narrow then
-        ui.side:Hide()
-        ui.view:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", PAD, -HEAD)
-    else
-        ui.side:Show()
-        ui.view:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", LEFT, -HEAD)
-    end
+    PlaceBody()
     FrameWidth()
     Size.Refit()
 end
@@ -892,7 +909,7 @@ local function Resize(vw, vh)
     dim.viewW, dim.viewH = vw, vh
     dim.sideH = vh + BAR_GAP + PLAYER_H
     dim.barsH = floor(dim.sideH / 3)
-    dim.h = HEAD + dim.sideH + FOOT
+    dim.h = Box.HeadH() + dim.sideH + Box.FootH()
     dim.k = min(vw / Size.MIN_W, vh / Size.MIN_H)
     cam.w, cam.h = vw, vh
     ui.view:SetWidth(vw)
@@ -959,6 +976,7 @@ SwapScene = function(sc)
     ns.ReplayClassView.Use(sc)
     ns.ReplaySpreadView.Use(sc)
     ns.ReplayCueView.Use(sc)
+    ns.ReplayUnitsView.Use(sc)
     Models.Away(sc ~= run.base)
     ConfigFigure(figs[#sc.tracks + 1], nil, sc)
     UseFloor(sc.room)
@@ -983,6 +1001,7 @@ local function UseScene(scene)
     ns.ReplayClassView.Use(scene)
     ns.ReplaySpreadView.Use(scene)
     ns.ReplayCueView.Use(scene)
+    ns.ReplayUnitsView.Use(scene)
     Soul.Use(scene)
     Models.Use(scene)
     run.feedHas = ns.ReplayFeed.Use(scene.layers)
@@ -1137,6 +1156,7 @@ local function BuildLegend(top)
     bg:SetAllPoints(f)
     Kit.Paint(bg, "surface.bg", 0.94)
     local text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    Kit.Text(text, "text.bright")
     text:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -8)
     text:SetWidth(LEGEND_W - 20)
     text:SetJustifyH("LEFT")
@@ -1203,7 +1223,7 @@ local function BuildView(frame)
     local side = CreateFrame("Frame", nil, frame)
     side:SetWidth(FEED_W)
     side:SetHeight(dim.sideH)
-    side:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -HEAD)
+    side:SetPoint("TOPLEFT", frame, "TOPLEFT", Box.SideX(), -Box.HeadH())
     local sideBg = side:CreateTexture(nil, "BACKGROUND")
     sideBg:SetAllPoints(side)
     Kit.Paint(sideBg, "surface.page", 0.5)
@@ -1218,7 +1238,7 @@ local function BuildView(frame)
     local view = CreateFrame("Frame", nil, frame)
     view:SetWidth(dim.viewW)
     view:SetHeight(dim.viewH)
-    view:SetPoint("TOPLEFT", frame, "TOPLEFT", LEFT, -HEAD)
+    view:SetPoint("TOPLEFT", frame, "TOPLEFT", Box.LeftX(), -Box.HeadH())
     view:EnableMouse(true)
     view:EnableMouseWheel(true)
     view:SetScript("OnMouseDown", ViewDown)
@@ -1240,7 +1260,7 @@ local function BuildView(frame)
     ui.top = top
     ui.fade = top:CreateTexture(nil, "BACKGROUND")
     ui.fade:SetAllPoints(view)
-    Kit.Paint(ui.fade, "surface.page")
+    Kit.Paint(ui.fade, "surface.solid")
     ui.fade:Hide()
     ui.hoverBox = CreateFrame("Frame", nil, top)
     ui.hoverBox:SetWidth(240)
@@ -1294,7 +1314,7 @@ local function NearFigure()
 end
 local function Build()
     local frame = CreateFrame("Frame", "HTP_FailWatchReplayIso", UIParent)
-    frame:SetWidth(LEFT + dim.viewW + PAD)
+    frame:SetWidth(Box.LeftX() + dim.viewW + Box.SideX())
     frame:SetHeight(dim.h)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     frame:SetFrameStrata("DIALOG")
@@ -1303,16 +1323,24 @@ local function Build()
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
     Kit.Window(frame)
+    local level = frame:GetFrameLevel()
+    frame:SetFrameLevel(level + 1)
+    if frame.kitBack then frame.kitBack:SetFrameLevel(level + 1) end
+    local under = CreateFrame("Frame", nil, frame)
+    under:SetFrameLevel(level)
+    under:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -4)
+    under:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -4, 4)
+    local fill = under:CreateTexture(nil, "BACKGROUND")
+    fill:SetAllPoints()
+    Kit.Paint(fill, "window.base", 1)
     frame:Hide()
     tinsert(UISpecialFrames, "HTP_FailWatchReplayIso")
     ui.frame = frame
     ui.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    ui.title:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -10)
-    ui.title:SetWidth(LEFT + dim.viewW + PAD - TITLE_BTNS)
     ui.title:SetJustifyH("LEFT")
+    ui.title:SetWordWrap(false)
     Kit.Title(ui.title)
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 2, 2)
     close:SetScript("OnClick", function() Iso.Hide() end)
     ui.nav = {}
     BuildView(frame)
@@ -1320,6 +1348,7 @@ local function Build()
     BuildBottom()
     Follow.Bind(ui, run, cam, figs, SetFocus)
     ui.status = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    Kit.Text(ui.status, "text.bright")
     ui.status:SetPoint("TOPLEFT", ui.bar, "BOTTOMLEFT", 0, -4)
     ui.status:SetWidth(dim.viewW - STATUS_GRIP)
     ui.status:SetJustifyH("LEFT")
@@ -1327,7 +1356,7 @@ local function Build()
     UpdateCamUi()
     run.narrow = false
     Tour.Bind(ui, { Saved = Saved, Figure = NearFigure })
-    Size.Bind(frame, close, HEAD, Resize, Around)
+    Size.Bind(frame, close, HEAD, Resize, Around, ui.title)
     Size.Restore()
     frame:SetScript("OnUpdate", ns.Prof.Wrap("ui.iso", Tick))
     frame:SetScript("OnShow", function()
@@ -1347,6 +1376,14 @@ local function Build()
         run.scrubbing = false
     end)
 end
+Kit.OnTheme(function()
+    if not ui.frame then return end
+    Size.Place()
+    PlaceBody()
+    Resize(dim.viewW, dim.viewH)
+    Size.Refit()
+    Kit.ApplyDecor(ui.frame)
+end)
 local function SelectedFight()
     local f = ns.SummaryView and ns.SummaryView.Fight and ns.SummaryView.Fight() or picked
     if f then return f, false end
@@ -1375,6 +1412,7 @@ local function LoadFight(fight)
     Realm.Use(nil)
     ns.ReplaySwarmView.Use(nil)
     ns.ReplayClassView.Use(nil)
+    ns.ReplayUnitsView.Use(nil)
     ns.ReplaySpreadView.Use(nil)
     ns.ReplayCueView.Use(nil)
     Soul.Use(nil)

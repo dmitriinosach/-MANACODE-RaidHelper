@@ -8,6 +8,7 @@ local STRIP_H = 24
 local STRIP_GAP = 6
 local SEND_W = 70
 local TIP_ICON = 14
+local TIP_GIVERS = 2
 local strip
 local UI = {}
 ns.ReadyUI = UI
@@ -15,11 +16,10 @@ local function iconTag(id)
     local tex = id and ns.Compat.SpellIcon(id)
     return tex and ("|T" .. tex .. ":" .. TIP_ICON .. "|t ") or ""
 end
-local function itemText(it, res)
-    local label = ns.ReadyBuffs.Label(it)
-    local givers = it.kind == "bless" and res.pals or (it.kind == "raid" and res.givers[it.key]) or nil
-    if givers and #givers > 0 then label = ns.T("rdyGive", label, table.concat(givers, ", ")) end
-    return iconTag(it.icon) .. label
+local function itemRow(it, res)
+    local givers = res and (it.kind == "bless" and res.pals or (it.kind == "raid" and res.givers[it.key])) or nil
+    return { kind = "row", left = iconTag(it.icon) .. ns.ReadyBuffs.Label(it),
+        right = givers and #givers > 0 and ns.ReadyBuffs.Short(givers, TIP_GIVERS) or nil, tone = "dim" }
 end
 function UI.Build(c)
     c.rdyBg = ns.Fill(c, "BORDER")
@@ -46,15 +46,21 @@ function UI.ClearCell(c)
     c.rdyMore:Hide()
     c.gs:Show()
 end
-function UI.FillCell(c, m)
-    if not c.rdy then return end
+function UI.TipRows(m)
     local R = ns.ReadyBuffs
     local e = R.Of(m.name)
-    if not e then return end
-    if e.why then
-        c.tip = (c.tip or "") .. "\n" .. ns.Hex("text.muted") .. ns.T("rdyWhy_" .. e.why) .. "|r"
-        return
-    end
+    if not e then return nil end
+    if e.why then return { { kind = "note", left = ns.T("rdyWhy_" .. e.why) } } end
+    if #e.lack == 0 then return nil end
+    local res = R.Result()
+    local out = { { kind = "head", left = ns.T("rdyTipHead") } }
+    for _, it in ipairs(e.lack) do out[#out + 1] = itemRow(it, res) end
+    return out
+end
+function UI.FillCell(c, m)
+    if not c.rdy then return end
+    local e = ns.ReadyBuffs.Of(m.name)
+    if not e or e.why then return end
     local n = #e.lack
     if n == 0 then return end
     c.gs:Hide()
@@ -68,10 +74,6 @@ function UI.FillCell(c, m)
         c.rdyMore:SetText("+" .. (n - icons))
         c.rdyMore:Show()
     end
-    local res = R.Result()
-    local lines = { ns.Hex("text.warn") .. ns.T("rdyTipHead") .. "|r" }
-    for _, it in ipairs(e.lack) do lines[#lines + 1] = itemText(it, res) end
-    c.tip = (c.tip or "") .. "\n" .. table.concat(lines, "\n")
 end
 local function stripTip()
     local R = ns.ReadyBuffs
@@ -111,6 +113,7 @@ function UI.BuildStrip(pane)
     strip:SetScript("OnEnter", function(self) ns.TipShow(self) end)
     strip:SetScript("OnLeave", ns.TipHide)
     strip.text = strip:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ns.PaintText(strip.text, "text.bright")
     strip.text:SetPoint("LEFT", strip, "LEFT", 10, 0)
     strip.send = ns.MakeKitButton(strip)
     strip.send:SetSize(SEND_W, 18)

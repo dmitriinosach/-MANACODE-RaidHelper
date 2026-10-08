@@ -6,6 +6,7 @@ local min = math.min
 local MARGIN = 8
 local GAP = 6
 local DETAILMIN = 220
+local AWARDMIN = 260
 local TOTALMIN = 140
 local WHEEL = 40
 local RELAYOUT_DELAY = 0.15
@@ -21,7 +22,8 @@ ns.RaidSummaryView = View
 local host, scroll, content, busy, art
 local shownKey, asking
 local offset = 0
-local stats, panels = {}, {}
+local stats, panels, tiles = {}, {}, {}
+local awardHead
 local gpPanel, laid
 local Render
 local lastW = 0
@@ -31,16 +33,27 @@ pump:Hide()
 local function Backdrop(raid)
     Kit.RaidArtSet(art, host, raid and raid.map and ns.raidArt and ns.raidArt[raid.map] or nil)
 end
+local pageBar
+local function SyncBar()
+    if pageBar and content then pageBar:SetState(offset, host:GetHeight(), content:GetHeight()) end
+end
+local function Rescroll()
+    if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
+    offset = min(offset, max(0, content:GetHeight() - host:GetHeight()))
+    scroll:SetVerticalScroll(offset)
+    SyncBar()
+end
 local function PageWheel(delta)
     if not content then return false end
     local most = max(0, content:GetHeight() - host:GetHeight())
     local was = offset
     offset = max(0, min(most, offset - delta * WHEEL))
     scroll:SetVerticalScroll(offset)
+    SyncBar()
     return offset ~= was
 end
 function View.Title(raid)
-    return format(ns.T("rsum.title"), raid and raid.name or ns.T("raid.none"))
+    return format(ns.T("rsum.title"), ns.Raid.Title(raid))
 end
 local function Stat(i)
     stats[i] = stats[i] or Badges.Total(content)
@@ -69,6 +82,7 @@ local function Busy()
     busy:SetHeight(BUSYH * 2 + BUSYGAP)
     busy:SetFrameLevel(scroll:GetFrameLevel() + 5)
     busy.text = busy:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    Kit.Text(busy.text, "text.bright")
     busy.text:SetPoint("TOP", busy, "TOP", 0, 0)
     busy.text:SetWidth(BUSYW)
     busy.bar = CreateFrame("Frame", nil, busy)
@@ -100,8 +114,8 @@ local function DrawTotals(totals, w)
     for i = 1, #totals do
         local c = totals[i]
         local f = Stat(i)
-        f:SetModel({ title = c.title, value = c.value, sub = c.sub, color = Kit.C[c.color] or Kit.C["text.accent"],
-                     lines = c.lines })
+        f:SetModel({ title = c.title, value = c.value, sub = c.sub, subs = c.subs, unbuff = c.unbuff,
+                     color = Kit.C[c.color] or Kit.C["text.accent"], lines = c.lines })
         list[i] = f
     end
     return Grid.Place(list, MARGIN, MARGIN, w, TOTALMIN, GAP, true)
@@ -114,6 +128,21 @@ local function Rows(rows)
                    noteMuted = not r.noteLit, lines = r.lines }
     end
     return out
+end
+local function DrawAwards(awards, y, w)
+    local AV = ns.AwardView
+    if not AV or not awards or #awards == 0 then return y end
+    awardHead = awardHead or AV.Head(content)
+    awardHead:ClearAllPoints()
+    awardHead:SetPoint("TOPLEFT", content, "TOPLEFT", MARGIN, -y)
+    awardHead:Show()
+    local list = {}
+    for i = 1, #awards do
+        tiles[i] = tiles[i] or AV.Tile(content)
+        tiles[i]:SetModel(awards[i])
+        list[i] = tiles[i]
+    end
+    return Grid.Place(list, MARGIN, y + AV.HEAD_H, w, AWARDMIN, GAP, true)
 end
 local function DrawDetails(details, y, w)
     local list = {}
@@ -166,6 +195,8 @@ local function HideAll()
     if gpPanel then gpPanel:Hide() end
     for i = 1, #stats do stats[i]:Hide() end
     for i = 1, #panels do panels[i]:Hide() end
+    for i = 1, #tiles do tiles[i]:Hide() end
+    if awardHead then awardHead:Hide() end
     if busy then busy:Hide() end
     if ns.AchView then ns.AchView.HideRaid() end
 end
@@ -189,9 +220,15 @@ Render = function()
     laid = {}
     if not res then
         if ns.SumSide then ns.SumSide.Show("raid", {}) end
-        ShowBusy(ns.T(raid and "rsum.busy" or "rsum.gone"), raid ~= nil)
+        local err = ns.RaidSummary.Failed(raid)
+        if err then
+            ShowBusy(format(ns.T("rsum.fail"), err), false)
+        else
+            ShowBusy(ns.T(raid and "rsum.busy" or "rsum.gone"), raid ~= nil)
+        end
         content:SetHeight(host:GetHeight())
-        if raid then Ask(raid) end
+        Rescroll()
+        if raid and not err then Ask(raid) end
         return
     end
     local model = ns.RaidModel.Build(res)
@@ -205,9 +242,11 @@ Render = function()
     top = y
     y = DrawDetails(rest, y, w)
     Mark("details", top, y)
+    top = y
+    y = DrawAwards(model.awards, y + GAP, w)
+    Mark("awards", top, y)
     content:SetHeight(max(host:GetHeight(), y + MARGIN))
-    offset = min(offset, max(0, content:GetHeight() - host:GetHeight()))
-    scroll:SetVerticalScroll(offset)
+    Rescroll()
 end
 function View.Attach(frame)
     host = frame
@@ -223,6 +262,19 @@ function View.Attach(frame)
     scroll:SetScrollChild(content)
     scroll:EnableMouseWheel(true)
     scroll:SetScript("OnMouseWheel", function(_, delta) PageWheel(delta) end)
+    local deck = CreateFrame("Frame", nil, host)
+    deck:SetFrameLevel(host:GetFrameLevel() + 40)
+    deck:SetPoint("TOPRIGHT", host, "TOPRIGHT", -1, -MARGIN)
+    deck:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -1, MARGIN)
+    deck:SetWidth(8)
+    pageBar = ns.Kit.ScrollBar(deck, 1)
+    pageBar:SetPoint("TOPRIGHT", deck, "TOPRIGHT", 0, 0)
+    pageBar:SetPoint("BOTTOMRIGHT", deck, "BOTTOMRIGHT", 0, 0)
+    pageBar.onScroll = function(want)
+        offset = max(0, min(max(0, content:GetHeight() - host:GetHeight()), want))
+        scroll:SetVerticalScroll(offset)
+        SyncBar()
+    end
     host:Hide()
     if ns.DiscordView then ns.DiscordView.Attach(host) end
     if ns.SumSide then ns.SumSide.Watch("raid", host, function() Render() end) end
@@ -230,6 +282,7 @@ end
 function View.Show(raid)
     if not host or not raid then return end
     if shownKey ~= raid.key then offset = 0 end
+    if shownKey ~= raid.key or not host:IsShown() then ns.RaidSummary.Retry(raid) end
     shownKey = raid.key
     host:Show()
     Render()
@@ -246,6 +299,13 @@ function View.Details()
     local out = {}
     for i = 1, #panels do
         if panels[i]:IsShown() then out[#out + 1] = panels[i] end
+    end
+    return out
+end
+function View.Tiles()
+    local out = {}
+    for i = 1, #tiles do
+        if tiles[i]:IsShown() then out[#out + 1] = tiles[i] end
     end
     return out
 end

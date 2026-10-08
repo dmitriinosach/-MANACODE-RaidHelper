@@ -175,7 +175,8 @@ local function IconEnter(b)
         if rng then ns.Kit.TipAdd(format(ns.T("panel.rng"), rng, ns.Plural(rng, ns.T("panel.rng.n"))), "badge.yellow", true) end
         local _, frac, text = ns.Jobs.State()
         if frac and text then
-            local r, g, bl = ns.Kit.Color("progress.fill")
+            local c = ns.Kit.GameColor("progress.fill")
+            local r, g, bl = c[1], c[2], c[3]
             GameTooltip:AddLine(format(ns.T("job.tip"), text, floor(frac * 100)), r, g, bl, true)
         end
     end

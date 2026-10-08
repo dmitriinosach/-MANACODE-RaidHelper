@@ -147,6 +147,9 @@ S.Section("rec", "what", {
           get = function() return Opt().autoParty end, set = function(on) SetRec("autoParty", on) end },
         { kind = "check", key = "all", label = "set.rec.all", tip = "set.rec.all.tip",
           get = function() return Opt().recAll == true end, set = function(on) SetRec("recAll", on) end },
+        { kind = "choice", key = "mana", buttons = true, label = "set.rec.mana", tip = "set.rec.mana.tip",
+          default = "heal", options = function() return Keys(ns.RecMana.MODES, "set.rec.mana.") end,
+          get = function() return ns.RecMana.Mode() end, set = function(k) ns.RecMana.SetMode(k) end },
     },
 })
 local mbLo, mbHi, mbDef = ns.Store.LimitRange()

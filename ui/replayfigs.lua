@@ -72,7 +72,7 @@ local MC_K = 1.3
 local MC_BODY = "sem.rep.mcBody"
 local MC_DISC = 1.3
 local GROW_TIME = 0.2
-local Figs = { KINDS = KINDS, ARC_N = ARC_N }
+local Figs = { KINDS = KINDS, ARC_N = ARC_N, ARC_TEX = ARC_TEX }
 ns.ReplayFigs = Figs
 local Kit = ns.Kit
 local st = { kind = "chip", hp = true, arcOk = true, px = 1 }
@@ -166,6 +166,7 @@ local function ArcFrame(tex, f)
     tex:SetTexCoord((col * ARC_F + ARC_IN) / ARC_W, ((col + 1) * ARC_F - ARC_IN) / ARC_W,
         (row * ARC_F + ARC_IN) / ARC_H, ((row + 1) * ARC_F - ARC_IN) / ARC_H)
 end
+Figs.ArcFrame = ArcFrame
 function Figs.ArcOf(hp)
     return max(1, min(ARC_N, ceil(hp * ARC_N - 1e-6)))
 end
@@ -384,7 +385,7 @@ end
 local function Dead(fig, inner, flat)
     Put(fig.icon, fig, inner, inner * flat, 0, 0)
     if not fig.icon:SetDesaturated(true) then Kit.Hue(fig.icon, "sem.rep.gone") end
-    fig.top, fig.hy = inner * flat / 2, 0
+    fig.top, fig.hy, fig.under = inner * flat / 2, 0, nil
     fig.pctWant = false
     BadgesOver(fig, false)
 end
@@ -436,6 +437,7 @@ local function DrawVol(fig, dead, scale, flat, lift, hp)
         end
     end
     fig.top, fig.hy = top, cy
+    fig.under, fig.uw = cy - plate / 2, plate
     PlacePct(fig, top, false)
 end
 local function Draw(fig, dead, scale, flat, lift, hp)
@@ -488,6 +490,7 @@ local function Draw(fig, dead, scale, flat, lift, hp)
     Put(fig.icon, fig, inner * fit, inner * fit * flat, 0, cy)
     Alive(fig)
     fig.top, fig.hy = cy + d * flat / 2, cy
+    fig.under, fig.uw = cy - d * flat / 2, d
     PlacePct(fig, chip and cy or fig.top, chip)
 end
 function Figs.Sprite(fig, s, scale, flat, elapsed)

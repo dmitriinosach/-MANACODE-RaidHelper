@@ -28,6 +28,7 @@ local paintA = setmetatable({}, WEAK)
 local tintKey = setmetatable({}, WEAK)
 local tintA = setmetatable({}, WEAK)
 local textKey = setmetatable({}, WEAK)
+local haloKey = setmetatable({}, WEAK)
 local skinKey = setmetatable({}, WEAK)
 local function Saved()
     local db = ns.GetDB and ns.GetDB()
@@ -35,22 +36,32 @@ local function Saved()
     if type(s) == "table" then return s end
     return nil
 end
-local function Flatten(t, prefix)
+local function Flatten(t, prefix, into)
+    into = into or C
     for k, v in pairs(t) do
         if type(k) == "string" and type(v) == "table" then
             local token = prefix and (prefix .. "." .. k) or k
             if type(v[1]) == "number" then
-                local dst = C[token]
+                local dst = into[token]
                 if not dst then
                     dst = {}
-                    C[token] = dst
+                    into[token] = dst
                 end
                 dst[1], dst[2], dst[3], dst[4] = v[1], v[2], v[3], v[4]
             elseif v[1] == nil and v.bgFile == nil and v.edgeFile == nil then
-                Flatten(v, token)
+                Flatten(v, token, into)
             end
         end
     end
+end
+local G
+function Kit.GameColor(token)
+    if not Kit.themes[current].light then return C[token] or WHITE end
+    if not G then
+        G = {}
+        Flatten(Kit.themes[Kit.DEFAULT or "dark"], nil, G)
+    end
+    return G[token] or WHITE
 end
 function Kit.Theme()
     return Kit.themes[current]
@@ -106,8 +117,14 @@ function Kit.Tint(tex, token, a)
     local c = C[token]
     if c then tex:SetVertexColor(c[1], c[2], c[3], a or c[4] or 1) end
 end
+function Kit.Halo(fs)
+    haloKey[fs] = true
+    local h = C["text.halo"]
+    if h and fs.SetShadowColor then fs:SetShadowColor(h[1], h[2], h[3], h[4] or 1) end
+end
 function Kit.Text(fs, token)
     textKey[fs] = token
+    Kit.Halo(fs)
     local c = C[token]
     if c then fs:SetTextColor(c[1], c[2], c[3], c[4] or 1) end
 end
@@ -116,6 +133,7 @@ function Kit.Title(fs)
 end
 function Kit.Tone(fs, token)
     textKey[fs] = nil
+    Kit.Halo(fs)
     local c = C[token]
     if c then fs:SetTextColor(c[1], c[2], c[3], c[4] or 1) end
 end
@@ -130,7 +148,7 @@ function Kit.Hue(tex, token, a)
     if c then tex:SetVertexColor(c[1], c[2], c[3], a or c[4] or 1) end
 end
 function Kit.TipAdd(text, token, wrap)
-    local c = C[token] or WHITE
+    local c = Kit.GameColor(token)
     GameTooltip:AddLine(text, c[1], c[2], c[3], wrap)
 end
 function Kit.Hex(token)
@@ -176,13 +194,16 @@ function Kit.PlainFrame(parent, level)
     f:SetFrameLevel(parent:GetFrameLevel() + (level or 1))
     return f
 end
-function Kit.ClassColor(token)
+function Kit.ClassColor(token, raw)
+    local own = not raw and token and Kit.themes[current].light and C["cls." .. token]
+    if own then return own[1], own[2], own[3] end
     local c = token and RAID_CLASS_COLORS and RAID_CLASS_COLORS[token]
     if c then return c.r, c.g, c.b end
     return 1, 1, 1
 end
 function Kit.ClassText(fs, token)
     textKey[fs] = nil
+    Kit.Halo(fs)
     fs:SetTextColor(Kit.ClassColor(token))
 end
 function Kit.Sound(kind)
@@ -201,6 +222,12 @@ function Kit.Repaint()
     for fs, token in pairs(textKey) do
         local c = C[token]
         if c then fs:SetTextColor(c[1], c[2], c[3], c[4] or 1) end
+    end
+    local h = C["text.halo"]
+    if h then
+        for fs in pairs(haloKey) do
+            if fs.SetShadowColor then fs:SetShadowColor(h[1], h[2], h[3], h[4] or 1) end
+        end
     end
     local t = Kit.Theme()
     for f, group in pairs(skinKey) do
@@ -222,6 +249,10 @@ end
 local ART_DIR = "Interface\\Glues\\LoadingScreens\\"
 local ART_FROM = 0.31
 local ART_TO = 0.86
+local arts = setmetatable({}, WEAK)
+local function Sketch(art)
+    art.pic:SetDesaturated(Kit.Theme().light and true or false)
+end
 function Kit.RaidArt(host)
     local art = { pic = host:CreateTexture(nil, "BORDER"), veil = host:CreateTexture(nil, "ARTWORK") }
     art.pic:SetAllPoints()
@@ -230,6 +261,8 @@ function Kit.RaidArt(host)
     art.veil:SetAllPoints()
     Kit.Paint(art.veil, "float.veil")
     art.veil:Hide()
+    arts[art] = true
+    Sketch(art)
     return art
 end
 function Kit.RaidArtFit(art, host)
@@ -257,6 +290,7 @@ function Kit.RaidArtSet(art, host, file)
     if art.file ~= file then
         art.file = file
         art.pic:SetTexture(ART_DIR .. file)
+        Sketch(art)
     end
     Kit.RaidArtFit(art, host)
     art.pic:Show()
@@ -275,4 +309,7 @@ function Kit.Load()
     Kit.Repaint()
 end
 Flatten(Kit.themes[current], nil)
+Kit.OnTheme(function()
+    for art in pairs(arts) do Sketch(art) end
+end)
 if ns.OnReady then ns.OnReady(Kit.Load) end

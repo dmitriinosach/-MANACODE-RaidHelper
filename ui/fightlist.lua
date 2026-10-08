@@ -37,6 +37,8 @@ local RAIDR = 7
 local OKSZ = 11
 local TIPMAX = 10
 local OKX = -6
+local UBSZ = 12
+local UBGAP = 3
 local DOT = 4
 local DOTGAP = 2
 local DOTS = 5
@@ -45,11 +47,14 @@ local NAVBTN = 18
 local NAVGAP = 4
 local PLAYSZ = 10
 local PLAYW = PLAYSZ + 4
+local DELSZ = 9
+local DELHIT = 12
 local LFG = "Interface\\LFGFrame\\LFGIcon-"
 local SKULL = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8"
 local READY = "Interface\\RAIDFRAME\\ReadyCheck-Ready"
 local NOTREADY = "Interface\\RAIDFRAME\\ReadyCheck-NotReady"
 local CLASS_TEX = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
+local DEL_TEX = "Interface\\RaidFrame\\ReadyCheck-NotReady"
 local MAP_ICON = {
     IcecrownCitadel = LFG .. "IcecrownCitadel",
     TheRubySanctum = LFG .. "RubySanctum",
@@ -154,7 +159,7 @@ local function Fill(tex, token, a)
     tex:SetTexture(r, g, b, a or ca)
 end
 local function RaidName(raid)
-    return raid.name or ns.T("raid.none")
+    return ns.Raid.Title(raid)
 end
 local function Folds()
     local ui = ns.GetDB().settings.ui
@@ -179,14 +184,19 @@ end
 local function Outcome(f)
     return format(ns.T(f.killed and "fl.tip.try.win" or "fl.tip.try.wipe"), Clock(f.to - f.from))
 end
+local function DelShade(row, over)
+    if row.del then row.del:SetAlpha((over or row.picked) and 1 or 0) end
+end
 local function OnEnter(self)
     self.hover:Show()
+    DelShade(self, true)
     if self.mark then self.mark:Show() end
     local build = Tips[self.kind]
     if build then ns.Tip.Show(self, build(self)) end
 end
 local function OnLeave(self)
     self.hover:Hide()
+    DelShade(self, false)
     if self.mark and not self.picked then self.mark:Hide() end
     ns.Tip.Hide()
 end
@@ -218,12 +228,14 @@ end
 local function WipesEnter(self)
     local row = self.row
     row.hover:Show()
+    DelShade(row, true)
     local enc = row.line.enc
     local key = openEnc == enc.key and "fl.tip.wipes.fold" or "fl.tip.wipes.open"
     ns.Tip.Show(self, { Line(format(ns.T(key), ns.FightTree.Wipes(enc))) })
 end
 local function WipesLeave(self)
     self.row.hover:Hide()
+    DelShade(self.row, false)
     ns.Tip.Hide()
 end
 local function WipesClick(self)
@@ -269,11 +281,13 @@ local function FoldClick(self)
 end
 local function FoldEnter(self)
     self.row.hover:Show()
+    DelShade(self.row, true)
     local line = self.row.line
     ns.Tip.Show(self, { Line(ns.T(Folded(line.raid, line.index) and "fl.tip.raid.open" or "fl.tip.raid.fold")) })
 end
 local function FoldLeave(self)
     self.row.hover:Hide()
+    DelShade(self.row, false)
     ns.Tip.Hide()
 end
 local function OnEnc(row, button)
@@ -282,6 +296,48 @@ local function OnEnc(row, button)
         return
     end
     Open(ns.FightTree.Decisive(row.line.enc))
+end
+local function DelEnter(self)
+    self.row.hover:Show()
+    self:SetAlpha(1)
+    Kit.Tint(self.tex, "sem.wipe")
+    ns.Tip.Show(self, { Line(ns.T("fl.del.tip")) })
+end
+local function DelLeave(self)
+    self.row.hover:Hide()
+    Kit.Tint(self.tex, "text.bad")
+    DelShade(self.row, false)
+    ns.Tip.Hide()
+end
+local function DelClick(self)
+    ns.Tip.Hide()
+    local line = self.row.line
+    if line.kind == "raid" then
+        Del.AskRaid(line.raid)
+    elseif line.kind == "enc" then
+        Del.AskEnc(line.enc)
+    elseif line.fight then
+        Del.AskTry(line.fight, line.n)
+    end
+end
+local function DelButton(r)
+    local b = CreateFrame("Button", nil, r)
+    b:SetWidth(DELHIT)
+    b:SetHeight(DELHIT)
+    b:RegisterForClicks("LeftButtonUp")
+    b.row = r
+    b.tex = b:CreateTexture(nil, "ARTWORK")
+    b.tex:SetWidth(DELSZ)
+    b.tex:SetHeight(DELSZ)
+    b.tex:SetPoint("CENTER")
+    b.tex:SetTexture(DEL_TEX)
+    Kit.Tint(b.tex, "text.bad")
+    b:SetScript("OnEnter", DelEnter)
+    b:SetScript("OnLeave", DelLeave)
+    b:SetScript("OnClick", DelClick)
+    b:SetAlpha(0)
+    r.del = b
+    return b
 end
 local function RaidRow()
     local r = NewRow(treeBox, "raid", COLW, RAIDH)
@@ -320,6 +376,7 @@ local function RaidRow()
     r.fold:SetHeight(FOLDSZ + 2)
     r.fold:SetPoint("CENTER")
     Kit.Tint(r.fold, "text.title")
+    DelButton(r):SetPoint("RIGHT", r.foldBtn, "LEFT", 0, 0)
     r.name = Label(r, "GameFontNormalSmall", 12)
     r.name:SetPoint("TOPLEFT", FOLDX, TEXTTOP)
     Kit.Text(r.name, "text.title")
@@ -356,6 +413,9 @@ local function EncRow()
     r.ok:SetWidth(OKSZ)
     r.ok:SetHeight(OKSZ)
     r.ok:SetPoint("RIGHT", OKX, 0)
+    DelButton(r):SetPoint("RIGHT", r.ok, "LEFT", 0, 0)
+    r.ub = Kit.Unbuff(r, UBSZ)
+    r.ub:SetPoint("RIGHT", r.del, "LEFT", -UBGAP, 0)
     local w = CreateFrame("Button", nil, r)
     w:SetHeight(ENCH)
     w:RegisterForClicks("LeftButtonUp")
@@ -381,6 +441,7 @@ local function WipeRow()
     r.name:SetPoint("LEFT", ENCNAME, 0)
     r.play = ns.ReplayLink.Mini(r, PLAYSZ)
     r.play:SetPoint("RIGHT", -2, 0)
+    DelButton(r):SetPoint("RIGHT", r.play, "LEFT", 0, 0)
     r.onClick = OnWipe
     r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     return r
@@ -407,25 +468,34 @@ local function PaintRaid(r, line)
     Kit.Icon.Fold(r.fold, not Folded(raid, line.index))
     local on = RaidShown(raid)
     r.picked = on
+    DelShade(r)
     if on then r.mark:Show() else r.mark:Hide() end
     Kit.Text(r.name, on and "sem.pick" or "text.title")
     r.score:SetText(format("%d/%d", raid.passed, raid.total))
     Tone(r.score, raid.passed > 0 and "sem.win" or "sem.wipe")
     Fit(r.name, RaidName(raid), rowW - TEXTX - RAIDR - r.score:GetStringWidth() - 6)
-    Fit(r.info, When(raid), rowW - FOLDX - RAIDR)
+    Fit(r.info, When(raid), rowW - FOLDX - (RAIDR - 4) - FOLDHIT - DELHIT - 2)
 end
 local function PaintEnc(r, line, spot)
     local enc = line.enc
     local on = spot and spot.enc == enc
+    r.picked = on and true or false
+    DelShade(r)
     Fill(r.stripe, enc.passed and "sem.win" or "sem.wipe")
     r.ok:SetTexture(enc.passed and READY or NOTREADY)
     if on then Kit.Paint(r.bg, "sem.pick", 0.14) else Kit.Paint(r.bg, "sem.enc") end
+    local unbuff = enc.passed and ns.ZoneBuff and ns.ZoneBuff.Unbuffed(ns.FightTree.Decisive(enc))
+    if unbuff then r.ub:Show() else r.ub:Hide() end
+    local base = DOTX + DELHIT + (unbuff and UBSZ + UBGAP or 0)
     local wipes = ns.FightTree.Wipes(enc)
     local dots = wipes > DOTS and 1 or wipes
     for i = 1, DOTS do
-        if i <= dots then r.dots[i]:Show() else r.dots[i]:Hide() end
+        local d = r.dots[i]
+        d:ClearAllPoints()
+        d:SetPoint("RIGHT", -(base + (i - 1) * (DOT + DOTGAP)), 0)
+        if i <= dots then d:Show() else d:Hide() end
     end
-    local right = DOTX + dots * (DOT + DOTGAP)
+    local right = base + dots * (DOT + DOTGAP)
     r.count:ClearAllPoints()
     if wipes > DOTS then
         r.count:SetText(tostring(wipes))
@@ -437,8 +507,8 @@ local function PaintEnc(r, line, spot)
     local w = r.wipes
     if wipes > 0 then
         w:ClearAllPoints()
-        w:SetPoint("RIGHT", -(DOTX - DOTGAP), 0)
-        w:SetWidth(right - DOTX + DOTGAP * 2)
+        w:SetPoint("RIGHT", -(base - DOTGAP), 0)
+        w:SetWidth(right - base + DOTGAP * 2)
         w:Show()
     else
         w:Hide()
@@ -453,11 +523,13 @@ end
 local function PaintWipe(r, line)
     local f = line.fight
     local on = f == fight
+    r.picked = on
+    DelShade(r)
     if on then Kit.Paint(r.bg, "sem.pick", 0.14) else Kit.Paint(r.bg, "sem.enc") end
     Fill(r.stripe, "sem.wipe")
     r.play.fight = f
     Fit(r.name, format(ns.T("fl.wipe.row"), line.n, ns.T("fl.wipe"), Clock(f.to - f.from), f.deaths or 0,
-        Hour(f.from)), rowW - WIPEX - ENCNAME - 4 - PLAYW)
+        Hour(f.from)), rowW - WIPEX - ENCNAME - 4 - PLAYW - DELHIT)
     Tone(r.name, on and "sem.pick" or "text.secondary")
 end
 local function AddWipes(out, enc)
@@ -646,8 +718,10 @@ local function Cell(index)
     c.plate.fill:SetPoint("BOTTOMRIGHT", -1, 1)
     Kit.Paint(c.plate.fill, "sem.fault")
     c.plate.text = Label(c.plate, "GameFontHighlightSmall", 12, "CENTER")
+    Kit.Text(c.plate.text, "text.bright")
     c.plate.text:SetPoint("CENTER", 0, 0)
     c.dead = Label(c, "GameFontHighlightSmall", 12, "RIGHT")
+    Kit.Text(c.dead, "text.bright")
     c.onClick = OnPlayer
     cells[index] = c
     return c
@@ -788,6 +862,7 @@ local function AttachNav(host, title, status)
     navPrev = NavButton("<", "fl.nav.prev", -1)
     navPrev:SetPoint("LEFT", 0, 0)
     navNo = Label(nav, "GameFontHighlightSmall", 12, "CENTER")
+    Kit.Text(navNo, "text.bright")
     navNo:SetPoint("LEFT", navPrev, "RIGHT", NAVGAP, 0)
     navNext = NavButton(">", "fl.nav.next", 1)
     navNext:SetPoint("LEFT", navNo, "RIGHT", NAVGAP, 0)
@@ -829,6 +904,9 @@ Tips.enc = function(r)
         Line(format(ns.T(enc.passed and "fl.tip.enc.pass" or "fl.tip.enc.fail"), n, ns.FightTree.Wipes(enc)),
             enc.passed and "sem.win" or "sem.wipe"),
     }
+    if enc.passed and ns.ZoneBuff and ns.ZoneBuff.Unbuffed(ns.FightTree.Decisive(enc)) then
+        out[#out + 1] = Line(ns.T("zb.kill"), "tip.body")
+    end
     local from = max(1, n - TIPMAX + 1)
     if from > 1 then out[#out + 1] = Line(format(ns.T("fl.tip.more"), from - 1), "tip.dim") end
     for i = from, n do
@@ -980,6 +1058,7 @@ function FL.Attach(parent, x, y, title, status)
     side:SetWidth(COLW)
     side:SetPoint("TOPLEFT", x, -y)
     local head = Label(side, "GameFontNormalSmall", 12)
+    Kit.Text(head, "text.title")
     head:SetPoint("TOPLEFT", 0, -2)
     head:SetText(ns.T("fl.raids"))
     local hint = NewRow(side, "head", WIDTH / 2, HEADH)
@@ -997,8 +1076,10 @@ function FL.Attach(parent, x, y, title, status)
         DrawTree()
     end)
     playerHead = Label(side, "GameFontNormalSmall", 12)
+    Kit.Text(playerHead, "text.title")
     playerHead:SetText(ns.T("tl.players"))
     playerCtx = Label(side, "GameFontHighlightSmall", 12)
+    Kit.Text(playerCtx, "text.bright")
     playerCtx:SetPoint("LEFT", playerHead, "RIGHT", 6, 0)
     playerBox = CreateFrame("Frame", nil, side)
     playerBox:SetWidth(COLW)

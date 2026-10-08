@@ -12,7 +12,8 @@ local TIMES = 4
 local LINKS = 4
 local GUARD = 10
 local DEATHS_MAX = 4
-local GAP = 0.5
+local GAP = 0.3
+local BURST = 6
 local DUP = 4
 local QUEUE = 32
 local STEP = 8
@@ -28,11 +29,11 @@ ns.Proof = Proof
 Proof.LIMIT = LIMIT
 Proof.TAG = TAG
 Proof.GAP = GAP
+Proof.BURST = BURST
 Proof.DUP = DUP
 Proof.CHANNELS = CHANNELS
 local queue = {}
 local sentAt = {}
-local nextAt = 0
 local pump = CreateFrame("Frame")
 pump:Hide()
 local function T(key)
@@ -551,18 +552,27 @@ function Proof.Route(want, target)
     end
     return "SAY", nil, nil
 end
+local tokens, filledAt = BURST, 0
+local function Refill(now)
+    tokens = math.min(BURST, tokens + (now - filledAt) / GAP)
+    filledAt = now
+end
 local function SendOne()
     local m = tremove(queue, 1)
     if not m then return end
     SendChatMessage(m.text, m.chat, nil, m.target)
-    nextAt = GetTime() + GAP
+    tokens = tokens - 1
+end
+local function Drain()
+    Refill(GetTime())
+    while queue[1] and tokens >= 1 do SendOne() end
 end
 pump:SetScript("OnUpdate", ns.Prof.Wrap("bg.proof", function(self)
     if not queue[1] then
         self:Hide()
         return
     end
-    if GetTime() >= nextAt then SendOne() end
+    Drain()
 end))
 function Proof.Pending()
     return #queue
@@ -594,7 +604,7 @@ function Proof.SendLines(msgs, want, target, pre)
     sentAt[key] = now
     if chat ~= want then ns.Print(format(T(pre .. ".fallback"), Proof.Label(want), Proof.Label(chat))) end
     for i = 1, #msgs do queue[#queue + 1] = { text = msgs[i], chat = chat, target = to } end
-    if now >= nextAt then SendOne() end
+    Drain()
     if queue[1] then pump:Show() end
     return #msgs, nil
 end

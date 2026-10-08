@@ -594,6 +594,7 @@ local function BuildHead()
     subText:SetJustifyH("RIGHT")
     Kit.Text(subText, "sem.stat.dps")
     titleText = head:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    Kit.Text(titleText, "text.title")
     titleText:SetPoint("LEFT", pickBtn, "RIGHT", 2, 0)
     titleText:SetPoint("RIGHT", subText, "LEFT", -6, 0)
     titleText:SetJustifyH("LEFT")
@@ -601,23 +602,14 @@ local function BuildHead()
     titleBy = "sub"
 end
 local function BuildGrip()
-    grip = CreateFrame("Button", nil, frame)
-    grip:SetWidth(GRIP)
-    grip:SetHeight(GRIP)
+    grip = Kit.Grip(frame, GRIP)
     grip:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2, 2)
     grip:SetFrameLevel(frame:GetFrameLevel() + 5)
-    local tex = grip:CreateTexture(nil, "OVERLAY")
-    tex:SetAllPoints()
-    tex:SetTexture(Kit.Theme().window.gripTex)
-    Kit.Tint(tex, "window.grip")
-    grip.tex = tex
     grip.tipTitle = ns.T("iso.tip.grip")
-    grip:SetScript("OnEnter", function(self) Kit.TipShow(self) end)
-    grip:SetScript("OnLeave", function() Kit.TipHide() end)
-    grip:SetScript("OnMouseDown", function(_, button)
+    grip.onDown = function(_, button)
         if button == "LeftButton" then frame:StartSizing("BOTTOMRIGHT") end
-    end)
-    grip:SetScript("OnMouseUp", function() Mini.SavePlace() end)
+    end
+    grip.onUp = function() Mini.SavePlace() end
 end
 local function Build()
     local p = Saved()

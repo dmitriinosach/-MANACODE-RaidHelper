@@ -8,8 +8,9 @@ local LINE = 24
 local CAP_W = 62
 local BAR_W = 6
 local NUM_H = 10
+local GAP = 8
 local HILITE = "Interface\\Buttons\\ButtonHilight-Square"
-local area, bar
+local area, bar, meter
 local cells, caps = {}, {}
 local lines = {}
 local offset, visible = 0, 0
@@ -36,7 +37,32 @@ local function buffTip(c, it)
         out[#out + 1] = ns.T("rbSrc", name, treeName(s.def.cls, s.def.tree), who)
     end
     if #it.unsure > 0 then out[#out + 1] = ns.T("rbUnsure", named(it.unsure)) end
-    if def.bless then out[#out + 1] = ns.T("rbPals", it.pals) end
+    c.tip = table.concat(out, "\n")
+    c.tipDim = nil
+end
+local function groupTone(g)
+    if g.closed >= g.need then return "sem.ready" end
+    return g.closed > 0 and "text.warn" or "sem.notReady"
+end
+local function groupText(g)
+    return ns.T("rbGrp_" .. g.def.key) .. " " .. ns.Hex(groupTone(g)) .. g.closed .. "/" .. g.need .. "|r"
+end
+local function groupTip(c, g)
+    c.tipTitle = ns.T("rbGrp_" .. g.def.key)
+    local out = { ns.T("rbGrpClosed", g.closed, g.need) }
+    for _, it in ipairs(g.items) do
+        local key = it.def.key
+        local head = ns.Hex(it.closed and "sem.ready" or "text.muted") .. ns.T("rb_" .. key) .. "|r"
+        if it.def.fx then head = head .. ": " .. ns.T("rbFx_" .. key) end
+        out[#out + 1] = head
+        for _, s in ipairs(it.src) do
+            local name = ns.Compat.SpellName(ns.Buffs.SpellOf(s.def)) or "?"
+            local who = #s.who > 0 and named(s.who) or (ns.Hex("text.muted") .. ns.T("rbNone") .. "|r")
+            out[#out + 1] = "  " .. ns.T("rbSrc", name, treeName(s.def.cls, s.def.tree), who)
+        end
+    end
+    if #g.unsure > 0 then out[#out + 1] = ns.T("rbUnsure", named(g.unsure)) end
+    if g.def.bless then out[#out + 1] = ns.T("rbPals", g.pals) end
     c.tip = table.concat(out, "\n")
     c.tipDim = nil
 end
@@ -114,7 +140,18 @@ local function dim(c, on, alpha)
     c.icon:SetDesaturated(on)
     c.icon:SetAlpha(alpha)
 end
+local function fillGroup(c, g)
+    ns.Kit.Icon.Spell(c.icon, ns.Buffs.SpellOf(g.items[1].def.src[1]))
+    if g.closed > 0 then dim(c, false, 1) else dim(c, true, 0.6) end
+    c.num:Hide()
+    c.box:Hide()
+    c.side:SetText(groupText(g))
+    ns.PaintText(c.side, "text.primary")
+    c.side:Show()
+    groupTip(c, g)
+end
 local function fillBuff(c, it)
+    if it.group then return fillGroup(c, it) end
     ns.Kit.Icon.Spell(c.icon, ns.Buffs.SpellOf(it.def.src[1]))
     if it.have > 0 then
         dim(c, false, 1)
@@ -155,19 +192,31 @@ local function fillUnknown(c, list)
     c.tip = named(list)
     c.tipDim = nil
 end
-local function addRow(cap, list, w, fill)
+local function clusterOf(v)
+    return v.def.cls or v.def.src[1].cls
+end
+local function buffWidth(v)
+    if not v.group then return CELL end
+    meter:SetText(groupText(v))
+    return math.max(WIDE, ICON + 8 + math.ceil(meter:GetStringWidth() or 0))
+end
+local function addRow(cap, list, w, fill, cluster)
     local room = width - CAP_W - BAR_W - 4
     local line = { cap = cap, items = {} }
     lines[#lines + 1] = line
-    local x = 0
+    local x, last = 0, nil
     for _, v in ipairs(list) do
-        if x + w > room and #line.items > 0 then
+        local vw = type(w) == "function" and w(v) or w
+        local key = cluster and cluster(v)
+        local gap = (key and last and key ~= last) and GAP or 0
+        if x + gap + vw > room and #line.items > 0 then
             line = { items = {} }
             lines[#lines + 1] = line
-            x = 0
+            x, gap = 0, 0
         end
-        line.items[#line.items + 1] = { v = v, w = w, fill = fill }
-        x = x + w
+        line.items[#line.items + 1] = { v = v, w = vw, fill = fill, gap = gap }
+        x = x + gap + vw
+        last = key
     end
     return line
 end
@@ -175,7 +224,7 @@ local function collect()
     for i = #lines, 1, -1 do lines[i] = nil end
     local list = ns.Buffs.Members()
     for _, row in ipairs(ns.Buffs.Rows(list)) do
-        addRow(ns.T("rbRow_" .. row.key), row.items, CELL, fillBuff)
+        addRow(ns.T("rbRow_" .. row.key), row.items, buffWidth, fillBuff, clusterOf)
     end
     local comp = ns.Buffs.Comp(list)
     addRow(ns.T("rbRowTpl"), comp.reqs, WIDE, fillReq)
@@ -205,6 +254,7 @@ local function draw()
         end
         local x = CAP_W
         for _, e in ipairs(line.items) do
+            x = x + (e.gap or 0)
             used = used + 1
             local c = cells[used] or newCell(used)
             c:SetWidth(e.w)
@@ -239,6 +289,8 @@ local function build(pane)
     bar = ns.Kit.ScrollBar(area, LINE)
     bar:SetPoint("TOPRIGHT", area, "TOPRIGHT", 0, 0)
     bar.onScroll = scrollTo
+    meter = area:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    meter:Hide()
     built = true
 end
 local function place(pane, top, w, h)

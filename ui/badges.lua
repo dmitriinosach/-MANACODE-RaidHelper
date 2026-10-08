@@ -13,6 +13,8 @@ local TOTAL_L = 10
 local TOTAL_R = 8
 local SUBGAP = 6
 local SUBMIN = 24
+local UNBUFF = 16
+local UNBUFF_EDGE = 6
 local LINES = 7
 local LINEH = 14
 local EXPAND = 12
@@ -63,8 +65,9 @@ local lit = {}
 local dimmed = {}
 local skinned = {}
 local function ClassRGB(class)
-    local cc = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
-    if cc then return cc.r, cc.g, cc.b end
+    if class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class] then
+        return ns.Kit.ClassColor(class)
+    end
     return style.noClass[1], style.noClass[2], style.noClass[3]
 end
 local function Edge(f, c)
@@ -173,12 +176,15 @@ function Badges.Total(parent)
     f.title:SetPoint("TOPLEFT", TOTAL_L, -6)
     OneLine(f.title)
     f.value = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+    ns.Kit.Text(f.value, "text.bright")
     f.value:SetPoint("BOTTOMLEFT", TOTAL_L, 7)
     OneLine(f.value)
     f.sub = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    ns.Kit.Text(f.sub, "text.off")
     f.sub:SetPoint("BOTTOMLEFT", f.value, "BOTTOMRIGHT", SUBGAP, 1)
     OneLine(f.sub)
     f.subTop = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    ns.Kit.Text(f.subTop, "text.off")
     f.subTop:SetPoint("BOTTOMLEFT", f.sub, "TOPLEFT", 0, 0)
     OneLine(f.subTop)
     f:SetScript("OnEnter", ShowLines)
@@ -189,6 +195,13 @@ function Badges.Total(parent)
         self.model = m
         self.title:SetText(m.title)
         self.title:SetTextColor(c[1], c[2], c[3])
+        if m.unbuff and not self.unbuff then
+            self.unbuff = ns.Kit.Unbuff(self, UNBUFF)
+            self.unbuff:SetPoint("TOPRIGHT", -UNBUFF_EDGE, -UNBUFF_EDGE)
+        end
+        if self.unbuff then
+            if m.unbuff then self.unbuff:Show() else self.unbuff:Hide() end
+        end
         self.lines = m.lines
         self:EnableMouse(m.lines ~= nil)
     end
@@ -199,7 +212,7 @@ function Badges.Total(parent)
         if not m then return TOTALH end
         local inner = width - TOTAL_L - TOTAL_R
         local parts = SubParts(m)
-        local _, cutTitle = Fit(self.title, m.title, inner)
+        local _, cutTitle = Fit(self.title, m.title, inner - (m.unbuff and UNBUFF + UNBUFF_EDGE or 0))
         local vw, cutValue = Fit(self.value, m.value, inner)
         local room = inner - vw - SUBGAP
         if room < SUBMIN then room = 0 end
@@ -389,16 +402,18 @@ local function DrawRows(f)
     end
     if f.onDraw then f.onDraw(f) end
 end
-local function PageFirst(self, delta)
-    return not self.modal and self.onWheel ~= nil and self.onWheel(delta) == true
-end
-local function DetailWheel(self, delta)
-    if PageFirst(self, delta) then return end
+local function OwnRows(self, delta)
     local most = max(0, #self.list - self.lineCount)
     local want = (self.offset or 0) - delta
-    if most == 0 or want < 0 or want > most then return end
+    if most == 0 or want < 0 or want > most then return false end
     self.offset = want
-    DrawRows(self)
+    return true
+end
+local function ToPage(self, delta)
+    if not self.modal and self.onWheel then self.onWheel(delta) end
+end
+local function DetailWheel(self, delta)
+    if OwnRows(self, delta) then DrawRows(self) else ToPage(self, delta) end
 end
 local function NewDetailRow(f, k)
     local row = CreateFrame("Frame", nil, f)
@@ -419,6 +434,7 @@ local function NewDetailRow(f, k)
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
     row.val = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ns.Kit.Text(row.val, "text.bright")
     row.val:SetPoint("RIGHT", -2, 0)
     row.val:SetHeight(LINEH)
     row.val:SetJustifyH("RIGHT")
@@ -454,6 +470,7 @@ function Badges.Detail(parent, modal)
     f.title:SetJustifyV("TOP")
     f.title:SetWordWrap(false)
     f.more = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    ns.Kit.Text(f.more, "text.off")
     f.more:SetPoint("TOPRIGHT", -8, -6)
     f.head = CreateFrame("Frame", nil, f)
     f.head:SetPoint("TOPLEFT", 0, 0)
@@ -675,10 +692,12 @@ function Badges.Personal(parent)
     t.name:SetPoint("LEFT", t.cls, "RIGHT", 5, 0)
     OneLine(t.name)
     t.value = t:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    ns.Kit.Text(t.value, "text.title")
     t.value:SetPoint("TOPRIGHT", -PERSONAL_R, -6)
     OneLine(t.value)
     t.value:SetJustifyH("RIGHT")
     t.sub = t:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    ns.Kit.Text(t.sub, "text.off")
     t.sub:SetPoint("TOPRIGHT", -PERSONAL_R, -22)
     OneLine(t.sub)
     t.sub:SetJustifyH("RIGHT")
@@ -1076,12 +1095,7 @@ local function DrawWide(f)
     if f.onDraw then f.onDraw(f) end
 end
 local function WideWheel(self, delta)
-    if PageFirst(self, delta) then return end
-    local most = max(0, #self.list - self.lineCount)
-    local want = (self.offset or 0) - delta
-    if most == 0 or want < 0 or want > most then return end
-    self.offset = want
-    DrawWide(self)
+    if OwnRows(self, delta) then DrawWide(self) else ToPage(self, delta) end
 end
 local function Resort(f)
     WideOrder(f)
@@ -1143,6 +1157,7 @@ function Badges.Wide(parent, modal)
     f.title:SetJustifyV("TOP")
     f.title:SetWordWrap(false)
     f.more = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    ns.Kit.Text(f.more, "text.off")
     f.more:SetPoint("TOPRIGHT", -8, -6)
     f.head = CreateFrame("Frame", nil, f)
     f.head:SetPoint("TOPLEFT", 0, 0)

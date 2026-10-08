@@ -7,17 +7,20 @@ local MIN_W = 696
 local MIN_H = 420
 local MARGIN = 24
 local GRIP = 16
-local MAX_BTN = 32
+local MAX_EDGE = 8
+local BTN = 20
+local CLOSE = 28
+local CLOSE_EDGE = 5
+local SIDE = 12
+local BTN_GAP = 2
+local CAPTION_GAP = 8
 local STRIP_W = 320
 local TITLE_LEVEL = 2
 local BTN_LEVEL = 4
-local BIGGER = "Interface\\Buttons\\UI-Panel-BiggerButton-"
-local SMALLER = "Interface\\Buttons\\UI-Panel-SmallerButton-"
-local HILITE = "Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight"
-local Size = { MIN_W = MIN_W, MIN_H = MIN_H, MARGIN = MARGIN }
+local Size = { MIN_W = MIN_W, MIN_H = MIN_H, MARGIN = MARGIN, MAX_EDGE = MAX_EDGE }
 ns.ReplaySize = Size
 local Kit = ns.Kit
-local st = { vw = MIN_W, vh = MIN_H, sizing = false }
+local st = { vw = MIN_W, vh = MIN_H, sizing = false, head = 0 }
 local function Num(v)
     if type(v) == "number" and v == v then return v end
     return nil
@@ -36,11 +39,12 @@ end
 local function Screen()
     return UIParent:GetWidth() or 0, UIParent:GetHeight() or 0
 end
-local function Limit(left, top)
+local function Limit(left, top, edge)
+    edge = edge or MARGIN
     local pw, ph = Screen()
     local ew, eh = st.extra()
-    local w = pw - MARGIN - (left or MARGIN) - ew
-    local h = (top or (ph - MARGIN)) - MARGIN - eh
+    local w = pw - edge - (left or edge) - ew
+    local h = (top or (ph - edge)) - edge - eh
     return max(MIN_W, floor(w)), max(MIN_H, floor(h))
 end
 local function Apply(vw, vh)
@@ -59,11 +63,7 @@ end
 local function MaxLook()
     local b = st.maxBtn
     if not b then return end
-    local on = Saved().max == true
-    local base = on and SMALLER or BIGGER
-    b:SetNormalTexture(base .. "Up")
-    b:SetPushedTexture(base .. "Down")
-    b.tip = ns.T(on and "iso.tip.restore" or "iso.tip.max")
+    Kit.MaxLook(b, Saved().max == true)
 end
 local function SavePlace()
     local s = Saved()
@@ -72,11 +72,11 @@ local function SavePlace()
     s.x, s.y = f:GetLeft(), f:GetTop()
 end
 local function Maximize()
-    local vw, vh = Limit(nil, nil)
+    local vw, vh = Limit(nil, nil, MAX_EDGE)
     Apply(vw, vh)
     local f = st.frame
     f:ClearAllPoints()
-    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", MARGIN, -MARGIN)
+    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", MAX_EDGE, -MAX_EDGE)
 end
 local function Decor()
     Kit.ApplyDecor(st.frame)
@@ -111,6 +111,12 @@ local function StartSizing(self, button)
 end
 local function StartMove()
     if st.sizing then return end
+    local s = Saved()
+    if s.max then
+        s.max = false
+        s.w, s.h = st.vw, st.vh
+        MaxLook()
+    end
     st.frame:StartMoving()
 end
 local function StopMove()
@@ -120,66 +126,79 @@ local function StopMove()
     SavePlace()
 end
 local function BuildGrip(frame)
-    local grip = CreateFrame("Button", nil, frame)
-    grip:SetWidth(GRIP)
-    grip:SetHeight(GRIP)
-    grip:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -4, 4)
+    local grip = Kit.Grip(frame, GRIP)
     grip:SetFrameLevel(frame:GetFrameLevel() + BTN_LEVEL)
-    local tex = grip:CreateTexture(nil, "OVERLAY")
-    tex:SetAllPoints(grip)
-    tex:SetTexture(Kit.Theme().window.gripTex)
-    Kit.Tint(tex, "window.grip")
     grip.tip = ns.T("iso.tip.grip")
     grip.tipTitle = false
     grip.tipAnchor = "ANCHOR_TOP"
-    grip:SetScript("OnEnter", Kit.TipShow)
-    grip:SetScript("OnLeave", Kit.TipHide)
-    grip:SetScript("OnMouseDown", StartSizing)
-    grip:SetScript("OnMouseUp", function(self)
+    grip.onDown = StartSizing
+    grip.onUp = function(self)
         if not st.sizing then return end
         Sizing(self)
         if st.sizing then StopSizing() end
-    end)
+    end
     grip:SetScript("OnUpdate", ns.Prof.Wrap("ui.iso", Sizing))
     st.grip = grip
 end
-local function BuildTitle(frame, close, head)
-    local b = CreateFrame("Button", nil, frame)
-    b:SetWidth(MAX_BTN)
-    b:SetHeight(MAX_BTN)
-    b:SetPoint("RIGHT", close, "LEFT", 8, 0)
+function Size.Edge()
+    return Kit.Theme().window.pad or 0
+end
+function Size.Place()
+    local f = st.frame
+    if not f then return end
+    local e = Size.Edge()
+    local y = -(e + st.head / 2)
+    st.close:ClearAllPoints()
+    st.close:SetPoint("RIGHT", f, "TOPRIGHT", -(e + SIDE - CLOSE_EDGE), y)
+    st.maxBtn:ClearAllPoints()
+    st.maxBtn:SetPoint("RIGHT", st.close, "LEFT", -BTN_GAP, 0)
+    st.foldBtn:ClearAllPoints()
+    st.foldBtn:SetPoint("RIGHT", st.maxBtn, "LEFT", -BTN_GAP, 0)
+    st.title:SetHeight(st.head + e)
+    if st.caption then
+        st.caption:ClearAllPoints()
+        st.caption:SetPoint("LEFT", f, "TOPLEFT", e + SIDE, y)
+        st.caption:SetPoint("RIGHT", st.foldBtn, "LEFT", -CAPTION_GAP, 0)
+    end
+    st.grip:ClearAllPoints()
+    st.grip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(4 + e), 4 + e)
+end
+local function BuildTitle(frame, close)
+    close:SetWidth(CLOSE)
+    close:SetHeight(CLOSE)
+    close:SetFrameLevel(frame:GetFrameLevel() + BTN_LEVEL)
+    st.close = close
+    local b = Kit.MaxButton(frame)
+    b:SetWidth(BTN)
+    b:SetHeight(BTN)
     b:SetFrameLevel(frame:GetFrameLevel() + BTN_LEVEL)
-    b:SetHighlightTexture(HILITE, "ADD")
-    b.tipTitle = false
-    b.tipAnchor = "ANCHOR_TOP"
-    b:SetScript("OnEnter", Kit.TipShow)
-    b:SetScript("OnLeave", Kit.TipHide)
-    b:SetScript("OnClick", function() Size.Toggle() end)
+    b.onClick = function() Size.Toggle() end
     st.maxBtn = b
     local fold = Kit.FoldButton(frame, false)
-    fold:SetPoint("RIGHT", b, "LEFT", 0, 0)
+    fold:SetWidth(BTN)
+    fold:SetHeight(BTN)
     fold:SetFrameLevel(frame:GetFrameLevel() + BTN_LEVEL)
     fold.onClick = function() Size.Fold() end
     st.foldBtn = fold
     local title = CreateFrame("Button", nil, frame)
     title:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
     title:SetPoint("RIGHT", fold, "LEFT", 0, 0)
-    title:SetHeight(head)
     title:SetFrameLevel(frame:GetFrameLevel() + TITLE_LEVEL)
     title:RegisterForDrag("LeftButton")
     title:SetScript("OnDragStart", StartMove)
     title:SetScript("OnDragStop", StopMove)
     title:SetScript("OnDoubleClick", function() Size.Toggle() end)
     st.title = title
-    close:SetFrameLevel(frame:GetFrameLevel() + BTN_LEVEL)
     MaxLook()
 end
-function Size.Bind(frame, close, head, apply, extra)
+function Size.Bind(frame, close, head, apply, extra, caption)
     st.frame, st.apply, st.extra = frame, apply, extra
+    st.head, st.caption = head, caption
     frame:SetScript("OnDragStart", StartMove)
     frame:SetScript("OnDragStop", StopMove)
     BuildGrip(frame)
-    BuildTitle(frame, close, head)
+    BuildTitle(frame, close)
+    Size.Place()
 end
 function Size.Restore()
     local s = Saved()

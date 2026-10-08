@@ -335,7 +335,7 @@ local function StreamChunks(seg, store, kind, name)
     return list or {}
 end
 local function Points(seg, kind, name, from, to)
-    local chunks = StreamChunks(seg, kind == "hp" and seg.hp or seg.pos, kind, name)
+    local chunks = StreamChunks(seg, seg[kind], kind, name)
     local t0 = seg.t0
     local ci = 1
     if from then
@@ -382,9 +382,12 @@ end
 function Decode.Pos(seg, name, from, to)
     return Points(seg, "pos", name, from, to)
 end
+function Decode.Mana(seg, name, from, to)
+    return Points(seg, "mana", name, from, to)
+end
 function Decode.Names(seg, kind)
     local out, seen = {}, {}
-    local store = kind == "hp" and seg.hp or seg.pos
+    local store = seg[kind]
     for name in pairs(store or {}) do
         seen[name] = true
         out[#out + 1] = name

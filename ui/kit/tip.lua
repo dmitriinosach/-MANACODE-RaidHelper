@@ -36,9 +36,9 @@ function Kit.TipShow(f)
     if not title and not body and not f.tipDim then return end
     GameTooltip:SetOwner(f, f.tipAnchor or "ANCHOR_RIGHT")
     first = true
-    if title then Line(title, f.tipColor or C["tip.title"]) end
-    if body then Line(body, f.tipBodyColor or C["tip.body"]) end
-    if f.tipDim then Line(f.tipDim, C["tip.dim"]) end
+    if title then Line(title, f.tipColor or Kit.GameColor("tip.title")) end
+    if body then Line(body, f.tipBodyColor or Kit.GameColor("tip.body")) end
+    if f.tipDim then Line(f.tipDim, Kit.GameColor("tip.dim")) end
     GameTooltip:Show()
 end
 function Kit.TipHide()
@@ -87,6 +87,7 @@ local function Pooled(pool, i)
     local fs = pool[i]
     if not fs then
         fs = tipFrame:CreateFontString(nil, "OVERLAY")
+        Kit.Halo(fs)
         pool[i] = fs
     end
     return fs

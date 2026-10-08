@@ -44,7 +44,7 @@ local function Zone(res)
     return map and ZONE[map] or nil
 end
 local function RaidName(res, zone)
-    local name = zone and PACK[zone] and ns.T("pack." .. PACK[zone]) or res.name or ns.T("raid.none")
+    local name = zone and PACK[zone] and ns.T("pack." .. PACK[zone]) or ns.Raid.Title(res)
     if not res.size then return name end
     return format(ns.T("dc.raid"), name, res.size, res.heroic and ns.T("dc.hc") or "")
 end
@@ -136,7 +136,8 @@ local function Bosses(res)
         local dps, hps, damage = Rates(e.s)
         out[i] = { name = ns.EncName(b.boss), kill = b.kill ~= nil, tries = b.tries, wipes = b.wipes,
                    time = Round(ns.Totals.Time(e.s)), start = floor(e.fight.from), damage = damage,
-                   deaths = e.s.deaths or 0, dps = dps, hps = hps, targets = Targets(e.fight, e.s) }
+                   deaths = e.s.deaths or 0, dps = dps, hps = hps, targets = Targets(e.fight, e.s),
+                   unbuffed = (b.kill and ns.ZoneBuff and b.kill.s.zoneBuff == ns.ZoneBuff.OFF) or nil }
     end
     return out
 end
@@ -202,6 +203,41 @@ local function Badge(res, key, by)
     end
     return out
 end
+local function Sniff(res)
+    local list = {}
+    for i = 1, #res.players do
+        local p = res.players[i]
+        if (p.jopo or 0) > 0 then
+            local by = {}
+            for k = 1, #p.jopoBy do
+                local name = ns.EncName(p.jopoBy[k].boss)
+                by[name] = (by[name] or 0) + 1
+            end
+            local parts = {}
+            for name, n in pairs(by) do parts[#parts + 1] = { n = name, v = n } end
+            tsort(parts, ByV)
+            local out = {}
+            for k = 1, min(PARTS, #parts) do out[k] = format("%s %d", parts[k].n, parts[k].v) end
+            list[#list + 1] = { n = p.name, c = p.class, v = p.jopo, k = p.jopoKill > 0 and p.jopoKill or nil,
+                                s = concat(out, ", "), w = p.jopoKill * 1000 + p.jopo }
+        end
+    end
+    tsort(list, function(a, b)
+        if a.w ~= b.w then return a.w > b.w end
+        return a.n < b.n
+    end)
+    for k = 1, #list do list[k].w = nil end
+    return list
+end
+local function Top5(res)
+    local list = {}
+    for i = 1, #res.players do
+        local p = res.players[i]
+        if (p.boss or 0) > 0 then list[#list + 1] = { n = p.name, c = p.class, v = Round(p.boss), raw = p.boss } end
+    end
+    Cut(list, BADGE_TOP)
+    return list
+end
 local function IconName(tex)
     if type(tex) ~= "string" then return nil end
     local name = (tex:match("([^\\/]+)$") or tex):gsub("%.%w+$", "")
@@ -235,6 +271,7 @@ function Discord.Build(res)
         combat = Round(t.combat or 0), idle = Round(t.idle or 0), deaths = Sum(res, "deaths"),
         damage = Round(Sum(res, "all")), healed = Round(Sum(res, "heal")), top = Top(res), bosses = Bosses(res),
         immortal = Immortal(res), rod = Badge(res, "rod", "rodBy"), buffed = Badge(res, "buffN", "buffBy"),
+        jopo = Sniff(res), top5 = Top5(res),
         consumables = Consumables(res), cost = Cost(res),
     }
 end

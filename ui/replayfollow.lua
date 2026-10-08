@@ -144,8 +144,8 @@ end
 function Follow.Pick(fight, name)
     local run = st.run
     if not (run and name and st.ui.frame:IsShown()) then return false end
-    if fight and run.fight ~= fight then return false end
     local f = run.fight
+    if fight and f ~= fight and not (f and fight.boss == f.boss and fight.from == f.from) then return false end
     if not (f and f.players and f.players[name]) then return false end
     if run.scene then
         ns.ReplayIso.Focus(name)

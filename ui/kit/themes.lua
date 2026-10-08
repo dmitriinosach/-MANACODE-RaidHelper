@@ -4,29 +4,21 @@ ns.Kit = Kit
 local WHITE8 = "Interface\\Buttons\\WHITE8X8"
 local TIP_BG = "Interface\\Tooltips\\UI-Tooltip-Background"
 local TIP_EDGE = "Interface\\Tooltips\\UI-Tooltip-Border"
-local DLG_PAPER = "Interface\\DialogFrame\\UI-DialogBox-Background"
-local DLG_BORDER = "Interface\\DialogFrame\\UI-DialogBox-Border"
 local PARCH = "Interface\\AchievementFrame\\UI-Achievement-Parchment-Horizontal"
-local WEAVE = "Interface\\AddOns\\" .. ADDON .. "\\lead\\art\\weave_hatch.tga"
 local CHECK_UP = "Interface\\Buttons\\UI-CheckBox-Up"
 local CHECK_DOWN = "Interface\\Buttons\\UI-CheckBox-Down"
 local CHECK_HL = "Interface\\Buttons\\UI-CheckBox-Highlight"
 local CHECK_MARK = "Interface\\Buttons\\UI-CheckBox-Check"
 local CHECK_OFF = "Interface\\Buttons\\UI-CheckBox-Check-Disabled"
-local GRIP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up"
 local ACH_CAT = "Interface\\AchievementFrame\\UI-Achievement-Category-Background"
 local DLG_DARK = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
 local DLG_GOLD = "Interface\\DialogFrame\\UI-DialogBox-Gold-Border"
 local ACH_WOOD = "Interface\\AchievementFrame\\UI-Achievement-WoodBorder"
 local ACH_BG = "Interface\\AchievementFrame\\UI-Achievement-AchievementBackground"
+local ACH_TITLE = "Interface\\AchievementFrame\\UI-Achievement-Title"
+local ACH_MARK = "Interface\\AchievementFrame\\UI-Achievement-AchievementWatermark"
 local LATTICE = "Interface\\AddOns\\" .. ADDON .. "\\lead\\art\\weave_lattice.tga"
-local EDGE = { 1, 0.86, 0.42 }
 local ACCENT = { 0.22, 0.72, 0.32 }
-local WOOD = { 0.255, 0.205, 0.135 }
-local LIGHT = { 0.93, 0.89, 0.80 }
-local LIGHT2 = { 0.79, 0.72, 0.58 }
-local INK = { 0.23, 0.14, 0.06 }
-local TILE = { 0.72, 0.59, 0.35 }
 local WHITE = { 1, 1, 1 }
 local DIMMED = { 0.45, 0.45, 0.45 }
 local GOLD = { 1, 0.82, 0 }
@@ -34,6 +26,15 @@ local OAK = { 0.230, 0.190, 0.130 }
 local AMBER = { 0.62, 0.48, 0.18 }
 local CREAM = { 0.95, 0.91, 0.82 }
 local CREAM2 = { 0.82, 0.75, 0.60 }
+local PAPER = { 0.67, 0.50, 0.22 }
+local VELLUM = { 0.97, 0.92, 0.79 }
+local INK = { 0.16, 0.09, 0.03 }
+local SEPIA = { 0.30, 0.19, 0.08 }
+local FADED = { 0.40, 0.28, 0.14 }
+local RUBRIC = { 0.38, 0.17, 0 }
+local BISTRE = { 0.50, 0.35, 0.15 }
+local LACQUER = { 0.42, 0.12, 0.06 }
+local GILT = { 0.86, 0.66, 0.22 }
 local INSET3 = { left = 3, right = 3, top = 3, bottom = 3 }
 local INSET4 = { left = 4, right = 4, top = 4, bottom = 4 }
 local INSET_DLG = { left = 7, right = 8, top = 8, bottom = 7 }
@@ -53,8 +54,6 @@ local function lift(c, top)
     if m <= 0 then return { top, top, top } end
     return tone(c, top / m)
 end
-local metal = lift(WOOD, 0.82)
-local dusk = lift(WOOD, 0.22)
 local brass = lift(OAK, 0.82)
 local umber = lift(OAK, 0.22)
 Kit.themes = {}
@@ -69,10 +68,16 @@ Kit.themes.dark = {
         },
         bg = { 0.03, 0.04, 0.05, 1 },
         border = { 1, 1, 1, 1 },
+        base = { 0, 0, 0, 1 },
         pad = 0,
         decor = {},
-        grip = { 1, 1, 1, 1 },
-        gripTex = GRIP,
+        grip = { 1, 0.80, 0.30, 1 },
+        gripLit = { 1, 0.93, 0.62, 1 },
+        gripPress = { 0.78, 0.58, 0.18, 1 },
+        gripGlow = { 1, 0.93, 0.62, 0.35 },
+        glyph = rgba(GOLD, 1),
+        glyphLit = { 1, 0.93, 0.62, 1 },
+        glyphOff = rgba(DIMMED, 1),
     },
     tab = {
         h = 24,
@@ -82,7 +87,7 @@ Kit.themes.dark = {
         x = 10,
         fill = { tex = WHITE8, color = { 0.012, 0.015, 0.02, 1 } },
         fillHover = { tex = WHITE8, color = { 0.09, 0.10, 0.12, 1 } },
-        fillOn = { tex = WHITE8, color = { 0.03, 0.04, 0.05, 1 } },
+        fillOn = { tex = WHITE8, coord = { 0, 1, 0, 1 }, color = { 0.03, 0.04, 0.05, 1 } },
         text = { 0.62, 0.62, 0.62 },
         textHover = WHITE,
         textOn = GOLD,
@@ -108,6 +113,7 @@ Kit.themes.dark = {
     },
     surface = {
         page = { 0.03, 0.04, 0.05, 1 },
+        solid = { 0.03, 0.04, 0.05, 1 },
         bg = { 0.10, 0.12, 0.14, 0.75 },
         alt = { 1, 1, 1, 0.03 },
         line = { 1, 1, 1, 0.07 },
@@ -313,6 +319,7 @@ Kit.themes.dark = {
         bright = WHITE,
         off = { 0.5, 0.5, 0.5 },
         shadow = { 0, 0, 0, 1 },
+        halo = { 0, 0, 0, 1 },
     },
     badge = {
         backdrop = { bgFile = WHITE8, edgeFile = WHITE8, edgeSize = 1 },
@@ -329,6 +336,19 @@ Kit.themes.dark = {
         alert = { 1, 0.48, 0.38, 1 },
         noClass = { 0.85, 0.85, 0.85, 1 },
     },
+    award = {
+        plate = { bgFile = PARCH, coord = { 0, 1, 0.671875, 1 }, color = { 1, 1, 1, 1 } },
+        bar = { bgFile = ACH_TITLE, coord = { 0, 0.9765625, 0, 0.3125 }, color = { 1, 1, 1, 0.95 } },
+        frame = WHITE,
+        shield = WHITE,
+        num = WHITE,
+        title = WHITE,
+        desc = { 0.10, 0.06, 0.02, 1 },
+        who = { 0.16, 0.09, 0.03, 1 },
+        whoVal = { 0.36, 0.23, 0.10, 1 },
+        more = { 0.62, 0.62, 0.62, 1 },
+        edge = { 0.70, 0.15, 0.05, 1 },
+    },
     ach = {
         bar = { 1, 1, 1, 0.55 },
         art = { 1, 1, 1, 1 },
@@ -337,6 +357,18 @@ Kit.themes.dark = {
         nameOff = { 0.65, 0.65, 0.65 },
         points = WHITE,
         pointsOff = { 0.65, 0.65, 0.65 },
+    },
+    cls = {
+        DEATHKNIGHT = { 0.77, 0.12, 0.23 },
+        DRUID = { 1, 0.49, 0.04 },
+        HUNTER = { 0.67, 0.83, 0.45 },
+        MAGE = { 0.41, 0.80, 0.94 },
+        PALADIN = { 0.96, 0.55, 0.73 },
+        PRIEST = { 1, 1, 1 },
+        ROGUE = { 1, 0.96, 0.41 },
+        SHAMAN = { 0, 0.44, 0.87 },
+        WARLOCK = { 0.58, 0.51, 0.79 },
+        WARRIOR = { 0.78, 0.61, 0.43 },
     },
     parse = {
         p100 = { 0.90, 0.80, 0.50 },
@@ -458,6 +490,13 @@ Kit.themes.dark = {
             dd = { 0, 0, 0, 0.55 },
             ddHp = { 0.86, 0.87, 0.89, 1 },
             pct = { 1, 1, 1, 1 },
+            mana = { 0.22, 0.52, 1, 1 },
+            manaBg = { 0, 0, 0, 0.65 },
+            cast = { 1, 0.78, 0.25, 1 },
+            castChan = { 0.55, 0.85, 1, 1 },
+            castCut = { 1, 0.18, 0.14, 1 },
+            castBg = { 0, 0, 0, 0.7 },
+            castText = { 1, 1, 1, 1 },
             side = { 0.62, 0.62, 0.62, 1 },
             stand = { 0.36, 0.36, 0.38, 1 },
             standTop = { 0.52, 0.52, 0.55, 1 },
@@ -541,13 +580,24 @@ Kit.themes.dark = {
             tile = true, tileSize = 16, edgeSize = 12, insets = INSET3,
         },
         bg = { 0.03, 0.04, 0.05, 0.9 },
-        photo = { 1, 1, 1, 0.3 },
-        veil = { 0, 0, 0, 0.5 },
+        photo = { 1, 1, 1, 0.5 },
+        veil = { 0, 0, 0, 0.35 },
         border = { 0.55, 0.55, 0.6, 1 },
         tool = { 0, 0, 0, 0.5 },
         toolHover = { 1, 1, 1, 0.25 },
     },
 }
+local DLG_PAPER = "Interface\\DialogFrame\\UI-DialogBox-Background"
+local DLG_BORDER = "Interface\\DialogFrame\\UI-DialogBox-Border"
+local WEAVE = "Interface\\AddOns\\" .. ADDON .. "\\lead\\art\\weave_hatch.tga"
+local EDGE = { 1, 0.86, 0.42 }
+local WOOD = { 0.255, 0.205, 0.135 }
+local LIGHT = { 0.93, 0.89, 0.80 }
+local LIGHT2 = { 0.79, 0.72, 0.58 }
+local OLD_INK = { 0.23, 0.14, 0.06 }
+local TILE = { 0.72, 0.59, 0.35 }
+local metal = lift(WOOD, 0.82)
+local dusk = lift(WOOD, 0.22)
 Kit.themes.scroll = {
     labelKey = "set.theme.scroll",
     window = {
@@ -697,7 +747,7 @@ Kit.themes.scroll = {
         primary = LIGHT,
         secondary = LIGHT2,
         muted = { 0.68, 0.62, 0.51 },
-        ink = INK,
+        ink = OLD_INK,
     },
     badge = {
         bg = { 0.085, 0.065, 0.045, 1 },
@@ -738,9 +788,355 @@ Kit.themes.scroll = {
     },
     float = {
         bg = { 0.10, 0.07, 0.04, 0.92 },
-        veil = { 0.10, 0.07, 0.04, 0.5 },
+        veil = { 0.10, 0.07, 0.04, 0.35 },
         border = rgba(EDGE, 0.85),
         toolHover = { 1, 0.86, 0.42, 0.3 },
+    },
+}
+Kit.themes.parchment = {
+    labelKey = "set.theme.scroll",
+    light = true,
+    window = {
+        backdrop = {
+            bgFile = WHITE8, edgeFile = ACH_WOOD,
+            tile = false, edgeSize = 32, insets = INSET_DLG,
+        },
+        bg = rgba(PAPER, 1),
+        border = { 1, 1, 1, 1 },
+        base = rgba(PAPER, 1),
+        pad = 8,
+        decor = {
+            { tex = PARCH, color = { 1, 1, 1 }, layer = "BACKGROUND", inset = 8 },
+            { tex = ACH_MARK, coord = { 0, 145 / 256, 0, 1 }, color = { 1, 1, 1, 0.55 }, layer = "BORDER",
+              at = "BOTTOMLEFT", x = 8, y = 8, w = 145, h = 256 },
+        },
+        grip = rgba(SEPIA, 1),
+        gripLit = rgba(RUBRIC, 1),
+        gripPress = rgba(INK, 1),
+        gripGlow = { 0.70, 0.45, 0, 0.30 },
+        glyph = rgba(RUBRIC, 1),
+        glyphLit = { 0.62, 0.30, 0, 1 },
+        glyphOff = rgba(FADED, 1),
+    },
+    tab = {
+        h = 28,
+        seat = 6,
+        join = 12,
+        rim = 13,
+        x = 16,
+        fill = { tex = WHITE8, color = { 0.20, 0.085, 0.04, 1 } },
+        fillHover = { tex = WHITE8, color = { 0.30, 0.13, 0.06, 1 } },
+        fillOn = { tex = PARCH, coord = { 0.1, 0.4, 0.1, 0.3 }, color = { 1, 0.97, 0.90, 1 } },
+        text = CREAM2,
+        textHover = WHITE,
+        textOn = RUBRIC,
+        icon = rgba(CREAM2, 1),
+        iconHover = { 1, 1, 1, 1 },
+        iconOn = rgba(RUBRIC, 1),
+    },
+    panel = {
+        bg = rgba(VELLUM, 0.55),
+        border = rgba(BISTRE, 0.9),
+    },
+    plate = {
+        bg = { 0.10, 0.07, 0.04, 1 },
+        border = rgba(GILT, 1),
+    },
+    scroll = {
+        track = rgba(INK, 0.16),
+        trackIdle = rgba(INK, 0.06),
+        thumb = rgba(BISTRE, 0.90),
+        thumbHot = rgba(RUBRIC, 1),
+        mini = rgba(INK, 0.08),
+        miniThumb = { 0.62, 0.40, 0.10, 0.75 },
+    },
+    slider = {
+        track = rgba(INK, 0.20),
+        fill = { 0.70, 0.45, 0.05, 0.80 },
+        thumb = rgba(BISTRE, 1),
+        thumbHot = rgba(RUBRIC, 1),
+        thumbOff = { 0.66, 0.60, 0.50, 1 },
+    },
+    nav = {
+        accent = RUBRIC,
+        group = { 0.40, 0.29, 0.16 },
+    },
+    surface = {
+        page = rgba(VELLUM, 0.45),
+        solid = { 0.80, 0.67, 0.44, 1 },
+        bg = rgba(VELLUM, 0.30),
+        alt = rgba(INK, 0.05),
+        line = rgba(INK, 0.14),
+        grid = rgba(INK, 0.14),
+        edge = rgba(INK, 0.40),
+        hover = rgba(INK, 0.08),
+        selected = { 0.55, 0.30, 0.05, 0.18 },
+        head = { 0.55, 0.38, 0.14, 0.28 },
+        headOn = { 0.50, 0.24, 0.06, 0.32 },
+        headText = SEPIA,
+        headOnText = INK,
+        panel = rgba(VELLUM, 0.30),
+        zebra = rgba(INK, 0.04),
+        handle = rgba(INK, 0.30),
+        shade = rgba(VELLUM, 0.92),
+        label = INK,
+        labelOff = FADED,
+        laneHead = rgba(INK, 0.10),
+        laneHeadHover = rgba(INK, 0.14),
+        laneHeadIdle = rgba(INK, 0.04),
+        laneText = INK,
+        drop = { 0.55, 0.35, 0.10, 0.60 },
+        dropOn = { 0.45, 0.22, 0.00, 0.75 },
+        dropRow = { 0.55, 0.35, 0.10, 0.25 },
+        dropSub = { 0.45, 0.30, 0.12, 0.40 },
+    },
+    fx = {
+        name = INK,
+        nameOff = FADED,
+        count = SEPIA,
+        countOff = FADED,
+        markOn = { 0.09, 0.39, 0.10 },
+        markOff = FADED,
+        trashName = { 0.45, 0.20, 0.16 },
+        trashCount = { 0.52, 0.32, 0.28 },
+        trashMark = { 0.65, 0.15, 0.10 },
+        trashHead = { 0.55, 0.18, 0.12 },
+        line = rgba(INK, 0.14),
+    },
+    button = {
+        bg = rgba(VELLUM, 0.85),
+        bgHover = { 1, 0.96, 0.84, 0.95 },
+        bgDown = { 0.85, 0.76, 0.58, 0.95 },
+        bgActive = { 0.64, 0.80, 0.52, 0.95 },
+        bgOff = { 0.80, 0.74, 0.62, 0.70 },
+        border = rgba(BISTRE, 0.90),
+        borderHover = rgba(SEPIA, 1),
+        borderActive = rgba(SEPIA, 1),
+        borderOff = { 0.55, 0.48, 0.38, 0.60 },
+        glow = { 0.75, 0.50, 0.10 },
+        text = INK,
+        textHover = { 0.05, 0.02, 0 },
+        textActive = { 0.05, 0.02, 0 },
+        textOff = { 0.50, 0.45, 0.38 },
+        main = {
+            bg = tone(LACQUER, 1, 0.95),
+            bgHover = tone(LACQUER, 1.25, 0.95),
+            bgDown = tone(LACQUER, 0.70, 0.95),
+            border = rgba(tone(GOLD, 0.80), 0.95),
+            borderHover = rgba(GOLD, 1),
+            glow = GOLD,
+            text = GOLD,
+            textHover = { 1, 0.92, 0.55 },
+        },
+        quiet = {
+            bg = { 0, 0, 0, 0 },
+            bgHover = rgba(INK, 0.06),
+            bgDown = rgba(INK, 0.12),
+            border = rgba(BISTRE, 0.70),
+            borderHover = rgba(SEPIA, 1),
+            glow = BISTRE,
+            text = INK,
+            textHover = { 0.05, 0.02, 0 },
+        },
+        icon = {
+            bg = { 0, 0, 0, 0 },
+            bgHover = { 0, 0, 0, 0 },
+            bgDown = rgba(INK, 0.12),
+            border = { 0, 0, 0, 0 },
+            borderHover = rgba(BISTRE, 1),
+            glow = { 0.55, 0.30, 0 },
+            text = SEPIA,
+            textHover = RUBRIC,
+        },
+        danger = {
+            bg = { 0, 0, 0, 0 },
+            bgHover = { 0.60, 0.10, 0.05, 0.12 },
+            bgDown = { 0.60, 0.10, 0.05, 0.20 },
+            border = { 0.60, 0.12, 0.06, 1 },
+            borderHover = { 0.75, 0.10, 0.05, 1 },
+            glow = { 0.75, 0.10, 0.05 },
+            text = { 0.60, 0.08, 0.04 },
+            textHover = { 0.78, 0.10, 0.05 },
+        },
+        hot = {
+            bg = { 0.30, 0.20, 0.10, 0.95 },
+            bgHover = { 0.38, 0.26, 0.13, 0.95 },
+            bgDown = { 0.22, 0.14, 0.07, 0.95 },
+            border = { 0.55, 0.40, 0.18, 1 },
+            borderHover = rgba(tone(GOLD, 0.85), 1),
+            glow = GOLD,
+            text = { 0.95, 0.80, 0.45 },
+            textHover = GOLD,
+        },
+    },
+    check = {
+        label = RUBRIC,
+    },
+    edit = {
+        bg = { 1, 0.97, 0.88, 0.75 },
+        border = rgba(BISTRE, 1),
+        borderFocus = { 0.70, 0.45, 0, 1 },
+        text = INK,
+    },
+    list = {
+        bg = rgba(VELLUM, 0.98),
+        border = rgba(BISTRE, 1),
+        head = RUBRIC,
+    },
+    row = {
+        bg = { 0, 0, 0, 0 },
+        bgHover = rgba(INK, 0.07),
+        bgOn = { 0.55, 0.30, 0.05, 0.16 },
+        text = INK,
+        textDim = FADED,
+        raid = { tex = WHITE8, coord = { 0, 1, 0, 1 }, color = { 0.55, 0.36, 0.12, 0.22 } },
+    },
+    card = {
+        bg = { 0.97, 0.92, 0.80, 0.90 },
+        border = rgba(BISTRE, 1),
+        borderHover = rgba(RUBRIC, 1),
+        borderDim = { 0.65, 0.58, 0.45, 0.80 },
+        sticker = { 0.90, 0.83, 0.68, 0.95 },
+        rsDark = { 0.80, 0.74, 0.88, 0.95 },
+        rsDarkEdge = { 0.40, 0.26, 0.55, 1 },
+        rsLight = { 0.98, 0.92, 0.70, 0.95 },
+        rsLightEdge = { 0.70, 0.52, 0.12, 1 },
+    },
+    tip = {
+        bg = { 0.96, 0.90, 0.76, 1 },
+        border = rgba(SEPIA, 1),
+        title = { 0.10, 0.05, 0 },
+        body = { 0.35, 0.18, 0.02 },
+        dim = { 0.38, 0.30, 0.20 },
+    },
+    text = {
+        title = RUBRIC,
+        primary = INK,
+        secondary = SEPIA,
+        muted = FADED,
+        note = { 0.42, 0.31, 0.17 },
+        ink = INK,
+        tag = { 0.66, 0.10, 0.05 },
+        good = { 0.02, 0.32, 0.04 },
+        bad = { 0.55, 0.05, 0.02 },
+        warn = { 0.52, 0.24, 0 },
+        accent = { 0.09, 0.39, 0.13 },
+        bright = { 0.08, 0.04, 0 },
+        off = { 0.37, 0.33, 0.27 },
+        halo = { 1, 0.96, 0.85, 0 },
+    },
+    badge = {
+        bg = { 0.93, 0.85, 0.66, 1 },
+        edge = { 0.48, 0.36, 0.22, 1 },
+        hover = rgba(SEPIA, 1),
+        link = { 0.47, 0.30, 0, 1 },
+        linkFill = { 0.47, 0.30, 0, 0.14 },
+        red = { 0.78, 0.12, 0.06, 1 },
+        yellow = { 0.62, 0.38, 0, 1 },
+        green = { 0.10, 0.50, 0.12, 1 },
+        detail = { 0.45, 0.31, 0.07, 1 },
+        muted = { 0.45, 0.38, 0.28, 1 },
+        alert = { 0.75, 0.20, 0.10, 1 },
+        noClass = { 0.30, 0.25, 0.20, 1 },
+    },
+    award = {
+        plate = { bgFile = PARCH, coord = { 0, 1, 0.25, 0.75 }, color = { 1, 1, 1, 1 } },
+        bar = { bgFile = ACH_TITLE, coord = { 0, 0.9765625, 0, 0.3125 }, color = { 1, 1, 1, 0.95 } },
+        frame = rgba(GILT, 1),
+        shield = rgba(LACQUER, 1),
+        shieldEdge = rgba(GILT, 1),
+        num = { 1, 0.92, 0.60 },
+        title = { 1, 0.96, 0.84 },
+        desc = rgba(SEPIA, 1),
+        more = rgba(FADED, 1),
+        edge = { 0.70, 0.15, 0.05, 1 },
+    },
+    ach = {
+        bar = { 1, 1, 1, 0.90 },
+        artOff = { 0.70, 0.66, 0.60, 1 },
+        name = { 1, 0.95, 0.80 },
+        nameOff = FADED,
+        points = INK,
+        pointsOff = FADED,
+    },
+    parse = {
+        p100 = { 0.42, 0.32, 0.06 },
+        p99 = { 0.58, 0.18, 0.39 },
+        p95 = { 0.54, 0.26, 0 },
+        p75 = { 0.50, 0.12, 0.75 },
+        p50 = { 0, 0.33, 0.68 },
+        p25 = { 0.08, 0.39, 0 },
+        low = { 0.37, 0.33, 0.28 },
+    },
+    cls = {
+        DEATHKNIGHT = { 0.61, 0.07, 0.16 },
+        DRUID = { 0.50, 0.22, 0 },
+        HUNTER = { 0.21, 0.34, 0.07 },
+        MAGE = { 0.06, 0.32, 0.45 },
+        PALADIN = { 0.52, 0.17, 0.34 },
+        PRIEST = { 0.30, 0.30, 0.32 },
+        ROGUE = { 0.37, 0.29, 0 },
+        SHAMAN = { 0, 0.30, 0.59 },
+        WARLOCK = { 0.34, 0.25, 0.55 },
+        WARRIOR = { 0.41, 0.27, 0.12 },
+    },
+    sem = {
+        lane = {
+            takenMiss = { 0.40, 0.44, 0.52 },
+        },
+        threat = {
+            below = rgba(INK, 0.30),
+            span = rgba(SEPIA, 0.85),
+            other = { 0.40, 0.36, 0.30, 0.70 },
+            life = { 0.35, 0.30, 0.25, 0.30 },
+        },
+        castGcd = { 0.20, 0.42, 0.70, 0.20 },
+        castBar = { 0.20, 0.42, 0.70, 0.50 },
+        castCut = { 0.55, 0.25, 0.45, 0.50 },
+        death = { 0.75, 0.08, 0.06, 0.95 },
+        deathLine = { 0.75, 0.10, 0.06, 0.60 },
+        cursor = rgba(SEPIA, 0.60),
+        cursorDot = rgba(SEPIA, 1),
+        cursorText = SEPIA,
+        readout = SEPIA,
+        phase = { 0.25, 0.40, 0.70, 0.45 },
+        phaseDim = { 0.25, 0.40, 0.70, 0.20 },
+        phaseText = { 0.15, 0.28, 0.55 },
+        phaseDimText = { 0.30, 0.38, 0.52 },
+        phaseHead = { 0.12, 0.22, 0.48 },
+        link = { 0.70, 0.45, 0, 0.95 },
+        linkBand = { 0.80, 0.55, 0.10, 0.22 },
+        stat = {
+            dps = { 0.44, 0.22, 0.69 },
+            hps = { 0.11, 0.33, 0.62 },
+            deaths = { 0.61, 0.19, 0.14 },
+            alert = { 0.67, 0.09, 0.05 },
+            extra = { 0.24, 0.30, 0.65 },
+        },
+        full = { 0.09, 0.39, 0.12 },
+        ready = { 0.07, 0.39, 0.10 },
+        notReady = { 0.66, 0.10, 0.08 },
+        offline = { 0.36, 0.33, 0.30 },
+        win = { 0.09, 0.39, 0.13 },
+        wipe = { 0.64, 0.15, 0.12 },
+        pick = { 0.48, 0.30, 0 },
+        fault = { 0.96, 0.84, 0.76 },
+        enc = { 0.55, 0.40, 0.18, 0.16 },
+    },
+    progress = {
+        track = rgba(INK, 0.16),
+        fill = { 0.20, 0.55, 0.15, 0.90 },
+        text = INK,
+        queue = FADED,
+        ring = rgba(VELLUM, 0.85),
+    },
+    float = {
+        bg = rgba(VELLUM, 0.95),
+        photo = { 0.55, 0.42, 0.25, 0.45 },
+        veil = rgba(VELLUM, 0.55),
+        border = rgba(SEPIA, 1),
+        tool = rgba(INK, 0.10),
+        toolHover = { 0.70, 0.45, 0, 0.25 },
     },
 }
 Kit.themes.gold = {
@@ -766,7 +1162,7 @@ Kit.themes.gold = {
         x = 16,
         fill = { tex = WHITE8, color = { 0.035, 0.028, 0.012, 1 } },
         fillHover = { tex = WHITE8, color = { 0.12, 0.095, 0.035, 1 } },
-        fillOn = { tex = WHITE8, color = { 0.055, 0.044, 0.022, 1 } },
+        fillOn = { tex = WHITE8, coord = { 0, 1, 0, 1 }, color = { 0.055, 0.044, 0.022, 1 } },
         text = CREAM2,
         textHover = WHITE,
         textOn = GOLD,
@@ -804,6 +1200,7 @@ Kit.themes.gold = {
     },
     surface = {
         page = { 0.05, 0.04, 0.022, 0.96 },
+        solid = { 0.05, 0.04, 0.022, 1 },
         bg = { 0.09, 0.07, 0.035, 0.80 },
         panel = { 0.09, 0.07, 0.035, 0.62 },
         head = { 0.46, 0.36, 0.12, 0.40 },
@@ -938,7 +1335,7 @@ Kit.themes.gold = {
     },
     float = {
         bg = { 0.06, 0.045, 0.02, 0.92 },
-        veil = { 0.06, 0.045, 0.02, 0.5 },
+        veil = { 0.06, 0.045, 0.02, 0.35 },
         border = rgba(GOLD, 0.85),
         toolHover = { 1, 0.82, 0, 0.3 },
     },

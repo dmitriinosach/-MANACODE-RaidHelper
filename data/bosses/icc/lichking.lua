@@ -5,7 +5,7 @@ ns.summaries[ns.ENC.lichking] = {
     deps = {
         dispel = { { spell = 73787, type = "Disease", dur = 15, hold = 5 } },
         tanked = { 37698 },
-        mechs = { { key = "valkyr", text = "sum.dd.m.valkyr", spells = { ns.EnvName("FALLING") }, ride = 8 } },
+        mechs = { { key = "valkyr", text = "sum.dd.m.valkyr", spells = { ns.EnvKey("FALLING") }, ride = 8 } },
     },
     stats = {
         { kind = "auras", label = "sum.s.harvest", spells = { 73655, 74297 }, gap = 10 },
@@ -20,7 +20,7 @@ ns.summaries[ns.ENC.lichking] = {
           id = 13809, tip = "sum.b.valkyrtrap" },
         { kind = "death", srcs = { 39189 }, id = 73805, tip = "sum.b.roombomb" },
         { kind = "death", spells = { 73808 }, id = 73808, tip = "sum.b.spiritdeath" },
-        { kind = "death", spells = { ns.EnvName("FALLING") }, skipRide = 8, id = 72262, neutral = true, tip = "sum.b.fall" },
+        { kind = "death", spells = { ns.EnvKey("FALLING") }, skipRide = 8, id = 72262, neutral = true, tip = "sum.b.fall" },
         { kind = "death", phases = { "t1", "t2" }, id = 74272, neutral = true, tip = "sum.b.winterdeath" },
         { kind = "hit", spell = 73802, src = 36701, gap = 2, tip = "sum.b.shriek" },
         { kind = "death", spells = { 73802 }, id = 73802, neutral = true, tip = "sum.b.shriekdeath" },

@@ -85,10 +85,10 @@ end
 function Effects.Name(id)
     local fake = id and synthetic[id]
     if fake then return fake.name end
+    local name = type(id) == "number" and id > 0 and GetSpellInfo(id)
+    if name then return name end
     local e = Effects.Entry(id)
-    if e and e.name then return e.name end
-    local name = id and GetSpellInfo(id)
-    return name or tostring(id)
+    return e and e.name or tostring(id)
 end
 local iconCache = {}
 function Effects.IconById(id)
@@ -199,7 +199,7 @@ local function Collect(wanted)
         local state = Effects.State(id)
         local inTrash = state == "trash"
         if (wanted == "trash") == inTrash then
-            list[#list + 1] = { id = id, name = e.name or Effects.Name(id),
+            list[#list + 1] = { id = id, name = Effects.Name(id),
                                 count = e.n or 0, state = state }
         end
     end

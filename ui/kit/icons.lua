@@ -8,6 +8,8 @@ local PORTRAIT = "Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES"
 local MARK_TEX = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_%d"
 local HEROIC_TEX = "Interface\\LFGFrame\\UI-LFG-ICON-HEROIC"
 local FOLD_TEX = "Interface\\ChatFrame\\ChatFrameExpandArrow"
+local CROSS_SHARE = 0.75
+local floor = math.floor
 local CLASS_COORD = {
     WARRIOR = { 0, 0.25, 0, 0.25 },
     MAGE = { 0.25, 0.49609375, 0, 0.25 },
@@ -91,6 +93,27 @@ end
 function Icon.Heroic(tex)
     tex:SetTexture(HEROIC_TEX)
     tex:SetTexCoord(0, 0.5, 0, 0.5625)
+end
+Kit.ZONEBUFF_TEX = { Alliance = "Interface\\Icons\\INV_BannerPVP_02", Horde = "Interface\\Icons\\Spell_Fire_Incinerate" }
+Kit.CROSS_TEX = "Interface\\RAIDFRAME\\ReadyCheck-NotReady"
+function Kit.Unbuff(parent, size)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetWidth(size)
+    f:SetHeight(size)
+    local icon = f:CreateTexture(nil, "ARTWORK")
+    icon:SetAllPoints(f)
+    icon:SetTexture(Kit.ZONEBUFF_TEX[UnitFactionGroup("player") or ""] or Kit.ZONEBUFF_TEX.Alliance)
+    icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    icon:SetDesaturated(true)
+    local side = floor(size * CROSS_SHARE + 0.5)
+    local cross = f:CreateTexture(nil, "OVERLAY")
+    cross:SetWidth(side)
+    cross:SetHeight(side)
+    cross:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", floor(side / 4), -floor(side / 4))
+    cross:SetTexture(Kit.CROSS_TEX)
+    f.icon, f.cross = icon, cross
+    f:Hide()
+    return f
 end
 function Icon.Fold(tex, open)
     tex:SetTexture(FOLD_TEX)

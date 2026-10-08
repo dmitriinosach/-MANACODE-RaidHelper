@@ -181,7 +181,7 @@ local function Paint(d, scene, name, hp, dead)
     else
         local k = st.byName[name]
         local tr = k and scene.tracks[k]
-        d.dot:SetVertexColor(Kit.ClassColor(tr and tr.class))
+        d.dot:SetVertexColor(Kit.ClassColor(tr and tr.class, true))
     end
     Kit.Shade(d.fill, key == "low" and "sem.hpLow" or "sem.hpOk")
 end

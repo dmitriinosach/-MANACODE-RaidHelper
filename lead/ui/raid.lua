@@ -37,7 +37,7 @@ local function shortVer(v)
     return s
 end
 local function slotLabel(slot)
-    return slot.cap or ns.T("slot_" .. slot.role)
+    return ns.Tpl.Cap(slot) or ns.T("slot_" .. slot.role)
 end
 local function specNames(list)
     local out = {}
@@ -70,6 +70,58 @@ local function specTip(f, m)
         lines[#lines + 1] = ns.T("tipOff", ns.T("specFull_" .. p.off), ns.T("src_" .. (p.offSrc or "hand")))
     end
     f.tip = table.concat(lines, "\n")
+end
+local function specShort(key)
+    local full = ns.T("specFull_" .. key)
+    return full:match(":%s*(.+)$") or full
+end
+local function specIcon(key)
+    local sp = ns.SPEC[key]
+    local tex = sp and ns.Compat.SpellIcon(sp.icon)
+    return tex and ("|T" .. tex .. ":14|t ") or ""
+end
+local function addRows(out, rows)
+    if not rows then return end
+    if #out > 0 then out[#out + 1] = { kind = "sep" } end
+    for _, l in ipairs(rows) do out[#out + 1] = l end
+end
+local function cardLines(m, p, slot, ver)
+    local out = {}
+    local spec = p.spec and (specIcon(p.spec) .. ns.Hex("text.primary") .. specShort(p.spec) .. "|r")
+    out[1] = { kind = "head", left = m.name, class = m.class, right = spec or ns.T("cardSpecNone") }
+    if p.off or p.spec then
+        out[2] = { kind = "note", left = p.off and ns.T("cardOff", specShort(p.off)) or "",
+            right = p.spec and ns.T("srcShort_" .. (p.specSrc or "hand")) or nil }
+    end
+    if p.note then out[#out + 1] = { kind = "note", left = ns.T("tipNoteLine", p.note) } end
+    if (p.offRolls or 0) > 0 then out[#out + 1] = { kind = "row", left = ns.T("cardDice"), right = tostring(p.offRolls) } end
+    local rh = { { kind = "head", left = ns.T("cardRh") },
+        { kind = "row", left = ns.T("cardVer"), right = ver or ns.T("cardVerNone"), tone = not ver and "dim" or nil } }
+    if slot then
+        rh[3] = { kind = "row", left = ns.T("cardSlot"), right = slotLabel(slot) }
+        if slot.specs then rh[4] = { kind = "sub", left = specNames(slot.specs) } end
+    elseif m.work then
+        rh[3] = { kind = "row", left = ns.T("cardSlot"), right = ns.T("cardSlotNone"), tone = "warn" }
+    end
+    addRows(out, rh)
+    addRows(out, ns.Bober.Rows(m.name, m.unit))
+    addRows(out, ns.ReadyUI.TipRows(m))
+    out[#out + 1] = { kind = "sep" }
+    out[#out + 1] = { kind = "note", left = ns.T("tipRaidCell") }
+    local baked = ns.Bober.Baked()
+    if baked then out[#out + 1] = { kind = "note", left = ns.T("bbTipBaked", baked) } end
+    return out
+end
+local function cardEnter(self)
+    if self.lines then
+        ns.Kit.Tip.Show(self, self.lines)
+    elseif self.member or self.slotIndex then
+        ns.TipShow(self)
+    end
+end
+local function cardLeave()
+    ns.TipHide()
+    ns.Kit.Tip.Hide()
 end
 local function fillSlotButtons(btns, m, after)
     local S = ns.Session
@@ -584,8 +636,8 @@ local function newCell(box, k)
     c:SetScript("OnClick", function(self)
         if self.member then openMenu(self, self.member) else openSeat(self) end
     end)
-    c:SetScript("OnEnter", function(self) if self.member or self.slotIndex then ns.TipShow(self) end end)
-    c:SetScript("OnLeave", ns.TipHide)
+    c:SetScript("OnEnter", cardEnter)
+    c:SetScript("OnLeave", cardLeave)
     ns.ReadyUI.Build(c)
     return c
 end
@@ -606,7 +658,7 @@ local function clearCell(c, tok)
     c.mark:Hide()
     c.dead:Hide()
     ns.ReadyUI.ClearCell(c)
-    c.tipTitle, c.tip, c.tipDim = nil, nil, nil
+    c.tipTitle, c.tip, c.tipDim, c.lines = nil, nil, nil, nil
 end
 local function fillGhost(c, i, tpl, tok)
     clearCell(c, tok)
@@ -699,20 +751,7 @@ local function fillCell(c, m, tok)
         c.mark:Show()
     end
     if m.dead then c.dead:Show() end
-    specTip(c, m)
-    local lines = { c.tip }
-    if slotI then
-        local slot = S.Template().slots[slotI]
-        lines[#lines + 1] = ns.T("tipInSlot", slotLabel(slot)
-            .. (slot.specs and (" (" .. specNames(slot.specs) .. ")") or ""))
-    elseif noSlot then
-        lines[#lines + 1] = ns.T("tipNoSlot")
-    end
-    if p.note then lines[#lines + 1] = ns.T("tipNoteLine", p.note) end
-    if rolls > 0 then lines[#lines + 1] = ns.T("tipDice", rolls) end
-    lines[#lines + 1] = ver and ns.T("tipAddonVer", ver) or ns.T("tipAddonNone")
-    c.tip = ns.Bober.Tip(table.concat(lines, "\n"), m.name, m.unit)
-    c.tipDim = ns.T("tipRaidCell")
+    c.lines = cardLines(m, p, slotI and S.Template().slots[slotI], ver)
     ns.ReadyUI.FillCell(c, m)
 end
 local function newBox(g)

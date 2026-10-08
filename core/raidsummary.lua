@@ -13,6 +13,7 @@ RaidSum.TRASH = TRASH
 local cache = {}
 local order = {}
 local jobKeys = {}
+local failed = {}
 local function FightSegs(raid)
     local set = {}
     for k = 1, #raid.encs do
@@ -74,7 +75,8 @@ local function NewPlayer(name)
     return { name = name, class = ns.Encounters.ClassOf(name), all = 0, cut = 0, enc = 0, boss = 0, heal = 0,
              deaths = 0, deathBy = {}, flask = 0, elixir = 0, potion = 0, food = 0, scroll = 0, other = 0,
              stone = 0, used = {}, tries = 0, prio = 0, prioBy = {}, bad = 0, badHits = 0, badBy = {}, kicks = 0,
-             cures = 0, purges = 0, first = 0, firstBy = {}, buffN = 0, buffSec = 0, buffBy = {}, rod = 0, rodBy = {} }
+             cures = 0, purges = 0, first = 0, firstBy = {}, buffN = 0, buffSec = 0, buffBy = {}, rod = 0, rodBy = {},
+             jopo = 0, jopoKill = 0, jopoBy = {} }
 end
 local function TimeOf(fights)
     local t = { combat = 0, wipe = 0, idle = 0, gaps = 0 }
@@ -281,6 +283,12 @@ local function Credit(st, f, s)
                 p.rod = p.rod + n
                 p.rodBy[sk] = (p.rodBy[sk] or 0) + n
             end
+            local jo = sp.jopo
+            if jo then
+                p.jopo = p.jopo + 1
+                if jo.kill then p.jopoKill = p.jopoKill + 1 end
+                p.jopoBy[#p.jopoBy + 1] = { boss = f.boss, from = f.from, t = jo.t, kill = jo.kill }
+            end
             local at = sp.deathAt and sp.deathAt[1]
             if at and (not firstAt or at < firstAt) then firstAt, firstWho = at, p end
         end
@@ -374,7 +382,14 @@ function RaidSum.Get(raid)
     if res.sig ~= Signature(raid, RaidSum.Segments(raid)) then return nil end
     return res
 end
+function RaidSum.Failed(raid)
+    return raid and failed[raid.key] or nil
+end
+function RaidSum.Retry(raid)
+    if raid then failed[raid.key] = nil end
+end
 function RaidSum.Compute(raid, onDone)
+    failed[raid.key] = nil
     local have = RaidSum.Get(raid)
     if have then
         onDone(have)
@@ -401,7 +416,8 @@ function RaidSum.Compute(raid, onDone)
         return res
     end, function(res)
         jobKeys[raid.key] = nil
-        if res then onDone(res) end
+        if not res then failed[raid.key] = ns.Jobs.Failed(jk) or "?" end
+        onDone(res)
     end, "raidsum.frame")
 end
 function RaidSum.Reset()

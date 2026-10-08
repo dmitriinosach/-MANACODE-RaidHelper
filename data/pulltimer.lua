@@ -19,3 +19,18 @@ ns.pullTimer = {
     },
     minutes = { "мин", "min" },
 }
+ns.pullSniff = {
+    hit = 4,
+    kill = 10,
+    share = 0.25,
+    icon = 53,
+}
+ns.awardIcons = {
+    jopo = 53,
+    top5 = 1719,
+    buffed = 57933,
+    rod = 324,
+    first = 5384,
+    alive = 642,
+    puddles = 49938,
+}

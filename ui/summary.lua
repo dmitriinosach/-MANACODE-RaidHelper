@@ -59,12 +59,23 @@ local function Icon(id)
     if type(id) == "string" then return id end
     return id and ns.Effects.IconById(id) or UNKNOWN_ICON
 end
+local pageBar
+local function SyncBar()
+    if pageBar and content then pageBar:SetState(offset, host:GetHeight(), content:GetHeight()) end
+end
+local function Rescroll()
+    if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
+    offset = min(offset, max(0, content:GetHeight() - host:GetHeight()))
+    scroll:SetVerticalScroll(offset)
+    SyncBar()
+end
 local function PageWheel(delta)
     if not content then return false end
     local most = max(0, content:GetHeight() - host:GetHeight())
     local was = offset
     offset = max(0, min(most, offset - delta * WHEEL))
     scroll:SetVerticalScroll(offset)
+    SyncBar()
     return offset ~= was
 end
 local function Stat(i)
@@ -79,6 +90,7 @@ local function Head(i)
     local fs = heads[i]
     if fs then return fs end
     fs = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    ns.Kit.Text(fs, "text.title")
     fs:SetJustifyH("LEFT")
     heads[i] = fs
     return fs
@@ -138,6 +150,16 @@ local function DispelMark(d)
     end
     return m
 end
+local function SniffMark(p, s)
+    local jo = p.jopo
+    if not jo or not ns.pullSniff then return nil end
+    local sec = Tips.Dec(jo.t, 1)
+    local lines = { { kind = "head", left = ns.T("rsum.d.jopo") },
+        { kind = "row", left = ns.T("sum.jopo.hit"), right = format(ns.T("sum.jopo.at"), sec) } }
+    if jo.kill then lines[#lines + 1] = { kind = "row", left = ns.T("sum.jopo.kill"), tone = "bad" } end
+    return Replay({ icon = Icon(ns.pullSniff.icon), count = sec, verdict = jo.kill and "red" or "yellow",
+        lines = lines }, (s.pull and s.pull.t or fight.from) + jo.t)
+end
 local function Entries(p, s)
     local list = {}
     local P = ns.Proof
@@ -185,6 +207,8 @@ local function Entries(p, s)
             verdict = "yellow", lines = Tips.EarlyPull(early, s.pull.t),
             proof = P and Proof(p, P.ByKind("earlypull")) }, s.pull.t)
     end
+    local sniff = SniffMark(p, s)
+    if sniff then list[#list + 1] = sniff end
     local duties = ns.Penalties and ns.Penalties.Duties(s, fight, p) or {}
     local forced = {}
     for k = 1, #duties do
@@ -329,6 +353,14 @@ local function MarksTotal(s, m)
     m.subs = m.subs or {}
     m.subs[#m.subs + 1] = format(ns.T("sum.marks.short"), table.concat(parts, ", "))
 end
+local function ZoneTotal(s, m)
+    if not (fight.killed and ns.ZoneBuff and s.zoneBuff == ns.ZoneBuff.OFF) then return end
+    m.unbuff = true
+    m.subs = m.subs or {}
+    m.subs[#m.subs + 1] = ns.T("zb.short")
+    m.lines = m.lines or { { kind = "head", left = m.title, right = m.value .. "  " .. m.sub } }
+    m.lines[#m.lines + 1] = { kind = "text", left = ns.T("zb.kill") }
+end
 local function ChatButton(f)
     if not (ns.ProofView and ns.ChatReport) then return end
     if not chatBtn then
@@ -369,6 +401,7 @@ local function DrawStats(s, w)
             PullTotal(s, m)
             WipeTotal(s, m)
             MarksTotal(s, m)
+            ZoneTotal(s, m)
         end
         if c[1] == "sum.s.dps" or c[1] == "sum.s.hps" then
             m.lines = Tips.Combat(s, m.title, m.value, c[1] == "sum.s.dps" and s.dmg or s.heal)
@@ -474,6 +507,7 @@ local function FailPanel()
     f.head:SetScript("OnEnter", FailHeadEnter)
     f.head:SetScript("OnLeave", function() ns.Tip.Hide() end)
     f.title = HeadLine(f, "GameFontNormal")
+    ns.Kit.Text(f.title, "text.title")
     f.preset = HeadLine(f, "GameFontHighlightSmall")
     ns.Kit.Text(f.preset, "text.secondary")
     f.narrow = ns.GPList.New(f, "HTP_FailWatchGPRow", ns.GPList.COMPACT)
@@ -647,9 +681,11 @@ function Render()
     if not summary then
         laid = {}
         if ns.SumSide then ns.SumSide.Show("fight", {}) end
-        hint:SetText(ns.T("sum.busy"))
+        local err = fight and ns.Summary.Failed(fight)
+        hint:SetText(err and format(ns.T("sum.fail"), err) or ns.T("sum.busy"))
         hint:Show()
         content:SetHeight(host:GetHeight())
+        Rescroll()
         return
     end
     hint:Hide()
@@ -668,8 +704,7 @@ function Render()
     y = DrawTiles(summary, y, w)
     Mark("players", top, y)
     content:SetHeight(max(host:GetHeight(), y + MARGIN))
-    offset = min(offset, max(0, content:GetHeight() - host:GetHeight()))
-    scroll:SetVerticalScroll(offset)
+    Rescroll()
 end
 function View.Attach(frame)
     host = frame
@@ -685,8 +720,24 @@ function View.Attach(frame)
     scroll:SetScrollChild(content)
     scroll:EnableMouseWheel(true)
     scroll:SetScript("OnMouseWheel", function(_, delta) PageWheel(delta) end)
+    local deck = CreateFrame("Frame", nil, host)
+    deck:SetFrameLevel(host:GetFrameLevel() + 40)
+    deck:SetPoint("TOPRIGHT", host, "TOPRIGHT", -1, -MARGIN)
+    deck:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -1, MARGIN)
+    deck:SetWidth(8)
+    pageBar = ns.Kit.ScrollBar(deck, 1)
+    pageBar:SetPoint("TOPRIGHT", deck, "TOPRIGHT", 0, 0)
+    pageBar:SetPoint("BOTTOMRIGHT", deck, "BOTTOMRIGHT", 0, 0)
+    pageBar.onScroll = function(want)
+        offset = max(0, min(max(0, content:GetHeight() - host:GetHeight()), want))
+        scroll:SetVerticalScroll(offset)
+        SyncBar()
+    end
     hint = content:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    ns.Kit.Text(hint, "text.bright")
     hint:SetPoint("TOPLEFT", MARGIN * 2, -MARGIN * 2)
+    hint:SetPoint("RIGHT", host, "RIGHT", -MARGIN * 2, 0)
+    hint:SetJustifyH("LEFT")
     host:Hide()
     if ns.SumSide then ns.SumSide.Watch("fight", host, function() Render() end) end
 end
@@ -744,3 +795,6 @@ end
 function View.IsShown()
     return host ~= nil and host:IsShown() and true or false
 end
+ns.Jobs.OnChange(function()
+    if not summary and fight and View.IsShown() and ns.Summary.Failed(fight) then Render() end
+end)

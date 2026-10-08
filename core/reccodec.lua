@@ -18,6 +18,7 @@ local CHUNK = 512
 local POINTS = 256
 local FLAG_MASK = 0xFFFF
 local HP_STEP = 0.01
+local MANA_STEP = 0.02
 local UNITS_PER_YARD = 8
 local MAP_UNITS = 10000
 local ITEM = "\30"
@@ -75,6 +76,7 @@ local function State(seg)
     local st = states[seg]
     if st then return st end
     st = { hpLast = {}, hpMax = {}, hpBuf = {}, hpMs = {}, hpOut = {},
+           mpLast = {}, mpMax = {}, mpBuf = {}, mpMs = {}, mpOut = {},
            px = {}, py = {}, posBuf = {}, posMs = {}, posX = {}, posY = {},
            yw = 1 / UNITS_PER_YARD, yh = 1 / UNITS_PER_YARD }
     NewDicts(st)
@@ -86,7 +88,7 @@ function Codec.Open(ts, raid)
     local seg = {
         v = VERSION, raid = raid, t0 = ts, t1 = ts, n = 0, bytes = 0,
         actors = {}, spells = {}, strs = {}, chunks = {}, buf = {},
-        hp = {}, pos = {}, maps = {}, bosses = {},
+        hp = {}, pos = {}, mana = {}, maps = {}, bosses = {},
     }
     State(seg)
     return seg
@@ -273,32 +275,38 @@ local function Stamp(seg, buf, last, ts)
     local dt = ms - last
     return dt ~= 0 and dt or "", ms, false
 end
-function Codec.Hp(seg, ts, name, hp, hpMax, force)
-    local st = states[seg] or State(seg)
-    local last = st.hpLast[name]
-    local lastMax = st.hpMax[name]
-    if not force and last ~= nil and hpMax == lastMax then
-        if hp == last then return false end
-        if hp ~= 0 and last ~= 0 then
-            local d = hp - last
+local function Level(seg, store, lastV, lastMax, bufs, msOf, outMax, ts, name, v, vMax, force, step)
+    local last = lastV[name]
+    if not force and last ~= nil and vMax == lastMax[name] then
+        if v == last then return false end
+        if v ~= 0 and last ~= 0 then
+            local d = v - last
             if d < 0 then d = -d end
-            if d < hpMax * HP_STEP then return false end
+            if d < vMax * step then return false end
         end
     end
-    local buf = st.hpBuf[name]
-    local dt, ms, first = Stamp(seg, buf, st.hpMs[name], ts)
+    local dt, ms, first = Stamp(seg, bufs[name], msOf[name], ts)
     local point
-    if first or hpMax ~= st.hpOut[name] then
-        point = dt .. "," .. hp .. "," .. hpMax
-        st.hpOut[name] = hpMax
+    if first or vMax ~= outMax[name] then
+        point = dt .. "," .. v .. "," .. vMax
+        outMax[name] = vMax
     else
-        point = dt .. "," .. hp
+        point = dt .. "," .. v
     end
-    st.hpMs[name] = ms
-    st.hpLast[name], st.hpMax[name] = hp, hpMax
+    msOf[name] = ms
+    lastV[name], lastMax[name] = v, vMax
     if ts > seg.t1 then seg.t1 = ts end
-    PutPoint(seg, st.hpBuf, seg.hp, name, point)
+    PutPoint(seg, bufs, store, name, point)
     return true
+end
+function Codec.Hp(seg, ts, name, hp, hpMax, force)
+    local st = states[seg] or State(seg)
+    return Level(seg, seg.hp, st.hpLast, st.hpMax, st.hpBuf, st.hpMs, st.hpOut, ts, name, hp, hpMax, force, HP_STEP)
+end
+function Codec.Mana(seg, ts, name, mp, mpMax, force)
+    local st = states[seg] or State(seg)
+    if not seg.mana then seg.mana = {} end
+    return Level(seg, seg.mana, st.mpLast, st.mpMax, st.mpBuf, st.mpMs, st.mpOut, ts, name, mp, mpMax, force, MANA_STEP)
 end
 function Codec.Pos(seg, ts, name, x, y, force)
     local st = states[seg] or State(seg)
@@ -348,16 +356,25 @@ function Codec.Map(seg, ts, area, level, mapName)
     seg.bytes = seg.bytes + #point + 1
     return true
 end
+local function BufsOf(st, kind)
+    if kind == "hp" then return st.hpBuf end
+    if kind == "mana" then return st.mpBuf end
+    return st.posBuf
+end
+local function MsOf(st, kind)
+    if kind == "hp" then return st.hpMs end
+    if kind == "mana" then return st.mpMs end
+    return st.posMs
+end
 function Codec.LiveBuf(seg, kind, name)
     local st = states[seg]
     if not st then return nil end
-    local bufs = kind == "hp" and st.hpBuf or st.posBuf
-    return bufs[name]
+    return BufsOf(st, kind)[name]
 end
 function Codec.LiveBufs(seg, kind)
     local st = states[seg]
     if not st then return nil end
-    return kind == "hp" and st.hpBuf or st.posBuf
+    return BufsOf(st, kind)
 end
 local function FlushPoints(bufs, store)
     for name, buf in pairs(bufs) do
@@ -386,6 +403,8 @@ function Codec.Seal(seg)
     if st then
         FlushPoints(st.hpBuf, seg.hp)
         FlushPoints(st.posBuf, seg.pos)
+        if next(st.mpBuf) and not seg.mana then seg.mana = {} end
+        if seg.mana then FlushPoints(st.mpBuf, seg.mana) end
         states[seg] = nil
     end
     if ns.Decode then ns.Decode.Tables(seg) end
@@ -395,6 +414,7 @@ function Codec.Seal(seg)
     seg.maps = #seg.maps > 0 and concat(seg.maps, ";") or nil
     if not next(seg.hp) then seg.hp = nil end
     if not next(seg.pos) then seg.pos = nil end
+    if seg.mana and not next(seg.mana) then seg.mana = nil end
     if seg.bosses and not next(seg.bosses) then seg.bosses = nil end
     return seg
 end
@@ -474,9 +494,9 @@ end
 function Codec.TrimStreams(seg, cutMs)
     cutMs = floor(cutMs)
     local st = states[seg]
-    for kind, store in pairs({ hp = seg.hp, pos = seg.pos }) do
+    for kind, store in pairs({ hp = seg.hp, pos = seg.pos, mana = seg.mana }) do
         local isPos = kind == "pos"
-        local bufs = st and (isPos and st.posBuf or st.hpBuf) or {}
+        local bufs = st and BufsOf(st, kind) or {}
         for name, list in pairs(store) do
             while list[1] do
                 local nxt = Head(list[2] or (bufs[name] and bufs[name][1]))
@@ -491,7 +511,7 @@ function Codec.TrimStreams(seg, cutMs)
                 seg.bytes = seg.bytes + delta
             end
         end
-        local lastMs = st and (isPos and st.posMs or st.hpMs)
+        local lastMs = st and MsOf(st, kind)
         for name, buf in pairs(bufs) do
             local list = store[name]
             if buf[1] and not (list and list[1]) and Head(buf[1]) < cutMs then
@@ -536,7 +556,7 @@ function Codec.Rebase(seg, t0)
     for i = 1, #seg.chunks do seg.chunks[i] = Shifted(seg.chunks[i], delta) end
     ShiftFirst(seg.buf, delta)
     local st = states[seg]
-    for _, store in ipairs({ seg.hp, seg.pos }) do
+    for _, store in pairs({ seg.hp, seg.pos, seg.mana }) do
         for _, list in pairs(store) do
             for i = 1, #list do list[i] = Shifted(list[i], delta) end
         end
@@ -544,10 +564,10 @@ function Codec.Rebase(seg, t0)
     if type(seg.maps) == "table" then ShiftFirst(seg.maps, delta) end
     if st then
         st.lastMs = st.lastMs - delta
-        for _, bufs in ipairs({ st.hpBuf, st.posBuf }) do
+        for _, bufs in ipairs({ st.hpBuf, st.posBuf, st.mpBuf }) do
             for _, buf in pairs(bufs) do ShiftFirst(buf, delta) end
         end
-        for _, ms in ipairs({ st.hpMs, st.posMs }) do
+        for _, ms in ipairs({ st.hpMs, st.posMs, st.mpMs }) do
             for name, v in pairs(ms) do ms[name] = v - delta end
         end
         if st.mapMs then st.mapMs = st.mapMs - delta end

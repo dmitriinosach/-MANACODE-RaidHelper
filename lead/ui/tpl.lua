@@ -178,7 +178,7 @@ local function refresh()
         r:ClearAllPoints()
         r:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -(i - 1) * ROW_H)
         ns.Icon.Role(r.role, ns.ROLE_GROUP[s.role])
-        r.text:SetText(i .. ". " .. (s.cap or ns.T("slot_" .. s.role)) .. "  " .. ns.Hex("text.muted") .. ns.T("slotGrpShort", groups[i]) .. "|r")
+        r.text:SetText(i .. ". " .. (ns.Tpl.Cap(s) or ns.T("slot_" .. s.role)) .. "  " .. ns.Hex("text.muted") .. ns.T("slotGrpShort", groups[i]) .. "|r")
         r.text:ClearAllPoints()
         if s.mark then
             ns.Icon.Mark(r.mark, s.mark)
@@ -227,7 +227,7 @@ local function refresh()
         paintMarks(slot)
         roleSel:SetOptions(roleOptions(), slot.role)
         grpSel:SetOptions(groupOptions(autoGroup(tpl, curSlot)), slot.grp or 0)
-        if not capE.focused then capE:SetValue(slot.cap or "") end
+        if not capE.focused then capE:SetValue(ns.Tpl.Cap(slot) or "") end
         local on = {}
         for _, k in ipairs(slot.specs or {}) do on[k] = true end
         local n = 0
