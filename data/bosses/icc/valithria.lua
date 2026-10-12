@@ -4,6 +4,10 @@ ns.summaries[ns.ENC.valithria] = {
         { kind = "ticks", spell = 71940, id = 71941, gap = 5, tip = "sum.b.portals" },
         { kind = "stack", spell = 71940, id = 71941, tip = "sum.b.dreamstacks" },
         { kind = "stack", spell = 70873, id = 70873, tip = "sum.b.dreamstacks" },
+        { kind = "lost", spell = 71940, id = 71941, stop = "ph.dream", grade = "yellow", rule = "vali.vigor",
+          tip = "sum.b.vali.lost" },
+        { kind = "lost", spell = 70873, id = 70873, stop = "ph.dream", grade = "yellow", rule = "vali.vigor",
+          tip = "sum.b.vali.lost" },
         { kind = "stack", spell = 72966, tip = "sum.b.fleshrot" },
         { kind = "applied", spells = { 13810 }, names = {
             37868, 37886, 37934,

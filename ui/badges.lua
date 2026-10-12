@@ -538,17 +538,20 @@ end
 local function MarkEnter(self)
     if self.pair then PairOn(self) end
     if self.links then Badges.Highlight(self.links, self.owner or self:GetParent()) end
+    if self.fable and ns.FableView then ns.FableView.Enter(self) end
     if not (ns.ProofView and ns.ProofView.Enter(self)) then ShowLines(self) end
     if ns.DeathPreviewView then ns.DeathPreviewView.Enter(self) end
 end
 local function MarkLeave(self)
     if ns.ProofView then ns.ProofView.Leave(self) end
+    if ns.FableView then ns.FableView.Leave(self) end
     HideTip()
     if ns.DeathPreviewView then ns.DeathPreviewView.Leave() end
     if self.links then Badges.Unhighlight() end
     PairOff()
 end
 local function MarkClick(self, button)
+    if self.fable and ns.FableView and ns.FableView.Click(self, button) then return end
     if ns.ProofView and ns.ProofView.Click(self, button) then return end
     local owner = self.owner or self:GetParent()
     if ns.ReplayLink and ns.ReplayLink.Shift(self.fight, self.at, self.who or (owner and owner.who)) then return end
@@ -632,6 +635,7 @@ function Badges.Mark(parent, size)
         self.fight, self.at = m.fight, m.at
         self.preview = m.preview
         self.proof = m.proof
+        self.fable = m.fable
     end
     function b.Layout(self, width)
         self:SetWidth(width)

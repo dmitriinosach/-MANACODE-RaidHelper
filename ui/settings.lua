@@ -125,7 +125,7 @@ function Settings.Sections(cat, adv)
     tsort(c.sections, Before)
     for i = 1, #c.sections do
         local s = c.sections[i]
-        if s.adv == (adv and true or false) then out[#out + 1] = s end
+        if s.adv == (adv and true or false) and not (s.def.shown and not s.def.shown()) then out[#out + 1] = s end
     end
     return out
 end

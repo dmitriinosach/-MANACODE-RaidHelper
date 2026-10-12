@@ -2,6 +2,7 @@ local _, ns = ...
 local band = bit.band
 local find = string.find
 local F_BY_PLAYER = 0x100
+local F_GROUP = 0x07
 local DROP = {
     SPELL_ENERGIZE = true, SPELL_PERIODIC_ENERGIZE = true,
     SPELL_CAST_FAILED = true, SPELL_EXTRA_ATTACKS = true,
@@ -63,8 +64,23 @@ function Filter.Keep(sub, srcGUID, srcName, dstGUID, dstName, spellId, auraType,
     return true
 end
 function Filter.Pulls(sub, srcFlags, dstGUID, dstName, auto)
-    if not IsBoss(dstGUID, dstName, auto) or srcFlags == nil or band(srcFlags, F_BY_PLAYER) == 0 then
+    if not IsBoss(dstGUID, dstName, auto) or srcFlags == nil or band(srcFlags, F_BY_PLAYER) == 0
+        or band(srcFlags, F_GROUP) == 0 then
         return false
     end
     return find(sub, "_DAMAGE", 1, true) ~= nil or find(sub, "_HEAL", 1, true) ~= nil
+end
+function Filter.BossOn(enc)
+    if enc == nil then return true end
+    local db = ns.GetDB and ns.GetDB()
+    local own = db and db.settings and db.settings.recBoss
+    if type(own) == "table" and own[enc] ~= nil then return own[enc] == true end
+    return not (ns.recBossOff and ns.recBossOff[enc])
+end
+function Filter.SetBoss(enc, on)
+    local st = ns.GetDB().settings
+    if type(st.recBoss) ~= "table" then st.recBoss = {} end
+    local def = not (ns.recBossOff and ns.recBossOff[enc])
+    if on == def then st.recBoss[enc] = nil else st.recBoss[enc] = on end
+    if next(st.recBoss) == nil then st.recBoss = nil end
 end

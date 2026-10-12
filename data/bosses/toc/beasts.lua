@@ -7,6 +7,7 @@ ns.bosses[34797] = BEASTS
 ns.bossLast[BEASTS] = { [34797] = true }
 ns.summaries[BEASTS] = {
     badges = {
+        { kind = "parry", names = { 35144, 34799, 34797 }, id = 3127, tip = "sum.b.parry" },
         { kind = "hit", spell = 66313, gap = 3, tip = "sum.b.toc.firebomb" },
         { kind = "hit", spell = 67640, gap = 3, tip = "sum.b.toc.slime" },
         { kind = "aura", spell = 67620, tip = "sum.b.toc.toxin" },
@@ -19,5 +20,6 @@ ns.summaries[BEASTS] = {
         { kind = "damageTo", label = "sum.k.toc.snobolds", names = { 34800 } },
         { kind = "taken", label = "sum.k.toc.beastpools", spells = { 66313, 67640 } },
         { kind = "dispels", label = "sum.k.toc.rage", spell = 66759 },
+        { kind = "parries", label = "sum.k.parry" },
     },
 }

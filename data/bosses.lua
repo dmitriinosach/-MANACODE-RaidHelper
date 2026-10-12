@@ -117,6 +117,33 @@ ns.bossLast = {}
 ns.bossSurvive = {
     [E.gunship] = true,
 }
+ns.raidBosses = {
+    { map = "IcecrownCitadel", list = { E.marrowgar, E.deathwhisper, E.gunship, E.saurfang, E.festergut, E.rotface,
+        E.putricide, E.council, E.lanathel, E.valithria, E.sindragosa, E.lichking } },
+    { map = "TheRubySanctum", list = { E.halion } },
+    { map = "TheArgentColiseum", list = { E.beasts, E.jaraxxus, E.champions, E.twins, E.anubarak } },
+    { map = "Ulduar", list = { E.leviathan, E.ignis, E.razorscale, E.xt002, E.ironcouncil, E.kologarn, E.auriaya,
+        E.hodir, E.thorim, E.freya, E.mimiron, E.vezax, E.yogg, E.algalon } },
+}
+ns.pollAuraBoss = {
+    [71940] = E.valithria,
+    [70873] = E.valithria,
+    [63050] = E.yogg,
+    [63322] = E.vezax,
+    [74807] = E.halion,
+}
+ns.dpsModel = {
+    [E.rotface] = "boss",
+    [E.sindragosa] = "boss",
+    [E.council] = "boss",
+}
+ns.dpsAll = {
+    [E.sindragosa] = "sum.dps.all.tombs",
+}
+ns.recBossOff = {
+    [E.gunship] = true,
+    [E.valithria] = true,
+}
 ns.bossVehicle = {
     [E.gunship] = true,
     [E.lichking] = true,

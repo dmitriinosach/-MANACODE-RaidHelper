@@ -78,3 +78,15 @@ function StackTips.Badge(st, def)
     if n > ROWS then Put(out, "sub", (format(T("sum.tip.more"), n - ROWS):gsub("^%s+", ""))) end
     return out
 end
+function StackTips.Lost(st, def)
+    local list = st.lost
+    local out = {}
+    out[1] = { kind = "head", left = T(def.tip) }
+    Put(out, "row", T("stk.lost.n"), tostring(#list), nil, "warn")
+    for k = 1, min(ROWS, #list) do
+        local e = list[k]
+        Put(out, "sub", Clock(e.t), e.n > 0 and format(T("stk.lost.had"), e.n) or T("stk.lost.unknown"))
+    end
+    if #list > ROWS then Put(out, "sub", (format(T("sum.tip.more"), #list - ROWS):gsub("^%s+", ""))) end
+    return out
+end

@@ -1,14 +1,19 @@
 local _, ns = ...
 ns.summaries[ns.ENC.putricide] = {
     deps = {
-        mechs = { { key = "volatile", text = "sum.dd.m.volatile", spells = { 72625 } } },
+        mechs = {
+            { key = "volatile", text = "sum.dd.m.volatile", spells = { 72625 } },
+            { key = "gascloud", text = "sum.dd.m.gascloud", spells = { 70701 }, by = "chased" },
+        },
     },
+    held = { sec = 1, auras = { [70447] = "root", [71615] = "stun", [71618] = "stun" } },
     badges = {
-        { kind = "hit", spell = 70341, gap = 2, pool = 6, tip = "sum.b.puddle", off = true },
-        { kind = "aura", spell = 72550, tip = "sum.b.goo",
+        { kind = "hit", spell = 70341, gap = 2, pool = 6, tip = "sum.b.puddle", off = true, held = true },
+        { kind = "aura", spell = 72550, tip = "sum.b.goo", held = true,
           shed = { [70853] = 15, [72458] = 15, [72873] = 20, [72874] = 20 } },
-        { kind = "aura", spell = 72620, tip = "sum.b.choke",
+        { kind = "aura", spell = 72620, tip = "sum.b.choke", held = true,
           shed = { [71278] = 15, [72460] = 15, [72619] = 20, [72620] = 20 } },
+        { kind = "caught", spell = 70701, aura = 72833, grade = "red", held = true, tip = "sum.b.cloud" },
         { kind = "applied", spells = { 72876 }, names = { 37697, 37562 },
           id = 72876, tip = "sum.b.abomslow" },
         { kind = "death", spells = { 72625 }, id = 72625, neutral = true, tip = "sum.b.oozeblastdeath" },

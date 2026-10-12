@@ -10,7 +10,7 @@ local BAR_W = 6
 local NUM_H = 10
 local GAP = 8
 local HILITE = "Interface\\Buttons\\ButtonHilight-Square"
-local area, bar, meter
+local area, bar
 local cells, caps = {}, {}
 local lines = {}
 local offset, visible = 0, 0
@@ -26,43 +26,38 @@ local function treeName(cls, tree)
     if tree then s = s .. ": " .. ns.T("tree_" .. cls .. tree) end
     return s
 end
+local FX_ROWS = { buff = true, debuff = true }
+local function srcName(s)
+    return ns.Compat.SpellName(ns.Buffs.SpellOf(s.def)) or "?"
+end
 local function buffTip(c, it)
-    local def = it.def
-    c.tipTitle = ns.T("rb_" .. def.key)
+    local key = it.def.key
+    c.tipTitle = ns.T("eff_" .. key)
     local out = {}
-    if def.fx then out[#out + 1] = ns.T("rbFx_" .. def.key) end
-    for _, s in ipairs(it.src) do
-        local name = ns.Compat.SpellName(ns.Buffs.SpellOf(s.def)) or "?"
-        local who = #s.who > 0 and named(s.who) or (ns.Hex("text.muted") .. ns.T("rbNone") .. "|r")
-        out[#out + 1] = ns.T("rbSrc", name, treeName(s.def.cls, s.def.tree), who)
+    if FX_ROWS[it.row] then out[#out + 1] = ns.Hex("text.muted") .. ns.T("effFx_" .. key) .. "|r" end
+    if it.blessable and it.pals > 0 and not it.other then
+        out[#out + 1] = ns.T("effBless", it.got, it.need)
     end
-    if #it.unsure > 0 then out[#out + 1] = ns.T("rbUnsure", named(it.unsure)) end
-    c.tip = table.concat(out, "\n")
-    c.tipDim = nil
-end
-local function groupTone(g)
-    if g.closed >= g.need then return "sem.ready" end
-    return g.closed > 0 and "text.warn" or "sem.notReady"
-end
-local function groupText(g)
-    return ns.T("rbGrp_" .. g.def.key) .. " " .. ns.Hex(groupTone(g)) .. g.closed .. "/" .. g.need .. "|r"
-end
-local function groupTip(c, g)
-    c.tipTitle = ns.T("rbGrp_" .. g.def.key)
-    local out = { ns.T("rbGrpClosed", g.closed, g.need) }
-    for _, it in ipairs(g.items) do
-        local key = it.def.key
-        local head = ns.Hex(it.closed and "sem.ready" or "text.muted") .. ns.T("rb_" .. key) .. "|r"
-        if it.def.fx then head = head .. ": " .. ns.T("rbFx_" .. key) end
-        out[#out + 1] = head
-        for _, s in ipairs(it.src) do
-            local name = ns.Compat.SpellName(ns.Buffs.SpellOf(s.def)) or "?"
-            local who = #s.who > 0 and named(s.who) or (ns.Hex("text.muted") .. ns.T("rbNone") .. "|r")
-            out[#out + 1] = "  " .. ns.T("rbSrc", name, treeName(s.def.cls, s.def.tree), who)
+    local here, gone = {}, {}
+    for _, s in ipairs(it.src) do
+        if #s.who > 0 then
+            local line = ns.T("effSrc", srcName(s), named(s.who))
+            if s.def.party then line = line .. ns.Hex("text.muted") .. ns.T("effParty") .. "|r" end
+            here[#here + 1] = "  " .. line
+        else
+            gone[#gone + 1] = "  " .. ns.T("effSrc", srcName(s), treeName(s.def.cls, s.def.tree))
         end
     end
-    if #g.unsure > 0 then out[#out + 1] = ns.T("rbUnsure", named(g.unsure)) end
-    if g.def.bless then out[#out + 1] = ns.T("rbPals", g.pals) end
+    if #here > 0 then
+        out[#out + 1] = ns.T("effHave")
+        for _, l in ipairs(here) do out[#out + 1] = l end
+    end
+    if #gone > 0 then
+        out[#out + 1] = ns.Hex("text.muted") .. ns.T("effCan") .. "|r"
+        for _, l in ipairs(gone) do out[#out + 1] = ns.Hex("text.muted") .. l .. "|r" end
+    end
+    if #it.unsure > 0 then out[#out + 1] = ns.T("effUnsure", named(it.unsure)) end
+    if it.blessable and it.pals > 0 then out[#out + 1] = ns.Hex("text.muted") .. ns.T("effPals", it.pals) .. "|r" end
     c.tip = table.concat(out, "\n")
     c.tipDim = nil
 end
@@ -72,8 +67,8 @@ local function specList(specs)
     return table.concat(out, ", ")
 end
 local function reqTip(c, r)
-    c.tipTitle = r.specs and specList(r.specs) or ns.T("rbAny", ns.T("slot_" .. r.role))
-    local out = { ns.T("rbReqHave", r.have, r.need) }
+    c.tipTitle = r.specs and specList(r.specs) or ns.T("tplAny", ns.T("slot_" .. r.role))
+    local out = { ns.T("tplHave", r.have, r.need) }
     if #r.who > 0 then
         local list = {}
         for k, name in ipairs(r.who) do
@@ -82,7 +77,7 @@ local function reqTip(c, r)
         end
         out[#out + 1] = table.concat(list, ", ")
     end
-    if r.need > r.have then out[#out + 1] = ns.T("rbReqMiss", r.need - r.have) end
+    if r.need > r.have then out[#out + 1] = ns.T("tplMiss", r.need - r.have) end
     c.tip = table.concat(out, "\n")
     c.tipDim = nil
 end
@@ -140,23 +135,17 @@ local function dim(c, on, alpha)
     c.icon:SetDesaturated(on)
     c.icon:SetAlpha(alpha)
 end
-local function fillGroup(c, g)
-    ns.Kit.Icon.Spell(c.icon, ns.Buffs.SpellOf(g.items[1].def.src[1]))
-    if g.closed > 0 then dim(c, false, 1) else dim(c, true, 0.6) end
-    c.num:Hide()
-    c.box:Hide()
-    c.side:SetText(groupText(g))
-    ns.PaintText(c.side, "text.primary")
-    c.side:Show()
-    groupTip(c, g)
-end
+local COUNT_ROWS = { raidcd = true, cd = true }
 local function fillBuff(c, it)
-    if it.group then return fillGroup(c, it) end
     ns.Kit.Icon.Spell(c.icon, ns.Buffs.SpellOf(it.def.src[1]))
-    if it.have > 0 then
+    local state = ns.Buffs.State(it)
+    if state == "full" then
         dim(c, false, 1)
-        setCount(c, tostring(it.have), "text.primary")
-    elseif #it.unsure > 0 then
+        setCount(c, COUNT_ROWS[it.row] and tostring(it.have) or nil, "text.primary")
+    elseif state == "part" then
+        dim(c, false, 1)
+        setCount(c, "-" .. (it.need - it.got), "text.warn")
+    elseif state == "unsure" then
         dim(c, true, 0.7)
         setCount(c, "?", "text.warn")
     else
@@ -188,17 +177,12 @@ local function fillUnknown(c, list)
     c.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     dim(c, false, 1)
     setSide(c, tostring(#list), "text.warn")
-    c.tipTitle = ns.T("rbUnknown")
+    c.tipTitle = ns.T("specUnknown")
     c.tip = named(list)
     c.tipDim = nil
 end
 local function clusterOf(v)
-    return v.def.cls or v.def.src[1].cls
-end
-local function buffWidth(v)
-    if not v.group then return CELL end
-    meter:SetText(groupText(v))
-    return math.max(WIDE, ICON + 8 + math.ceil(meter:GetStringWidth() or 0))
+    return v.def.grp
 end
 local function addRow(cap, list, w, fill, cluster)
     local room = width - CAP_W - BAR_W - 4
@@ -224,11 +208,11 @@ local function collect()
     for i = #lines, 1, -1 do lines[i] = nil end
     local list = ns.Buffs.Members()
     for _, row in ipairs(ns.Buffs.Rows(list)) do
-        addRow(ns.T("rbRow_" .. row.key), row.items, buffWidth, fillBuff, clusterOf)
+        addRow(ns.T("effRow_" .. row.key), row.items, CELL, fillBuff, clusterOf)
     end
     local comp = ns.Buffs.Comp(list)
-    addRow(ns.T("rbRowTpl"), comp.reqs, WIDE, fillReq)
-    local last = addRow(ns.T("rbRowRaid"), comp.specs, WIDE, fillSpec)
+    addRow(ns.T("effRowTpl"), comp.reqs, WIDE, fillReq)
+    local last = addRow(ns.T("effRowSpecs"), comp.specs, WIDE, fillSpec)
     if #comp.unknown > 0 then
         last = lines[#lines]
         last.items[#last.items + 1] = { v = comp.unknown, w = WIDE, fill = fillUnknown }
@@ -289,8 +273,6 @@ local function build(pane)
     bar = ns.Kit.ScrollBar(area, LINE)
     bar:SetPoint("TOPRIGHT", area, "TOPRIGHT", 0, 0)
     bar.onScroll = scrollTo
-    meter = area:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    meter:Hide()
     built = true
 end
 local function place(pane, top, w, h)

@@ -27,18 +27,7 @@ function R.OnChange(fn)
     listeners[#listeners + 1] = fn
 end
 local function needOf(class, tree)
-    local t = ns.READY_NEED[class]
-    if not t then return {} end
-    if tree and t[tree] then return t[tree] end
-    local out = {}
-    for flag in pairs(t[1]) do
-        local all = true
-        for i = 2, #t do
-            if not t[i][flag] then all = false end
-        end
-        if all then out[flag] = true end
-    end
-    return out
+    return ns.Buffs.Needs(class, tree)
 end
 local function readAuras(unit)
     local a = { names = {}, ids = {}, own = {} }

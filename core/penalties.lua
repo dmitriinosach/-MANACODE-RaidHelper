@@ -369,6 +369,23 @@ function Penalties.Grade(hit)
     end
     return #hit.events > 0 and "yellow" or "red"
 end
+local function BadgeEvents(s, p, rule, out, from)
+    for i = 1, #(s.badges or {}) do
+        local bd = s.badges[i]
+        local b = bd.rule == rule.key and p.badges and p.badges[i]
+        local g = b and (b.grade or bd.grade)
+        if b and g ~= "green" then
+            for k = 1, b.n do
+                local ticks = b.ticks and b.ticks[k]
+                local yellow = bd.part == "carry" or (ticks and ticks <= 1) or (not ticks and g == "yellow")
+                out[#out + 1] = { t = from + (b.times[k] or 0), grade = yellow and "yellow" or nil,
+                                  hurt = b.cnt and b.cnt[k], grow = b.grow and b.grow[k],
+                                  names = b.cnt and b.notes[k] or nil, ticks = ticks }
+            end
+        end
+    end
+    tsort(out, function(a, b) return (a.t or 0) < (b.t or 0) end)
+end
 local function Detect(rule, p, s, fight)
     local out = {}
     local kind = rule.kind
@@ -405,7 +422,9 @@ local function Detect(rule, p, s, fight)
         for i = 1, #(rule.spells or {}) do
             local list = p.hits[ns.SpellKey(rule.spells[i]) or 0]
             if list then
-                for k = 1, #list do times[#times + 1] = list[k] end
+                for k = 1, #list do
+                    if not (p.held and ns.Control.Held(p, list[k] - fight.from)) then times[#times + 1] = list[k] end
+                end
             end
         end
         local ep = Episodes(times, rule.gap or HIT_GAP)
@@ -420,6 +439,13 @@ local function Detect(rule, p, s, fight)
             end
         end
         if sheds then tsort(out, function(a, b) return a.t < b.t end) end
+    elseif kind == "caught" then
+        for i = 1, #(rule.spells or {}) do
+            local list = p.caught and p.caught[ns.SpellKey(rule.spells[i]) or 0] or {}
+            for k = 1, #list do
+                if not (p.held and ns.Control.Held(p, list[k] - fight.from)) then out[#out + 1] = { t = list[k] } end
+            end
+        end
     elseif kind == "chased" then
         local list = p.chased[ns.NpcKeyOf(rule.npc) or 0] or {}
         for i = 1, #list do
@@ -454,10 +480,28 @@ local function Detect(rule, p, s, fight)
             local dps = p.dmg / ns.Totals.Time(s)
             if dps < (rule.dps or 0) then out[1] = { t = nil, amount = dps, need = rule.dps } end
         end
+    elseif kind == "runeswap" then
+        local c = ns.RuneSwap and ns.RuneSwap.StatOf(s, p)
+        for k = 1, c and c.n or 0 do
+            out[k] = { t = fight.from + c.times[k], grade = "yellow",
+                       rune = { on = c.bearer[k], sec = c.dur[k], hits = c.rh[k], heal = c.heal[k] } }
+        end
+    elseif kind == "nova" then
+        local c = ns.BloodNova and ns.BloodNova.StatOf(s, p)
+        for k = 1, c and c.n or 0 do
+            if c.bad[k] then
+                out[#out + 1] = { t = fight.from + c.times[k], grade = "yellow", nova = { with = c.with[k], yd = c.yd[k] } }
+            end
+        end
     elseif kind == "earlypull" then
         local v = ns.PullTimer and ns.PullTimer.EarlyOf(s, p.name)
         if v then out[1] = { t = s.pull.t, grade = "yellow", early = v.early, sec = v.sec, setter = v.who } end
     end
+    if rule.pulled and ns.TombPull then
+        local list = ns.TombPull.Of(s, p)
+        for i = 1, #list do out[#out + 1] = { t = list[i].t, grade = "yellow", whom = list[i].whom } end
+    end
+    if rule.badge then BadgeEvents(s, p, rule, out, fight.from) end
     return out
 end
 local function RuleIcon(rule, s, p)
@@ -472,6 +516,8 @@ local function RuleIcon(rule, s, p)
     end
     if rule.kind == "chased" then return s.spellIds[ns.NpcKeyOf(rule.npc) or 0] or ICONS.manual end
     if rule.kind == "earlypull" then return ns.pullTimer and ns.pullTimer.icon or ICONS.manual end
+    if rule.kind == "runeswap" then return 72410 end
+    if rule.kind == "nova" then return 72440 end
     if rule.spells then
         for i = 1, #rule.spells do
             local id = s.spellIds[ns.SpellKey(rule.spells[i]) or 0]

@@ -8,6 +8,8 @@ local F_HOSTILE = 0x40
 local FEIGN = 5384
 local FEIGN_WINDOW = 2
 local COMBAT_GAP = 5
+local PREPOT = 5
+local MINE = { potion = true, other = true, stone = true }
 local RaidPart = {}
 ns.RaidPart = RaidPart
 function RaidPart.New(fight, pets, hp, known)
@@ -50,22 +52,39 @@ function RaidPart.Hit(st, who, dstGUID, dstFlags, amount)
     r.all = r.all + amount
     if IsBoss(st.fight, dstGUID) then r.boss = r.boss + amount end
 end
-function RaidPart.Consume(st, sub, who, srcName, srcFlags, a1, dstName, dstFlags, a2)
+local function Which(sub, who, srcName, srcFlags, a1, dstName, dstFlags, a2)
     if sub == "SPELL_AURA_APPLIED" then
         local c = ns.consumeAura[tonumber(a1) or 0]
         if c and dstName and IsPlayer(dstFlags) and (not srcName or srcName == dstName) then
-            Use(st, dstName, c, tonumber(a1))
+            return dstName, c, tonumber(a1)
         end
     elseif sub == "SPELL_CAST_SUCCESS" then
         local c = ns.consumeCast[tonumber(a1) or 0]
-        if c and who and srcName == who then Use(st, who, c, tonumber(a1)) end
+        if c and who and srcName == who then return who, c, tonumber(a1) end
     elseif sub == "SPELL_CREATE" then
         local c = ns.consumeCreate[tonumber(a1) or 0]
-        if c and srcName and IsPlayer(srcFlags) then Use(st, srcName, c) end
+        if c and srcName and IsPlayer(srcFlags) then return srcName, c, nil end
     elseif sub == "ENCHANT_APPLIED" then
         local c = ns.consumeEnchant[tonumber(a2) or 0]
-        if c and srcName and IsPlayer(srcFlags) then Use(st, srcName, c) end
+        if c and srcName and IsPlayer(srcFlags) then return srcName, c, nil end
     end
+    return nil, nil, nil
+end
+function RaidPart.Consume(st, sub, who, srcName, srcFlags, a1, dstName, dstFlags, a2)
+    local name, c, spell = Which(sub, who, srcName, srcFlags, a1, dstName, dstFlags, a2)
+    if name then Use(st, name, c, spell) end
+end
+function RaidPart.Mine(byName, fight, ts, sub, who, srcName, srcFlags, a1, dstName, dstFlags, a2)
+    if ts < fight.from - PREPOT or ts > fight.to then return end
+    local name, c, spell = Which(sub, who, srcName, srcFlags, a1, dstName, dstFlags, a2)
+    local p = name and byName[name]
+    if not (p and c.id and MINE[c.cat]) then return end
+    local list = p.cons
+    if not list then
+        list = {}
+        p.cons = list
+    end
+    list[#list + 1] = { id = c.id, item = c.item, spell = spell, t = ts - fight.from }
 end
 function RaidPart.Got(st, id, name, ts)
     if not id or not name then return end

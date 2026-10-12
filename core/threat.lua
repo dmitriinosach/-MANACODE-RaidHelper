@@ -25,11 +25,10 @@ local Threat = {}
 ns.Threat = Threat
 Threat.SUB = SUB
 Threat.PACK = PACK
-local RAID, RAID_PET, RAID_TARGET = {}, {}, {}
+local RAID, RAID_PET = {}, {}
 for i = 1, MAX_RAID do
     RAID[i] = "raid" .. i
     RAID_PET[i] = "raidpet" .. i
-    RAID_TARGET[i] = "raid" .. i .. "target"
 end
 local session = nil
 local halt = { seg = nil, why = nil, err = nil }
@@ -37,7 +36,7 @@ local said = { seg = nil }
 local elapsed = 0
 local stat = { ticks = 0, lines = 0, gone = 0, ms = 0, worst = 0 }
 local units, guids, mobNames, hits, rank, order = {}, {}, {}, {}, {}, {}
-local slot, dead = {}, {}
+local dead = {}
 local topI, topS, topR = {}, {}, {}
 local tail, memberNames = {}, {}
 local written = {}
@@ -58,39 +57,26 @@ local function Attempt()
     local R = ns.Ranging
     return R and R.Attempt and R.Attempt() or nil
 end
-local function Take(unit, n)
-    if not UnitExists(unit) or UnitIsPlayer(unit) or UnitPlayerControlled(unit) then return n end
-    if not UnitCanAttack("player", unit) then return n end
-    local guid = UnitGUID(unit)
-    if not guid then return n end
-    local k = slot[guid]
-    if k then
-        hits[k] = hits[k] + 1
-        return n
-    end
-    if UnitIsDeadOrGhost(unit) then
-        dead[guid] = true
-        return n
-    end
-    if not UnitAffectingCombat(unit) then return n end
-    n = n + 1
-    local name = UnitName(unit)
-    slot[guid] = n
-    units[n], guids[n], mobNames[n], hits[n] = unit, guid, name, 1
-    rank[n] = ns.bosses[ns.NpcKey(guid) or 0] and 1 or 0
-    return n
-end
 local function Before(a, b)
     if rank[a] ~= rank[b] then return rank[a] > rank[b] end
     if hits[a] ~= hits[b] then return hits[a] > hits[b] end
     return a < b
 end
 local function Collect()
-    wipe(slot)
     wipe(dead)
-    local n = Take("target", 0)
-    n = Take("focus", n)
-    for i = 1, GetNumRaidMembers() do n = Take(RAID_TARGET[i], n) end
+    local S = ns.UnitScan.Get()
+    local n = 0
+    for i = 1, S.n do
+        if S.near[i] and S.attack[i] then
+            if S.dead[i] then
+                dead[S.guid[i]] = true
+            elseif S.combat[i] and S.Valid(i) then
+                n = n + 1
+                units[n], guids[n], mobNames[n], hits[n] = S.unit[i], S.guid[i], S.name[i], S.hits[i]
+                rank[n] = ns.bosses[S.key[i] or 0] and 1 or 0
+            end
+        end
+    end
     for i = #order, n + 1, -1 do order[i] = nil end
     for i = 1, n do order[i] = i end
     tsort(order, Before)

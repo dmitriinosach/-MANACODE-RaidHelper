@@ -12,6 +12,11 @@ ns.summaries[ns.ENC.sindragosa] = {
         { kind = "death", spells = { 71665 }, id = 71665, neutral = true, tip = "sum.b.asphyxdeath" },
         { kind = "death", spells = { 15284, 71077 }, id = 19983, neutral = true, tip = "sum.b.cleavedeath" },
         { kind = "stack", spell = 72530, tip = "sum.b.buffet" },
+        { kind = "hit", spell = 71049, min = 10000, alive = true, grade = "red", tank = "yellow", tip = "sum.b.coldhit" },
+        { kind = "hit", spell = 71077, alive = true, grade = "red", tip = "sum.b.tailhit" },
+        { kind = "hit", spell = 64623, min = 5000, alive = true, grade = "red", tip = "sum.b.bombhit" },
+        { kind = "pulled", spell = 70126, splash = 70157, grade = "yellow", tip = "sum.b.pulled" },
+        { kind = "parry", names = { 36853 }, id = 3127, tip = "sum.b.parry" },
     },
     stacks = {
         { spell = 69766, over = 3 },
@@ -22,5 +27,6 @@ ns.summaries[ns.ENC.sindragosa] = {
     blocks = {
         { kind = "friendly", label = "sum.k.backlash", spells = { 71046 } },
         { kind = "damageTo", label = "sum.k.tomb", names = { 36980 } },
+        { kind = "parries", label = "sum.k.parry" },
     },
 }

@@ -9,8 +9,15 @@ local TIP_GAP = 10
 local TIP_LINE = 3
 local TIP_SECTION = 6
 local TIP_ICON = 18
-local BLOCK_STACK = 3
 local SIDES = { "LEFT", "RIGHT", "TOP", "BOTTOM" }
+local SHADOW_A = { 0.22, 0.17, 0.13, 0.09, 0.06, 0.03 }
+local SHADOW_STEP = 2
+local SHADOW_DROP = 2
+local TIP_LEVEL = 5
+local INNER_A = 0.32
+local INNER_INSET = 4
+local PREV_PAD = 6
+Kit.TIP_INNER_LEVEL = 20
 local function OwnText(f)
     if f.isSelect and f.caption then return f.caption end
     if f.text and f.text.GetText then return f.text:GetText() end
@@ -45,10 +52,10 @@ function Kit.TipHide()
     GameTooltip:Hide()
 end
 local TIP_INDENT = 10
-local TIP_COL = 14
+local TIP_COL = 20
 local TIP_MAXW = 300
 local TIP_SEP = 6
-local TIP_HEAD = 3
+local TIP_HEAD = 5
 local KINDS = {
     head = { font = "GameFontNormal", left = "tip.title", right = "tip.dim", small = "GameFontHighlightSmall" },
     row = { font = "GameFontHighlight", left = "tip.body", right = "text.primary" },
@@ -56,7 +63,7 @@ local KINDS = {
             indent = TIP_INDENT, wrap = true },
     text = { font = "GameFontHighlight", left = "tip.body", wrap = true },
     note = { font = "GameFontHighlightSmall", left = "tip.dim", wrap = true },
-    foot = { font = "GameFontHighlightSmall", left = "text.primary", wrap = true, gap = TIP_SEP },
+    foot = { font = "GameFontHighlightSmall", left = "tip.dim", wrap = true, gap = TIP_SEP },
 }
 local TONES = { bad = "text.bad", good = "text.good", warn = "text.warn", dim = "tip.dim" }
 local Tip = {}
@@ -65,6 +72,11 @@ local tipFrame, tipIcon
 local dockSide
 local dockOwner
 local avoidFn
+local areaFn
+local tipW, tipH = 0, 0
+local tipMain = 0
+local footY = {}
+local tipInner
 local tipLines = {}
 local tipMids = {}
 local tipRights = {}
@@ -74,6 +86,20 @@ local function TipFrame()
     f:SetFrameStrata("TOOLTIP")
     f:SetClampedToScreen(true)
     Kit.Skin(f, "tip")
+    f:SetFrameLevel(TIP_LEVEL)
+    local shadow = CreateFrame("Frame", nil, f)
+    shadow:SetFrameLevel(TIP_LEVEL - 1)
+    shadow:SetAllPoints(f)
+    for i = 1, #SHADOW_A do
+        local t = shadow:CreateTexture(nil, "BACKGROUND")
+        local sp = i * SHADOW_STEP
+        t:SetPoint("TOPLEFT", f, "TOPLEFT", -sp, sp - SHADOW_DROP)
+        t:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", sp, -sp - SHADOW_DROP)
+        Kit.Paint(t, "text.shadow", SHADOW_A[i])
+    end
+    tipInner = f:CreateTexture(nil, "BORDER")
+    Kit.Paint(tipInner, "text.shadow", INNER_A)
+    tipInner:Hide()
     tipIcon = f:CreateTexture(nil, "ARTWORK")
     tipIcon:SetWidth(TIP_ICON)
     tipIcon:SetHeight(TIP_ICON)
@@ -133,7 +159,13 @@ local function Measure(i, l, lead, w)
     local spec = KINDS[l.kind] or KINDS.row
     local m = { gap = spec.gap or 0, indent = spec.indent or 0, head = l.kind == "head" }
     local r, g, b
-    if l.class then r, g, b = Kit.ClassColor(l.class) else r, g, b = Tone(spec.left) end
+    if l.class then
+        r, g, b = Kit.ClassColor(l.class)
+    elseif l.tone and not l.right and not l.mid and TONES[l.tone] then
+        r, g, b = Tone(TONES[l.tone])
+    else
+        r, g, b = Tone(spec.left)
+    end
     m.lw, m.h = Fill(L, l.left or "", spec.font, "LEFT", r, g, b)
     local right, mid = l.right, l.mid
     if mid and not right then right, mid = mid, nil end
@@ -192,9 +224,14 @@ local function Layout(lines, icon)
     if w.mid > 0 and w.mid + TIP_COL + w.right > values then values = w.mid + TIP_COL + w.right end
     local inner = w.wide
     if values > 0 and w.left + TIP_COL + values > inner then inner = w.left + TIP_COL + values end
+    local footFrom = n + 1
+    while footFrom > 1 and lines[footFrom - 1].kind == "foot" do footFrom = footFrom - 1 end
+    for i = #footY, 1, -1 do footY[i] = nil end
     local y = -TIP_PAD
+    local mainY = nil
     for i = 1, n do
         local m = list[i]
+        if i == footFrom then mainY = y end
         if m.sep then
             y = y - TIP_SEP
         else
@@ -207,6 +244,7 @@ local function Layout(lines, icon)
             else
                 L:SetPoint("TOPLEFT", TIP_PAD + m.indent, y)
             end
+            if i >= footFrom then footY[#footY + 1] = { i = i, x = TIP_PAD + m.indent, y = y } end
             if m.right then tipRights[i]:SetPoint(point, f, "TOPRIGHT", -TIP_PAD, base) end
             if m.mid then tipMids[i]:SetPoint(point, f, "TOPRIGHT", -TIP_PAD - w.right - TIP_COL, base) end
             y = y - m.h - TIP_LINE
@@ -214,8 +252,11 @@ local function Layout(lines, icon)
         end
     end
     local width = inner + TIP_PAD * 2
-    f:SetWidth(width)
-    f:SetHeight(-y + TIP_PAD - TIP_LINE)
+    tipW, tipH = width, -y + TIP_PAD - TIP_LINE
+    tipMain = mainY and (-mainY + TIP_PAD - TIP_LINE) or tipH
+    f:SetWidth(tipW)
+    f:SetHeight(tipH)
+    tipInner:Hide()
     return f, width
 end
 function Tip.Show(owner, lines, icon)
@@ -234,12 +275,26 @@ end
 function Tip.SetAvoid(fn)
     avoidFn = fn
 end
-local function Rect(f)
+local function Rect(f, scaleOf)
     if not (f and f.GetLeft) then return nil, 0, 0, 0 end
     local l, r, b, t = f:GetLeft(), f:GetRight(), f:GetBottom(), f:GetTop()
     if not (l and r and b and t) then return nil, 0, 0, 0 end
-    local s = f:GetEffectiveScale() or 1
+    local s = (scaleOf or f):GetEffectiveScale() or 1
     return l * s, r * s, b * s, t * s
+end
+function Tip.SetArea(fn)
+    areaFn = fn
+end
+local function AreaOf(owner)
+    local win, page = nil, nil
+    if areaFn then win, page = areaFn() end
+    if not (win and page and win:IsShown()) then return nil, nil end
+    local p = owner
+    while p do
+        if p == win then return win, page end
+        p = p:GetParent()
+    end
+    return nil, nil
 end
 local function Covered(l, r, b, t, f)
     local fl, fr, fb, ft = Rect(f)
@@ -249,7 +304,7 @@ local function Covered(l, r, b, t, f)
     if w <= 0 or h <= 0 then return 0 end
     return w * h
 end
-local function Spot(side, o, w1, h1, W, H, g, sw, sh)
+local function Spot(side, o, w1, h1, W, H, g, bx)
     local x, y
     if side == "LEFT" then
         x, y = o[1] - g - W, (o[3] + o[4] + h1) / 2
@@ -261,13 +316,14 @@ local function Spot(side, o, w1, h1, W, H, g, sw, sh)
         x, y = o[1], o[3] - g
     end
     local fits
+    local x0, y0, x1, y1 = bx[1], bx[2], bx[3], bx[4]
     if side == "LEFT" or side == "RIGHT" then
-        fits = x >= 0 and x + W <= sw and H <= sh
+        fits = x >= x0 and x + W <= x1 and H <= y1 - y0
     else
-        fits = y - H >= 0 and y <= sh and W <= sw
+        fits = y - H >= y0 and y <= y1 and W <= x1 - x0
     end
-    x = max(0, min(x, sw - W))
-    y = min(sh, max(y, H))
+    x = max(x0, min(x, x1 - W))
+    y = min(y1, max(y, y0 + H))
     return { side = side, x = x, y = y, fits = fits, area = 0 }
 end
 local function Score(spot, W, H, owner, avoid)
@@ -282,13 +338,45 @@ local function Better(a, b)
     if a.fits ~= b.fits then return a.fits end
     return a.area < b.area
 end
+local function Merge(under)
+    local f = tipFrame
+    local shift = 0
+    if under then
+        local s, u = f:GetEffectiveScale() or 1, under:GetEffectiveScale() or 1
+        local uw, uh = (under:GetWidth() or 0) * u / s, (under:GetHeight() or 0) * u / s
+        shift = uh + PREV_PAD * 2
+        local w = max(tipW, uw + PREV_PAD * 2)
+        f:SetWidth(w)
+        f:SetHeight(tipH + shift)
+        if under.kitBd then
+            under:SetBackdrop(nil)
+            under.kitBd = nil
+        end
+        under:ClearAllPoints()
+        under:SetPoint("TOPLEFT", f, "TOPLEFT", PREV_PAD * s / u, -(tipMain + PREV_PAD) * s / u)
+        tipInner:ClearAllPoints()
+        tipInner:SetPoint("TOPLEFT", f, "TOPLEFT", INNER_INSET, -tipMain)
+        tipInner:SetWidth(w - INNER_INSET * 2)
+        tipInner:SetHeight(shift)
+        tipInner:Show()
+    else
+        f:SetWidth(tipW)
+        f:SetHeight(tipH)
+        tipInner:Hide()
+    end
+    for k = 1, #footY do
+        local e = footY[k]
+        local L = tipLines[e.i]
+        L:ClearAllPoints()
+        L:SetPoint("TOPLEFT", e.x, e.y - shift)
+    end
+end
 function Tip.Block(owner, top, under)
     local o1, o2, o3, o4 = Rect(owner)
     top:ClearAllPoints()
-    if under then under:ClearAllPoints() end
+    if top == tipFrame then Merge(under) elseif not top.kitBd then Kit.Skin(top, "tip") end
     if not o1 then
         top:SetPoint("RIGHT", owner, "LEFT", -TIP_GAP, 0)
-        if under then under:SetPoint("TOPRIGHT", top, "BOTTOMRIGHT", 0, -BLOCK_STACK) end
         return "RIGHT"
     end
     local o = { o1, o2, o3, o4 }
@@ -297,16 +385,17 @@ function Tip.Block(owner, top, under)
     local sw, sh = (UIParent:GetWidth() or 0) * ui, (UIParent:GetHeight() or 0) * ui
     local w1, h1 = (top:GetWidth() or 0) * s, (top:GetHeight() or 0) * s
     local W, H = w1, h1
-    if under then
-        local u = under:GetEffectiveScale() or 1
-        W = max(W, (under:GetWidth() or 0) * u)
-        H = H + BLOCK_STACK * s + (under:GetHeight() or 0) * u
-    end
     local g = TIP_GAP * s
+    local bx = { 0, 0, sw, sh }
+    local win, page = AreaOf(owner)
+    if win then
+        local pl, pr, pb, pt = Rect(page, win)
+        if pl and W <= pr - pl and H <= pt - pb then bx = { pl, pb, pr, pt } end
+    end
     local avoid = avoidFn and avoidFn() or {}
     local best
     for i = 1, #SIDES do
-        local spot = Spot(SIDES[i], o, w1, h1, W, H, g, sw, sh)
+        local spot = Spot(SIDES[i], o, w1, h1, W, H, g, bx)
         Score(spot, W, H, owner, avoid)
         if i == 1 and spot.fits and spot.area == 0 then
             best = spot
@@ -317,7 +406,6 @@ function Tip.Block(owner, top, under)
     local edge = best.side == "LEFT" and "RIGHT" or "LEFT"
     local x = edge == "RIGHT" and best.x + W or best.x
     top:SetPoint("TOP" .. edge, UIParent, "BOTTOMLEFT", x / s, best.y / s)
-    if under then under:SetPoint("TOP" .. edge, top, "BOTTOM" .. edge, 0, -BLOCK_STACK) end
     return edge
 end
 function Tip.Dock(owner, lines, icon)

@@ -64,7 +64,7 @@ function Rows.Dps(out, s, heal)
     local list, total = {}, 0
     for i = 1, #s.players do
         local p = s.players[i]
-        local v = (heal and p.heal or p.dmg) or 0
+        local v = (heal and p.heal or p.goodDmg or p.dmg) or 0
         if v > 0 then
             list[#list + 1] = { who = p.name, v = v, class = p.class or ClassOf(p.name, s), p = p, s = s }
             total = total + v

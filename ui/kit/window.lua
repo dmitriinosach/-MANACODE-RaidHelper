@@ -217,7 +217,12 @@ local GLYPHS = {
     unfold = Box({}, 0, 1, 12, 10, 3),
     max = Box({}, 0, 0, 12, 12, 2),
     unmax = Box({ { 3, 0, 9, 2 }, { 11, 0, 1, 8 }, { 3, 0, 1, 4 }, { 9, 7, 3, 1 } }, 0, 4, 9, 8, 2),
+    close = {},
 }
+for i = 0, 10 do
+    GLYPHS.close[#GLYPHS.close + 1] = { i, i, 2, 2 }
+    GLYPHS.close[#GLYPHS.close + 1] = { 10 - i, i, 2, 2 }
+end
 local function GlyphStyle(b)
     Kit.StyleButton(b)
     local token = "window.glyph"
@@ -248,7 +253,7 @@ function Kit.Glyph(b, key)
         t:Show()
     end
     for i = #list + 1, #b.glyph do b.glyph[i]:Hide() end
-    GlyphStyle(b)
+    b.kitStyle(b)
 end
 function Kit.GlyphButton(parent, key)
     local b = Kit.IconButton(parent, nil, STRIP_ICON)

@@ -3,8 +3,8 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 1.0.0
-## X-Date: 2026-10-08
+## Version: 1.1.0
+## X-Date: 2026-10-12
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
 ## OptionalDeps: Auctionator
@@ -26,6 +26,7 @@ data\phases.lua
 data\maps.lua
 data\summaries.lua
 data\deathdeps.lua
+data\control.lua
 data\replay.lua
 data\replayplatform.lua
 data\replayfeed.lua
@@ -39,6 +40,7 @@ data\replaycue.lua
 data\defensives.lua
 data\procs.lua
 data\otheraddons.lua
+data\fable.lua
 data\bosses\icc\marrowgar.lua
 data\bosses\icc\deathwhisper.lua
 data\bosses\icc\gunship.lua
@@ -97,6 +99,7 @@ core\zonebuff.lua
 core\specs.lua
 core\recmana.lua
 core\reccast.lua
+core\unitscan.lua
 core\recorder.lua
 core\meter.lua
 core\effects.lua
@@ -121,8 +124,16 @@ core\phases.lua
 core\stackeps.lua
 core\actions.lua
 core\rfury.lua
+core\runeswap.lua
+core\bloodnova.lua
 core\tankrole.lua
+core\control.lua
+core\caught.lua
 core\shades.lua
+core\defile.lua
+core\lichmech.lua
+core\tombpull.lua
+core\parry.lua
 core\putri.lua
 core\valkyr.lua
 core\targets.lua
@@ -148,6 +159,7 @@ core\roompacks.lua
 core\replay.lua
 core\replayplatform.lua
 core\replayfeed.lua
+core\tlbrief.lua
 core\replaymarks.lua
 core\replaybars.lua
 core\replaymech.lua
@@ -163,6 +175,8 @@ core\ranging.lua
 core\realmshare.lua
 core\threat.lua
 core\deathpreview.lua
+core\fablerec.lua
+core\fable.lua
 core\flasks.lua
 core\flaskrole.lua
 core\flasktrade.lua
@@ -192,6 +206,7 @@ ui\map.lua
 ui\replaylink.lua
 ui\badgetips.lua
 ui\actiontips.lua
+ui\defiletips.lua
 ui\stacktips.lua
 ui\badges.lua
 ui\widgetmodal.lua
@@ -206,7 +221,7 @@ ui\sumside.lua
 ui\summary.lua
 ui\gpsettings.lua
 ui\faults.lua
-ui\gpmini.lua
+ui\gpsignal.lua
 ui\minirows.lua
 ui\shellmini.lua
 ui\fightlist.lua
@@ -218,6 +233,7 @@ ui\timelinelinks.lua
 ui\timelinecast.lua
 ui\timelinegcd.lua
 ui\timelinethreat.lua
+ui\timelinebrief.lua
 ui\pages.lua
 ui\settings.lua
 ui\raidcost.lua
@@ -254,6 +270,7 @@ ui\sumhide.lua
 ui\flasks.lua
 ui\autoinvite.lua
 ui\servercmd.lua
+ui\fable.lua
 ui\devtool.lua
 ui\devprobe.lua
 ui\devcalib.lua
@@ -280,6 +297,7 @@ lead\core\inspect.lua
 lead\core\timers.lua
 lead\core\test.lua
 lead\core\comm.lua
+lead\core\tplshare.lua
 lead\core\keeper.lua
 lead\core\marks.lua
 lead\core\raidcmd.lua

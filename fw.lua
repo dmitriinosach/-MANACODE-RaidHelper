@@ -105,10 +105,10 @@ local function Acc(f, key, ms, t)
         f.frameT, f.frameMs = t, ms
     end
 end
-function Prof.Hot(key, ms)
+function Prof.Hot(key, ms, t)
     if ms < 0 then return end
     if fight or win then
-        local t = GetTime()
+        t = t or GetTime()
         if fight then Acc(fight, key, ms, t) end
         if win then Acc(win, key, ms, t) end
     end
@@ -158,7 +158,7 @@ function Prof.Wrap(key, fn)
         fn(...)
         local ms = debugprofilestop() - p0
         cur = outer
-        if outer then Prof.Part(key, outer, ms) else Prof.Hot(key, ms) end
+        if outer then Prof.Part(key, outer, ms) else Prof.Hot(key, ms, t) end
     end
     Prof.keys[w] = key
     return w

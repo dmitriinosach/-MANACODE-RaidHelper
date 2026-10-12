@@ -9,6 +9,7 @@ local UNDO = "Interface\\PaperDollInfoFrame\\UI-GearManager-Undo"
 local DONE = "Interface\\RAIDFRAME\\ReadyCheck-Ready"
 local TOGGLE = 14
 local MARKS = 10
+local FABLE_ROOM = 16
 local FT = {}
 ns.FaultTable = FT
 local open = {}
@@ -81,6 +82,10 @@ local function Head(f, c)
     h.main:SetText(L.small and unit or format(ns.T("ft.col.rule"), unit))
     At(h.proof, h, c.proof, L.proofw)
     h.proof:SetText(L.small and "" or ns.T("ft.col.proof"))
+    if h.fable then
+        At(h.fable, h, c.left, c.nameEnd - c.left)
+        h.fable:SetText(ns.FableView.CountText())
+    end
     for i = 1, 3 do
         At(h.hot[i], h, c.hot[i], L.hotw)
         h.hot[i]:SetText(L.hotw > 0 and ns.T("ft.col." .. ns.Ledger.HOT[i]) or "")
@@ -127,6 +132,10 @@ end
 local function RowUp(self, button)
     local list, d = ListOf(self), self.data
     if not (d and list.fight) then return end
+    if d.ev and ns.FableView
+        and ns.FableView.Click(self, button, ns.GPList.FableAsk(list.fight, d.ev.hit, d.item.name, d.ev)) then
+        return
+    end
     if button == "RightButton" then
         ns.GPList.ManualMenu(list.fight, d.item.name)
     elseif d.ev then
@@ -139,8 +148,11 @@ local function RowEnter(self)
     local list, d = ListOf(self), self.data
     if not (d and list.fight) then return end
     local lines
+    self.fable = nil
     if d.ev then
-        lines = ns.GPList.HitLines(list.fight, d.ev.hit)
+        self.fable = ns.GPList.FableAsk(list.fight, d.ev.hit, d.item.name, d.ev)
+        if ns.FableView then ns.FableView.Enter(self) end
+        lines = ns.GPList.HitLines(list.fight, d.ev.hit, d.item.name, d.ev)
     elseif not d.hand then
         lines = ns.BadgeTips.GPRow(d.item, ns.Penalties.Reason)
         if ns.ReplayLink then ns.ReplayLink.Tag(lines, list.fight, ns.GPList.FirstAt(d.item.events)) end
@@ -148,6 +160,7 @@ local function RowEnter(self)
     if lines then ns.Tip.Show(self, lines) end
 end
 local function RowLeave(self)
+    if ns.FableView then ns.FableView.Leave(self) end
     ns.Tip.Hide()
 end
 local function Wheel(self, delta)
@@ -215,6 +228,10 @@ local function Row(f, k)
     r.undo.row = r
     r.undo.tipTitle = false
     r.undo.onClick = UndoClick
+    if ns.FableView then
+        r.fable = ns.FableView.Button(r, L.small and 12 or 14)
+        r.fable.row = r
+    end
     if ns.ProofView then r.proof = ns.ProofView.Button(r, L.small and 13 or 16) end
     r.hot = {}
     for i = 1, L.hotw > 0 and 3 or 0 do
@@ -240,6 +257,7 @@ local function Blank(r)
     r.doneText:Hide()
     r.undo:Hide()
     if r.proof then r.proof:Hide() end
+    if r.fable then r.fable:Hide() end
     for i = 1, #r.hot do r.hot[i]:Hide() end
 end
 local function Main(r, c, L, kind, n, tip)
@@ -288,6 +306,20 @@ local function Proof(r, c, L, ask)
     r.proof.ask = ask
     r.proof:Show()
 end
+local function Fable(r, c, L, asks)
+    local b = r.fable
+    if not (b and asks) then return end
+    b:ClearAllPoints()
+    if r.main:IsShown() then
+        b:SetPoint("RIGHT", r.main, "LEFT", -3, 0)
+    elseif r.done:IsShown() then
+        b:SetPoint("RIGHT", r.done, "LEFT", -3, 0)
+    else
+        b:SetPoint("RIGHT", r, "LEFT", c.main + L.mainw - 4, 0)
+    end
+    ns.FableView.SetButton(b, asks)
+    b:Show()
+end
 local function Marks(r, item, fight, x, stop)
     local L = ListOf(r).L
     local icons = max(0, min(MARKS, floor((stop - x) / L.iconw)))
@@ -317,7 +349,8 @@ local function Marks(r, item, fight, x, stop)
                 count = count,
                 verdict = ns.Penalties.Grade(hit),
                 pair = (kind == "death" or kind == "anydeath") and pair or nil,
-                lines = ns.GPList.HitLines(fight, hit),
+                lines = ns.GPList.HitLines(fight, hit, item.name),
+                fable = ns.GPList.FableAsk(fight, hit, item.name),
                 onClick = MarkClick,
                 fight = fight,
                 at = ns.GPList.FirstAt(hit.events),
@@ -389,7 +422,7 @@ local function FillFault(r, d, fight, c)
     r.icon:SetTexture(ns.GPList.Icon(ev.hit.icon))
     r.icon:Show()
     x = x + L.icon + 4
-    At(r.name, r, x, c.nameEnd - x)
+    At(r.name, r, x, c.nameEnd - x - (L.whenw > 0 and 0 or FABLE_ROOM))
     local text = ev.reason
     if ev.grade == "yellow" then text = text .. " " .. ns.Kit.Hex("badge.yellow") .. ns.T("ft.maybe") .. "|r" end
     if ev.wipe then text = text .. " " .. ns.Kit.Hex("text.note") .. ns.T("ft.wipe") .. "|r" end
@@ -408,6 +441,7 @@ local function FillFault(r, d, fight, c)
     Proof(r, c, L, { fight = fight, name = d.item.name,
         hits = { { rule = ev.hit.rule, events = { ev.src }, icon = ev.hit.icon, shed = ev.hit.shed } } })
     if not done then Hots(r, c, L, ev) end
+    Fable(r, c, L, ns.GPList.FableAsk(fight, ev.hit, d.item.name, ev))
 end
 local function FillHand(r, d, c)
     local L, h = ListOf(r).L, d.hand
@@ -497,5 +531,11 @@ function FT.New(parent, prefix, layout)
         ns.Kit.Text(h.hot[i], "badge.detail")
     end
     for _, fs in ipairs({ h.who, h.when, h.main, h.proof }) do ns.Kit.Text(fs, "text.secondary") end
+    if ns.FableView then
+        h.fable = h:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        h.fable:SetJustifyH("RIGHT")
+        ns.Kit.Text(h.fable, "text.muted")
+        ns.FableView.Counter(h.fable)
+    end
     return f
 end

@@ -58,8 +58,8 @@ local function Rates(s)
     local dmg, heal, total = {}, {}, 0
     for k = 1, #s.players do
         local p = s.players[k]
-        local d, h = p.dmg or 0, p.heal or 0
-        total = total + d
+        local d, h = p.goodDmg or p.dmg or 0, p.heal or 0
+        total = total + (p.dmg or 0)
         if p.role ~= "heal" and d > 0 then
             dmg[#dmg + 1] = { n = p.name, c = p.class, v = Round(d / sec), t = Round(d), raw = d }
         end
@@ -148,7 +148,7 @@ local function Top(res)
         local t = ns.Totals.Time(s)
         for k = 1, #s.players do
             local p = s.players[k]
-            dmg[p.name] = (dmg[p.name] or 0) + (p.dmg or 0)
+            dmg[p.name] = (dmg[p.name] or 0) + (p.goodDmg or p.dmg or 0)
             sec[p.name] = (sec[p.name] or 0) + t
         end
     end

@@ -152,6 +152,9 @@ end
 local function ShowActs(b)
     return ns.PanelActs ~= nil and ns.PanelActs.Show(b, frame, ns.T(b.def.label))
 end
+local function FaultsShown()
+    return ns.Shell.IsFolded() and ns.ShellMini.View() == "faults"
+end
 local function IconEnter(b)
     TintIcon(b, true)
     if b.def.key == "timer" then
@@ -185,8 +188,8 @@ local function IconEnter(b)
     end
     local open = ns.Shell.IsOpen(b.def.key)
     local hide, show = "panel.tip.hide", "panel.tip.open"
-    if b.def.key == "gp" and ns.GPMini then
-        open = ns.GPMini.IsShown()
+    if b.def.key == "gp" and ns.ShellMini then
+        open = FaultsShown()
         hide, show = "panel.tip.gp.hide", "panel.tip.gp.open"
     end
     ns.Kit.TipAdd(ns.T(open and hide or show), "text.secondary", true)
@@ -199,8 +202,8 @@ local function IconClick(b)
         ShowActs(b)
         return
     end
-    if b.def.key == "gp" and ns.GPMini then
-        ns.GPMini.Toggle()
+    if b.def.key == "gp" and ns.ShellMini then
+        if FaultsShown() then ns.Shell.Hide() else ns.Shell.FoldTo("faults") end
         return
     end
     if b.def.key == "lock" then

@@ -29,6 +29,27 @@ local F_PLAYER = 0x400
 local F_HOSTILE = 0x40
 local F_FRIENDLY = 0x10
 local F_BY_PLAYER = 0x100
+local HP_TAIL = 5
+local function HpKilled(f)
+    local db = ns.GetDB()
+    local list = f.segs or { f.seg }
+    for k = 1, #list do
+        local seg = db.segments[list[k]]
+        if seg and seg.hp and ns.Store.IsNew(seg) then
+            for key in pairs(seg.hp) do
+                if key:byte(1) == 35 and NpcKey("0x" .. key:sub(2)) == f.boss then
+                    local last
+                    for t, hp, top in ns.Decode.Hp(seg, key, f.from, f.to + HP_TAIL) do
+                        if t > f.to + HP_TAIL then break end
+                        if t >= f.from and top > 0 then last = hp / top end
+                    end
+                    if last and last <= 0 then return true end
+                end
+            end
+        end
+    end
+    return false
+end
 local BOSS_SUBS = {
     SPELL_CAST_SUCCESS = true,
     SPELL_CAST_START = true,
@@ -233,6 +254,12 @@ local function ScanAll()
         ns.NoteNpcKey(f.boss, f.title)
         if listed[f] then return end
         listed[f] = true
+        if not f.killed and not f.hpSeen and not (ns.bossSurvive and ns.bossSurvive[f.boss]) then
+            f.hpSeen = true
+            if HpKilled(f) then
+                f.killed, f.wipe, f.byHp = true, nil, true
+            end
+        end
         if not f.killed and ns.bossSurvive and ns.bossSurvive[f.boss] then
             local n = 0
             for _ in pairs(f.players) do n = n + 1 end
@@ -1264,6 +1291,7 @@ local function BuildTimeline(fight, who, idx)
     end
     out.hp = ReadHp(fight, who, idx, from, to)
     if ns.Streams.Any(idx.segs) then
+        out.mana = ns.Streams.ManaList(idx.segs, who, from, to)
         local real = {}
         for k = 1, #out.deaths do
             if ns.Streams.Real(idx.segs, who, out.deaths[k]) then real[#real + 1] = out.deaths[k] end

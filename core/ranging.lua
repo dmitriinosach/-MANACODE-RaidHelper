@@ -24,7 +24,6 @@ local NPCS = 3
 local MIN_DEFAULT = 3
 local MIN_LO = 3
 local MIN_HI = 10
-local MAX_RAID = 40
 local RATE = 3
 local MAX_YD = 200
 local GUID_HEX = 16
@@ -38,8 +37,6 @@ Ranging.MIN_LO = MIN_LO
 Ranging.MIN_HI = MIN_HI
 Ranging.MIN_DEFAULT = MIN_DEFAULT
 Ranging.MEASURERS = MEASURERS
-local RAID_TARGET = {}
-for i = 1, MAX_RAID do RAID_TARGET[i] = "raid" .. i .. "target" end
 local FUSE = ns.rangingData.fuse
 local session = nil
 local broken = nil
@@ -48,7 +45,6 @@ local warmI, warmAcc = 1, 0
 local warmList = {}
 local tip = nil
 local units, guids, addOf, parts, los, his = {}, {}, {}, {}, {}, {}
-local seen = {}
 local heard, heardAt = {}, {}
 local foreign = {}
 local halt = { seg = nil }
@@ -112,38 +108,25 @@ local function MyRole()
     end
     return roles[best] or "R"
 end
-local function NpcOf(unit)
-    if not UnitExists(unit) or UnitIsPlayer(unit) or UnitPlayerControlled(unit) then return nil, nil, false end
-    if not UnitCanAttack("player", unit) or UnitIsDeadOrGhost(unit) then return nil, nil, false end
-    local guid = UnitGUID(unit)
-    if not guid or #guid ~= GUID_HEX + 2 then return nil, nil, false end
-    local key = ns.NpcKey(guid)
+local function NpcOf(S, i)
+    local guid = S.guid[i]
+    if not (guid and S.near[i] and S.attack[i]) or S.dead[i] or #guid ~= GUID_HEX + 2 then return nil, false end
+    local key = S.key[i]
     local enc = key and ns.bosses[key]
-    if enc then return guid, enc, true end
+    if enc then return enc, true end
     local id = tonumber(sub(guid, 7, 12), 16)
-    enc = id and ns.rangingData.adds[id]
-    if enc then return guid, enc, false end
-    return nil, nil, false
-end
-local function Take(unit, n, want)
-    local guid, enc, boss = NpcOf(unit)
-    if not guid or seen[guid] or (want and enc ~= want) then return n, nil end
-    if not boss and not want then return n, nil end
-    seen[guid] = true
-    n = n + 1
-    units[n], guids[n], addOf[n] = unit, guid, not boss
-    return n, boss and UnitAffectingCombat(unit) and enc or nil
+    return id and ns.rangingData.adds[id], false
 end
 local function FindUnits(want)
-    wipe(seen)
-    local n, fighting, f = 0, nil, nil
-    n, f = Take("target", n, want)
-    fighting = fighting or f
-    n, f = Take("focus", n, want)
-    fighting = fighting or f
-    for i = 1, GetNumRaidMembers() do
-        n, f = Take(RAID_TARGET[i], n, want)
-        fighting = fighting or f
+    local S = ns.UnitScan.Get()
+    local n, fighting = 0, nil
+    for i = 1, S.n do
+        local enc, boss = NpcOf(S, i)
+        if enc and not (want and enc ~= want) and (boss or want) and S.Valid(i) then
+            n = n + 1
+            units[n], guids[n], addOf[n] = S.unit[i], S.guid[i], not boss
+            if boss and S.combat[i] then fighting = fighting or enc end
+        end
     end
     local k = 0
     for i = 1, n do

@@ -196,6 +196,7 @@ ns.Listen(f, "RAID_ROSTER_UPDATE")
 ns.Listen(f, "PARTY_MEMBERS_CHANGED")
 f:SetScript("OnEvent", function(self, event, msg, author)
     if event == "CHAT_MSG_WHISPER" then
+        if ns.TplShare and ns.TplShare.FromBot(author) then return end
         W.Take(author, msg)
         return
     end

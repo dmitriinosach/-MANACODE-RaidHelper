@@ -53,6 +53,31 @@ function Streams.HpList(segs, who, from, to)
     if held then out[#out + 1] = held end
     return out
 end
+function Streams.ManaList(segs, who, from, to)
+    local out = {}
+    local held = nil
+    for i = 1, #segs do
+        local seg = segs[i]
+        if ns.Store.IsNew(seg) and seg.mana then
+            for ts, mp, mpMax in ns.Decode.Mana(seg, who, from, to) do
+                if mpMax > 0 then
+                    local pct = min(1, mp / mpMax)
+                    if ts < from then
+                        held = { t = from, pct = pct }
+                    elseif ts <= to then
+                        if held then
+                            out[#out + 1] = held
+                            held = nil
+                        end
+                        out[#out + 1] = { t = ts, pct = pct }
+                    end
+                end
+            end
+        end
+    end
+    if held then out[#out + 1] = held end
+    return out
+end
 function Streams.NpcHp(segs, guid, to)
     local key = Streams.GuidKey(guid)
     local ts, ps

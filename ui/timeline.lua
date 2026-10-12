@@ -166,6 +166,7 @@ local function GetBlock()
     end
     b.onClick = nil
     b.cat = nil
+    b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     b.tip3, b.at = nil, nil
     b.tip4 = nil
     b.tip5 = nil
@@ -202,6 +203,7 @@ local function ReleaseAll()
     for i = 1, usedBars do barPool[i]:Hide() end
     usedBlocks, usedBars = 0, 0
     catHeads = {}
+    if ns.TimelineBrief then ns.TimelineBrief.Hide() end
 end
 local function PlotWidth()
     return canvas:GetWidth() - gutter
@@ -1073,6 +1075,7 @@ local function ShowReadouts(t)
         for i = 1, #readouts do readouts[i]:Hide() end
         return
     end
+    if ns.TimelineBrief and ns.TimelineBrief.On() then return ns.TimelineBrief.Readouts(t, readouts, hpDot) end
     local bounds = TrackBounds()
     local x = XOf(t)
     local flip = (canvas:GetWidth() - x) < READOUTW
@@ -1137,6 +1140,41 @@ local function HideReadouts()
     for i = 1, #readouts do readouts[i]:Hide() end
     if hpDot then hpDot:Hide() end
 end
+local function DrawBrief()
+    for i = 1, #TRACKS do
+        if handles[i] then handles[i]:Hide() end
+    end
+    lastBounds = nil
+    local total, scroll = ns.TimelineBrief.Draw({
+        canvas = canvas, overlay = overlay, GetBlock = GetBlock, GetBar = GetBar, XOf = XOf,
+        DrawPoints = DrawPoints, FitText = FitText, Clock = Clock, redraw = TL.Redraw,
+        fight = fight, player = player, data = data, from = viewFrom, to = viewTo,
+        gutter = gutter, nameW = nameW, scroll = trackScroll,
+    })
+    trackScroll, trackTotal = scroll, total
+    if auraBar then
+        auraBar:SetHeight(canvas:GetHeight())
+        auraBar:ClearAllPoints()
+        auraBar:SetPoint("TOPRIGHT", canvas, "TOPRIGHT", -1, 0)
+        auraBar:SetState(trackScroll, canvas:GetHeight(), total)
+        if total > canvas:GetHeight() then auraBar:Show() else auraBar:Hide() end
+    end
+    DrawRuler()
+    if ns.TimelineLinks then ns.TimelineLinks.Paint() end
+    DrawPhases()
+    if not data then
+        local bare = ns.Store.Bare(fight)
+        statusText:SetText(ns.T(bare and "rec.bare" or "tl.pickplayer"))
+        if bare then bareNote:Show() else bareNote:Hide() end
+        return
+    end
+    bareNote:Hide()
+    DrawDeaths()
+    local span = max(1, fight.to - fight.from)
+    statusText:SetText(format(ns.T("tl.window"),
+        Clock(viewFrom - fight.from), Clock(viewTo - fight.from), viewTo - viewFrom,
+        floor((data.dmgDone or 0) / span), floor((data.healDone or 0) / span)))
+end
 local function RedrawNow()
     hov.x = nil
     if not player and ns.SummaryView and ns.SummaryView.IsShown() then return end
@@ -1145,6 +1183,11 @@ local function RedrawNow()
     ReleaseAll()
     for i = 1, #trackHeads do trackHeads[i]:Hide() end
     if not fight then return end
+    if ns.TimelineBrief and ns.TimelineBrief.On() then
+        DrawBrief()
+        if p0 then ns.Prof.Add("tl.draw", debugprofilestop() - p0, usedBlocks + usedBars) end
+        return
+    end
     local bounds, total = TrackBounds()
     trackTotal = total
     lastBounds = bounds
@@ -1280,7 +1323,7 @@ local function BuildFrame(host)
     statusText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     ns.Kit.Text(statusText, "text.bright")
     statusText:SetPoint("LEFT", titleText, "RIGHT", 16, 0)
-    statusText:SetPoint("RIGHT", frame, "TOPRIGHT", -320, -19)
+    statusText:SetPoint("RIGHT", frame, "TOPRIGHT", -446, -19)
     statusText:SetJustifyH("LEFT")
     statusText:SetHeight(14)
     if ns.FightList then ns.FightList.Attach(frame, MARGIN, SIDETOP, titleText, statusText) end
@@ -1551,7 +1594,21 @@ local function BuildTools()
             glueBtn.text:SetText(ns.T(Glued() and "tl.btn.glue.on" or "tl.btn.glue.off"))
             if player then SelectPlayer(player) end
         end
-        if ns.EffectPanel then ns.EffectPanel.BindTools(fxBtn, mapBtn, glueBtn) end
+        local viewBtn = ns.MakeButton(frame, "HTP_FailWatchViewToggle")
+        viewBtn:SetWidth(120)
+        viewBtn:SetHeight(20)
+        viewBtn:SetPoint("RIGHT", glueBtn, "LEFT", -6, 0)
+        local brief = ns.TimelineBrief
+        viewBtn.text:SetText(ns.T(brief and brief.On() and "tl.view.brief" or "tl.view.full"))
+        viewBtn.tipTitle, viewBtn.tip = ns.T("tl.view.tip"), ns.T("tl.view.tipBody")
+        viewBtn.onClick = function()
+            if not brief then return end
+            brief.Toggle()
+            viewBtn.text:SetText(ns.T(brief.On() and "tl.view.brief" or "tl.view.full"))
+            trackScroll = 0
+            TL.Redraw()
+        end
+        if ns.EffectPanel then ns.EffectPanel.BindTools(fxBtn, mapBtn, glueBtn, viewBtn) end
     end
     if ns.FxDrag then
         ns.FxDrag.SetTargets(TL.DropTargets)

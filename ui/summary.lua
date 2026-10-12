@@ -31,7 +31,7 @@ local TRANQ_SPELL = 19801
 local RELAYOUT_DELAY = 0.15
 local ROLE_ORDER = { "tank", "heal", "dps" }
 local ARROWS = { given = "out", rebuff = "out", got = "in", rebuffed = "in" }
-local LINKED = { rebuff = true, rebuffed = true, cc = true, blast = true }
+local LINKED = { rebuff = true, rebuffed = true, cc = true, blast = true, pulled = true }
 local View = {}
 ns.SummaryView = View
 local Badges = ns.Badges
@@ -54,6 +54,15 @@ local pump = CreateFrame("Frame")
 pump:Hide()
 local Tips = ns.BadgeTips
 local Short = Tips.Short
+local Rate = Tips.Rate
+local function Good(x)
+    return x.goodDmg or x.dmg
+end
+local function AllLine(dmg, sec)
+    local key = ns.dpsAll and ns.dpsAll[fight and fight.boss]
+    if not key then return "" end
+    return ns.Kit.Hex("text.muted") .. format(ns.T(key), Rate(dmg / sec)) .. "|r"
+end
 local Clock = Tips.Clock
 local function Icon(id)
     if type(id) == "string" then return id end
@@ -160,6 +169,27 @@ local function SniffMark(p, s)
     return Replay({ icon = Icon(ns.pullSniff.icon), count = sec, verdict = jo.kill and "red" or "yellow",
         lines = lines }, (s.pull and s.pull.t or fight.from) + jo.t)
 end
+local function ConsMarks(list, p)
+    local cons = p.cons
+    if not cons or #cons == 0 then return end
+    local by, order = {}, {}
+    for k = 1, #cons do
+        local e = cons[k]
+        local key = e.id or e.item
+        if not by[key] then
+            by[key] = {}
+            order[#order + 1] = key
+        end
+        local g = by[key]
+        g[#g + 1] = e
+    end
+    for k = 1, #order do
+        local g = by[order[k]]
+        local e = g[1]
+        local tex = e.id and GetItemIcon and GetItemIcon(e.id) or Icon(e.spell)
+        list[#list + 1] = Replay({ icon = tex, count = tostring(#g), lines = Tips.Cons(g) }, fight.from + e.t)
+    end
+end
 local function Entries(p, s)
     local list = {}
     local P = ns.Proof
@@ -167,9 +197,18 @@ local function Entries(p, s)
         local counted, worst = ns.DeathGrade.Skull(p)
         local ready = ns.DeathGrade.Ready(p)
         local pair = #ready > 0 and "death" or nil
-        list[#list + 1] = Replay({ icon = SKULL_ICON, count = counted > 0 and tostring(counted) or "—",
+        local skull = Replay({ icon = SKULL_ICON, count = counted > 0 and tostring(counted) or "—",
             verdict = worst, pair = pair, lines = Tips.Death(p, fight),
             proof = P and Proof(p, P.IsDeath, true) }, First(p.deathInfo, "t"), "skull")
+        if skull.at and ns.FableView and ns.Fable.On() then
+            local asks = {}
+            for k = 1, #p.deathInfo do
+                asks[k] = ns.Fable.DeathAsk(fight, p.name, p.deathInfo[k].t, pens[p.name])
+            end
+            skull.fable = asks
+            ns.FableView.Put(skull.lines, asks)
+        end
+        list[#list + 1] = skull
         for k = 1, #ready do
             local r = ready[k]
             list[#list + 1] = Replay({ icon = Icon(r.id), count = tostring(r.n), verdict = "yellow", pair = pair,
@@ -285,17 +324,18 @@ local function Entries(p, s)
     for k = 1, #p.dispList do
         list[#list + 1] = DispelMark(p.dispList[k])
     end
+    ConsMarks(list, p)
     return list
 end
 local function PersonalModel(p, s)
     local value, sub
     local sec = ns.Totals.Time(s)
     if p.role == "heal" then
-        value = format(ns.T("sum.hps"), Short(p.heal / sec))
+        value = format(ns.T("sum.hps"), Rate(p.heal / sec))
         sub = ""
     else
-        value = format(ns.T("sum.dps"), Short(p.dmg / sec))
-        sub = format(ns.T("sum.boss"), Short(p.bossDmg / sec))
+        value = format(ns.T("sum.dps"), Rate(Good(p) / sec))
+        sub = AllLine(p.dmg, sec)
     end
     local m = {
         name = p.name,
@@ -382,7 +422,7 @@ local function DrawStats(s, w)
     local cells = {
         { "sum.s.result", fight.killed and ns.T("sum.win") or ns.T("sum.wipe"), Clock(s.dur),
           ns.Kit.C[fight.killed and "sem.win" or "sem.wipe"] },
-        { "sum.s.dps", Short(s.dmg / sec), format(ns.T("sum.boss"), Short(s.bossDmg / sec)),
+        { "sum.s.dps", Rate(Good(s) / sec), AllLine(s.dmg, sec),
           ns.Kit.C["sem.stat.dps"] },
         { "sum.s.hps", Short(s.heal / sec), Short(s.heal), ns.Kit.C["sem.stat.hps"] },
         { "sum.s.deaths", tostring(s.deaths), "", ns.Kit.C["sem.stat.deaths"] },
@@ -546,6 +586,8 @@ local function BlockList(b)
             text = format("%s  %sx%d|r", Short(v), ns.Kit.Hex("text.note"), b.hits[who] or 0)
         elseif kind == "cannons" then
             text = format(ns.T("sum.k.gunrow"), Short(v), b.hits[who] or 0, floor(b.secs[who] or 0), b.kills[who] or 0)
+        elseif kind == "parries" then
+            text = ns.ActionTips.ParryText(b, who, v)
         else
             text = format("%s  %s%.1f%%|r", Short(v), ns.Kit.Hex("text.note"), v * 100 / max(1, b.total))
         end
@@ -567,7 +609,7 @@ local function BlockTitle(b)
     local label = ns.T(b.label or b.def.label)
     if kind == "casts" then return format(ns.T("sum.k.casts"), label, b.total, b.casts) end
     if kind == "shades" then return format(ns.T("sum.k.shadestitle"), label, b.caught, b.summoned) end
-    local value = (kind == "dispels" or kind == "removed") and tostring(b.total) or Short(b.total)
+    local value = (kind == "dispels" or kind == "removed" or kind == "parries") and tostring(b.total) or Short(b.total)
     return format(ns.T("sum.k.title"), label, value)
 end
 local function BlockPanel(s, i, slot)

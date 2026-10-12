@@ -64,7 +64,7 @@ function Report.Summary(fight, s, n, heal)
     local list = {}
     for i = 1, #s.players do
         local p = s.players[i]
-        local v = (heal and p.heal or p.dmg) or 0
+        local v = (heal and p.heal or p.goodDmg or p.dmg) or 0
         if v > 0 then list[#list + 1] = { who = p.name, v = v } end
     end
     local head = format(T(heal and "report.head.heal" or "report.head"), ns.EncName(fight.boss),

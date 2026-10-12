@@ -82,7 +82,7 @@ function Slash.Diag()
         { "core/gpguild.lua", ns.GPGuild },
         { "ui/gpsettings.lua", ns.GPSettings },
         { "ui/gplist.lua", ns.GPList },
-        { "ui/gpmini.lua", ns.GPMini },
+        { "ui/gpsignal.lua", ns.GPSignal },
         { "core/proof.lua", ns.Proof },
         { "ui/proof.lua", ns.ProofView },
         { "core/replay.lua", ns.Replay },

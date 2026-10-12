@@ -1,15 +1,13 @@
 local _, ns = ...
 ns.summaries[ns.ENC.deathwhisper] = {
+    deps = {
+        mechs = { { key = "shade", text = "sum.dd.m.shade", spells = { 72012 }, by = "chased" } },
+    },
     badges = {
-        { kind = "chased", npc = 38222, grade = "red", tip = "sum.b.shade", excuse = {
-            sec = 3, mc = 71289,
-            auras = {
-                [10890] = "fear", [6215] = "fear", [5246] = "fear",
-                [17928] = "fear", [10308] = "stun", [20252] = "stun",
-                [30283] = "stun", [42917] = "root", [53227] = "knock",
-            },
-            moved = { [49560] = "grip", [53227] = "knock", [51490] = "knock" },
-        } },
+        { kind = "chased", npc = 38222, id = 71426, grade = "red", tip = "sum.b.shade",
+          excuse = { sec = 3, mc = 71289, auras = { [53227] = "knock" } } },
+        { kind = "hit", spell = 49938, src = 36855, gap = 2, ticks = 7, red = 10, pool = 6, tip = "sum.b.dnd" },
+        { kind = "hit", spell = 72500, gap = 2, pool = 6, tip = "sum.b.martyr" },
         { kind = "blast", src = 38222, spell = 72012, grade = "yellow",
           off = true, tip = "sum.b.shadeblast" },
         { kind = "death", spells = { 49938 }, id = 72110, neutral = true, tip = "sum.b.dnddeath" },
@@ -19,6 +17,7 @@ ns.summaries[ns.ENC.deathwhisper] = {
             38135, 37949, 38485,
         }, id = 72494, neutral = true, tip = "sum.b.trashdeath" },
         { kind = "stack", spell = 71204, tip = "sum.b.insignif" },
+        { kind = "parry", names = { 36855 }, id = 3127, phases = { "p2" }, over = 5, tip = "sum.b.parry" },
     },
     stacks = { { spell = 71204 } },
     mcDrain = {
@@ -69,5 +68,6 @@ ns.summaries[ns.ENC.deathwhisper] = {
         { kind = "removed", label = "sum.k.ladycleanse", spells = {
             71237, 72016, 59638,
         } },
+        { kind = "parries", label = "sum.k.parry" },
     },
 }

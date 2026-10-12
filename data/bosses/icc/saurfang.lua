@@ -8,6 +8,8 @@ ns.summaries[ns.ENC.saurfang] = {
             49803, 1833, 47481, 46968,
         }, names = { 38508 }, id = 10308, tip = "sum.b.beaststun" },
         { kind = "death", srcs = { 38508 }, id = 72172, neutral = true, tip = "sum.b.beastdeath" },
+        { kind = "runeswap", id = 72410, hits = { 72409, 72447, 72448, 72449 }, late = 3, tip = "sum.b.runeswap" },
+        { kind = "nova", id = 72440, near = 14, tip = "sum.b.nova" },
     },
     blocks = {
         { kind = "damageTo", label = "sum.k.beasts", names = { 38508 } },

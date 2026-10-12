@@ -10,6 +10,10 @@ ns.summaries[ns.ENC.rotface] = {
     badges = {
         { kind = "death", spells = { 69508 }, id = 73190, tip = "sum.b.spraydeath" },
         { kind = "death", spells = { 69774, 71588 }, id = 71208, tip = "sum.b.rotpuddledeath" },
+        { kind = "hit", spell = 69774, gap = 2, pool = 6, rule = "rot.puddlehit", tip = "sum.b.rotsticky" },
+        { kind = "hit", spell = 71588, gap = 2, pool = 6, rule = "rot.puddlehit", tip = "sum.b.rotflood" },
+        { kind = "hit", spell = 69839, src = 36899, gap = 3, grade = "yellow", rule = "rot.boomhit",
+          tip = "sum.b.oozeboom" },
         { kind = "death", srcs = { 36897, 36899 }, id = 73027, neutral = true, tip = "sum.b.oozedeath" },
         { kind = "death", spells = { 72273 }, id = 73174, neutral = true, tip = "sum.b.gasdeath" },
         { kind = "aura", spell = 73023, tip = "sum.b.infection" },

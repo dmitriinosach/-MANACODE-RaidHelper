@@ -191,6 +191,8 @@ local function Chain(fight, hit, p, s)
         out[1] = HitWhat(rule, p, s, hit.shed)
     elseif kind == "chased" then
         out[1] = format(T("proof.chased"), Plain(ns.NpcName(ns.NpcKeyOf(rule.npc))), #hit.events)
+    elseif kind == "caught" then
+        out[1] = format(T("proof.caught"), Link(IdOf(s, rule.spells and rule.spells[1]), nil), #hit.events)
     elseif kind == "mccast" then
         local seen, names = {}, {}
         for k = 1, #hit.events do
@@ -229,9 +231,25 @@ local function Chain(fight, hit, p, s)
     elseif kind == "mindps" then
         out[1] = format(T("proof.mindps"), Short(info.amount or 0), Short(info.need or 0))
         return out
+    elseif kind == "nova" and info.nova then
+        out[1] = format(T("proof.nova"), Plain(info.nova.with), Dec(info.nova.yd or 0), #hit.events)
+    elseif kind == "runeswap" and info.rune then
+        local sec, hits, heal = 0, 0, 0
+        for k = 1, #hit.events do
+            local r = hit.events[k].info and hit.events[k].info.rune
+            if r then
+                sec = math.max(sec, r.sec or 0)
+                hits, heal = hits + (r.hits or 0), heal + (r.heal or 0)
+            end
+        end
+        out[1] = format(T("proof.runeswap"), Plain(info.rune.on), Dec(sec), hits, Short(heal))
     elseif kind == "earlypull" and info.early then
         out[1] = format(T("proof.earlypull"), Dec(info.early), info.sec or 0, Plain(info.setter))
         return out
+    elseif info.hurt then
+        out[1] = format(T("proof.defile"), info.hurt, Plain(info.names or "?"))
+    elseif info.ticks then
+        out[1] = format(T("proof.defilein"), info.ticks)
     else
         out[1] = T("proof.rule")
     end

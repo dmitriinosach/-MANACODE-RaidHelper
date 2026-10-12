@@ -21,10 +21,8 @@ end
 local function RowTip(b, who, st, class)
     local Tips = ns.BadgeTips
     local v = b.by[who] or 0
-    local out = { { kind = "head", left = who, right = Tips.Short(v), class = class } }
+    local out = { { kind = "head", left = who, class = class } }
     Put(out, "row", T(b.normal and "sum.tt.total" or "sum.tt.useful"), Tips.Short(v))
-    local full = b.full and b.full.by and b.full.by[who] or 0
-    if not b.normal and full > 0 then Put(out, "row", T("sum.vk.full"), Tips.Short(full), nil, "dim") end
     local waves = b.waves and b.waves[who] or {}
     local shown = 0
     for w = 1, #(b.waveList or {}) do

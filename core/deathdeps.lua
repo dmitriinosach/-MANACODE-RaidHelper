@@ -31,6 +31,7 @@ function DD.Begin(fight, def, s)
         local m = dd.mechs[i]
         w.mechs[i] = { def = m, spells = Set(m.spells), srcs = SetN(m.srcs) }
         for k = 1, #(m.srcs or {}) do w.srcs[ns.NpcKeyOf(m.srcs[k])] = true end
+        if m.by == "chased" then w.chase = w.chase or {} end
     end
     return w
 end
@@ -244,14 +245,28 @@ local function Holder(w, p, d, srcs)
     end
     return best
 end
+local function Chaser(w, p, k)
+    local list = w.chase or {}
+    for i = 1, #list do
+        local e = list[i]
+        if e.who == p.name and abs(e.t - k.t) <= SAME then
+            if e.by == p.name then return false end
+            return e.by or nil
+        end
+    end
+    return nil
+end
 local function Mech(w, p, d)
     local k = d.killer
     for i = 1, #w.mechs do
         local m = w.mechs[i]
         local def = m.def
         local hit = (k.key and m.spells[k.key]) or (k.srcKey and m.srcs[k.srcKey] and (not def.melee or k.key == MELEE))
-        if hit and (not def.ride or (ns.Summary.Unseated and ns.Summary.Unseated(w.s, p, d.t, def.ride))) then
-            local by = def.by == "tank" and Holder(w, p, d, def.srcs or {}) or nil
+        local led
+        if hit and def.by == "chased" then led = Chaser(w, p, k) end
+        if hit and led ~= false
+            and (not def.ride or (ns.Summary.Unseated and ns.Summary.Unseated(w.s, p, d.t, def.ride))) then
+            local by = def.by == "tank" and Holder(w, p, d, def.srcs or {}) or led or nil
             return { kind = "mech", key = def.key, text = def.text, by = by, src = k.src }
         end
     end

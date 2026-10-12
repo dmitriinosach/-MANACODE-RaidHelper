@@ -152,6 +152,55 @@ S.Section("rec", "what", {
           get = function() return ns.RecMana.Mode() end, set = function(k) ns.RecMana.SetMode(k) end },
     },
 })
+local BOSS_COLS = 2
+local BOSS_COL_W = 250
+local BOSS_ROW = 24
+local BOSS_CAP = 20
+local function BuildBosses(r, it)
+    r.cap = r:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    r.cap:SetPoint("TOPLEFT", r, "TOPLEFT", 0, -2)
+    Kit.Text(r.cap, "text.secondary")
+    r.checks = {}
+    for i = 1, #it.list do
+        local enc = it.list[i]
+        local c = Kit.Check(r)
+        local col, row = (i - 1) % BOSS_COLS, floor((i - 1) / BOSS_COLS)
+        c:SetPoint("TOPLEFT", r, "TOPLEFT", col * BOSS_COL_W - 2, -(BOSS_CAP + row * BOSS_ROW))
+        c.tipTitle = false
+        c.onToggle = function(on)
+            ns.RecFilter.SetBoss(enc, on)
+            S.Refresh()
+        end
+        r.checks[i] = c
+    end
+end
+local function RefreshBosses(r, it)
+    r.cap:SetText(T("zone." .. it.map))
+    for i = 1, #it.list do
+        local c, enc = r.checks[i], it.list[i]
+        c.label:SetText(ns.EncName(enc))
+        c.tip = T("set.rec.boss.tip")
+        c:SetChecked(ns.RecFilter.BossOn(enc))
+    end
+end
+local function BossItems()
+    local out = {
+        { kind = "text", key = "hint", text = "set.rec.bosses.hint", token = "text.secondary", order = 1 },
+    }
+    local raids = ns.raidBosses or {}
+    for i = 1, #raids do
+        local r = raids[i]
+        out[#out + 1] = { kind = "custom", key = r.map, map = r.map, list = r.list, order = 10 + i,
+            height = BOSS_CAP + math.ceil(#r.list / BOSS_COLS) * BOSS_ROW + 4,
+            build = BuildBosses, refresh = RefreshBosses }
+    end
+    return out
+end
+S.Section("rec", "bosses", {
+    label = "set.rec.bosses",
+    order = 25,
+    items = BossItems(),
+})
 local mbLo, mbHi, mbDef = ns.Store.LimitRange()
 local function LimitAsk(mb)
     if not ns.Store.Cuts(mb) then return nil end

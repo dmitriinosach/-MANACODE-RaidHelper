@@ -54,7 +54,7 @@ local SKULL = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8"
 local READY = "Interface\\RAIDFRAME\\ReadyCheck-Ready"
 local NOTREADY = "Interface\\RAIDFRAME\\ReadyCheck-NotReady"
 local CLASS_TEX = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
-local DEL_TEX = "Interface\\RaidFrame\\ReadyCheck-NotReady"
+local DEL_TEX = "Interface\\Buttons\\UI-MinusButton-Up"
 local MAP_ICON = {
     IcecrownCitadel = LFG .. "IcecrownCitadel",
     TheRubySanctum = LFG .. "RubySanctum",
@@ -413,7 +413,9 @@ local function EncRow()
     r.ok:SetWidth(OKSZ)
     r.ok:SetHeight(OKSZ)
     r.ok:SetPoint("RIGHT", OKX, 0)
-    DelButton(r):SetPoint("RIGHT", r.ok, "LEFT", 0, 0)
+    r.play = ns.ReplayLink.Mini(r, PLAYSZ)
+    r.play:SetPoint("RIGHT", r.ok, "LEFT", -DOTGAP, 0)
+    DelButton(r):SetPoint("RIGHT", r.play, "LEFT", 0, 0)
     r.ub = Kit.Unbuff(r, UBSZ)
     r.ub:SetPoint("RIGHT", r.del, "LEFT", -UBGAP, 0)
     local w = CreateFrame("Button", nil, r)
@@ -426,7 +428,6 @@ local function EncRow()
     r.wipes = w
     r.wipeOn = r:CreateTexture(nil, "BORDER")
     r.wipeOn:SetAllPoints(w)
-    r.play = ns.ReplayLink.Mini(r, PLAYSZ)
     r.onClick = OnEnc
     r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     return r
@@ -486,7 +487,7 @@ local function PaintEnc(r, line, spot)
     if on then Kit.Paint(r.bg, "sem.pick", 0.14) else Kit.Paint(r.bg, "sem.enc") end
     local unbuff = enc.passed and ns.ZoneBuff and ns.ZoneBuff.Unbuffed(ns.FightTree.Decisive(enc))
     if unbuff then r.ub:Show() else r.ub:Hide() end
-    local base = DOTX + DELHIT + (unbuff and UBSZ + UBGAP or 0)
+    local base = DOTX + PLAYW + DELHIT + (unbuff and UBSZ + UBGAP or 0)
     local wipes = ns.FightTree.Wipes(enc)
     local dots = wipes > DOTS and 1 or wipes
     for i = 1, DOTS do
@@ -514,10 +515,8 @@ local function PaintEnc(r, line, spot)
         w:Hide()
     end
     if wipes > 0 and openEnc == enc.key then Fill(r.wipeOn, "row.bgOn") else Fill(r.wipeOn, "surface.clear") end
-    r.play:ClearAllPoints()
-    r.play:SetPoint("RIGHT", -(right + DOTGAP), 0)
     r.play.fight = ns.FightTree.Decisive(enc)
-    Fit(r.name, ns.EncName(enc.boss), rowW - ENCX - ENCNAME - right - DOTGAP - PLAYW)
+    Fit(r.name, ns.EncName(enc.boss), rowW - ENCX - ENCNAME - right - DOTGAP)
     Tone(r.name, on and "sem.pick" or "text.primary")
 end
 local function PaintWipe(r, line)

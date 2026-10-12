@@ -32,16 +32,13 @@ local function OnZone()
     end
     inZone, inIcc = now, icc
     Disarm()
-    if icc then
-        frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-    else
-        frame:UnregisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-    end
 end
-local function OnCombat(sub, srcGUID, dstGUID)
+function AutoRec.Combat(sub, srcGUID, dstGUID)
+    if not inIcc then return end
     local lich = ns.ENC.lichking
     if sub == "UNIT_DIED" then
-        if dstGUID and ns.NpcKey(dstGUID) == lich and ns.Recorder.IsOn() then
+        local live = ns.Store.Live()
+        if dstGUID and live and live.pull and ns.NpcKey(dstGUID) == lich and ns.Recorder.IsOn() then
             diedAt = GetTime()
             movieSeen = false
         end
@@ -74,11 +71,8 @@ local function CheckStop()
     ns.Recorder.Pause(true)
     ns.Print(ns.T("auto.done"))
 end
-frame:SetScript("OnEvent", ns.Prof.Wrap("hot.log", function(_, event, ...)
-    if event == "COMBAT_LOG_EVENT_UNFILTERED" then
-        local _, sub, srcGUID, _, _, dstGUID = ...
-        OnCombat(sub, srcGUID, dstGUID)
-    elseif event == "PLAY_MOVIE" or event == "CINEMATIC_START" then
+frame:SetScript("OnEvent", ns.Prof.Wrap("hot.bg", function(_, event)
+    if event == "PLAY_MOVIE" or event == "CINEMATIC_START" then
         if diedAt then
             movieSeen = true
         end

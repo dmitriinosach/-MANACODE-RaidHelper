@@ -57,8 +57,22 @@ local function fits(src, m)
     if m.tree == nil then return nil end
     return m.tree == src.tree
 end
+function B.Needs(class, tree)
+    local t = ns.READY_NEED[class]
+    if not t then return {} end
+    if tree and t[tree] then return t[tree] end
+    local out = {}
+    for flag in pairs(t[1]) do
+        local all = true
+        for i = 2, #t do
+            if not t[i][flag] then all = false end
+        end
+        if all then out[flag] = true end
+    end
+    return out
+end
 function B.Item(def, list)
-    local it = { def = def, have = 0, src = {}, unsure = {} }
+    local it = { def = def, have = 0, src = {}, unsure = {}, party = true }
     local got, maybe = {}, {}
     for k, src in ipairs(def.src) do
         local who = {}
@@ -67,11 +81,16 @@ function B.Item(def, list)
             if f then
                 who[#who + 1] = m
                 got[m.name] = true
+                if not src.bless then
+                    it.other = true
+                    if not src.party then it.party = false end
+                end
             elseif f == nil then
                 maybe[m.name] = m
             end
         end
         it.src[k] = { def = src, who = who }
+        if src.bless then it.blessable = true end
     end
     for name in pairs(got) do
         it.have = it.have + 1
@@ -80,69 +99,64 @@ function B.Item(def, list)
     for _, m in ipairs(list) do
         if maybe[m.name] then it.unsure[#it.unsure + 1] = m end
     end
+    if not it.other then it.party = false end
     return it
 end
 local PAL = "PALADIN"
-local function palSrc(it)
-    for _, s in ipairs(it.src) do
-        if s.def.cls == PAL then return s.def end
-    end
-    return nil
-end
-local function bless(g, list)
-    local free = {}
+local function bless(byKey, list)
+    local pals, sanct = 0, false
     for _, m in ipairs(list) do
-        if m.class == PAL then free[#free + 1] = m end
-    end
-    g.pals = #free
-    for _, it in ipairs(g.items) do
-        for _, s in ipairs(it.src) do
-            if s.def.cls ~= PAL and #s.who > 0 then it.closed = true end
+        if m.class == PAL then
+            pals = pals + 1
+            if m.tree == 2 then sanct = true end
         end
     end
-    for pass = 1, 2 do
-        for _, it in ipairs(g.items) do
-            local src = palSrc(it)
-            if src and not it.closed and (pass == 2 or src.tree) then
-                for k, m in ipairs(free) do
-                    if fits(src, m) then
-                        it.closed = true
-                        table.remove(free, k)
-                        break
-                    end
+    for _, it in pairs(byKey) do
+        it.pals, it.need, it.got = pals, 0, 0
+    end
+    for _, m in ipairs(list) do
+        local need = B.Needs(m.class, m.tree)
+        local kind = need.phys and (need.mana and "hybrid" or "phys") or "caster"
+        local left = pals
+        for _, key in ipairs(ns.BLESS_ORDER[kind]) do
+            local it = byKey[key]
+            if it then
+                it.need = it.need + 1
+                if it.other then
+                    it.got = it.got + 1
+                elseif left > 0 and (key ~= "damageTaken" or sanct) then
+                    left = left - 1
+                    it.got = it.got + 1
                 end
             end
         end
     end
 end
-function B.Group(def, list)
-    local g = { def = def, group = true, items = {}, need = #def.items, closed = 0, pals = 0, unsure = {} }
-    for k, sub in ipairs(def.items) do g.items[k] = B.Item(sub, list) end
-    if def.bless then
-        bless(g, list)
-    else
-        for _, it in ipairs(g.items) do it.closed = it.have > 0 end
+function B.State(it)
+    if it.other then return "full" end
+    if it.blessable and it.pals and it.pals > 0 and it.need > 0 then
+        if it.got >= it.need then return "full" end
+        if it.got > 0 then return "part" end
+    elseif it.have > 0 then
+        return "full"
     end
-    local seen = {}
-    for _, it in ipairs(g.items) do
-        if it.closed then g.closed = g.closed + 1 end
-        for _, m in ipairs(it.unsure) do
-            if not it.closed and not seen[m.name] then
-                seen[m.name] = true
-                g.unsure[#g.unsure + 1] = m
-            end
-        end
-    end
-    return g
+    if #it.unsure > 0 then return "unsure" end
+    return "none"
 end
 function B.Rows(list)
     list = list or B.Members()
-    local out = {}
+    local out, byKey = {}, {}
     for r, row in ipairs(ns.BUFF_ROWS) do
         local items = {}
-        for k, def in ipairs(row.items) do items[k] = def.items and B.Group(def, list) or B.Item(def, list) end
+        for k, def in ipairs(row.items) do
+            local it = B.Item(def, list)
+            it.row = row.key
+            items[k] = it
+            if it.blessable then byKey[def.key] = it end
+        end
         out[r] = { key = row.key, items = items }
     end
+    bless(byKey, list)
     return out
 end
 local function reqKey(slot)

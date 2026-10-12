@@ -39,6 +39,7 @@ function Kit.StyleButton(b)
     end
 end
 local SEG = 0.125
+local PART_GLYPH = 12
 local function Turn(tx, x0, x1)
     tx:SetTexCoord(x0, 1, x1, 1, x0, 0, x1, 0)
 end
@@ -118,8 +119,11 @@ local function StyleTab(b)
     for i = 1, #b.rim do b.rim[i]:SetVertexColor(e[1], e[2], e[3], e[4] or 1) end
     b.seam:SetVertexColor(e[1], e[2], e[3], e[4] or 1)
     Shown(b.seam, not on and (b.below or 0) > 0)
+    local off = b.btnDisabled and Kit.Theme().button.textOff
     local t = tt.text
-    if on then
+    if off then
+        t = off
+    elseif on then
         t = tt.textOn
     elseif hot then
         t = tt.textHover
@@ -127,7 +131,9 @@ local function StyleTab(b)
     b.text:SetTextColor(t[1], t[2], t[3])
     if b.icon then
         local k = tt.icon
-        if on then
+        if off then
+            k = off
+        elseif on then
             k = tt.iconOn
         elseif hot then
             k = tt.iconHover
@@ -145,6 +151,7 @@ local function PrepTab(b)
 end
 local function Seat(self, below, lift, height)
     self.below = below
+    self.lift = lift
     self.tabH = height
     self.text:ClearAllPoints()
     self.text:SetPoint("CENTER", self, "CENTER", 0, lift)
@@ -269,6 +276,45 @@ function Kit.Tab(parent, icon, size)
         b.icon:SetHeight(size or 16)
     end
     Seat(b, 0, 0)
+    return b
+end
+local function StylePart(b)
+    local tt = Kit.Theme().tab
+    local off = b.btnDisabled and Kit.Theme().button.textOff
+    local hot = not off and (b.hovered or b.pressed) and true or false
+    if hot then
+        Kit.Fill(b.fill, tt.fillHover)
+        b.fill:Show()
+    else
+        b.fill:Hide()
+    end
+    local t = off or (hot and tt.textHover) or tt.text
+    b.text:SetTextColor(t[1], t[2], t[3])
+    local k = off or (hot and tt.iconHover) or tt.icon
+    if b.glyph then
+        for i = 1, #b.glyph do b.glyph[i]:SetTexture(k[1], k[2], k[3], k[4] or 1) end
+    end
+    if b.icon then
+        local d = b.pressed and 1 or 0
+        b.icon:ClearAllPoints()
+        b.icon:SetPoint("CENTER", b, "CENTER", d, -d)
+    end
+    b.glow:Hide()
+end
+local function PrepPart(b)
+    b.fill = b:CreateTexture(nil, "BACKGROUND")
+    b.fill:SetAllPoints()
+    b.fill:Hide()
+end
+function Kit.TabPart(parent, glyph)
+    local b = Make(parent, "tab", StylePart, PrepPart)
+    if glyph then
+        b.icon = b:CreateTexture(nil, "OVERLAY")
+        b.icon:SetWidth(PART_GLYPH)
+        b.icon:SetHeight(PART_GLYPH)
+        b.glyph = {}
+        Kit.Glyph(b, glyph)
+    end
     return b
 end
 local function StyleCheck(c)

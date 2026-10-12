@@ -41,8 +41,7 @@ local function Spell(id, name)
 end
 function Tips.rebuff(st, def)
     local out = {}
-    Head(out, T(def.tip))
-    Put(out, "row", T("sum.tt.count"), tostring(st.n))
+    Head(out, T(def.tip), format("x%d", st.n))
     for k = 1, min(TIMES, st.n) do
         local dup = st.dups and st.dups[k]
         Put(out, "sub", Clock(st.times[k]) .. " " .. Spell(st.ids and st.ids[k], st.spells[k]), st.notes[k],
@@ -128,8 +127,7 @@ local function WhyText(why)
 end
 function Tips.chased(st, def)
     local out = {}
-    Head(out, T(def.tip))
-    Put(out, "row", T("sum.tt.count"), tostring(st.n))
+    Head(out, T(def.tip), format("x%d", st.n))
     for k = 1, min(TIMES, st.n) do
         local cnt = st.cnt and st.cnt[k]
         Put(out, "sub", Clock(st.times[k]), st.dmgs and st.dmgs[k] and ns.BadgeTips.Short(st.dmgs[k]) or nil,
@@ -140,10 +138,18 @@ function Tips.chased(st, def)
     More(out, st.n)
     return out
 end
+function Tips.caught(st, def)
+    local out = {}
+    Head(out, T(def.tip), format("x%d", st.n))
+    for k = 1, min(TIMES, st.n) do
+        Put(out, "sub", Clock(st.times[k]), nil, format(T("sum.tt.shadehit"), tonumber(st.notes[k]) or 0))
+    end
+    More(out, st.n)
+    return out
+end
 function Tips.blast(st, def)
     local out = {}
-    Head(out, T(def.tip))
-    Put(out, "row", T("sum.tt.count"), tostring(st.n))
+    Head(out, T(def.tip), format("x%d", st.n))
     Put(out, "row", T("sum.tt.dmg"), ns.BadgeTips.Short(st.amount))
     for k = 1, min(TIMES, st.n) do
         Put(out, "sub", Clock(st.times[k]), ns.BadgeTips.Short(st.dmgs[k] or 0),
@@ -151,6 +157,41 @@ function Tips.blast(st, def)
     end
     More(out, st.n)
     return out
+end
+function Tips.pulled(st, def)
+    local out = {}
+    Head(out, T(def.tip))
+    Put(out, "row", T("sum.tt.entombed"), tostring(#st.notes), nil, "bad")
+    for k = 1, min(TIMES, st.n) do
+        Put(out, "sub", Clock(st.times[k]), st.whom and st.whom[k] or nil)
+    end
+    More(out, st.n)
+    return out
+end
+function Tips.ParryBody(out, st)
+    Put(out, "row", T("sum.tt.count"), tostring(st.n), nil, st.grade == "yellow" and "bad" or nil)
+    for k = 1, #(st.ids or {}) do
+        local id = st.ids[k]
+        local name = T("sum.ab.melee")
+        if id ~= 0 then name = (Tips.Glyph(id) or "") .. (ns.SpellName(id) or tostring(id)) end
+        Put(out, "sub", name, format("x%d", st.cnt[k] or 0))
+    end
+    local parts = {}
+    for k = 1, min(TIMES, #st.times) do parts[k] = Clock(st.times[k]) end
+    if #parts > 0 then
+        Put(out, "row", table.concat(parts, ", ") .. (#st.times > TIMES and format(T("sum.tip.more"), #st.times - TIMES) or ""))
+    end
+end
+function Tips.parry(st, def)
+    local out = {}
+    Head(out, T(def.tip))
+    Tips.ParryBody(out, st)
+    return out
+end
+function Tips.ParryText(b, who, v)
+    local st = b.parry and b.parry[who]
+    if st and st.grade == "yellow" then return ns.Kit.Hex("badge.yellow") .. tostring(v) .. "|r" end
+    return tostring(v)
 end
 function Tips.bounce(st, def)
     local out = {}
@@ -233,6 +274,35 @@ function Tips.rfuryon(st, def)
     Spans(out, st, false)
     return out
 end
+function Tips.runeswap(st, def)
+    local out = {}
+    local B = ns.BadgeTips
+    Head(out, T(def.tip))
+    Put(out, "row", format(T("sum.tt.rune.late"), st.lim or def.late or 0), tostring(st.n), nil, "warn")
+    for k = 1, min(TIMES, st.n) do
+        Put(out, "sub", Clock(st.times[k]) .. " " .. tostring(st.bearer and st.bearer[k] or "?"),
+            format(T("sum.tt.rune.ep"), B.Dec(st.dur and st.dur[k] or 0, 1), st.rh and st.rh[k] or 0,
+                B.Short(st.heal and st.heal[k] or 0)))
+    end
+    More(out, st.n)
+    Put(out, "row", T("sum.tt.rune.hits"), tostring(st.hits))
+    Put(out, "row", T("sum.tt.rune.heal"), B.Short(st.amount))
+    return out
+end
+function Tips.nova(st, def)
+    local out = {}
+    Head(out, T(def.tip))
+    Put(out, "row", T("sum.tt.nova.n"), tostring(st.n))
+    Put(out, "row", format(T("sum.tt.nova.near"), def.near or 12), tostring(st.hits), nil, st.hits > 0 and "warn" or nil)
+    for k = 1, min(TIMES, st.n) do
+        local yd = st.yd and st.yd[k] or -1
+        local with = st.with and st.with[k] or ""
+        local right = yd >= 0 and format(T("sum.tt.nova.yd"), with, ns.BadgeTips.Dec(yd, 1)) or T("sum.tt.nova.nopos")
+        Put(out, "sub", Clock(st.times[k]), right, nil, st.bad and st.bad[k] and "warn" or "dim")
+    end
+    More(out, st.n)
+    return out
+end
 function Tips.Shades(b, who, class)
     local out = {}
     if who then
@@ -268,9 +338,8 @@ local function KickResult(k, i)
     return T("sum.kick.idle")
 end
 function Tips.Kick(k)
-    local out = {}
-    Head(out, k.name or "?", T("sum.tt.kind.kick"))
-    Put(out, "row", T("sum.tt.kicked"), format(T("sum.tt.of"), k.n, k.all), nil, Tone(k.n, k.all))
+    local out = { { kind = "head", left = k.name or "?", right = format(T("sum.tt.of"), k.n, k.all),
+                    tone = Tone(k.n, k.all) } }
     for i = 1, min(KICK_TIMES, k.all) do
         Put(out, "sub", Clock(k.at[i]), k.tgt[i], KickResult(k, i), k.res[i] == "ok" and "good" or "dim")
     end

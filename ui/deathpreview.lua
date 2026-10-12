@@ -21,6 +21,7 @@ local AURAICON = 12
 local DEFICON = 14
 local LABELH = 10
 local LABEL_SEP = 3
+local SUM_GAP = 4
 local DELAY = 0.15
 local STACK = 3
 local TEXMAX = 170
@@ -81,6 +82,7 @@ local cam = { angle = ISO_ANGLE, tilt = 1, persp = 0, zoom = 1, lift = 0, r = 1,
 local function Build()
     frame = CreateFrame("Frame", nil, UIParent)
     frame:SetFrameStrata("TOOLTIP")
+    frame:SetFrameLevel(Kit.TIP_INNER_LEVEL or 20)
     frame:SetClampedToScreen(true)
     Kit.Skin(frame, "tip")
     frame:Hide()
@@ -565,23 +567,26 @@ local function DrawMap(pv, x0, y0)
     return shown
 end
 local function SumLine(pv)
-    local out = format(ns.T("prev.sum"), Short(pv.dmgSum), pv.sumSpan, Short(pv.healSum))
+    local lines = {}
     if pv.death then
+        local kill
         if pv.kbT then
             local src = pv.kbSrc and pv.kbSrc ~= pv.who and format(ns.T("prev.from"), pv.kbSrc) or ""
-            out = out .. " " .. format(ns.T("prev.kill"), tostring(pv.kbLabel), src, Short(pv.kbV), Short(pv.kbOver))
+            kill = format(ns.T("prev.kill"), tostring(pv.kbLabel), src, Short(pv.kbV), Short(pv.kbOver))
         else
-            out = out .. " " .. ns.T("prev.nokill")
+            kill = ns.T("prev.nokill")
         end
         if pv.lockLabel then
-            out = out .. " " .. format(ns.T("prev.lock"), pv.lockLabel)
+            kill = kill .. " " .. format(ns.T("prev.lock"), pv.lockLabel)
         elseif #pv.defT == 0 then
-            out = out .. " " .. ns.T("prev.nodef")
+            kill = kill .. " " .. ns.T("prev.nodef")
         end
+        lines[#lines + 1] = kill
     end
+    lines[#lines + 1] = format(ns.T("prev.sum"), Short(pv.dmgSum), pv.sumSpan, Short(pv.healSum))
     local note = MapNote(pv.map)
-    if note ~= "" then out = out .. " " .. note end
-    return out
+    if note ~= "" then lines[#lines + 1] = note end
+    return table.concat(lines, "\n"), #lines
 end
 local function Draw(pv)
     usedTex, usedIcon, usedFont, spanN, usedTag = 0, 0, 0, 0, 0
@@ -602,14 +607,16 @@ local function Draw(pv)
     local r, g, b, a = Rgba(pv.death and "sem.death" or "sem.cursor")
     anchorLine:SetTexture(r, g, b, a)
     local room = TLW - PAD * 2
+    local text, rows = SumLine(pv)
     sumText:SetWidth(0)
-    sumText:SetText(SumLine(pv))
+    sumText:SetText(text)
     local sw, one = sumText:GetStringWidth() or 0, sumText:GetHeight() or 0
+    one = rows > 1 and one / rows or one
     sumText:SetWidth(room)
-    Kit.Text(sumText, "tip.body")
+    Kit.Text(sumText, "text.secondary")
     sumText:ClearAllPoints()
-    sumText:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
-    y = y - max(sumText:GetHeight() or 0, one * ceil(sw / room), 12)
+    sumText:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y - SUM_GAP)
+    y = y - SUM_GAP - max(sumText:GetHeight() or 0, one * (ceil(sw / room) + rows - 1), 12)
     local total = TLW
     if DrawMap(pv, TLW - PAD + MAPGAP, -PAD) then
         total = TLW + MAPGAP + MAP

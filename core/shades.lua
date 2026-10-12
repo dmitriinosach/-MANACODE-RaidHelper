@@ -3,16 +3,13 @@ local abs = math.abs
 local huge = math.huge
 local SAME = 0.05
 local EX_WIN = 3
-local EX_AURA = { SPELL_AURA_APPLIED = true, SPELL_AURA_REFRESH = true, SPELL_AURA_REMOVED = true }
-local EX_HIT = { SPELL_DAMAGE = true, SPELL_MISSED = true, SPELL_CAST_SUCCESS = true }
-local NONE = {}
 local Shades = {}
 ns.Shades = Shades
 local function New(st, s, fight, def)
     if st then return st end
     return { s = s, byName = s.byName, from = fight.from, to = fight.to, npc = ns.NpcKeyOf(def.src),
              spell = ns.SpellKey(def.spell), summoned = 0, vic = {}, at = {}, order = {}, hitG = {}, hitW = {},
-             hitA = {}, ex = {}, ev = {}, open = {}, exAuras = {}, exMoved = {} }
+             hitA = {}, hitT = {}, ex = {} }
 end
 function Shades.Begin(s, fight)
     local st
@@ -39,16 +36,8 @@ function Shades.Begin(s, fight)
             local ex = bd.excuse
             if ex then
                 st.exDef = ex
-                st.exMc = ns.SpellKey(ex.mc)
-                st.ex[st.exMc] = true
-                for id, kind in pairs(ex.auras or NONE) do
-                    st.ex[ns.SpellKey(id)] = true
-                    st.exAuras[ns.SpellKey(id)] = kind
-                end
-                for id, kind in pairs(ex.moved or NONE) do
-                    st.ex[ns.SpellKey(id)] = true
-                    st.exMoved[ns.SpellKey(id)] = kind
-                end
+                st.ctl = ns.Control.New(ex)
+                st.ex = st.ctl.set
             end
         end
     end
@@ -59,39 +48,11 @@ local function Mark(st, guid, ts)
     st.at[guid] = ts
     st.order[#st.order + 1] = guid
 end
-local function Excuse(st, ts, sub, srcName, dstName, sk, spell, mc)
-    local list = st.ev[dstName]
-    if not list then
-        list = {}
-        st.ev[dstName] = list
-    end
-    mc = mc or (srcName ~= nil and st.open[srcName .. "|" .. st.exMc] ~= nil)
-    local kind = sk == st.exMc and "mc" or st.exAuras[sk]
-    if kind and EX_AURA[sub] then
-        local key = dstName .. "|" .. sk
-        local cur = st.open[key]
-        if sub == "SPELL_AURA_REMOVED" then
-            if cur then
-                cur.to = ts
-                st.open[key] = nil
-            end
-        elseif not cur then
-            cur = { t = ts, kind = kind, spell = spell, src = srcName, mc = mc or nil }
-            list[#list + 1] = cur
-            st.open[key] = cur
-        end
-        return
-    end
-    kind = st.exMoved[sk]
-    if kind and EX_HIT[sub] then
-        list[#list + 1] = { t = ts, to = ts, kind = kind, spell = spell, src = srcName, mc = mc or nil }
-    end
-end
 function Shades.Feed(st, ts, sub, srcGUID, srcName, dstGUID, dstName, a1, a2, a4, mc)
     if ts < st.from or ts > st.to then return end
     local sk = ns.SpellOf(sub, a1)
     if sk and st.ex[sk] and dstName and st.byName[dstName] then
-        Excuse(st, ts, sub, srcName, dstName, sk, a2, mc == true)
+        ns.Control.Feed(st.ctl, ts, sub, srcName, dstName, sk, a2, mc == true)
         return
     end
     if sub == "SPELL_SUMMON" then
@@ -107,7 +68,7 @@ function Shades.Feed(st, ts, sub, srcGUID, srcName, dstGUID, dstName, a1, a2, a4
     elseif (sub == "SPELL_DAMAGE" or sub == "SPELL_MISSED") and sk == st.spell then
         Mark(st, srcGUID, ts)
         local n = #st.hitG + 1
-        st.hitG[n], st.hitW[n] = srcGUID, dstName
+        st.hitG[n], st.hitW[n], st.hitT[n] = srcGUID, dstName, ts
         st.hitA[n] = sub == "SPELL_DAMAGE" and (tonumber(a4) or 0) or 0
         st.icon = st.icon or tonumber(a1)
     end
@@ -127,14 +88,7 @@ end
 local function Why(st, vic, ts)
     local def = st.exDef
     if not def then return false end
-    local win = def.sec or EX_WIN
-    local best
-    local list = st.ev[vic] or NONE
-    for i = 1, #list do
-        local e = list[i]
-        local to = e.to or huge
-        if e.t <= ts + SAME and to >= ts - win and (not best or e.t > best.t) then best = e end
-    end
+    local best = ns.Control.Find(st.ctl, vic, ts, def.sec or EX_WIN)
     if not best then return false end
     local to = best.to or huge
     return { k = best.kind, sp = best.spell, src = best.kind ~= "mc" and best.src or nil, mc = best.mc,
@@ -172,6 +126,7 @@ local function Grade(st)
     end
 end
 function Shades.Finish(st)
+    local chase = st.s.dd and st.s.dd.chase
     local b = st.block
     if b then b.summoned = st.summoned end
     for k = 1, #st.order do
@@ -181,6 +136,7 @@ function Shades.Finish(st)
         local cnt, dmg, hurt = 0, 0, {}
         for h = 1, #st.hitG do
             if st.hitG[h] == g then
+                if chase then chase[#chase + 1] = { t = st.hitT[h], who = st.hitW[h], by = vic } end
                 dmg = dmg + st.hitA[h]
                 if st.hitW[h] ~= vic then
                     cnt = cnt + 1
@@ -202,6 +158,14 @@ function Shades.Finish(st)
         end
     end
     if st.chased and st.exDef then Grade(st) end
+end
+function Shades.Chaser(chasers, s, npcs, guid, name, key)
+    local found, icon = npcs[key] == true, nil
+    for i = 1, #s.badges do
+        local bd = s.badges[i]
+        if bd.kind == "chased" and ns.NpcKeyOf(bd.npc) == key then found, icon = true, bd.id end
+    end
+    chasers[guid] = found and { name = name, id = icon, key = key } or false
 end
 function Shades.Excused(s, p, npc, t)
     local want = ns.NpcKeyOf(npc)

@@ -414,7 +414,14 @@ local function SetView(key, auto)
     else
         chat:Hide()
     end
+    if key == "faults" and ns.Panel and ns.Panel.SetAlert then ns.Panel.SetAlert("gp", false) end
     Mini.Rebuild()
+end
+function Mini.SetView(key)
+    if frame and frame:IsShown() and KNOWN[key] then SetView(key) end
+end
+function Mini.View()
+    return View()
 end
 local function Watch()
     local combat = UnitAffectingCombat("player") and true or false
@@ -666,6 +673,7 @@ function Mini.Show(x, y)
     offset, asked, seenTop = 0, nil, nil
     wasCombat = UnitAffectingCombat("player") and true or false
     frame:Show()
+    if View() == "faults" and ns.Panel and ns.Panel.SetAlert then ns.Panel.SetAlert("gp", false) end
     Mini.Rebuild()
 end
 function Mini.Hide()

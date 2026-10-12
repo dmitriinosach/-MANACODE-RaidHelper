@@ -67,7 +67,7 @@ local function Build(fight, s, mode, boss)
     for i = 1, #list do
         local p = list[i]
         local role = ROLE[p.role] or "d"
-        local dps = p.dmg / dur
+        local dps = (p.goodDmg or p.dmg) / dur
         if role ~= "h" then
             res.of = res.of + 1
             res.all = res.all + dps

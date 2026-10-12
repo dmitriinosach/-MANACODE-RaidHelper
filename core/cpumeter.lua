@@ -91,6 +91,7 @@ function CpuMeter.Diff(a, b, cost)
     return rows, total, mine, skada, count
 end
 local function Begin(boss, enc)
+    if not profiled then return end
     local s = { boss = boss, enc = enc, at = GetTime(), cost = 0, mineIdx = {}, skadaIdx = {}, mine0 = 0, skada0 = 0 }
     if profiled then
         s.start, s.cost = Snap()

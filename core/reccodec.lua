@@ -123,8 +123,8 @@ end
 local function Actor(seg, st, guid, name, flags)
     local f = band(flags or 0, FLAG_MASK)
     if guid == nil and name == nil and f == 0 then return "" end
-    local g = guid ~= nil and tostring(guid) or ""
-    local n = name ~= nil and tostring(name) or ""
+    local g = type(guid) == "string" and guid or (guid ~= nil and tostring(guid) or "")
+    local n = type(name) == "string" and name or (name ~= nil and tostring(name) or "")
     local id = st.ag[g]
     if not id or st.an[id] ~= n then id = NewActor(seg, st, g, n, f) end
     if st.af[id] == f then return id end
@@ -158,55 +158,40 @@ local function Generic(seg, st, v)
     if tv == "boolean" then return v and "b1" or "b0" end
     return "s" .. Str(seg, st, tostring(v))
 end
-local function Fits(layout, nt)
-    local ti = 1
-    for li = 1, #layout do
-        local kind = layout[li]
-        local v = tail[ti]
-        if kind == P or kind == Q then
-            if type(v) ~= "number" then return false end
-            local nm, sc = tail[ti + 1], tail[ti + 2]
-            if nm ~= nil and type(nm) ~= "string" then return false end
-            if sc ~= nil and type(sc) ~= "number" then return false end
-            ti = ti + 3
-        else
-            if kind == N then
-                if type(v) ~= "number" then return false end
-            elseif kind == F then
-                if v ~= nil and type(v) ~= "number" then return false end
-            elseif kind == S then
-                if v ~= nil and type(v) ~= "string" then return false end
-            end
-            ti = ti + 1
-        end
-    end
-    return ti > nt
-end
-local function PutLayout(seg, st, layout)
+local function PutLayout(seg, st, layout, nt)
     local k, ti = 4, 1
     for li = 1, #layout do
         local kind = layout[li]
         local v = tail[ti]
         if kind == P or kind == Q then
+            local nm, sc = tail[ti + 1], tail[ti + 2]
+            if type(v) ~= "number" or (nm ~= nil and type(nm) ~= "string") or (sc ~= nil and type(sc) ~= "number") then
+                return nil
+            end
             k = k + 1
-            parts[k] = Spell(seg, st, v, tail[ti + 1], tail[ti + 2])
+            parts[k] = Spell(seg, st, v, nm, sc)
             ti = ti + 3
         else
-            if kind ~= X then
+            if kind == N then
+                if type(v) ~= "number" then return nil end
                 k = k + 1
-                if kind == N then
-                    parts[k] = v ~= 0 and v or ""
-                elseif kind == S then
-                    parts[k] = v ~= nil and Str(seg, st, v) or ""
-                elseif kind == F then
-                    parts[k] = v ~= nil and v or ""
-                else
-                    parts[k] = Generic(seg, st, v)
-                end
+                parts[k] = v ~= 0 and v or ""
+            elseif kind == S then
+                if v ~= nil and type(v) ~= "string" then return nil end
+                k = k + 1
+                parts[k] = v ~= nil and Str(seg, st, v) or ""
+            elseif kind == F then
+                if v ~= nil and type(v) ~= "number" then return nil end
+                k = k + 1
+                parts[k] = v ~= nil and v or ""
+            elseif kind ~= X then
+                k = k + 1
+                parts[k] = Generic(seg, st, v)
             end
             ti = ti + 1
         end
     end
+    if ti <= nt then return nil end
     return k
 end
 local function Push(seg, line, ts)
@@ -235,10 +220,9 @@ function Codec.Append(seg, ts, subtype, srcGUID, srcName, srcFlags, dstGUID, dst
     tail[1], tail[2], tail[3], tail[4], tail[5], tail[6],
         tail[7], tail[8], tail[9], tail[10], tail[11], tail[12] = ...
     local layout = LAYOUTS[subtype]
-    local k
-    if layout and Fits(layout, nt) then
+    local k = layout and PutLayout(seg, st, layout, nt)
+    if k then
         parts[2] = subId
-        k = PutLayout(seg, st, layout)
     else
         parts[2] = "g" .. subId
         k = 4

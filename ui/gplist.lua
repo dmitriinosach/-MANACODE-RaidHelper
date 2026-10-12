@@ -234,9 +234,17 @@ end
 function GPList.FirstAt(list)
     return ns.ReplayLink and ns.ReplayLink.First(list, "t") or nil
 end
-function GPList.HitLines(fight, hit)
+function GPList.FableAsk(fight, hit, who, ev)
+    if not (ns.Fable and ns.Fable.On() and who) then return nil end
+    if ev then return { ns.Fable.EventAsk(fight, hit, who, ev) } end
+    local out = {}
+    for k = 1, #hit.events do out[k] = ns.Fable.EventAsk(fight, hit, who, hit.events[k]) end
+    return #out > 0 and out or nil
+end
+function GPList.HitLines(fight, hit, who, ev)
     local lines = ns.BadgeTips.Hit(fight, hit, ns.Penalties.Reason(hit.rule))
     if ns.ReplayLink then ns.ReplayLink.Tag(lines, fight, GPList.FirstAt(hit.events)) end
+    if who and ns.FableView then ns.FableView.Put(lines, GPList.FableAsk(fight, hit, who, ev)) end
     return lines
 end
 function GPList.Note(item)

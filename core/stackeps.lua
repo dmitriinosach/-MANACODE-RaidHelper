@@ -3,6 +3,7 @@ local floor = math.floor
 local abs = math.abs
 local LINK = 0.5
 local END_SLACK = 1
+local DEATH_NEAR = 2
 local SEP = "\31"
 local AURA = {
     SPELL_AURA_APPLIED = true, SPELL_AURA_APPLIED_DOSE = true,
@@ -34,8 +35,27 @@ function StackEps.Begin(fight, def, s)
         if key then over[key] = e.over end
     end
     if not any then return nil end
+    local lost = {}
+    for i = 1, s.own do
+        local bd = s.badges[i]
+        local key = bd.kind == "lost" and ns.SpellKey(bd.spell)
+        if key and idx[key] then lost[key] = i end
+    end
     return { from = fight.from, to = fight.to, idx = idx, over = over, lap = list.lap, byName = s.byName,
-             open = {}, last = {}, immune = {}, eps = {}, subs = StackEps.subs }
+             open = {}, last = {}, immune = {}, eps = {}, subs = StackEps.subs, lost = lost, orphan = {} }
+end
+local function Orphan(r, ts, who, spell)
+    local key = who .. SEP .. spell
+    local c = r.last[key]
+    if c and abs(ts - c.t) <= LINK then return end
+    local list = r.orphan[key]
+    if not list then
+        list = {}
+        r.orphan[key] = list
+    end
+    local prev = list[#list]
+    if prev and ts - prev <= LINK then return end
+    list[#list + 1] = ts
 end
 local function Close(r, ts, who, spell, how, by)
     local key = who .. SEP .. spell
@@ -97,6 +117,8 @@ local function Aura(r, ts, sub, who, spell, n)
         else
             Close(r, ts, who, spell, "fade")
         end
+    elseif r.lost[spell] then
+        Orphan(r, ts, who, spell)
     end
 end
 local function Died(r, ts, who)
@@ -182,6 +204,55 @@ function StackEps.Finish(r, s)
             local st = p.badges[i]
             st.eps = list
             st.over = r.over[spell]
+        end
+    end
+    if next(r.lost) then StackEps.Lost(r, s) end
+end
+local function NearDeath(p, t)
+    for k = 1, #(p.deathInfo or {}) do
+        if abs(p.deathInfo[k].t - t) <= DEATH_NEAR then return true end
+    end
+    return false
+end
+function StackEps.Lost(r, s)
+    local found = {}
+    for key, list in pairs(r.eps) do
+        local who, spell = key:match("^(.-)" .. SEP .. "(.*)$")
+        spell = spell and (tonumber(spell) or spell)
+        if spell and r.lost[spell] then
+            for k = 1, #list do
+                local ep = list[k]
+                if ep.e == "fade" then found[#found + 1] = { who = who, spell = spell, t = ep.t + ep.d, n = ep.pk } end
+            end
+        end
+    end
+    for key, list in pairs(r.orphan) do
+        local who, spell = key:match("^(.-)" .. SEP .. "(.*)$")
+        spell = spell and (tonumber(spell) or spell)
+        for k = 1, #list do found[#found + 1] = { who = who, spell = spell, t = Round(list[k] - r.from), n = 0 } end
+    end
+    table.sort(found, function(a, b) return a.t < b.t end)
+    local cut = {}
+    for spell, i in pairs(r.lost) do
+        local c = r.to - r.from - END_SLACK
+        local stop = s.badges[i].stop
+        for k = 1, #((s.phases and s.phases.spans) or {}) do
+            local sp = s.phases.spans[k]
+            if stop and sp.label == stop and sp.from < c then c = sp.from end
+        end
+        cut[spell] = c
+        if s.icons then s.icons[i] = s.icons[i] or s.badges[i].id end
+    end
+    for k = 1, #found do
+        local f = found[k]
+        local i = r.lost[f.spell]
+        local p = r.byName[f.who]
+        local st = p and p.badges[i]
+        if st and f.t < cut[f.spell] and not NearDeath(p, r.from + f.t) then
+            st.n = st.n + 1
+            st.times[#st.times + 1] = f.t
+            st.lost = st.lost or {}
+            st.lost[#st.lost + 1] = { t = f.t, n = f.n }
         end
     end
 end

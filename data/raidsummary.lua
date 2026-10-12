@@ -71,19 +71,8 @@ ns.raidArt = {
     TheArgentColiseum = "LoadScreenArgentRaid",
 }
 ns.encRaid = {}
-for _, id in ipairs({ ns.ENC.marrowgar, ns.ENC.deathwhisper, ns.ENC.gunship, ns.ENC.saurfang, ns.ENC.festergut,
-    ns.ENC.rotface, ns.ENC.putricide, ns.ENC.council, ns.ENC.lanathel, ns.ENC.valithria, ns.ENC.sindragosa,
-    ns.ENC.lichking }) do
-    ns.encRaid[id] = "IcecrownCitadel"
-end
-for _, id in ipairs({ ns.ENC.leviathan, ns.ENC.ignis, ns.ENC.razorscale, ns.ENC.xt002, ns.ENC.ironcouncil,
-    ns.ENC.kologarn, ns.ENC.auriaya, ns.ENC.hodir, ns.ENC.thorim, ns.ENC.freya, ns.ENC.mimiron, ns.ENC.vezax,
-    ns.ENC.yogg, ns.ENC.algalon }) do
-    ns.encRaid[id] = "Ulduar"
-end
-ns.encRaid[ns.ENC.halion] = "TheRubySanctum"
-for _, id in ipairs({ ns.ENC.beasts, ns.ENC.jaraxxus, ns.ENC.champions, ns.ENC.twins, ns.ENC.anubarak }) do
-    ns.encRaid[id] = "TheArgentColiseum"
+for _, r in ipairs(ns.raidBosses) do
+    for _, id in ipairs(r.list) do ns.encRaid[id] = r.map end
 end
 function ns.RaidArtFile(boss, map)
     local key = type(boss) == "number" and ns.encRaid[boss] or map

@@ -2,12 +2,15 @@ local _, ns = ...
 local band = bit.band
 local floor = math.floor
 local min = math.min
+local find = string.find
 local WINDOW = 12
 local RING = 65
 local RING_BYTES = 10 * 1048576
 local DICT_BYTES = 262144
 local STEP_CHUNKS = 32
+local STEP_MS = 3
 local F_PLAYER = 0x400
+local F_GROUP = 0x07
 local MAX_TAIL = 12
 local Trash = {}
 ns.Trash = Trash
@@ -68,9 +71,14 @@ local function CopyStreams(a, seg, lo, hi, list)
         end
     end
 end
+local function Ours(sub, srcFlags, dstFlags)
+    if (srcFlags and band(srcFlags, F_GROUP) > 0) or (dstFlags and band(dstFlags, F_GROUP) > 0) then return true end
+    return find(sub, "FW_", 1, true) == 1
+end
 local function Feed(a, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, ...)
     if not ts then return false end
     ns.Jobs.Step()
+    if not Ours(sub, srcFlags, dstFlags) then return true end
     if not a.seg then a.seg = ns.RecCodec.Open(a.t0 and a.t0 < ts and a.t0 or ts, a.raid) end
     a.t1 = ts
     local a1, a2, a3, a4, a5, a6, a7, _, a9 = ...
@@ -145,13 +153,16 @@ local function Drain(seg)
     live = live or Trash.Begin(seg.raid, seg.t0)
     Trash.FeedChunk(live, seg, ns.RecCodec.Shift(seg), deaths)
 end
+local function Room(all, n, p0)
+    return all or (n < STEP_CHUNKS and (n == 0 or debugprofilestop() - p0 < STEP_MS))
+end
 function Trash.Step(seg, now, all)
     if seg.pull then return false end
     local Codec = ns.RecCodec
     local cutMs = floor((now - (all and 0 or RING) - seg.t0) * 1000)
     if all then Codec.Flush(seg) end
-    local n = 0
-    while (all or n < STEP_CHUNKS) and Codec.FrontOld(seg, cutMs) do
+    local n, p0 = 0, debugprofilestop()
+    while Room(all, n, p0) and Codec.FrontOld(seg, cutMs) do
         Drain(seg)
         n = n + 1
     end
@@ -159,7 +170,7 @@ function Trash.Step(seg, now, all)
         Drain(seg)
         n = n + 1
     end
-    while n < STEP_CHUNKS and seg.chunks[1] and Codec.Size(seg) > Trash.RING_BYTES do
+    while Room(all, n, p0) and seg.chunks[1] and Codec.Size(seg) > Trash.RING_BYTES do
         Drain(seg)
         n = n + 1
         local first = Codec.Head(seg.chunks[1] or (seg.buf and seg.buf[1]))
@@ -167,7 +178,8 @@ function Trash.Step(seg, now, all)
     end
     Trim(seg, cutMs)
     if all or Codec.DictBytes(seg) > DICT_BYTES then Codec.Compact(seg) end
-    return n > 0
+    if all then return false end
+    return Codec.FrontOld(seg, cutMs) or (seg.chunks[1] ~= nil and Codec.Size(seg) > Trash.RING_BYTES)
 end
 function Trash.Pull(seg, ts)
     seg.pull = ts

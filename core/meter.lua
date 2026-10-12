@@ -50,8 +50,10 @@ local curveStep, curveTick = 1, 0
 local frame = CreateFrame("Frame")
 frame:Hide()
 local seenAll = 0
+local borrowed, borrowBase = false, 0
 local counter = CreateFrame("Frame")
-local LOG_FIX = { tick = 1, silent = 5, gap = 15, say = 60, quiet = 0, acc = 0, last = -1, at = -60, saidAt = -60, n = 0 }
+local LOG_FIX = { tick = 1, silent = 5, gap = 15, say = 60, few = 5, each = 0.8, quiet = 0, acc = 0, last = -1,
+                  at = -60, saidAt = -60, n = 0 }
 local function Clear()
     if CombatLogClearEntries then CombatLogClearEntries() end
 end
@@ -65,6 +67,32 @@ counter:SetScript("OnEvent", function(_, event)
 end)
 counter:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 counter:RegisterEvent("PLAYER_ENTERING_WORLD")
+local function SeenNow()
+    if not borrowed then return seenAll end
+    return borrowBase + (ns.Recorder.Counts())
+end
+function Meter.Borrow(on)
+    on = on and true or false
+    if on == borrowed then return end
+    if on then
+        borrowBase = seenAll - (ns.Recorder.Counts())
+        counter:UnregisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    else
+        seenAll = SeenNow()
+        counter:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    end
+    borrowed = on
+end
+local function CountFighting()
+    local n, unit = GetNumRaidMembers(), "raid"
+    if n == 0 then n, unit = GetNumPartyMembers(), "party" end
+    local c = 0
+    for i = 1, n do
+        if UnitAffectingCombat(unit .. i) then c = c + 1 end
+    end
+    if unit == "party" and UnitAffectingCombat("player") then c = c + 1 end
+    return c
+end
 local function GroupFighting()
     if UnitAffectingCombat("player") then return true end
     local n, unit = GetNumRaidMembers(), "raid"
@@ -81,8 +109,16 @@ counter:SetScript("OnUpdate", function(_, elapsed)
     local dt = F.acc
     F.acc = 0
     local grouped = GetNumRaidMembers() > 0 or GetNumPartyMembers() > 0
-    if seenAll ~= F.last or not grouped or not GroupFighting() then
-        F.quiet, F.last = 0, seenAll
+    local seen = SeenNow()
+    local delta = seen - F.last
+    F.last = seen
+    local starved = false
+    if grouped and GroupFighting() then
+        local fighting = CountFighting()
+        starved = delta <= 0 or (fighting >= F.few and delta < fighting * F.each * dt)
+    end
+    if not starved then
+        F.quiet = 0
         return
     end
     F.quiet = F.quiet + dt
@@ -99,7 +135,7 @@ function Meter.LogRevived()
     return LOG_FIX.n
 end
 function Meter.Seen()
-    return seenAll
+    return SeenNow()
 end
 function Meter.Window()
     return WINDOW

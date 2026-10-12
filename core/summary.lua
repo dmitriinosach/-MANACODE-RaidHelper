@@ -125,7 +125,7 @@ local function NewSummary(fight, def)
         combat = math.max(1, fight.to - fight.from),
         from = fight.from,
         lead = math.max(fight.from - LEAD, ns.Encounters.Lead and ns.Encounters.Lead(fight) or 0),
-        dmg = 0, bossDmg = 0, heal = 0, deaths = 0, dispels = 0, interrupts = 0,
+        dmg = 0, bossDmg = 0, goodDmg = 0, heal = 0, deaths = 0, dispels = 0, interrupts = 0,
         players = {}, blocks = {}, badges = {}, icons = {}, extra = {},
         spellIds = {}, soaked = {}, given = {}, earned = {}, rides = {}, apart = {},
     }
@@ -163,7 +163,7 @@ local function NewSummary(fight, def)
     end
     local byName = {}
     for name in pairs(fight.players) do
-        local p = { name = name, class = ns.Encounters.ClassOf(name), dmg = 0, bossDmg = 0,
+        local p = { name = name, class = ns.Encounters.ClassOf(name), dmg = 0, bossDmg = 0, goodDmg = 0,
                     heal = 0, interrupts = 0, kick = {}, kickList = {},
                     bossMelee = 0, deaths = 0, dispels = 0, disp = {}, dispList = {},
                     role = "dps", badges = {}, deathAt = {}, deathInfo = {}, recent = {},
@@ -652,6 +652,13 @@ local function DeathBadges(s)
                 local p = s.players[k]
                 local st = p.badges[i]
                 if st.n > 0 then st.grade = Summary.PoolGrade(bd, p) end
+                if st.n > 0 and bd.red and (st.peak or 0) >= bd.red then st.grade = "red" end
+            end
+        end
+        if bd.kind == "hit" and bd.tank then
+            for k = 1, #s.players do
+                local p = s.players[k]
+                if p.role == "tank" and p.badges[i].n > 0 then p.badges[i].grade = bd.tank end
             end
         end
         if bd.kind == "ticks" then
@@ -704,6 +711,12 @@ local function DeathBadges(s)
                         if not info.tail then st.grade = ns.DeathGrade.Worse(st.grade, info.grade) end
                     end
                 end
+            end
+        end
+        if bd.notank then
+            for k = 1, #s.players do
+                local st = s.players[k].role == "tank" and s.players[k].badges[i]
+                if st then st.n, st.hits, st.amount, st.times, st.grade = 0, 0, 0, {}, nil end
             end
         end
     end
@@ -937,6 +950,7 @@ local function Finish(s, fight, hpLines)
         Buffed.End(p, fight)
         s.dmg = s.dmg + p.dmg
         s.bossDmg = s.bossDmg + p.bossDmg
+        s.goodDmg = s.goodDmg + p.goodDmg
         s.interrupts = s.interrupts + p.interrupts
         s.heal = s.heal + p.heal
         s.deaths = s.deaths + p.deaths
@@ -1191,14 +1205,23 @@ local function Build(fight)
     local s, byName = NewSummary(fight, def)
     local acts = ns.Actions and ns.Actions.Begin(s, fight)
     local rf = ns.RFury and ns.RFury.Begin(s, fight)
+    local rs = ns.RuneSwap and ns.RuneSwap.Begin(s, fight)
+    local bn = ns.BloodNova and ns.BloodNova.Begin(s, fight)
     local zb = ns.ZoneBuff and ns.ZoneBuff.Begin(fight)
     local shades = ns.Shades and ns.Shades.Begin(s, fight)
+    local hc = ns.Control and ns.Control.Begin(s, fight, def)
+    local cg = ns.Caught and ns.Caught.Begin(s, fight)
+    local df = ns.Defile and ns.Defile.Begin(s, fight)
+    local lm = ns.LichMech and ns.LichMech.Begin(s, fight)
+    local tp = ns.TombPull and ns.TombPull.Begin(s, fight)
+    local pa = ns.Parry and ns.Parry.Begin(s, fight)
     local mech = ns.ReplayMech and ns.ReplayMech.Begin(s, fight)
     local pu = ns.Putri and ns.Putri.Begin(s, fight, ns.GetDB().pets or {})
     local badges = s.badges
     local track = s.track
     local guns = s.guns
     local useful = s.useful
+    local bossOnly = ns.dpsModel ~= nil and ns.dpsModel[fight.boss] == "boss"
     local live = s.live
     local gw = s.gw
     local dd = ns.DeathDeps and ns.DeathDeps.Begin(fight, def, s)
@@ -1289,6 +1312,8 @@ local function Build(fight)
             s.marks[#s.marks + 1] = { t = ts, key = a1, text = a2 }
         end
         if rf and (rf.subs[sub] or rf.dead[srcName or ""]) then ns.RFury.Feed(rf, ts, sub, srcName, dstName, a1, a2, a3) end
+        if rs and rs.subs[sub] then ns.RuneSwap.Feed(rs, ts, sub, srcGUID, srcName, dstGUID, dstName, a1, a4, a5) end
+        if bn and bn.subs[sub] then ns.BloodNova.Feed(bn, ts, dstName, sk) end
         if zb and zb.subs[sub] then ns.ZoneBuff.Feed(zb, ts, sub, a1, a2) end
         if TR.SUBS[sub] and ts >= from and ts <= fight.to then TR.Feed(s, byName, fight.boss, ts, sub, dstName, a1, a2, a3, a4, a5, a6, a7) end
         if sub == "FW_ACH" and ts >= fight.from and ts <= to then
@@ -1303,6 +1328,10 @@ local function Build(fight)
             end
             if dd and dd.subs[sub] then ns.DeathDeps.Feed(dd, ts, sub, srcKey, srcName, dstName, a1, sk, a4) end
             if stk and stk.subs[sub] then ns.StackEps.Feed(stk, ts, sub, srcName, dstName, a1, a2, a5, sk, a4) end
+            if df and df.subs[sub] then ns.Defile.Feed(df, ts, sub, sk, srcGUID, dstGUID, dstName, a1, a4) end
+            if lm and ((srcKey and lm.npcs[srcKey]) or (dstKey and lm.npcs[dstKey])) then
+                ns.LichMech.Feed(lm, ts, sub, sk, srcKey, dstKey, srcGUID, srcName, dstGUID, dstName, a1, a4)
+            end
             if sub == "FW_EMOTE" and ts >= fight.from and ts <= fight.to and type(a1) == "string" then
                 local ep = dstName and byName[dstName]
                 if ep then
@@ -1415,13 +1444,22 @@ local function Build(fight)
                 ns.Actions.Feed(acts, ts, sub, who, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a4, a5)
             end
             if mech then ns.ReplayMech.Event(mech, ts, sub, srcGUID, srcName, dstGUID, dstName, a1, a4) end
+            if tp and tp.subs[sub] then ns.TombPull.Feed(tp, ts, sub, dstName, a1) end
+            if pa and pa.subs[sub] then ns.Parry.Feed(pa, ts, sub, srcName, dstKey, a1, a4) end
             if shades and ((srcKey and srcKey == shades.npc) or (dstKey and dstKey == shades.npc)
                 or (dst and sk and shades.ex[sk])) then
                 ns.Shades.Feed(shades, ts, sub, srcGUID, srcName, dstGUID, dstName, a1, a2, a4, mcSrc ~= nil)
             end
+            if hc and dst and sk and hc.set[sk] then
+                ns.Control.Feed(hc.c, ts, sub, srcName, dstName, sk, a2, mcSrc ~= nil)
+            end
+            if cg and dst and sk and cg.spells[sk] then ns.Caught.Feed(cg, ts, sub, srcGUID, dstName, sk, a1) end
             if pu and ((sk and pu.spells[sk]) or (srcKey and pu.npcs[srcKey]) or (dstKey and pu.npcs[dstKey])
                 or sub == "UNIT_DIED") then
                 ns.Putri.Feed(pu, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, a1, a2, a4, a5, who)
+            end
+            if sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_AURA_APPLIED" then
+                ns.RaidPart.Mine(byName, fight, ts, sub, rwho, srcName, srcFlags, a1, dstName, dstFlags, a2)
             end
             if inFight then
                 if sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CREATE" or sub == "ENCHANT_APPLIED"
@@ -1465,7 +1503,11 @@ local function Build(fight)
                         ns.Totals.Damage(p, srcName ~= who, srcName, swing, a1, a2, amount, swing and a7 or a10)
                         DamageTo(s, p, who, dstName, dstKey, amount, srcName, swing, a2, swing and a7 or a10,
                             swing and MELEE_ID or a1, srcKey, dstGUID)
-                        if IsBoss(fight, dstGUID) then p.bossDmg = p.bossDmg + amount end
+                        local boss = IsBoss(fight, dstGUID)
+                        if boss then p.bossDmg = p.bossDmg + amount end
+                        if boss or not bossOnly then
+                            p.goodDmg = p.goodDmg + amount - math.max(0, tonumber(swing and a2 or a5) or 0)
+                        end
                         if dstKey and watch.targets[dstKey] then
                             p.targetDmg[dstKey] = (p.targetDmg[dstKey] or 0) + amount
                         end
@@ -1634,6 +1676,9 @@ local function Build(fight)
                     lastImmune[dstName] = { t = ts, key = sk }
                     ShedBy(dst, badges, ts, sk)
                 end
+                if swing and dst and srcKey and srcGUID and chasers[srcGUID] == nil and ns.Shades then
+                    ns.Shades.Chaser(chasers, s, watch.npcs, srcGUID, srcName, srcKey)
+                end
                 local ch = swing and dst and srcGUID and chasers[srcGUID]
                 if ch and not ch.victim then
                     ch.victim = dstName
@@ -1670,7 +1715,7 @@ local function Build(fight)
                         s.icons[i] = s.icons[i] or bd.id or tonumber(a1)
                     elseif bd.kind == "stack" and dst and sk and sk == bk.sk then
                         local st = dst.badges[i]
-                        if sub == "SPELL_AURA_APPLIED" then
+                        if sub == "SPELL_AURA_APPLIED" and st.times[#st.times] ~= ts - fight.from then
                             st.n = st.n + 1
                             st.times[#st.times + 1] = ts - fight.from
                             if st.max < 1 then st.max = 1 end
@@ -1682,20 +1727,26 @@ local function Build(fight)
                                 st.fin = stacks
                                 if not st.min or stacks < st.min then st.min = stacks end
                             end
-                        elseif sub == "SPELL_AURA_REMOVED" and not (bd.low and ts > fight.to - LOW_END) then
+                        elseif sub == "SPELL_AURA_REMOVED" and st.rmAt ~= ts and not (bd.low and ts > fight.to - LOW_END) then
+                            st.rmAt = ts
                             st.removed = (st.removed or 0) + 1
                             if bd.low then st.fin, st.min = 0, 0 end
                             s.icons[i] = s.icons[i] or bd.id or tonumber(a1)
                         end
                     elseif bd.kind == "hit" and dst and sk and sk == bk.sk
-                        and sub:find("_DAMAGE", 1, true)
-                        and (not bk.src or bk.src == srcKey) then
+                        and (sub:find("_DAMAGE", 1, true) or (bd.ticks and sub:find("_MISSED", 1, true)))
+                        and (not bk.src or bk.src == srcKey)
+                        and (not bd.min or (tonumber(a4) or 0) > bd.min)
+                        and not (bd.alive and (tonumber(a5) or 0) > 0) then
                         local st = dst.badges[i]
                         st.hits = st.hits + 1
                         st.amount = st.amount + (tonumber(a4) or 0)
-                        if not st.last or ts - st.last > (bd.gap or HIT_GAP) then
+                        if not st.last or ts - st.last > (bd.gap or HIT_GAP) then st.run, st.from = 0, ts end
+                        st.run = st.run + 1
+                        if st.run > (st.peak or 0) then st.peak = st.run end
+                        if st.run == (bd.ticks or 1) then
                             st.n = st.n + 1
-                            st.times[#st.times + 1] = ts - fight.from
+                            st.times[#st.times + 1] = st.from - fight.from
                         end
                         st.last = ts
                         s.icons[i] = s.icons[i] or tonumber(a1)
@@ -1705,7 +1756,7 @@ local function Build(fight)
                         local st = dst.badges[i]
                         st.n = st.n + 1
                         st.times[#st.times + 1] = ts - fight.from
-                        s.icons[i] = s.icons[i] or chasers[srcGUID].id
+                        s.icons[i] = s.icons[i] or chasers[srcGUID].id or bd.id
                     elseif bd.kind == "applied" and p and sub == "SPELL_AURA_APPLIED" and sk
                         and AppliedHit(bd, sk, dstKey, dst ~= nil and dstName ~= who) then
                         local st = p.badges[i]
@@ -1767,6 +1818,10 @@ local function Build(fight)
     DropFake(s, fight, hpLines)
     if acts then ns.Actions.Finish(acts) end
     if shades then ns.Shades.Finish(shades) end
+    if cg then ns.Caught.Finish(cg) end
+    if df then ns.Defile.Finish(df) end
+    if lm then ns.LichMech.Finish(lm) end
+    if tp then ns.TombPull.Finish(tp) end
     if mech then ns.ReplayMech.Finish(mech) end
     if pu then ns.Putri.Finish(pu) end
     RideEnd(s, fight)
@@ -1777,7 +1832,11 @@ local function Build(fight)
     if ns.PullTimer then ns.PullTimer.Judge(s) end
     ns.Totals.Finish(tt, s)
     Finish(s, fight, hpLines)
+    if pa then ns.Parry.Finish(pa) end
+    if hc then ns.Control.Finish(hc) end
     if rf then ns.RFury.Finish(rf) end
+    if rs then ns.RuneSwap.Finish(rs) end
+    if bn then ns.BloodNova.Finish(bn) end
     if zb then s.zoneBuff = ns.ZoneBuff.Finish(zb) end
     if et then ns.EffTime.Finish(et, s) end
     s.rp = ns.RaidPart.Close(rp, s.players)

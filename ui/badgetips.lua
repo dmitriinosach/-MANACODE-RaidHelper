@@ -23,6 +23,10 @@ function Tips.Short(n)
     return tostring(floor(n + 0.5))
 end
 local Short = Tips.Short
+function Tips.Rate(n)
+    if n >= 1e3 then return format("%.2f", n / 1e3) .. ns.T("num.k") end
+    return tostring(floor(n + 0.5))
+end
 function Tips.Clock(sec)
     local m = floor(sec / 60)
     return format("%d:%02d", m, floor(sec - m * 60))
@@ -241,32 +245,56 @@ local function Signed(sec)
 end
 local function Buffs(st, def)
     local out = {}
-    Head(out, format(T(def.tip), ns.SpellName(def.spells[1])))
-    Put(out, "row", T("sum.tt.count"), tostring(st.n))
+    Head(out, format(T(def.tip), ns.SpellName(def.spells[1])), format("x%d", st.n))
+    local enc = ns.Encounters
+    local function Class(who)
+        return who and enc and enc.ClassOf and enc.ClassOf(who) or nil
+    end
     local by, order = {}, {}
     for k = 1, st.n do
-        local who = st.notes[k]
-        if who then
-            if not by[who] then order[#order + 1] = who end
-            by[who] = (by[who] or 0) + 1
+        local who = st.notes[k] or "?"
+        if not by[who] then
+            by[who] = {}
+            order[#order + 1] = who
+        end
+        local list = by[who]
+        list[#list + 1] = k
+    end
+    local shown = 0
+    for o = 1, #order do
+        local who = order[o]
+        local list = by[who]
+        if #list == 1 then
+            local k = list[1]
+            local pull = st.pulled ~= nil and st.pulled[k] == true
+            out[#out + 1] = { kind = "row", left = who, right = Signed(st.times[k]),
+                              mid = pull and T("sum.tt.pull") or nil, tone = pull and "good" or nil, class = Class(who) }
+            shown = shown + 1
+        else
+            out[#out + 1] = { kind = "row", left = who, right = #order > 1 and format("x%d", #list) or nil,
+                              class = Class(who) }
+            for j = 1, #list do
+                if shown >= TIMES then break end
+                local k = list[j]
+                local pull = st.pulled ~= nil and st.pulled[k] == true
+                Put(out, "sub", Signed(st.times[k]), pull and T("sum.tt.pull") or nil, nil, pull and "good" or nil)
+                shown = shown + 1
+            end
         end
     end
-    tsort(order, function(a, b)
-        if by[a] ~= by[b] then return by[a] > by[b] end
-        return a < b
-    end)
-    local enc = ns.Encounters
-    for k = 1, #order do
-        local who = order[k]
-        out[#out + 1] = { kind = "row", left = who, right = tostring(by[who]),
-                          class = enc and enc.ClassOf and enc.ClassOf(who) or nil }
+    if shown < st.n then Put(out, "sub", (format(T("sum.tip.more"), st.n - shown):gsub("^%s+", ""))) end
+    return out
+end
+function Tips.Cons(list)
+    local out = {}
+    local e = list[1]
+    local name = e.id and GetItemInfo and GetItemInfo(e.id) or e.item
+    Head(out, name or "?", format("x%d", #list))
+    for k = 1, min(TIMES, #list) do
+        local pre = list[k].t < 0
+        Put(out, "sub", Signed(list[k].t), pre and T("sum.tt.pull") or nil, nil, pre and "good" or nil)
     end
-    Put(out, "sep")
-    for k = 1, min(TIMES, st.n) do
-        local pull = st.pulled ~= nil and st.pulled[k] == true
-        Put(out, "sub", Signed(st.times[k]), st.notes[k], pull and T("sum.tt.pull") or nil, pull and "good" or nil)
-    end
-    if st.n > TIMES then Put(out, "sub", (format(T("sum.tip.more"), st.n - TIMES):gsub("^%s+", ""))) end
+    if #list > TIMES then Put(out, "sub", (format(T("sum.tip.more"), #list - TIMES):gsub("^%s+", ""))) end
     return out
 end
 local function Cure(out, h, at)
@@ -309,6 +337,7 @@ function Tips.Badge(st, def)
     if kind == "given" or kind == "got" then return Buffs(st, def) end
     if def.shed and st.hangs and ns.Penalties then return Shed(st, def) end
     if kind == "stack" and st.eps and st.eps[1] and ns.StackTips then return ns.StackTips.Badge(st, def) end
+    if kind == "lost" and st.lost and ns.StackTips then return ns.StackTips.Lost(st, def) end
     if ns.ActionTips and ns.ActionTips[kind] then return ns.ActionTips[kind](st, def) end
     local out = {}
     Head(out, T(def.tip))
@@ -371,12 +400,30 @@ function Tips.Badge(st, def)
     end
     return out
 end
+local Body = Tips.Badge
+local function Locked(out, st)
+    local shown = false
+    for k = 1, min(TIMES, #st.times) do
+        local h = st.held[k]
+        if h then
+            if not shown then Put(out, "sep") end
+            shown = true
+            local kind = T(h.k == "mc" and "sum.tt.shadewhy.ctlk" or "sum.tt.shadewhy." .. h.k)
+            Put(out, "sub", Clock(st.times[k]) .. " " .. format(T("sum.tt.locked"), kind, h.sp or "?", Clock(h.t)),
+                nil, nil, "good")
+        end
+    end
+end
+function Tips.Badge(st, def)
+    local out = Body(st, def)
+    if st.held then Locked(out, st) end
+    return out
+end
 function Tips.Dispel(d)
     local out = {}
-    Head(out, d.name or "?", T("sum.tt.kind.dispel"))
+    Head(out, d.name or "?", d.n and format("x%d", d.n) or nil)
     local list = d.list or {}
     if #list > 0 then
-        Put(out, "row", T("sum.tt.count"), tostring(d.n))
         for k = 1, min(TIMES, #list) do
             local e = list[k]
             local whom = e.self and T("sum.tip.curedself") or format(T("sum.tip.curedfrom"), e.who or "?")
@@ -411,8 +458,7 @@ end
 function Tips.Kick(k)
     if k.all and ns.ActionTips then return ns.ActionTips.Kick(k) end
     local out = {}
-    Head(out, k.name or "?", T("sum.tt.kind.kick"))
-    Put(out, "row", T("sum.tt.kicked"), tostring(k.n))
+    Head(out, k.name or "?", format("x%d", k.n))
     local list = {}
     for _, w in pairs(k.what) do list[#list + 1] = w end
     tsort(list, function(a, b) return a.n > b.n end)
@@ -497,9 +543,8 @@ function Tips.Verdict(d)
 end
 function Tips.Death(p, fight)
     local out = {}
-    Head(out, T("sum.b.death"))
-    local counted, worst = ns.DeathGrade.Skull(p)
-    Put(out, "row", T("sum.tt.count"), tostring(counted), nil, GRADE_TONE[worst or ""])
+    local counted = ns.DeathGrade.Skull(p)
+    Head(out, T("sum.b.death"), format("x%d", counted))
     if p.deaths > counted then Put(out, "row", T("sum.dg.tailn"), tostring(p.deaths - counted), nil, "dim") end
     for k = 1, min(TIMES, #p.deathInfo) do
         local d = p.deathInfo[k]
@@ -509,8 +554,8 @@ function Tips.Death(p, fight)
             what = killer.spell == "#melee" and T("tl.swing") or tostring(killer.spell)
             if killer.src then what = format(T("sum.tt.killedby"), what, killer.src) end
         end
-        Put(out, "sub", Clock(d.t - fight.from), what)
-        Put(out, "sub", " ", Tips.Verdict(d), nil, d.tail and "dim" or GRADE_TONE[d.grade or ""])
+        Put(out, "row", Clock(d.t - fight.from), what)
+        Put(out, "sub", Tips.Verdict(d), nil, nil, d.tail and "dim" or GRADE_TONE[d.grade or ""])
         if p.role == "tank" then Guards(out, p, d, fight.from) end
     end
     if #p.deathInfo > TIMES then
@@ -629,6 +674,10 @@ function Tips.Row(b, who, v, class)
     local kind = b.def.kind
     local share = format("%.1f%%", v * 100 / max(1, b.total))
     Head(out, who, share, class)
+    if kind == "parries" and b.parry and b.parry[who] and ns.ActionTips then
+        ns.ActionTips.ParryBody(out, b.parry[who])
+        return out
+    end
     if kind == "dispels" then
         Put(out, "row", T("sum.tt.removed"), tostring(v))
         local totem = b.split[who] and b.split[who]["#totem"]
@@ -695,6 +744,33 @@ function Tips.Hit(fight, hit, reason)
     elseif info and info.early then
         Put(out, "row", T("sum.pt.early"), format(T("sum.pt.sec"), Dec(info.early, 1)), nil, "warn")
         Put(out, "row", T("sum.pt.timer"), format(T("sum.pt.by"), info.sec, info.setter or "?"), nil, "dim")
+    elseif info and info.nova then
+        for k = 1, min(TIMES, #hit.events) do
+            local e, nv = hit.events[k], hit.events[k].info and hit.events[k].info.nova
+            if nv then
+                Put(out, "row", Clock((e.t or fight.from) - fight.from),
+                    format(T("sum.tt.nova.yd"), tostring(nv.with or "?"), Dec(nv.yd or 0, 1)), nil, "warn")
+            end
+        end
+    elseif info and info.rune then
+        for k = 1, min(TIMES, #hit.events) do
+            local e, r = hit.events[k], hit.events[k].info and hit.events[k].info.rune
+            if r then
+                Put(out, "row", Clock((e.t or fight.from) - fight.from) .. " " .. tostring(r.on or "?"),
+                    format(T("sum.tt.rune.ep"), Dec(r.sec or 0, 1), r.hits or 0, Short(r.heal or 0)), nil, "warn")
+            end
+        end
+    elseif info and (info.hurt or info.ticks) then
+        for k = 1, min(TIMES, #hit.events) do
+            local e = hit.events[k]
+            local d = e.info or {}
+            if d.hurt then
+                Put(out, "sub", Clock((e.t or fight.from) - fight.from), d.names, format(T("sum.tt.defcnt"), d.hurt), "warn")
+            elseif d.ticks then
+                Put(out, "sub", Clock((e.t or fight.from) - fight.from), nil, format(T("sum.tt.defticks.n"), d.ticks),
+                    d.ticks > 1 and "bad" or "warn")
+            end
+        end
     end
     local parts = {}
     for k = 1, min(TIMES, #hit.events) do
