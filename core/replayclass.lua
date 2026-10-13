@@ -23,8 +23,12 @@ function CL.New(fight)
     end
     for _, c in ipairs(D.cones) do cone[ns.SpellKey(c.spell)] = c end
     for _, j in ipairs(D.jumps) do jump[j.cast] = j end
+    for _, tr in ipairs(D.trails or {}) do
+        if tr.aura then byAura[tr.aura] = { def = tr, kind = "trails" } end
+        if tr.cast then byCast[tr.cast] = { def = tr, kind = "trails" } end
+    end
     return {
-        D = D, fight = fight, zones = {}, rings = {}, cones = {}, jumps = {}, circles = {}, beams = {},
+        D = D, fight = fight, zones = {}, rings = {}, cones = {}, jumps = {}, circles = {}, beams = {}, trails = {},
         open = {}, seen = {}, byAura = byAura, byCast = byCast, cone = cone, jump = jump,
         beacon = D.beacon and ns.SpellKey(D.beacon),
     }
@@ -174,7 +178,7 @@ function CL.Done(ctx, L, scene, bosses)
     local byK = {}
     for k = 1, #scene.tracks do byK[scene.tracks[k].name] = k end
     local PosAt = ns.Replay.PosAtTime
-    local out = { zones = {}, cones = {}, rings = {}, arrows = {}, circles = {}, beams = {} }
+    local out = { zones = {}, cones = {}, rings = {}, arrows = {}, circles = {}, beams = {}, trails = {} }
     local function Spot(name, ts)
         local k = byK[name]
         if not k then return nil, 0 end
@@ -195,6 +199,20 @@ function CL.Done(ctx, L, scene, bosses)
                 end
                 if it.k or it.x then out[kind][#out[kind] + 1] = it end
             end
+        end
+    end
+    tsort(ctx.trails, ByFrom)
+    local last = {}
+    for _, r in ipairs(ctx.trails) do
+        local k = byK[r.name]
+        local to = min(r.to or r.from + r.def.dur, hi)
+        local prev = last[r.name]
+        if prev and r.from <= prev.to then
+            if not r.fixed then prev.to = to end
+        elseif k then
+            local it = { from = r.from, to = to, k = k, def = r.def }
+            out.trails[#out.trails + 1] = it
+            last[r.name] = it
         end
     end
     local adds = {}

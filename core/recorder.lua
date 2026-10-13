@@ -6,6 +6,7 @@ local format = string.format
 local KILL_GRACE = 2
 local AUTO_WAIT = 10
 local IDLE_CLOSE = 10
+local SPEC_CALM = 5
 local SCRIPT_HOLD = 180
 local SNAP_PERIOD = 0.2
 local POS_PERIOD = 0.25
@@ -15,6 +16,7 @@ local CLOCK_HOLD = 2
 local CLOCK_BACK = 1
 local TICK_PERIOD = 0.5
 local BOSS_PERIOD = 1
+local CAST_POLL = 0.7
 local RING_PERIOD = 1
 local NPC_PERIOD = 3
 local NPC_MAX = 40
@@ -97,6 +99,7 @@ local hadFight = false
 local killAt, killEnd, killSure, killEnc = nil, nil, false, nil
 local scriptHold = nil
 local dummyAt = nil
+local specAt = nil
 local dead = {}
 local bossSeen = {}
 local closed = { why = nil, enc = nil, at = nil, mute = nil }
@@ -224,6 +227,14 @@ local function Zone()
 end
 function Recorder.InZone()
     return inZone
+end
+function Recorder.SetSpec(on)
+    ns.GetDB().settings.specRec = on and true or nil
+    ns.RecFilter.spec = on and true or false
+    specAt = nil
+end
+function Recorder.Spec()
+    return ns.RecFilter.spec == true
 end
 function Recorder.SetDummy(on)
     ns.GetDB().settings.dummyRec = on and true or nil
@@ -449,21 +460,20 @@ local function RecordEvent(ts, ...)
     if ns.RecFilter.Keep(sub, srcGUID, srcName, dstGUID, dstName, spellId, auraType, seg.bosses, writeAll) then
         ok = ns.Store.Append(ts, ...)
     end
-    if not seg.pull and not seg.off and ns.RecFilter.Pulls(sub, srcFlags, dstGUID, dstName, seg.bosses)
+    if not seg.pull and ns.RecFilter.Pulls(sub, srcFlags, dstGUID, dstName, seg.bosses)
         and not Spent(dstGUID, dstName, seg.bosses) then
         local enc = ns.Encounters.Of(dstGUID, dstName, seg.bosses)
+        ns.Trash.Pull(seg, ts)
         if not ns.RecFilter.BossOn(enc) then
-            seg.off = enc
-            ns.Print(format(ns.T("rec.boss.off"), ns.EncName(enc)))
-        else
-            ns.Trash.Pull(seg, ts)
-            PollFor(enc)
-            if ns.CpuMeter then ns.CpuMeter.Pull(enc) end
-            ns.BuffSnap.Take(ts)
-            ns.Specs.Take(ts)
-            if ns.PullTimer then ns.PullTimer.OnPull(ts) end
-            frameHp, framePos = true, true
+            seg.lite = enc
+            ns.Print(format(ns.T("rec.boss.lite"), ns.EncName(enc)))
         end
+        PollFor(enc)
+        if ns.CpuMeter then ns.CpuMeter.Pull(enc) end
+        ns.BuffSnap.Take(ts)
+        ns.Specs.Take(ts)
+        if ns.PullTimer then ns.PullTimer.OnPull(ts) end
+        frameHp, framePos = true, true
     end
     if sub == "UNIT_DIED" and dstFlags and band(dstFlags, F_PLAYER) > 0 and band(dstFlags, F_GROUP) > 0 then
         ns.Trash.Died(ts)
@@ -476,7 +486,11 @@ local function RecordEvent(ts, ...)
     if SPEC_SWAP[spellId] and sub == "SPELL_CAST_SUCCESS" then ns.Specs.Swap(srcName) end
     Anchor(ts)
     local srcKey, dstKey = ns.NpcKey(srcGUID), ns.NpcKey(dstGUID)
+    if sub == "SPELL_CAST_START" and srcKey and ns.bosses[srcKey] and bossElapsed < BOSS_PERIOD - CAST_POLL then
+        bossElapsed = BOSS_PERIOD - CAST_POLL
+    end
     if srcKey or dstKey then
+        if ns.RecFilter.spec and ((srcKey and ns.bosses[srcKey]) or (dstKey and ns.bosses[dstKey])) then specAt = GetTime() end
         WatchEnd(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, seg.bosses)
         if ns.AutoRec then ns.AutoRec.Combat(sub, srcGUID, dstGUID) end
         if not vehicleFight then
@@ -556,6 +570,9 @@ local function OnAchievement(msg, sender)
         ResetSegmentState()
     end
     ns.Store.Append(ts, "FW_ACH", nil, name, 0, nil, nil, 0, id)
+end
+function Recorder.Now()
+    return Now()
 end
 function Recorder.Mark(sub, ...)
     if not isOn or paused or not inZone then return false end
@@ -829,6 +846,7 @@ local function PauseZone()
 end
 local function GroupFighting()
     if UnitAffectingCombat("player") then return true end
+    if specAt and GetTime() - specAt < SPEC_CALM then return true end
     local nRaid = GetNumRaidMembers()
     if nRaid > 0 then
         local here = GetRealZoneText()
@@ -965,6 +983,7 @@ end))
 ns.OnReady(function()
     local db = ns.GetDB()
     ns.Encounters.SetDummy(db.settings.dummyRec == true)
+    ns.RecFilter.spec = db.settings.specRec == true
     if db.recording or db.settings.autoRaid then
         db.recording = false
         Recorder.Start()

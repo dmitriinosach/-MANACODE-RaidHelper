@@ -165,6 +165,7 @@ local function GetBlock()
         blockPool[usedBlocks] = b
     end
     b.onClick = nil
+    b.foldKey = nil
     b.cat = nil
     b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     b.tip3, b.at = nil, nil
@@ -1281,6 +1282,10 @@ function SelectPlayer(name)
         if not d or fight ~= want or player ~= name then return end
         local p1 = ns.Prof.on and debugprofilestop()
         data = d
+        if ns.TimelineBrief and ns.TimelineBrief.On() then
+            local f0, f1 = ns.TimelineBrief.Window(d, lead, tail)
+            if f0 then viewFrom, viewTo = f0, f1 end
+        end
         BuildAuraRows()
         BuildAmountRows()
         if p1 then ns.Prof.Add("tl.rows", debugprofilestop() - p1, #auraRows + #hitRows + #healRows) end
@@ -1606,6 +1611,11 @@ local function BuildTools()
             brief.Toggle()
             viewBtn.text:SetText(ns.T(brief.On() and "tl.view.brief" or "tl.view.full"))
             trackScroll = 0
+            if fight then
+                viewFrom, viewTo = lead, tail
+                local f0, f1 = brief.On() and data and brief.Window(data, lead, tail)
+                if f0 then viewFrom, viewTo = f0, f1 end
+            end
             TL.Redraw()
         end
         if ns.EffectPanel then ns.EffectPanel.BindTools(fxBtn, mapBtn, glueBtn, viewBtn) end

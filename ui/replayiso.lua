@@ -154,7 +154,7 @@ local Realm = ns.ReplayRealmView
 local Soul = ns.ReplaySoulView
 local order, depth = {}, {}
 local afigs, all = {}, {}
-local addList = { x = {}, y = {}, icon = {}, chase = {}, hp = {} }
+local addList = { x = {}, y = {}, icon = {}, chase = {}, hp = {}, debuff = {} }
 local addState = { dead = false, hp = 1, stale = false, speed = 0, vis = true }
 local ADD_K = 0.85
 Figs.BindAdds(afigs)
@@ -374,9 +374,11 @@ local function PlaceAdds(scene, base, elapsed)
             if j <= na and kz > 0 and sx > -hw + 2 and sx < hw - 2 and sy < hh - 2 and sy - (ICON + LIFT) * scale > -hh then
                 fig.kz = kz
                 DrawFigure(fig, addState, sx, sy, scale, min(1, cam.tilt * kz), elapsed, total)
+                LayersView.AddDebuff(fig, addList.debuff[j])
                 depth[total] = sy
             else
                 HideFigure(fig)
+                LayersView.AddDebuff(fig, false)
                 depth[total] = -HUGE
                 hidden = hidden + 1
             end
@@ -742,6 +744,7 @@ local function Tick(self, elapsed)
     LayersView.Place(scene, cam, run.t, figs)
     Realm.Place(scene, cam, run.t)
     ns.ReplaySwarmView.Place(scene, cam, run.t)
+    ns.ReplayOozeView.Place(scene, cam, run.t)
     ns.ReplayClassView.Place(scene, cam, run.t)
     ns.ReplaySpreadView.Place(scene, cam, run.t)
     ns.ReplayCueView.Place(scene, cam, run.t)
@@ -998,6 +1001,7 @@ local function UseScene(scene)
     LayersView.Use(scene)
     Realm.Use(scene)
     ns.ReplaySwarmView.Use(scene)
+    ns.ReplayOozeView.Use(scene)
     ns.ReplayClassView.Use(scene)
     ns.ReplaySpreadView.Use(scene)
     ns.ReplayCueView.Use(scene)
@@ -1061,6 +1065,7 @@ local function BuildPools()
     LayersView.Build(view, ui.marks)
     Realm.Build(view, ui.marks)
     ns.ReplaySwarmView.Build(view, ui.marks)
+    ns.ReplayOozeView.Build(view, ui.marks)
     ns.ReplayClassView.Build(view, ui.marks)
     ns.ReplaySpreadView.Build(view, ui.marks)
     ns.ReplayCueView.Build(view, ui.marks)
@@ -1411,6 +1416,7 @@ local function LoadFight(fight)
     LayersView.Use(nil)
     Realm.Use(nil)
     ns.ReplaySwarmView.Use(nil)
+    ns.ReplayOozeView.Use(nil)
     ns.ReplayClassView.Use(nil)
     ns.ReplayUnitsView.Use(nil)
     ns.ReplaySpreadView.Use(nil)

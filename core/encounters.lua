@@ -250,6 +250,8 @@ local function ScanAll()
     end
     local function Push(f)
         if ns.trashBosses[f.boss] then return end
+        local home = f.seg and f.seg > 0 and ns.GetDB().segments[f.seg]
+        if home and ns.Digest and ns.Digest.Frozen(home) then return end
         Settle(f)
         ns.NoteNpcKey(f.boss, f.title)
         if listed[f] then return end
@@ -1228,6 +1230,7 @@ local function BuildTimeline(fight, who, idx)
                                                   tick = sub:find("PERIODIC", 1, true) ~= nil,
                                                   id = (not swing) and a1 or nil,
                                                   chaser = fixates[NpcKey(srcGUID) or 0] and srcGUID or nil,
+                                                  boss = IsBossOf(fight, srcGUID) or nil,
                                                   mc = ByMc(fight, srcName, srcFlags) }
                 elseif MISSED_SUBS[sub] then
                     local how = tostring((swing and a1 or a4) or "MISS")
@@ -1241,6 +1244,7 @@ local function BuildTimeline(fight, who, idx)
                                                   tick = sub:find("PERIODIC", 1, true) ~= nil,
                                                   id = (not swing) and a1 or nil,
                                                   chaser = fixates[NpcKey(srcGUID) or 0] and srcGUID or nil,
+                                                  boss = IsBossOf(fight, srcGUID) or nil,
                                                   mc = ByMc(fight, srcName, srcFlags) }
                 elseif sub:find("_HEAL", 1, true) then
                     local amount = tonumber(a4) or 0

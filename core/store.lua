@@ -182,6 +182,18 @@ function Store.Remove(i)
     if ns.Encounters then ns.Encounters.Dropped({ seg }, i) end
     return seg
 end
+function Store.Strip(seg)
+    seg.chunks, seg.buf = {}, {}
+    seg.actors, seg.spells, seg.strs = {}, {}, {}
+    seg.hp, seg.pos, seg.mana, seg.maps = {}, {}, {}, {}
+    seg.bytes = 0
+    local db = ns.GetDB()
+    db.total = math.max(0, (db.total or 0) - (seg.n or 0))
+    seg.n = 0
+    seg.bare, seg.lite = true, nil
+    if ns.Decode and ns.Decode.Drop then ns.Decode.Drop(seg) end
+    if ns.Index and ns.Index.Reset then ns.Index.Reset() end
+end
 local function TotalsBytes(seg)
     local n = 0
     for _, e in pairs(seg.totals or {}) do

@@ -89,6 +89,8 @@ local function PutEllipse(tex, sx, sy, rw, rh)
         tex:Hide()
         return false
     end
+    local LV = ns.ReplayLayersView
+    if LV and LV.Sharp then LV.Sharp(tex, rw) end
     return PutRect(tex, sx - rw, sy - rh, sx + rw, sy + rh)
 end
 local function Inverse(ox, oy, ux, uy, vx, vy, x, y)

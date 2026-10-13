@@ -73,6 +73,8 @@ local function Put(tex, sx, sy, rw, squash, v)
         tex:Hide()
         return false
     end
+    local LV = ns.ReplayLayersView
+    if not v and LV and LV.Sharp then LV.Sharp(tex, rw) end
     if v and tex.v ~= v then
         tex.v = v
         local c = TC[v]

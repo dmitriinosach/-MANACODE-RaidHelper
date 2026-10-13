@@ -20,6 +20,8 @@ local BLAST_SLACK = 2
 local SPAWN_EARLY = 0.1
 local SOUL_DIE = 1
 local SOUL_JOIN = 10
+local SCATTER_TOL = 2
+local HIT_WIN = 0.5
 local M = {}
 ns.ReplayMech = M
 local function Set(list, v)
@@ -49,6 +51,9 @@ function M.New(fight)
     ctx.bCast = Set(bomb and bomb.cast)
     ctx.bGas = Set(bomb and bomb.gas)
     ctx.bBoom = Set(bomb and bomb.boom)
+    ctx.bTomb = Set(bomb and bomb.tomb)
+    ctx.bFall = Set(bomb and bomb.fall and bomb.fall.cast)
+    ctx.tombs, ctx.tombCasts = {}, {}
     for di = 1, #chase do
         local d = chase[di]
         ctx.cNpc[ns.NpcKeyOf(d.npc)] = di
@@ -98,6 +103,124 @@ local function Banner(ctx)
         end
     end
     return list
+end
+local function Meet(L)
+    local a, b, c, p, q, m = 0, 0, 0, 0, 0, 0
+    for i = 1, #L do
+        local l = L[i]
+        if l.on then
+            local m11, m12, m22 = 1 - l.ux * l.ux, -l.ux * l.uy, 1 - l.uy * l.uy
+            a, b, c = a + m11, b + m12, c + m22
+            p, q = p + m11 * l.x + m12 * l.y, q + m12 * l.x + m22 * l.y
+            m = m + 1
+        end
+    end
+    local det = a * c - b * b
+    if m < 2 or det < 0.05 * m then return nil end
+    return (p * c - b * q) / det, (a * q - b * p) / det
+end
+local function BombAt(ctx, t, hit, posAt, ppy, names)
+    local B = ctx.bomb
+    local tx, ty, inTomb = {}, {}, {}
+    for i = 1, #ctx.tombs do
+        local tb = ctx.tombs[i]
+        if tb.from <= t and (not tb.to or tb.to >= t) then
+            local x, y = posAt(tb.name, t)
+            if x then tx[#tx + 1], ty[#ty + 1] = x, y end
+            inTomb[tb.name] = true
+        end
+    end
+    if #tx == 0 then return nil end
+    local hide2 = (B.hide * ppy) ^ 2
+    local lines = {}
+    local ux, uy = 0, 0
+    for i = 1, #names do
+        if not inTomb[names[i]] and not hit[names[i]] then
+            local x, y = posAt(names[i], t - 0.3)
+            local best, bq = hide2, nil
+            for q = 1, x and #tx or 0 do
+                local d2 = (tx[q] - x) ^ 2 + (ty[q] - y) ^ 2
+                if d2 <= best then best, bq = d2, q end
+            end
+            if bq and best > 0 then
+                local d = sqrt(best)
+                local l = { x = tx[bq], y = ty[bq], ux = (tx[bq] - x) / d, uy = (ty[bq] - y) / d, on = true }
+                lines[#lines + 1] = l
+                ux, uy = ux + l.ux, uy + l.uy
+            end
+        end
+    end
+    local ulen = sqrt(ux * ux + uy * uy)
+    if #lines == 0 or ulen < 0.01 then return nil end
+    ux, uy = ux / ulen, uy / ulen
+    local cone = math.cos(math.rad(B.cone))
+    for i = 1, #lines do
+        local l = lines[i]
+        l.on = l.ux * ux + l.uy * uy >= cone
+    end
+    local X, Y = Meet(lines)
+    if X then
+        local miss2 = (B.miss * ppy) ^ 2
+        for i = 1, #lines do
+            local l = lines[i]
+            local dx, dy = X - l.x, Y - l.y
+            local along = dx * l.ux + dy * l.uy
+            l.on = l.on and along > 0 and dx * dx + dy * dy - along * along <= miss2
+        end
+        X, Y = Meet(lines)
+    end
+    local cx, cy, n = 0, 0, 0
+    for i = 1, #lines do
+        if lines[i].on then cx, cy, n = cx + lines[i].x, cy + lines[i].y, n + 1 end
+    end
+    if n == 0 then
+        for i = 1, #lines do cx, cy, n = cx + lines[i].x, cy + lines[i].y, n + 1 end
+    end
+    cx, cy = cx / n, cy / n
+    local dx, dy, dist = ux, uy, B.near
+    if X and (X - cx) * ux + (Y - cy) * uy > 0 then
+        dx, dy = X - cx, Y - cy
+    end
+    local len = sqrt(dx * dx + dy * dy)
+    if len < 0.01 then return nil end
+    dx, dy = dx / len, dy / len
+    local bx, by, far = cx, cy, -1e9
+    for i = 1, #lines do
+        local l = lines[i]
+        local pr = l.x * dx + l.y * dy
+        if (l.on or n == #lines) and pr > far then bx, by, far = l.x, l.y, pr end
+    end
+    if X then
+        local d = ((X - bx) * dx + (Y - by) * dy) / ppy
+        if d >= B.near and d <= B.far then return X, Y end
+        dist = min(B.far, max(B.near, d))
+    end
+    return bx + dx * dist * ppy, by + dy * dist * ppy
+end
+local function Falls(ctx, hits)
+    local B = ctx.bomb
+    local F = B.fall
+    local out, used = {}, {}
+    for i = 1, F and #ctx.tombCasts or 0 do
+        for k = 0, F.n - 1 do
+            local t = ctx.tombCasts[i] + F.first + k * F.step
+            if t < ctx.fight.to then
+                local got = nil
+                for j = 1, #hits do
+                    if not used[j] and math.abs(hits[j].t - t) <= F.join then
+                        got, used[j] = hits[j], true
+                        break
+                    end
+                end
+                out[#out + 1] = got or { t = t, hits = {} }
+            end
+        end
+    end
+    for j = 1, #hits do
+        if not used[j] then out[#out + 1] = hits[j] end
+    end
+    tsort(out, function(x, y) return x.t < y.t end)
+    return out
 end
 local function ZoneHit(ctx, ts, srcGUID, dst)
     local z = srcGUID and ctx.byGuid[srcGUID]
@@ -255,6 +378,18 @@ function M.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1, amount)
             AddCast(ctx.bCasts, ts, nil, src)
         elseif HIT[sub] and target and (ctx.bGas[id] or ctx.bBoom[id]) then
             ctx.bHits[#ctx.bHits + 1] = { t = ts, name = target, boom = ctx.bBoom[id] }
+        elseif sub == "SPELL_CAST_START" and ctx.bFall[id] then
+            ctx.tombCasts[#ctx.tombCasts + 1] = ts
+        elseif target and ctx.bTomb[id] and sub == "SPELL_AURA_APPLIED" then
+            ctx.tombs[#ctx.tombs + 1] = { name = target, from = ts }
+        elseif target and ctx.bTomb[id] and REMOVED[sub] then
+            for i = #ctx.tombs, 1, -1 do
+                local tb = ctx.tombs[i]
+                if tb.name == target and not tb.to then
+                    tb.to = ts
+                    break
+                end
+            end
         end
     end
     if ctx.wAura[id] or ctx.wHit[id] then OnWinter(ctx, ts, sub, id, target) end
@@ -327,6 +462,67 @@ local function Match(ctx, b, posAt, ppy, names, guess)
     end
     return best, bx, by or 0, bt
 end
+local function Scatter(z, def, target, posAt, ppy, names, to)
+    local hits = z.hits
+    local ax, ay, reach
+    if target then
+        ax, ay = posAt(target, z.t)
+        reach = def.scatter
+    elseif hits[1] then
+        ax, ay = posAt(hits[1].name, hits[1].t)
+        reach = def.r + SCATTER_TOL
+    end
+    if not ax then return nil end
+    local PX, PY, PH, np = {}, {}, {}, 0
+    local tp, last = z.t + (def.arm or 0), min(z.t + def.life, to)
+    while tp <= last do
+        np = np + 1
+        local X, Y, H = {}, {}, {}
+        for i = 1, #names do
+            local x, y = posAt(names[i], tp)
+            X[i], Y[i] = x or false, y or 0
+        end
+        for h = 1, #hits do
+            if hits[h].t >= tp - HIT_WIN and hits[h].t <= tp + HIT_WIN then H[hits[h].name] = true end
+        end
+        PX[np], PY[np], PH[np] = X, Y, H
+        tp = tp + (def.pulse or def.life)
+    end
+    local rIn, rOut = ((def.r - SCATTER_TOL) * ppy) ^ 2, ((def.r + SCATTER_TOL) * ppy) ^ 2
+    local best, sx, sy, n = 1e9, 0, 0, 0
+    local span = floor(reach)
+    for dy = -span, span do
+        ns.Jobs.Step()
+        for dx = -span, span do
+            if dx * dx + dy * dy <= reach * reach then
+                local x, y = ax + dx * ppy, ay + dy * ppy
+                local bad = 0
+                for p = 1, np do
+                    local X, Y, H = PX[p], PY[p], PH[p]
+                    for i = 1, #names do
+                        local px = X[i]
+                        if px then
+                            local d2 = (px - x) ^ 2 + (Y[i] - y) ^ 2
+                            if H[names[i]] then
+                                if d2 > rOut then bad = bad + 1 end
+                            elseif d2 < rIn then
+                                bad = bad + 1
+                            end
+                        end
+                    end
+                    if bad > best then break end
+                end
+                if bad < best then
+                    best, sx, sy, n = bad, x, y, 1
+                elseif bad == best then
+                    sx, sy, n = sx + x, sy + y, n + 1
+                end
+            end
+        end
+    end
+    if n == 0 then return nil end
+    return sx / n, sy / n
+end
 function M.Solve(ctx, posAt, ppy, names)
     local D = ctx.trap
     local traps, zones = {}, {}
@@ -368,9 +564,14 @@ function M.Solve(ctx, posAt, ppy, names)
                 break
             end
         end
+        z.target = target
         local x, y
-        if target then x, y = posAt(target, z.t) end
-        if not x and #z.hits > 0 then
+        if def.scatter then
+            x, y = Scatter(z, def, target, posAt, ppy, names, ctx.fight.to)
+        elseif target then
+            x, y = posAt(target, z.t)
+        end
+        if not x and not def.scatter and #z.hits > 0 then
             local n, sx, sy = 0, 0, 0
             local t0 = z.hits[1].t
             for h = 1, #z.hits do
@@ -559,7 +760,7 @@ function M.Done(ctx, L, posAt, ppy, fc, byK)
     end
     for i = 1, #ctx.zoneOut do
         local z = ctx.zoneOut[i]
-        AddPool(L, z.from, z.to, z.x, z.y, z.def.r, z.def.tone)
+        if not z.def.spin then AddPool(L, z.from, z.to, z.x, z.y, z.def.r, z.def.tone) end
     end
     local B = ctx.bomb
     ctx.floorBombs = M.Bombs(ctx, posAt, ppy)
@@ -570,7 +771,20 @@ function M.Done(ctx, L, posAt, ppy, fc, byK)
     end
     if B and B.show == "banner" then
         local list = Banner(ctx)
+        if B.fall then list = Falls(ctx, list) end
         if #list > 0 then L.bombs, L.bombDef = list, B end
+        ctx.drops = {}
+        for i = 1, B.drop and #list or 0 do
+            local b = list[i]
+            local hit = {}
+            for j = 1, #b.hits do hit[b.hits[j]] = true end
+            local x, y = BombAt(ctx, b.t, hit, posAt, ppy, names)
+            if x then
+                ctx.drops[#ctx.drops + 1] = { t = b.t, x = x, y = y, hits = b.hits }
+                AddPool(L, b.t - B.lead, b.t, x, y, B.r, B.tone, b.t)
+                InsertBlast(L, b.t, x, y, B.blast * ppy, #b.hits, B.boom[1])
+            end
+        end
     end
     if byK then ChaseLayer(ctx, L, byK) end
     local W = ctx.winter
@@ -580,7 +794,7 @@ function M.Done(ctx, L, posAt, ppy, fc, byK)
         Pulse(ctx.wHits, ring, W)
         AddRing(L, ring, W)
     end
-    L.mech = { traps = ctx.traps, booms = ctx.booms, zones = ctx.zoneOut, bombs = ctx.floorBombs, casts = ctx.bCasts,
+    L.mech = { traps = ctx.traps, booms = ctx.booms, zones = ctx.zoneOut, bombs = ctx.floorBombs, drops = ctx.drops, casts = ctx.bCasts,
                runs = ctx.runs, rings = ctx.rings, winter = W, winterHits = ctx.wHits }
     L.souls = ctx.soul and Waves(ctx) or nil
 end

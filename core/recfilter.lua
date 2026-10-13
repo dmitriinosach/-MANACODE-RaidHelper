@@ -18,6 +18,7 @@ local AURAS = {
 }
 local Filter = {}
 ns.RecFilter = Filter
+Filter.spec = false
 Filter.DROP = DROP
 local keepPower = nil
 local powerNpcs = nil
@@ -65,7 +66,7 @@ function Filter.Keep(sub, srcGUID, srcName, dstGUID, dstName, spellId, auraType,
 end
 function Filter.Pulls(sub, srcFlags, dstGUID, dstName, auto)
     if not IsBoss(dstGUID, dstName, auto) or srcFlags == nil or band(srcFlags, F_BY_PLAYER) == 0
-        or band(srcFlags, F_GROUP) == 0 then
+        or (band(srcFlags, F_GROUP) == 0 and not Filter.spec) then
         return false
     end
     return find(sub, "_DAMAGE", 1, true) ~= nil or find(sub, "_HEAL", 1, true) ~= nil

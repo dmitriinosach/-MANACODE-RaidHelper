@@ -19,7 +19,7 @@ ns.replayData = {
     gone = {
         [ns.ENC.sindragosa] = {
             { ids = { 69712 }, sub = "SPELL_CAST_START", look = 12, lead = 6.5, land = 39.5, min = 20, max = 60, feed = true,
-              at = { 1.0, -36.6 }, glide = 4 },
+              at = { 1.0, -36.6 }, glide = 7 },
         },
         [ns.ENC.lichking] = {
             { ids = { 73654, 74295, 74296, 74297 }, sub = "SPELL_CAST_SUCCESS", look = 0, lead = 0, land = 49.5, min = 30,
@@ -82,6 +82,7 @@ ns.replayData = {
         { name = 61969, icon = 61969, prio = 95, imp = true, feed = true, boss = ns.ENC.hodir },
         { name = 32182, icon = 32182, prio = 1, grow = true },
         { name = 54131, icon = 2825, prio = 1, grow = true },
+        { name = 54861, icon = 55004, prio = 55 },
         { name = 66233, icon = 66233, prio = 87, cast = 4 },
         { name = 871, icon = 871, prio = 84 },
         { name = 48792, icon = 48792, prio = 84 },

@@ -117,6 +117,7 @@ local function PixelsPerYard(area, level)
     return AREA_W / size.w
 end
 Replay.PixelsPerYard = PixelsPerYard
+Replay.AREA_W, Replay.AREA_H = AREA_W, AREA_H
 function Replay.AreaOf(room)
     local known = ns.maps and ns.maps[room.boss]
     if known and known.area then return known.area end

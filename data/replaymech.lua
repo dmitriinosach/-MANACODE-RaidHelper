@@ -14,6 +14,8 @@ ns.replayMech = {
         },
         [ns.ENC.sindragosa] = {
             show = "banner", boom = { 69845, 71053, 71054, 71055 }, lead = 5.5, join = 1, icon = 69845,
+            drop = true, tomb = { 70157 }, hide = 10, cone = 35, miss = 3, near = 12, far = 25, r = 5, blast = 12, tone = "sem.rep.cold",
+            fall = { cast = { 69712 }, first = 15.9, step = 6.6, n = 4, join = 1.5 },
         },
     },
     chase = {
@@ -39,10 +41,27 @@ ns.replayMech = {
     souls = {
         [ns.ENC.lichking] = { aura = { 73655, 74276 }, room = "frostmourne" },
     },
+    oozes = {
+        [ns.ENC.putricide] = {
+            { npc = 37697, kind = "lead", at = { 13.5, -17.5 }, wait = 3.1, aura = { 70447, 72836, 72837, 72838 },
+              boom = { 70492, 72505, 72624, 72625 }, lag = 0.7, slow = { 70539, 72457, 72875, 72876 }, v = 8, slowK = 0.5,
+              reach = 1, look = "blob" },
+            { npc = 37562, kind = "chase", at = { 8, 22 }, wait = 3, aura = { 70672, 72455, 72832, 72833 }, catch = { 70701 },
+              slow = { 70539, 72457, 72875, 72876 }, v = 8, slowK = 0.5, reach = 2, aim = 0.5,
+              look = "gas" },
+        },
+    },
+    floods = {
+        [ns.ENC.rotface] = {
+            hit = { 69782, 69783, 69785, 69788, 69789, 69796, 69797, 69798, 69799, 69801, 69802, 71215, 71587, 71588 },
+            first = 32.3, step = 20.6, early = 1.5, keep = 1, pour = 2, r0 = 6, r = 17,
+            pipes = { { -0.8, -13.3 }, { -0.9, 42.8 }, { -25.1, 11.2 }, { 25.2, 16.1 } }, tone = "sem.rep.flood",
+        },
+    },
     zones = {
         [ns.ENC.council] = {
             { cast = { 72037 }, summon = { 72037 }, hit = { 71944, 72812, 72813, 72814 }, life = 30, r = 12, link = 3,
-              tone = "sem.rep.vortex" },
+              scatter = 13, arm = 5.2, pulse = 1.5, spin = true, tone = "sem.rep.vortex" },
         },
         [ns.ENC.xt002] = {
             { summon = { 64235 }, drop = { 64234 }, hit = { 64206 }, life = 180, r = 10, link = 0.5,

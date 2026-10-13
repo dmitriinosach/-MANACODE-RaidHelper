@@ -228,6 +228,7 @@ function Digest.Save(fight, s)
     if ns.Encounters.Ready() then Prune(seg, fight.seg) end
     seg.totals[Key(fight)] = { sig = Digest.Sig(fight.boss), to = fight.to, n = Count(fight.players), s = blob,
                                zb = s.zoneBuff }
+    if seg.lite and fight.seg then Digest.Lite(fight.seg) end
     return #blob
 end
 function Digest.ZoneBuff(fight)
@@ -334,6 +335,22 @@ function Digest.Trash(i, seg)
     seg.totals = seg.totals or {}
     seg.totals[TRASH_KEY] = { sig = sig, s = ns.Codec.Encode(piece, nil, nil) }
     return piece
+end
+function Digest.Lite(i)
+    local seg = ns.GetDB().segments[i]
+    if not (seg and seg.lite and seg.scan and ns.Encounters.Ready()) then return false end
+    local list, n = ns.Encounters.Fights(), 0
+    for k = 1, #list do
+        local f = list[k]
+        if f.seg == i then
+            if not Digest.Has(f) then return false end
+            n = n + 1
+        end
+    end
+    if n == 0 then return false end
+    Digest.Trash(i, seg)
+    ns.Store.Strip(seg)
+    return true
 end
 function Digest.HasTrash(i, seg)
     local e = seg.totals and seg.totals[TRASH_KEY]

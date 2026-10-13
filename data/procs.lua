@@ -30,7 +30,6 @@ ns.recProcs = {
     [53817] = true,
     [54149] = true,
     [54153] = true,
-    [54861] = true,
     [55637] = true,
     [55775] = true,
     [57516] = true,

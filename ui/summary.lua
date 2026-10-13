@@ -5,6 +5,7 @@ local max = math.max
 local min = math.min
 local tsort = table.sort
 local MARGIN = 8
+local BAR_ROOM = 8
 local GAP = 6
 local TILEMIN = 190
 local DETAILMIN = 200
@@ -664,6 +665,13 @@ local function DrawBlocks(s, y, w)
             end
         end
     end
+    local loot = ns.Loot and fight and ns.Loot.FightDetail(fight)
+    if loot then
+        np = np + 1
+        local f = Panel(np)
+        f:SetModel({ title = loot.title, rows = loot.rows, empty = loot.empty, onWheel = PageWheel })
+        list[#list + 1] = f
+    end
     for i = np + 1, #panels do panels[i]:Hide() end
     for i = nw + 1, #wides do wides[i]:Hide() end
     return Grid.Place(list, MARGIN, y, w, DETAILMIN, GAP, true)
@@ -718,7 +726,7 @@ function Render()
     for i = 1, #heads do heads[i]:Hide() end
     for i = 1, #tiles do tiles[i]:Hide() end
     Badges.ResetLinks()
-    local w = max(200, host:GetWidth() - MARGIN * 2)
+    local w = max(200, host:GetWidth() - MARGIN * 2 - BAR_ROOM)
     content:SetWidth(host:GetWidth())
     if not summary then
         laid = {}

@@ -16,6 +16,10 @@ ns.replayClass = {
         { cast = 1953, min = 5, show = 2 },
         { cast = 781, min = 5, show = 2 },
     },
+    trails = {
+        { aura = 54861, cast = 55004, dur = 5, step = 0.18, life = 2.4, r = 0.85, tone = "sem.rep.clsBoots",
+          core = "sem.rep.clsBootsCore", old = "sem.rep.clsBootsOld" },
+    },
     circle = { make = 48018, port = 48020, life = 360, r = 1.5, show = 3 },
     beacon = 53563,
 }

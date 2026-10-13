@@ -1092,6 +1092,8 @@ function Layers.Build(scene)
     local rb = RB and RB.New(fight)
     local RM = ns.ReplayMech
     local rm = RM and RM.New(fight)
+    local OZ = ns.ReplayOoze
+    local oz = OZ and OZ.New(fight)
     local RR = ns.ReplayRealm
     local rr = RR and RR.New(fight)
     local SP = ns.ReplaySpread
@@ -1120,6 +1122,7 @@ function Layers.Build(scene)
             MK.Event(mc, ts, sub, src, dst, a1)
             if rb then RB.Event(rb, ts, sub, src, dst, a1) end
             if rm then RM.Event(rm, ts, sub, srcGUID, src, dstGUID, dst, a1, a4) end
+            if oz then OZ.Event(oz, ts, sub, srcGUID, dstGUID, dst, a1) end
             if rr then RR.Event(rr, ts, sub, srcGUID, src, dstGUID, dst, a1, a2) end
             if sp then SP.Event(sp, ts, sub, src, dst, a1) end
             if sw then SW.Event(sw, ts, sub, src, dst, a1) end
@@ -1150,6 +1153,7 @@ function Layers.Build(scene)
     c.L.feedMs = debugprofilestop() - f0
     PickTargets(c)
     if not (np and ns.NpcPos.Place(np, Layers.HolderAt)) then PlaceBoss(scene, c) end
+    if oz then OZ.Done(oz, c.L, scene, function(name, t) return Pos(c, name, t) end, c.ppy) end
     FinishBossHp(c, segs, fight.to, np and np.stats.guid, rr)
     PlaceCones(scene, c)
     if cl then CL.Done(cl, c.L, scene, c.bosses) end
@@ -1158,6 +1162,16 @@ function Layers.Build(scene)
     c.L.ms = debugprofilestop() - p0
     scene.layers = c.L
     return c.L
+end
+function Layers.AddDebuff(add, t)
+    local T = add.debT
+    if not T or not add.debId then return nil end
+    local on = false
+    for i = 1, #T do
+        if T[i] > t then break end
+        on = add.debOn[i]
+    end
+    return on and add.debId or nil
 end
 function Layers.AddHp(add, t)
     local T = add.hpT

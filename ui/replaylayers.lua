@@ -8,8 +8,15 @@ local format = string.format
 local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\replay\\"
 local CONE = ART .. "cone"
 local RIM = ART .. "rim"
+local SHARP = {
+    rim = { ART .. "rim512", 80 }, ring256 = { ART .. "ring512", 160 }, ring128 = { ART .. "ring512", 96 },
+    disc256 = { ART .. "disc512", 160 }, disc128 = { ART .. "disc512", 96 },
+}
 local RING = ART .. "ring256"
 local LINE = ART .. "line"
+local ICICLE = ART .. "icicle"
+local STREAK = ART .. "streak"
+local BEAM = ART .. "beam"
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local POOL_DRAW = 48
 local WAVE_DRAW = 6
@@ -48,6 +55,15 @@ local SPIN_TEX = "Creature\\VOIDWALKER\\TORNADO2C"
 local SPIN_K = 2.2
 local SPIN_RATE = 2 * math.pi * 1.25
 local SPIN_H = 0.5
+local VORTEX_DRAW = 4
+local VORTEX_SPIN = 1.6
+local VORTEX_SWIRL = 1.1
+local VORTEX_WAVE = 0.5
+local DROP_DRAW = 4
+local DROP_UP, DROP_SIDE = 34, 20
+local ICICLE_LEN, ICICLE_W = 5, 1.3
+local TRAIL_LEN = 12
+local BOOM_W, BOOM_H, BOOM_SHOW = 7, 26, 1.2
 local V = {}
 ns.ReplayLayersView = V
 local Kit = ns.Kit
@@ -57,9 +73,12 @@ local Shield = ns.ReplayShield
 local pools, cones, blasts, lines, hits = {}, {}, {}, {}, {}
 local counts, chaseLines, chaseRings, addRings = {}, {}, {}, {}
 local winter = { waves = {}, rs = {}, as = {} }
+local vortex = { fill = {}, edge = {}, swirl = {}, wave = {} }
+local drop = { ice = {}, trail = {}, aim = {}, beam = {} }
 local hitbox
 local bomb
-local used = { pool = 0, cone = 0, blast = 0, line = 0, hit = 0, count = 0, chase = 0, ring = 0, wave = 0, addRing = 0 }
+local used = { pool = 0, cone = 0, blast = 0, line = 0, hit = 0, count = 0, chase = 0, ring = 0, wave = 0, addRing = 0,
+               vortex = 0, vortexWave = 0, drop = 0, boom = 0 }
 local view, marks
 local hw, hh = 0, 0
 local top1, top2, top3, topN = {}, {}, {}, {}
@@ -73,7 +92,8 @@ local focusName
 local fxRow = { tex = {}, more = nil, owner = nil, key = nil }
 local pactK, pactFrom = {}, {}
 local stats = { badges = 0, pools = 0, cones = 0, blasts = 0, adds = 0, counts = 0, countTop = nil, chases = 0,
-                chaseLines = 0, waves = 0, edge = 0, waveR = 0, collects = 0, addRings = 0, fx = 0 }
+                chaseLines = 0, waves = 0, edge = 0, waveR = 0, collects = 0, addRings = 0, fx = 0, vortex = 0,
+                vortexWave = 0, drops = 0, booms = 0 }
 V.stats = stats
 local function PutRect(tex, l, t, r, b, u0, v0, u1, v1)
     local cl, ct, cr, cb = max(l, -hw), max(t, -hh), min(r, hw), min(b, hh)
@@ -96,6 +116,7 @@ local function PutRect(tex, l, t, r, b, u0, v0, u1, v1)
 end
 local function PutEllipse(tex, sx, sy, rw, rh)
     if rw * 2 > MAX_PX then return false end
+    V.Sharp(tex, rw)
     return PutRect(tex, sx - rw, sy - rh, sx + rw, sy + rh, 0, 0, 1, 1)
 end
 local function Inverse(ox, oy, ux, uy, vx, vy, x, y)
@@ -144,6 +165,18 @@ function V.Build(v, m)
     for i = 1, RING_DRAW do addRings[i] = Tex(marks, RIM, "BACKGROUND") end
     for i = 1, WAVE_DRAW do winter.waves[i] = Tex(marks, RING, "BORDER") end
     winter.edge = Tex(marks, RING, "BORDER")
+    for i = 1, DROP_DRAW do
+        drop.aim[i] = Tex(marks, LINE, "BORDER", "sem.rep.icicleAim")
+        drop.trail[i] = Tex(marks, STREAK, "OVERLAY", "sem.rep.icicleTrail")
+        drop.ice[i] = Tex(marks, ICICLE, "OVERLAY", "sem.rep.icicle")
+        drop.beam[i] = Tex(marks, BEAM, "OVERLAY", "sem.rep.icicleBoom")
+    end
+    for i = 1, VORTEX_DRAW do
+        vortex.fill[i] = Tex(marks, RIM, "BACKGROUND")
+        vortex.swirl[i] = Tex(marks, SPIN_TEX, "BORDER")
+        vortex.edge[i] = Tex(marks, RING, "BORDER")
+        vortex.wave[i] = Tex(marks, RING, "BORDER")
+    end
     for i = 1, HIT_DRAW do hits[i] = Tex(marks, CIRCLE, "BORDER", "sem.rep.hit") end
     for i = 1, LINE_DRAW do lines[i] = Tex(marks, LINE, "BORDER", "sem.rep.pact") end
     for i = 1, CONE_DRAW do cones[i] = Tex(marks, CONE, "ARTWORK", "sem.rep.cone") end
@@ -187,6 +220,45 @@ function V.Build(v, m)
     end
     fxRow.more = marks:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     fxRow.more:Hide()
+end
+function V.Sharp(tex, rw)
+    local key = tex.sharpKey
+    if key == nil then
+        local p = tex.GetTexture and tex:GetTexture()
+        key = type(p) == "string" and strlower(p):gsub("%.%a+$", ""):match("([%w_]+)$") or false
+        if key and not SHARP[key] then key = false end
+        tex.sharpKey, tex.sharpSmall = key, p
+    end
+    if not key then return end
+    local big = SHARP[key]
+    local want = rw > big[2] and big[1] or tex.sharpSmall
+    if tex.sharpP ~= want then
+        tex:SetTexture(want)
+        tex.sharpP = want
+    end
+end
+V.Rim = V.Sharp
+function V.AddDebuff(fig, id)
+    local tex = fig.adb
+    if not id then
+        if tex and fig.adbId then
+            tex:Hide()
+            fig.adbId = nil
+        end
+        return
+    end
+    if not tex then
+        tex = fig:CreateTexture(nil, "OVERLAY")
+        tex:SetWidth(BADGE)
+        tex:SetHeight(BADGE)
+        tex:SetPoint("BOTTOM", fig.icon, "TOP", 0, 2)
+        fig.adb = tex
+    end
+    if fig.adbId ~= id then
+        Kit.Icon.Spell(tex, id)
+        fig.adbId = id
+    end
+    tex:Show()
 end
 function V.Attach(fig)
     fig.bd = {}
@@ -250,6 +322,18 @@ function V.Use(scene)
     for i = 1, #addRings do addRings[i]:Hide() end
     for i = 1, #winter.waves do winter.waves[i]:Hide() end
     winter.edge:Hide()
+    for i = 1, DROP_DRAW do
+        drop.aim[i]:Hide()
+        drop.trail[i]:Hide()
+        drop.ice[i]:Hide()
+        drop.beam[i]:Hide()
+    end
+    for i = 1, VORTEX_DRAW do
+        vortex.fill[i]:Hide()
+        vortex.swirl[i]:Hide()
+        vortex.edge[i]:Hide()
+        vortex.wave[i]:Hide()
+    end
     hitbox:Hide()
     bomb:Hide()
     bomb.key = nil
@@ -434,7 +518,7 @@ function V.Adds(scene, t, out)
     for i = 1, #list do
         if n >= ADD_DRAW then break end
         local a = list[i]
-        if a.from <= t and a.to > t and not a.mdl and not (RV and RV.HideAdd(scene, a)) then
+        if a.from <= t and a.to > t and not a.mdl and not a.look and not (RV and RV.HideAdd(scene, a)) then
             local x, y, chase = -1, -1, false
             if a.chaseK and t < a.chaseTo then
                 x, y = Replay.PosAtTime(scene.tracks[a.chaseK], t)
@@ -446,6 +530,7 @@ function V.Adds(scene, t, out)
                 n = n + 1
                 out.x[n], out.y[n], out.icon[n], out.chase[n] = x, y, a.icon, chase
                 out.hp[n] = Layers.AddHp(a, t)
+                out.debuff[n] = Layers.AddDebuff(a, t) or false
             end
         end
     end
@@ -736,6 +821,127 @@ local function PlaceWinter(scene, cam, t)
     used.wave = n
     stats.waves, stats.edge, stats.waveR = n, lit and 1 or 0, n > 0 and winter.rs[1] or 0
 end
+local function PlaceDrops(scene, cam, t)
+    local L = scene.layers
+    local list = L.mech and L.mech.drops
+    local lead = L.bombDef and L.bombDef.lead or 0
+    local n, nb = 0, 0
+    for i = 1, list and #list or 0 do
+        local d = list[i]
+        if nb < DROP_DRAW and t >= d.t and t < d.t + BOOM_SHOW then
+            local gx, gy, k = Replay.Project(cam, d.x, d.y)
+            local tex = drop.beam[nb + 1]
+            local yd = scene.ppy * cam.zoom * k
+            local w, h = BOOM_W * yd, BOOM_H * yd * min(1, cam.tilt * k + 0.3)
+            if k > 0 and w < MAX_PX and h < MAX_PX then
+                nb = nb + 1
+                local q = (t - d.t) / BOOM_SHOW
+                tex:ClearAllPoints()
+                tex:SetPoint("BOTTOM", view, "CENTER", gx, -gy)
+                tex:SetWidth(w * (1 + 0.4 * q))
+                tex:SetHeight(h)
+                local r, g, b, a = Kit.Color("sem.rep.icicleBoom")
+                tex:SetVertexColor(r, g, b, a * (1 - q))
+                tex:Show()
+            end
+        end
+        if n < DROP_DRAW and lead > 0 and t >= d.t - lead and t < d.t then
+            local gx, gy, k = Replay.Project(cam, d.x, d.y)
+            if k > 0 then
+                n = n + 1
+                local yd = scene.ppy * cam.zoom * k
+                local sx, sy = gx + DROP_SIDE * yd, gy - DROP_UP * yd
+                local q = (t - (d.t - lead)) / lead
+                q = q * q
+                local px, py = sx + (gx - sx) * q, sy + (gy - sy) * q
+                local dx, dy = gx - sx, gy - sy
+                local len = sqrt(dx * dx + dy * dy)
+                local fx, fy = dx / len, dy / len
+                local nx, ny = -fy, fx
+                local ax, ay = gx - px, gy - py
+                local rest = sqrt(ax * ax + ay * ay)
+                local w = max(1, LINE_W * 0.5)
+                if rest >= 2 then
+                    PutAffine(drop.aim[n], px - nx * w / 2, py - ny * w / 2, ax, ay, nx * w, ny * w)
+                else
+                    drop.aim[n]:Hide()
+                end
+                local tl = min(TRAIL_LEN * yd, len * q)
+                local tw = ICICLE_W * yd * 1.1
+                if tl >= 2 then
+                    PutAffine(drop.trail[n], px - nx * tw / 2, py - ny * tw / 2, -fx * tl, -fy * tl, nx * tw, ny * tw)
+                else
+                    drop.trail[n]:Hide()
+                end
+                local il, iw = ICICLE_LEN * yd, ICICLE_W * yd
+                PutAffine(drop.ice[n], px - nx * iw / 2, py - ny * iw / 2, -fx * il, -fy * il, nx * iw, ny * iw)
+            end
+        end
+    end
+    for i = n + 1, used.drop do
+        drop.aim[i]:Hide()
+        drop.trail[i]:Hide()
+        drop.ice[i]:Hide()
+    end
+    for i = nb + 1, used.boom do drop.beam[i]:Hide() end
+    used.drop, used.boom = n, nb
+    stats.booms = nb
+    stats.drops = n
+end
+local function PlaceVortex(scene, cam, t)
+    local M = scene.layers.mech
+    local zones = M and M.zones
+    local n, nw = 0, 0
+    for i = 1, zones and #zones or 0 do
+        local z = zones[i]
+        local def = z.def
+        if n < VORTEX_DRAW and def.spin and z.from <= t and z.to > t then
+            local sx, sy, k = Replay.Project(cam, z.x, z.y)
+            local rw = def.r * scene.ppy * cam.zoom * k
+            if k > 0 and rw * 2 <= MAX_PX then
+                n = n + 1
+                local tilt = min(1, cam.tilt * k)
+                local on, arm = t - z.from, def.arm or 0
+                local lit = on >= arm and 1 or 0.5
+                local fade = Fade(1, z.from, z.to, t)
+                local tex = vortex.fill[n]
+                local r, g, b, a = Kit.Color(def.tone)
+                if PutEllipse(tex, sx, sy, rw, max(1, rw * tilt)) then tex:SetVertexColor(r, g, b, a * lit * fade) end
+                tex = vortex.edge[n]
+                r, g, b, a = Kit.Color("sem.rep.vortexEdge")
+                if PutEllipse(tex, sx, sy, rw, max(1, rw * tilt)) then tex:SetVertexColor(r, g, b, a * lit * fade) end
+                local grow = arm > 0 and min(1, on / arm) or 1
+                local s = rw * (0.35 + 0.65 * grow) * VORTEX_SWIRL
+                local ang = t * VORTEX_SPIN + i
+                local c, sn = math.cos(ang) * s, math.sin(ang) * s
+                tex = vortex.swirl[n]
+                if PutAffine(tex, sx - c + sn, sy - (sn + c) * tilt, 2 * c, 2 * sn * tilt, -2 * sn, 2 * c * tilt) then
+                    r, g, b, a = Kit.Color("sem.rep.vortexSwirl")
+                    tex:SetVertexColor(r, g, b, a * (0.5 + 0.5 * lit) * fade)
+                end
+                local ph = def.pulse and on >= arm and (on - arm) % def.pulse or VORTEX_WAVE
+                if ph < VORTEX_WAVE then
+                    local q = ph / VORTEX_WAVE
+                    local wr = rw * (0.25 + 0.75 * q)
+                    tex = vortex.wave[nw + 1]
+                    if PutEllipse(tex, sx, sy, wr, max(1, wr * tilt)) then
+                        nw = nw + 1
+                        r, g, b, a = Kit.Color("sem.rep.vortexWave")
+                        tex:SetVertexColor(r, g, b, a * (1 - q) * fade)
+                    end
+                end
+            end
+        end
+    end
+    for i = n + 1, used.vortex do
+        vortex.fill[i]:Hide()
+        vortex.edge[i]:Hide()
+        vortex.swirl[i]:Hide()
+    end
+    for i = nw + 1, used.vortexWave do vortex.wave[i]:Hide() end
+    used.vortex, used.vortexWave = n, nw
+    stats.vortex, stats.vortexWave = n, nw
+end
 function V.Place(scene, cam, t, figs)
     local L = scene.layers
     if not L or not view then return end
@@ -743,6 +949,8 @@ function V.Place(scene, cam, t, figs)
     PlacePools(scene, cam, t)
     PlaceRings(scene, cam, t)
     PlaceWinter(scene, cam, t)
+    PlaceVortex(scene, cam, t)
+    PlaceDrops(scene, cam, t)
     PlaceChase(scene, cam, t)
     PlaceHits(scene, cam, t)
     PlaceBlasts(scene, cam, t)

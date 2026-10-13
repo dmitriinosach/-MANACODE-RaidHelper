@@ -31,19 +31,23 @@ local LINE_W = 3
 local BEAM_W = 2
 local HEAD = 10
 local MIN_R = 4
+local SMOKE = "Spells\\ALPHACLOUD"
+local PUFF_DRAW = 48
+local PUFF_GROW = 0.45
+local PUFF_CORE = 0.55
 local V = {}
 ns.ReplayClassView = V
 local Kit = ns.Kit
 local Replay = ns.Replay
 local KINDS = { "zones", "rings", "cones", "arrows", "circles", "beams" }
 local pool = { zones = {}, edges = {}, marks = {}, rings = {}, cones = {}, arrows = {}, heads = {}, circles = {}, beams = {},
-               icons = {} }
-local used = { zones = 0, rings = 0, cones = 0, arrows = 0, circles = 0, beams = 0, icons = 0 }
+               icons = {}, puffs = {}, cores = {} }
+local used = { zones = 0, rings = 0, cones = 0, arrows = 0, circles = 0, beams = 0, icons = 0, puffs = 0 }
 local memo = { cls = nil, from = 0, to = -1 }
 local active = { zones = {}, rings = {}, cones = {}, arrows = {}, circles = {}, beams = {} }
 local nact = { zones = 0, rings = 0, cones = 0, arrows = 0, circles = 0, beams = 0 }
 local view
-local probe = { zones = 0, rings = 0, cones = 0, arrows = 0, circles = 0, beams = 0, icons = 0, collects = 0 }
+local probe = { zones = 0, rings = 0, cones = 0, arrows = 0, circles = 0, beams = 0, icons = 0, collects = 0, puffs = 0 }
 local function Tex(layer, path, draw, token)
     local tex = layer:CreateTexture(nil, draw)
     tex:SetTexture(path)
@@ -67,6 +71,10 @@ function V.Build(v, layer)
     end
     for i = 1, CIRCLE_DRAW do pool.circles[i] = Tex(layer, RING_S, "BORDER", "sem.rep.clsCircle") end
     for i = 1, BEAM_DRAW do pool.beams[i] = Tex(layer, LINE, "BORDER", "sem.rep.clsBeacon") end
+    for i = 1, PUFF_DRAW do
+        pool.puffs[i] = Tex(layer, SMOKE, "BACKGROUND")
+        pool.cores[i] = Tex(layer, SMOKE, "BACKGROUND")
+    end
     for i = 1, ICON_DRAW do
         local tex = layer:CreateTexture(nil, "ARTWORK")
         tex:SetWidth(ICON)
@@ -300,11 +308,65 @@ local function PlaceBeams(scene, cam)
     used.beams = n
     probe.beams = n
 end
+local function PlaceTrails(scene, cam, t)
+    local list = scene.layers.cls.trails or {}
+    local n = 0
+    local PosAt = Replay.PosAtTime
+    for i = 1, #list do
+        local it = list[i]
+        if it.from > t or n >= PUFF_DRAW then break end
+        local d = it.def
+        if it.to + d.life > t then
+            local tr = scene.tracks[it.k]
+            local ts = max(it.from, t - d.life)
+            ts = it.from + math.ceil((ts - it.from) / d.step) * d.step
+            while ts <= min(t, it.to) and n < PUFF_DRAW do
+                local x, y = PosAt(tr, ts)
+                if x >= 0 then
+                    local sx, sy, k = Screen(cam, scene, x, y)
+                    if k > 0 then
+                        local age = (t - ts) / d.life
+                        local rw = d.r * (1 + PUFF_GROW * age) * scene.ppy * cam.zoom * k
+                        local rh = max(1, rw * min(1, cam.tilt * k))
+                        n = n + 1
+                        local p, c = pool.puffs[n], pool.cores[n]
+                        p:ClearAllPoints()
+                        p:SetPoint("CENTER", view, "CENTER", sx, -sy)
+                        p:SetWidth(rw * 2)
+                        p:SetHeight(rh * 2)
+                        Tone(p, d.tone, 1 - age)
+                        p:Show()
+                        c:ClearAllPoints()
+                        c:SetPoint("CENTER", view, "CENTER", sx, -sy)
+                        c:SetWidth(rw * 2 * PUFF_CORE)
+                        c:SetHeight(rh * 2 * PUFF_CORE)
+                        local r1, g1, b1, a1 = Kit.Color(d.core)
+                        if d.old then
+                            local r2, g2, b2, a2 = Kit.Color(d.old)
+                            r1, g1, b1, a1 = r1 + (r2 - r1) * age, g1 + (g2 - g1) * age, b1 + (b2 - b1) * age, a1 + (a2 - a1) * age
+                        end
+                        c:SetVertexColor(r1, g1, b1, a1 * (1 - age))
+                        c:Show()
+                    end
+                end
+                ts = ts + d.step
+            end
+        end
+    end
+    for i = n + 1, used.puffs do
+        pool.puffs[i]:Hide()
+        pool.cores[i]:Hide()
+    end
+    used.puffs = n
+    probe.puffs = n
+end
 function V.Place(scene, cam, t)
     if not view then return end
     local cls = scene.layers and scene.layers.cls
     if not cls then
-        if used.zones + used.rings + used.cones + used.arrows + used.circles + used.beams + used.icons > 0 then HideAll() end
+        if used.zones + used.rings + used.cones + used.arrows + used.circles + used.beams + used.icons + used.puffs > 0 then
+            HideAll()
+        end
         return
     end
     if memo.cls ~= cls or t < memo.from or t >= memo.to then
@@ -317,6 +379,7 @@ function V.Place(scene, cam, t)
     PlaceCones(scene, cam, t)
     PlaceMoves(scene, cam, t)
     PlaceBeams(scene, cam)
+    PlaceTrails(scene, cam, t)
     for i = used.icons + 1, icons do pool.icons[i]:Hide() end
     probe.icons = used.icons
 end

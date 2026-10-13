@@ -18,8 +18,6 @@ ns.rangingData = {
     adds = {
         [38508] = ns.ENC.saurfang,
         [36899] = ns.ENC.rotface,
-        [37697] = ns.ENC.putricide,
-        [37562] = ns.ENC.putricide,
         [36609] = ns.ENC.lichking,
         [36701] = ns.ENC.lichking,
     },

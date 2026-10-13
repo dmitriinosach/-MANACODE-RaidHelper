@@ -140,6 +140,8 @@ local function PutDisc(tex, sx, sy, rw, rh)
         tex:Hide()
         return false
     end
+    local LV = ns.ReplayLayersView
+    if LV and LV.Sharp then LV.Sharp(tex, rw) end
     tex:ClearAllPoints()
     tex:SetPoint("CENTER", view, "CENTER", sx, -sy)
     tex:SetWidth(rw * 2)

@@ -4,6 +4,7 @@ local floor = math.floor
 local max = math.max
 local min = math.min
 local MARGIN = 8
+local BAR_ROOM = 8
 local GAP = 6
 local DETAILMIN = 220
 local AWARDMIN = 260
@@ -232,10 +233,12 @@ Render = function()
         return
     end
     local model = ns.RaidModel.Build(res)
-    local w = max(200, host:GetWidth() - MARGIN * 2)
+    local w = max(200, host:GetWidth() - MARGIN * 2 - BAR_ROOM)
     local y = DrawTotals(model.totals, w)
     Mark("totals", MARGIN, y)
     local rest, gp = SplitGP(model.details)
+    local loot = ns.Loot and ns.Loot.RaidDetail(raid)
+    if loot then rest[#rest + 1] = loot end
     local top = y
     y = DrawSide(SideItems(raid, res, gp), y, w)
     Mark("gp", top, y)

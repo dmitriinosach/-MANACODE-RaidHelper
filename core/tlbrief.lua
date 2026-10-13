@@ -3,6 +3,8 @@ local tsort = table.sort
 local SKIP_HP = { "FW_HP" }
 local MAX_TAIL = 5
 local STATE_PRIO = 55
+local DEATH_BACK = 20
+local DEATH_AHEAD = 5
 local BD = {}
 ns.TimelineBriefData = BD
 local feeds = setmetatable({}, { __mode = "k" })
@@ -114,10 +116,10 @@ function BD.States(data, fight)
         local mark = key and P[key]
         if mark and mark ~= "ctl" and mark ~= "any" and mark ~= fight.boss then mark = nil end
         local enemy = a.kind == "debuff" and a.src and not fight.players[a.src]
-        if key and (mark or enemy) then
+        if key and (mark == "ctl" or enemy or (mark and a.kind == "debuff")) then
             local row = index[key]
             if not row then
-                local kind = mark == "ctl" and "ctl" or (a.kind == "debuff" and "bad" or "good")
+                local kind = mark == "ctl" and "ctl" or "bad"
                 row = { id = id, label = ns.Effects.Name(key) or a.label, kind = kind, items = {} }
                 index[key] = row
                 rows[#rows + 1] = row
@@ -125,7 +127,7 @@ function BD.States(data, fight)
             row.items[#row.items + 1] = a
         end
     end
-    local rank = { ctl = 1, bad = 2, good = 3 }
+    local rank = { ctl = 1, bad = 2 }
     tsort(rows, function(a, b)
         if a.kind ~= b.kind then return rank[a.kind] < rank[b.kind] end
         return a.items[1].t < b.items[1].t
@@ -160,8 +162,121 @@ function BD.Acts(data)
     end
     return out
 end
+local function Press(lane, t)
+    local list = lane.casts
+    for i = 1, #list do
+        if math.abs(list[i] - t) < 1 then return end
+    end
+    list[#list + 1] = t
+end
+function BD.Defs(data, who)
+    local defs = ns.defensives or {}
+    local saving = ns.saving or {}
+    local lanes, index = {}, {}
+    local lead = data and data.lead or 0
+    local tail = data and data.tail or 0
+    local function Lane(id, label)
+        local key = ns.SpellKey(id)
+        local lane = index[key]
+        if not lane then
+            local def = defs[id]
+            lane = { id = id, key = key, label = label or ns.Effects.Name(id) or tostring(id), cd = def.cd,
+                     item = def.item, saving = saving[id] or nil, casts = {} }
+            index[key] = lane
+            lanes[#lanes + 1] = lane
+        end
+        return lane
+    end
+    local casts = data and data.casts or {}
+    for i = 1, #casts do
+        local c = casts[i]
+        local id = tonumber(c.id)
+        if id and defs[id] then Press(Lane(id, c.label), c.t) end
+    end
+    local reg = ns.Encounters.Pressed and ns.Encounters.Pressed(who)
+    for k = 1, reg and #reg or 0, 2 do
+        local at, id = reg[k], reg[k + 1]
+        local def = defs[id]
+        if def and type(at) == "number" then
+            local lane = Lane(id)
+            if at + def.cd > lead and at <= tail then Press(lane, at) end
+        end
+    end
+    for i = 1, #lanes do tsort(lanes[i].casts) end
+    tsort(lanes, function(a, b)
+        if (a.saving or false) ~= (b.saving or false) then return a.saving == true end
+        if a.cd ~= b.cd then return a.cd > b.cd end
+        return a.label < b.label
+    end)
+    return lanes
+end
+function BD.LaneLeft(lane, t)
+    local left = 0
+    for i = 1, #lane.casts do
+        local at = lane.casts[i]
+        if at <= t then
+            local l = lane.cd - (t - at)
+            if l > left then left = l end
+        end
+    end
+    return left
+end
+local helpKeys
+local function HelpKeys()
+    if helpKeys then return helpKeys end
+    helpKeys = {}
+    local help = ns.replayFeed and ns.replayFeed.help or {}
+    for id in pairs(help) do helpKeys[ns.SpellKey(id)] = true end
+    local A = ns.actions or {}
+    for i = 1, #(A.kicks or {}) do helpKeys[ns.SpellKey(A.kicks[i])] = true end
+    for i = 1, #(A.selfRez or {}) do helpKeys[ns.SpellKey(A.selfRez[i])] = true end
+    if A.stone then helpKeys[ns.SpellKey(A.stone)] = true end
+    for id in pairs(ns.taunts or {}) do helpKeys[ns.SpellKey(id)] = true end
+    for key, mark in pairs(Pick()) do
+        if mark ~= "ctl" then helpKeys[key] = true end
+    end
+    return helpKeys
+end
+function BD.Help(data, fight, who)
+    local H = HelpKeys()
+    local defs = ns.defensives or {}
+    local out = {}
+    local casts = data and data.casts or {}
+    for i = 1, #casts do
+        local c = casts[i]
+        local key = ns.SpellKey(c.id)
+        local id = tonumber(c.id)
+        if key and H[key] and not (id and defs[id]) then
+            out[#out + 1] = { t = c.t, id = c.id, label = c.label, taunt = c.taunt or (id and ns.taunts and ns.taunts[id]) or nil }
+        end
+    end
+    local auras = data and data.auras or {}
+    for i = 1, #auras do
+        local a = auras[i]
+        local key = ns.SpellKey(a.id)
+        if a.kind == "buff" and key and H[key] and a.src and a.src ~= who and fight.players[a.src] then
+            out[#out + 1] = { t = a.t, to = a.to, id = a.id, label = a.label, src = a.src, got = true }
+        end
+    end
+    tsort(out, function(a, b) return a.t < b.t end)
+    return out
+end
+function BD.SourceKind(it, players)
+    if not it.src then return "env" end
+    if players[it.src] or it.mc then return "own" end
+    if it.boss then return "boss" end
+    return "add"
+end
+function BD.Window(data, lead, tail)
+    local d = data and data.deaths and data.deaths[1]
+    if not d then return nil, nil end
+    local from = math.max(lead, d - DEATH_BACK)
+    local to = math.min(tail, d + DEATH_AHEAD)
+    if to - from < 10 then return nil, nil end
+    return from, to
+end
 function BD.Reset()
-    pick, acts = nil, nil
+    pick, acts, helpKeys = nil, nil, nil
     for k in pairs(feeds) do feeds[k] = nil end
     for k in pairs(faults) do faults[k] = nil end
 end
