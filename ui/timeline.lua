@@ -1109,8 +1109,10 @@ local function BuildTools()
             trackScroll = 0
             if fight then
                 viewFrom, viewTo = lead, tail
-                local f0, f1 = brief.On() and data and brief.Window(data, lead, tail)
-                if f0 then viewFrom, viewTo = f0, f1 end
+                if brief.On() and data then
+                    local f0, f1 = brief.Window(data, lead, tail)
+                    if f0 and f1 then viewFrom, viewTo = f0, f1 end
+                end
             end
             TL.Redraw()
         end
