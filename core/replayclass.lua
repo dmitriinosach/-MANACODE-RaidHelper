@@ -27,10 +27,19 @@ function CL.New(fight)
         if tr.aura then byAura[tr.aura] = { def = tr, kind = "trails" } end
         if tr.cast then byCast[tr.cast] = { def = tr, kind = "trails" } end
     end
+    local want, wantKey = {}, {}
+    for _, set in ipairs({ byAura, byCast, jump }) do
+        for id in pairs(set) do want[id] = true end
+    end
+    if D.circle.make then want[D.circle.make] = true end
+    if D.circle.port then want[D.circle.port] = true end
+    for key in pairs(cone) do wantKey[key] = true end
+    local beacon = D.beacon and ns.SpellKey(D.beacon)
+    if beacon then wantKey[beacon] = true end
     return {
         D = D, fight = fight, zones = {}, rings = {}, cones = {}, jumps = {}, circles = {}, beams = {}, trails = {},
-        open = {}, seen = {}, byAura = byAura, byCast = byCast, cone = cone, jump = jump,
-        beacon = D.beacon and ns.SpellKey(D.beacon),
+        open = {}, drop = {}, seen = {}, byAura = byAura, byCast = byCast, cone = cone, jump = jump,
+        beacon = beacon, want = want, wantKey = wantKey,
     }
 end
 local function Add(list, rec)
@@ -69,6 +78,8 @@ local function OnCircle(ctx, ts, sub, name)
         if cur then
             cur.to = ts
             ctx.open[key] = nil
+        elseif not ctx.drop[name] then
+            ctx.drop[name] = ts
         end
         return
     end
@@ -111,11 +122,11 @@ local function OnCone(ctx, ts, name, guid, def)
     last.to = ts
     if guid then last.guids[guid] = true end
 end
-function CL.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1)
-    local id = tonumber(a1)
+function CL.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1, id, sk)
+    id = id or tonumber(a1)
     if not id or not src then return end
     if sub == "SPELL_AURA_APPLIED" or sub == "SPELL_AURA_REMOVED" or sub == "SPELL_AURA_REFRESH" then
-        local key = ns.SpellKey(id)
+        local key = sk or ns.SpellKey(id)
         if key == ctx.beacon and dst then
             OnBeacon(ctx, ts, sub, src, dst)
         elseif id == ctx.D.circle.make and src == dst then
@@ -134,7 +145,7 @@ function CL.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1)
     elseif sub == "SPELL_CREATE" and id == ctx.D.circle.make then
         OnCircle(ctx, ts, sub, src)
     elseif sub == "SPELL_DAMAGE" or sub == "SPELL_MISSED" then
-        local def = ctx.cone[ns.SpellKey(id)]
+        local def = ctx.cone[sk or ns.SpellKey(id)]
         if def then OnCone(ctx, ts, src, dstGUID, def) end
     end
 end
@@ -175,8 +186,7 @@ local function Aim(raw, x, y, scene, adds, bosses)
 end
 function CL.Done(ctx, L, scene, bosses)
     local hi, ppy = ctx.fight.to, scene.ppy
-    local byK = {}
-    for k = 1, #scene.tracks do byK[scene.tracks[k].name] = k end
+    local byK = ns.Replay.ByK(scene)
     local PosAt = ns.Replay.PosAtTime
     local out = { zones = {}, cones = {}, rings = {}, arrows = {}, circles = {}, beams = {}, trails = {} }
     local function Spot(name, ts)
@@ -252,8 +262,15 @@ function CL.Done(ctx, L, scene, bosses)
                     if c.name == r.name and c.from <= r.from and c.to >= r.from then known = true end
                 end
                 if not known then
-                    out.circles[#out.circles + 1] = { from = ctx.fight.from, to = min(ctx.fight.from + circ.life, hi),
-                                                      x = x1, y = y1, r = circ.r, name = r.name }
+                    local stop = min(ctx.fight.from + circ.life, hi)
+                    local drop = ctx.drop[r.name]
+                    if drop and drop >= r.from then stop = min(stop, drop) end
+                    for _, c in ipairs(circles) do
+                        if c.name == r.name and c.from > r.from then stop = min(stop, c.from) end
+                    end
+                    local it = { from = ctx.fight.from, to = stop, x = x1, y = y1, r = circ.r, name = r.name, pre = true }
+                    out.circles[#out.circles + 1] = it
+                    circles[#circles + 1] = it
                 end
             end
         end

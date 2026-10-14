@@ -14,9 +14,7 @@ local members = {}
 local count = 0
 local scanAt
 local dirty = true
-local RAID, PARTY = {}, {}
-for i = 1, 40 do RAID[i] = "raid" .. i end
-for i = 1, 4 do PARTY[i] = "party" .. i end
+local RAID, PARTY = ns.Units.raid, ns.Units.party
 local FED, FED_EN = ns.T("flaskrow.fed"), ns.LEN and ns.LEN["flaskrow.fed"]
 local function Cat(id)
     if not id then return nil end
@@ -113,10 +111,7 @@ end
 function Ready.Members()
     return members
 end
-local function Clock(left)
-    left = floor(left > 0 and left or 0)
-    return format("%d:%02d", floor(left / 60), left % 60)
-end
+local Clock = ns.Clock
 local function Section(rows, title, list, tone)
     if #list == 0 then return end
     rows[#rows + 1] = { kind = "row", left = title, right = tostring(#list), tone = tone }

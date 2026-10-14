@@ -1,15 +1,17 @@
 local _, ns = ...
 local concat = table.concat
+local floor = math.floor
 local tonumber = tonumber
 local SUB = "FW_SPEC"
 local SEP = ","
+local AGE = ":"
 local TREES = 3
-local MAX_RAID = 40
-local MAX_PARTY = 4
 local STEP = 1.5
 local WAIT = 4
 local RETRY = 60
 local REFRESH = 300
+local SOON = 60
+local SOON_PAD = 5
 local RANGE = 1
 local OFF_HAND = 17
 local SLOTS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 }
@@ -21,9 +23,7 @@ local Specs = {}
 ns.Specs = Specs
 Specs.SUB = SUB
 Specs.SEP = SEP
-local RAID, PARTY = {}, {}
-for i = 1, MAX_RAID do RAID[i] = "raid" .. i end
-for i = 1, MAX_PARTY do PARTY[i] = "party" .. i end
+local RAID, PARTY = ns.Units.raid, ns.Units.party
 local tree = {}
 local seenAt = {}
 local gearOf = {}
@@ -32,6 +32,8 @@ local readers = {}
 local wants = {}
 local askUnit, askGuid, doneGuid, doneName
 local pend, pendAt
+local soonUntil = 0
+local swapNames
 local acc = 0
 local stats = {}
 local function Top(inspect)
@@ -102,14 +104,20 @@ end
 function Specs.Want(fn)
     wants[#wants + 1] = fn
 end
-function Specs.Wake()
-    acc = STEP
+function Specs.Swap(name)
+    if not name then return end
+    tree[name], seenAt[name], gearOf[name], tried[name] = nil, nil, nil, nil
     if Specs.frame and not InCombatLockdown() then Specs.frame:Show() end
 end
-function Specs.Swap(name)
-    if not name or not tree[name] then return end
-    tree[name], seenAt[name], gearOf[name] = nil, nil, nil
-    if Specs.frame then Specs.frame:Show() end
+function Specs.Soon(sec)
+    sec = tonumber(sec) or 0
+    if sec <= 0 then
+        soonUntil = 0
+        return
+    end
+    soonUntil = GetTime() + sec + SOON_PAD
+    acc = STEP
+    if Specs.frame and not InCombatLockdown() then Specs.frame:Show() end
 end
 function Specs.Of(name)
     if name == UnitName("player") then return Top(false) end
@@ -178,12 +186,14 @@ function Specs.Take(ts)
     local by = {}
     for k = 1, TREES do by[k] = {} end
     local us, any = Units(), false
+    local now, me = GetTime(), UnitName("player")
     for i = 1, #us do
         local name = UnitName(us[i])
         local t = name and Specs.Of(name)
         if t then
             local list = by[t]
-            list[#list + 1] = name
+            local age = name == me and 0 or floor(now - (seenAt[name] or now))
+            list[#list + 1] = name .. AGE .. age
             any = true
         end
     end
@@ -191,20 +201,20 @@ function Specs.Take(ts)
     ns.Store.Append(ts, SUB, nil, nil, 0, nil, nil, 0, concat(by[1], SEP), concat(by[2], SEP), concat(by[3], SEP))
 end
 function Specs.Parse(a1, a2, a3)
-    local out, cols = {}, { a1, a2, a3 }
+    local out, ages, cols = {}, {}, { a1, a2, a3 }
     for k = 1, TREES do
         local s = cols[k]
         if type(s) == "string" then
-            for name in s:gmatch("[^" .. SEP .. "]+") do out[name] = k end
+            for item in s:gmatch("[^" .. SEP .. "]+") do
+                local name, age = item:match("^([^" .. AGE .. "]+)" .. AGE .. "?(%d*)$")
+                if name then
+                    out[name] = k
+                    ages[name] = tonumber(age)
+                end
+            end
         end
     end
-    return out
-end
-function Specs.Feed(byName, a1, a2, a3)
-    for name, t in pairs(Specs.Parse(a1, a2, a3)) do
-        local p = byName[name]
-        if p then p.tree = t end
-    end
+    return out, ages
 end
 local function Wanted()
     for i = 1, #wants do
@@ -219,11 +229,12 @@ end
 local function Next(now)
     local due, best, bestName, bestAt = false, nil, nil, nil
     local us = Units()
+    local limit = now < soonUntil and SOON or REFRESH
     for i = 1, #us do
         local u = us[i]
         local name = UnitName(u)
         local at = name and seenAt[name] or -1
-        if name and not UnitIsUnit(u, "player") and (at < 0 or now - at > REFRESH) and UnitIsConnected(u) then
+        if name and not UnitIsUnit(u, "player") and (at < 0 or now - at > limit) and UnitIsConnected(u) then
             due = true
             if (not bestAt or at < bestAt) and (not tried[name] or now - tried[name] > RETRY)
                 and (not CanInspect or CanInspect(u)) and CheckInteractDistance(u, RANGE) then
@@ -253,7 +264,21 @@ local function Tick(self, dt)
     pend, pendAt, tried[name] = name, now, now
     NotifyInspect(u)
 end
-local function OnEvent(self, event)
+local function SwapNames()
+    if swapNames then return swapNames end
+    local out, any = {}, false
+    for _, id in ipairs(ns.specSwap or {}) do
+        local name = GetSpellInfo(id)
+        if name then out[name], any = true, true end
+    end
+    if any then swapNames = out end
+    return out
+end
+local function OnEvent(self, event, unit, spell)
+    if event == "UNIT_SPELLCAST_SUCCEEDED" then
+        if spell and SwapNames()[spell] then Specs.Swap(UnitName(unit)) end
+        return
+    end
     if event == "INSPECT_TALENT_READY" then
         if Specs.Read() and not InspectOpen() then ClearInspectPlayer() end
         return
@@ -278,6 +303,7 @@ frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 frame:RegisterEvent("PLAYER_REGEN_DISABLED")
 frame:RegisterEvent("RAID_ROSTER_UPDATE")
 frame:RegisterEvent("PARTY_MEMBERS_CHANGED")
+frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 if type(hooksecurefunc) == "function" and type(NotifyInspect) == "function" then
     hooksecurefunc("NotifyInspect", Asked)
 end

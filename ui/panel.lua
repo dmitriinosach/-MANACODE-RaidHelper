@@ -100,15 +100,8 @@ function Panel.Scale()
     local v = tonumber(Saved().scale) or 1
     return min(SCALE_MAX, max(SCALE_MIN, v)), SCALE_MIN, SCALE_MAX, SCALE_STEP
 end
-function Panel.IsOpen()
-    return Saved().open and true or false
-end
 local function Short(n)
-    if n < 1000 then return format("%d", n) end
-    if n < 100000 then return format("%.1f%s", n / 1000, ns.T("num.k")) end
-    if n < 1000000 then return format("%d%s", n / 1000, ns.T("num.k")) end
-    if n < 10000000 then return format("%.1f%s", n / 1000000, ns.T("num.m")) end
-    return format("%d%s", n / 1000000, ns.T("num.m"))
+    return ns.Short(n, 1, 1e5, 1e7)
 end
 local function SavePlace()
     local s = Saved()
@@ -254,15 +247,12 @@ end
 local function ToolEnter(b)
     b.hovered = true
     PaintTool(b)
-    GameTooltip:SetOwner(b, "ANCHOR_TOP")
-    ns.Kit.TipAdd(b.tipTitle, "tip.title")
-    if b.tip then ns.Kit.TipAdd(b.tip, "tip.body", true) end
-    GameTooltip:Show()
+    ns.Kit.TipShow(b)
 end
 local function ToolLeave(b)
     b.hovered = false
     PaintTool(b)
-    GameTooltip:Hide()
+    ns.Kit.TipHide()
 end
 local function MakeTool(parent, size, texture)
     local b = CreateFrame("Button", nil, parent)
@@ -275,6 +265,7 @@ local function MakeTool(parent, size, texture)
     b.tex:SetPoint("BOTTOMRIGHT", -2, 2)
     b.tex:SetTexture(texture)
     b.tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    b.tipAnchor = "ANCHOR_TOP"
     b:SetScript("OnEnter", ToolEnter)
     b:SetScript("OnLeave", ToolLeave)
     PaintTool(b)
@@ -349,7 +340,7 @@ local function NumWidth()
     local fs = blocks[1] and blocks[1].text
     if fs then
         local was = fs:GetText()
-        fs:SetText(format("%.1f%s", NUM_PROBE, ns.T("num.k")))
+        fs:SetText(ns.Short(NUM_PROBE * 1000, 1, false))
         w = max(w, fs:GetStringWidth() + 4)
         fs:SetText(was)
     end
@@ -677,7 +668,7 @@ local function FightTip(M)
     return {
         { kind = "head", left = ns.T(M.InRaid() and "panel.dps.fight.raid" or "panel.dps.fight") },
         { kind = "row", left = ns.T("panel.tip.fight"), right = Short(dps) },
-        { kind = "row", left = ns.T("panel.tip.time"), right = format("%d:%02d", floor(t / 60), floor(t % 60)) },
+        { kind = "row", left = ns.T("panel.tip.time"), right = ns.Clock(t) },
         { kind = "note", left = ns.T(state) },
     }
 end
@@ -707,7 +698,7 @@ local function CpuEnter(self)
         if skada then rows[#rows + 1] = { kind = "row", left = ns.T("panel.cpu.skada.row"), right = C.Ms(skada) } end
         rows[#rows + 1] = { kind = "row", left = ns.T("panel.cpu.worst"), right = C.Ms(worst) }
         rows[#rows + 1] = { kind = "row", left = ns.T("panel.tip.time"),
-            right = format("%d:%02d", floor(dur / 60), floor(dur % 60)) }
+            right = ns.Clock(dur) }
         rows[#rows + 1] = { kind = "note", left = ns.T(prof and "panel.cpu.src.prof" or "panel.cpu.src.own") }
     end
     rows[#rows + 1] = { kind = "note",
@@ -724,7 +715,7 @@ local function WinEnter(self)
         rows[3] = { kind = "row", left = ns.T("panel.cpu.worst"), right = C.Ms(worst) }
         rows[4] = { kind = "row", left = ns.T("panel.cpu.win.once"), right = C.Ms(once) }
         rows[5] = { kind = "row", left = ns.T("panel.tip.time"),
-            right = format("%d:%02d", floor(dur / 60), floor(dur % 60)) }
+            right = ns.Clock(dur) }
     end
     rows[#rows + 1] = { kind = "note",
         left = ns.T(live and "panel.cpu.win.open" or (rate and "panel.cpu.win.closed" or "panel.cpu.win.never")) }
@@ -884,10 +875,6 @@ local function Apply()
         frame:Hide()
     end
     if ns.Settings then ns.Settings.Refresh() end
-end
-function Panel.SetEnabled(on)
-    Saved().hidden = not on
-    Apply()
 end
 function Panel.SetWhen(key)
     local s = Saved()

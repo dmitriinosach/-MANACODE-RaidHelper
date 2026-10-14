@@ -8,7 +8,7 @@ local RIM = ART .. "rim"
 local DISC = ART .. "disc256"
 local LINE = ART .. "line"
 local CONE = ART .. "cone"
-local RING_DRAW = 4
+local RING_DRAW = 6
 local ARROW_DRAW = 12
 local LINK_DRAW = 12
 local MAX_PX = 4000
@@ -17,18 +17,22 @@ local HEAD_L = 14
 local HEAD_W = 12
 local GAP = 7
 local FILL = 0.35
+local ICON_YD = 2
+local ICON_MIN = 14
+local ICON_MAX = 28
+local ICON_GAP = 8
 local ADD_HOLD = 4
 local EMPTY = {}
 local V = {}
 ns.ReplayCueView = V
 local Kit = ns.Kit
 local Replay = ns.Replay
-local rims, fills, flashes, counts = {}, {}, {}, {}
+local rims, fills, flashes, counts, icons = {}, {}, {}, {}, {}
 local shafts, heads, links = {}, {}, {}
-local used = { ring = 0, fill = 0, flash = 0, count = 0, arrow = 0, link = 0 }
+local used = { ring = 0, fill = 0, flash = 0, count = 0, icon = 0, arrow = 0, link = 0 }
 local view
 local hw, hh = 0, 0
-local probe = { rings = 0, fills = 0, flashes = 0, counts = 0, arrows = 0, links = 0, count = nil, fillR = 0 }
+local probe = { rings = 0, fills = 0, flashes = 0, counts = 0, icons = 0, arrows = 0, links = 0, count = nil, fillR = 0 }
 local function Tex(layer, path, draw)
     local tex = layer:CreateTexture(nil, draw)
     tex:SetTexture(path)
@@ -41,6 +45,9 @@ function V.Build(v, layer)
         fills[i] = Tex(layer, DISC, "BACKGROUND")
         rims[i] = Tex(layer, RIM, "BORDER")
         flashes[i] = Tex(layer, DISC, "ARTWORK")
+        icons[i] = layer:CreateTexture(nil, "ARTWORK")
+        icons[i]:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+        icons[i]:Hide()
         local fs = layer:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
         Kit.Text(fs, "sem.rep.count")
         fs:Hide()
@@ -61,6 +68,8 @@ function V.Use(scene)
     HideRange(fills, 0, #fills)
     HideRange(flashes, 0, #flashes)
     HideRange(counts, 0, #counts)
+    HideRange(icons, 0, #icons)
+    for i = 1, #icons do icons[i].tex = nil end
     HideRange(shafts, 0, #shafts)
     HideRange(heads, 0, #heads)
     HideRange(links, 0, #links)
@@ -138,13 +147,14 @@ local function Fade(a, from, to, t)
     return a
 end
 local function RingAt(scene, o, t)
+    if o.x then return o.x, o.y end
     if o.add then return Replay.PosHold(o.add, t, ADD_HOLD) end
     local b = scene.bossState
     if b and b.vis then return b.x, b.y end
     return -1, -1
 end
 local function PlaceRings(scene, cam, t, list)
-    local nr, nf, nx, nc = 0, 0, 0, 0
+    local nr, nf, nx, nc, ni = 0, 0, 0, 0, 0
     probe.count, probe.fillR = nil, 0
     for i = 1, #list do
         local o = list[i]
@@ -170,6 +180,22 @@ local function PlaceRings(scene, cam, t, list)
                         fills[nf]:SetVertexColor(r, g, b, a * FILL)
                         probe.fillR = o.r * p
                     end
+                    local up = 0
+                    local tex = def.tex and icons[ni + 1]
+                    if tex then
+                        ni = ni + 1
+                        local size = max(ICON_MIN, min(ICON_MAX, ICON_YD * s))
+                        if tex.tex ~= def.tex then
+                            tex.tex = def.tex
+                            tex:SetTexture(def.tex)
+                        end
+                        tex:SetWidth(size)
+                        tex:SetHeight(size)
+                        tex:ClearAllPoints()
+                        tex:SetPoint("CENTER", view, "CENTER", sx, -sy)
+                        tex:Show()
+                        up = size / 2 + ICON_GAP
+                    end
                     local left = max(1, ceil(o.boom - t))
                     local fs = counts[nc + 1]
                     if fs then
@@ -179,7 +205,7 @@ local function PlaceRings(scene, cam, t, list)
                             fs:SetText(tostring(left))
                         end
                         fs:ClearAllPoints()
-                        fs:SetPoint("CENTER", view, "CENTER", sx, -sy)
+                        fs:SetPoint("CENTER", view, "CENTER", sx, up - sy)
                         fs:Show()
                         probe.count = probe.count or left
                     end
@@ -195,8 +221,9 @@ local function PlaceRings(scene, cam, t, list)
     HideRange(fills, nf, used.fill)
     HideRange(flashes, nx, used.flash)
     HideRange(counts, nc, used.count)
-    used.ring, used.fill, used.flash, used.count = nr, nf, nx, nc
-    probe.rings, probe.fills, probe.flashes, probe.counts = nr, nf, nx, nc
+    HideRange(icons, ni, used.icon)
+    used.ring, used.fill, used.flash, used.count, used.icon = nr, nf, nx, nc, ni
+    probe.rings, probe.fills, probe.flashes, probe.counts, probe.icons = nr, nf, nx, nc, ni
 end
 local function Who(scene, cam, k)
     local st = k == 0 and scene.bossState or scene.states[k]

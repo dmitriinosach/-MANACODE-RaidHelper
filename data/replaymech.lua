@@ -8,9 +8,10 @@ ns.replayMech = {
     },
     bombs = {
         [ns.ENC.putricide] = {
-            show = "floor", cast = { 71255 }, gas = { 71278, 72460, 72619, 72620 },
-            boom = { 71279, 72459, 72621, 72622 }, spawn = 1, fuse = 11, r = 3, blast = 10, reach = 8,
-            tone = "sem.rep.gas",
+            show = "flask", cast = { 71255 }, gas = { 71278, 72460, 72619, 72620 },
+            boom = { 71279, 72459, 72621, 72622 }, at = { { 0, 0 }, { 0, 6 }, { 0, -6 } }, spawn = 1, fuse = 11,
+            slack = 2, r = 3, blast = 10, flash = 1, tone = "sem.rep.gas", flashTone = "sem.rep.oozeHi",
+            tex = "Interface\\Icons\\INV_Potion_97",
         },
         [ns.ENC.sindragosa] = {
             show = "banner", boom = { 69845, 71053, 71054, 71055 }, lead = 5.5, join = 1, icon = 69845,

@@ -4,7 +4,6 @@ local ceil = math.ceil
 local max = math.max
 local min = math.min
 local find = string.find
-local match = string.match
 local band = bit.band
 local BEFORE = 8
 local AFTER = 1
@@ -22,11 +21,11 @@ local DEATH_BACK = 1
 local DEATH_AHEAD = 8
 local KILL_SLACK = 0.3
 local HP_BACK = 3
-local KILL_WINDOW = 3
+local KILL_WINDOW = ns.Deaths.KILL_WINDOW
 local LOCK_SLACK = 1
 local HP_STEP = 0.01
 local HP_CUT = 0.05
-local F_PLAYER = 0x400
+local F_PLAYER = ns.F.PLAYER
 local TRAIL_STEP = 0.25
 local TRAIL_MIN_YD = 0.1
 local ADD_HOLD = 4
@@ -223,10 +222,9 @@ local function ScanMine(fight, idx, pv, st)
     local i = ns.Index.Seek(idx, mine, pv.from - LOOK - 1)
     while mine[i] do
         ns.Jobs.Step()
-        local seg, s, at = ns.Index.Line(idx, mine[i])
-        i = i + 1
         local ts, sub, _, srcName, srcFlags, _, dstName, _, a1, a2, a3, a4, a5, a6, a7, _, a9
-            = ns.Store.Decode(seg, s, at, 9)
+            = ns.Index.Read(idx, mine, i, 9)
+        i = i + 1
         if ts and ts > pv.to then break end
         if ts and sub then
             pv.lines = pv.lines + 1
@@ -268,9 +266,8 @@ local function ScanCommon(idx, pv, st)
     local i = ns.Index.Seek(idx, common, pv.from)
     while common[i] do
         ns.Jobs.Step()
-        local seg, s, at = ns.Index.Line(idx, common[i])
+        local ts, sub, _, srcName, _, _, _, _, a1, a2 = ns.Index.Read(idx, common, i, 2)
         i = i + 1
-        local ts, sub, _, srcName, _, _, _, _, a1, a2 = ns.Store.Decode(seg, s, at, 2)
         if ts and ts > pv.to then break end
         if ts and ENEMY_CASTS[sub] then
             pv.lines = pv.lines + 1
@@ -291,60 +288,27 @@ local function PutHp(pv, st, ts, hpNow, hpMax)
         st.last = pct
     end
 end
-local function ScanHpStreams(idx, pv, st)
+local function ScanHp(idx, pv)
+    local st = { last = -1 }
     local from = pv.from - HP_BACK
     local held, any = nil, false
     for _, seg in ipairs(idx.segs) do
-        if ns.Store.IsNew(seg) then
-            for ts, hpNow, hpMax in ns.Decode.Hp(seg, pv.who, from, pv.to) do
-                ns.Jobs.Step()
-                if ts > pv.to then break end
-                if hpMax > 0 then
-                    if ts < from then
-                        held = held or {}
-                        held[1], held[2] = hpNow, hpMax
-                    else
-                        if held and not any then PutHp(pv, st, from, held[1], held[2]) end
-                        any = true
-                        PutHp(pv, st, ts, hpNow, hpMax)
-                    end
+        for ts, hpNow, hpMax in ns.Decode.Hp(seg, pv.who, from, pv.to) do
+            ns.Jobs.Step()
+            if ts > pv.to then break end
+            if hpMax > 0 then
+                if ts < from then
+                    held = held or {}
+                    held[1], held[2] = hpNow, hpMax
+                else
+                    if held and not any then PutHp(pv, st, from, held[1], held[2]) end
+                    any = true
+                    PutHp(pv, st, ts, hpNow, hpMax)
                 end
             end
         end
     end
     if held and not any then PutHp(pv, st, from, held[1], held[2]) end
-end
-local function ScanHp(idx, pv)
-    local st = { last = -1 }
-    if ns.Streams.Any(idx.segs) then
-        ScanHpStreams(idx, pv, st)
-        return
-    end
-    local snaps = idx.snaps
-    local needles = {}
-    local i = ns.Index.Seek(idx, snaps, pv.from - HP_BACK)
-    while snaps[i] do
-        ns.Jobs.Step()
-        local seg, s, at = ns.Index.Line(idx, snaps[i])
-        i = i + 1
-        local ts = seg.t0 + tonumber(match(s, "^(%d+)", at)) / 1000
-        if ts > pv.to then break end
-        local needle = needles[seg]
-        if needle == nil then
-            local id = ns.Store.IdOf(seg, pv.who)
-            needle = id and ("." .. id .. ":") or false
-            needles[seg] = needle
-        end
-        if needle then
-            local stop = find(s, "\n", at, true)
-            local p = find(s, needle, at, true)
-            if p and (not stop or p < stop) then
-                local cur, top = match(s, "^%.%d+:(%d+):(%d+)", p)
-                local hpNow, hpMax = tonumber(cur), tonumber(top)
-                if hpNow and hpMax and hpMax > 0 then PutHp(pv, st, ts, hpNow, hpMax) end
-            end
-        end
-    end
 end
 local function HpMarks(pv)
     local n = #pv.hpT

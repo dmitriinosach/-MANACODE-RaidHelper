@@ -16,7 +16,8 @@ local STOP = { guild = true, budget = true }
 local DROP = { limit = true }
 local MODES = { off = true, mine = true, all = true }
 local KIND = "R"
-local GRADES = { ["справедливо"] = true, ["спорно"] = true, ["несправедливо"] = true }
+local GRADES = { ["справедливо"] = "fair", ["спорно"] = "disputed", ["несправедливо"] = "unfair" }
+local COULD = { ["мог"] = "yes", ["не мог"] = "no" }
 local Fable = {}
 ns.Fable = Fable
 Fable.PREFIX, Fable.MAX_MSG, Fable.TIMEOUT, Fable.BOT = PREFIX, MAX_MSG, TIMEOUT, BOT
@@ -80,9 +81,6 @@ function Fable.State(key)
     if a then return { st = "done", verdict = a.v, text = a.x, grade = a.g, could = a.c } end
     return nil
 end
-function Fable.Busy()
-    return pending ~= nil
-end
 local function Keep(key, verdict, text, grade, could)
     local answers = Store().answers
     answers[key] = { v = verdict, x = text, g = grade, c = could, t = time() }
@@ -115,6 +113,12 @@ function Fable.Split(kind, id, text)
         if n == total then return out end
         total = n
     end
+end
+function Fable.GradeCode(grade)
+    return grade and GRADES[grade] or nil
+end
+function Fable.CouldCode(could)
+    return could and COULD[could] or nil
 end
 function Fable.Parse(text)
     local g, c, rest = text:match("^%s*([^~]-)%s*~%s*([^~]-)%s*~(.*)$")

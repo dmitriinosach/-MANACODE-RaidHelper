@@ -10,18 +10,14 @@ ns.DevMarks = Marks
 Marks.SUB = SUB
 Marks.CUSTOM = CUSTOM
 Marks.list = {
-    { key = "lk_fall", label = "dev.mark.lk_fall" },
-    { key = "lk_back", label = "dev.mark.lk_back" },
     { key = "sind_up", label = "dev.mark.sind_up" },
     { key = "sind_down", label = "dev.mark.sind_down" },
-    { key = "vali_portal", label = "dev.mark.vali_portal" },
-    { key = "rot_nw", label = "dev.mark.rot_nw", short = "dev.mark.rot_nw.s", toggle = true },
-    { key = "rot_ne", label = "dev.mark.rot_ne", short = "dev.mark.rot_ne.s", toggle = true },
-    { key = "rot_sw", label = "dev.mark.rot_sw", short = "dev.mark.rot_sw.s", toggle = true },
-    { key = "rot_se", label = "dev.mark.rot_se", short = "dev.mark.rot_se.s", toggle = true },
     { key = "put_green", label = "dev.mark.put_green", room = "putricide" },
     { key = "put_red", label = "dev.mark.put_red", room = "putricide" },
+    { key = "vali_portal", label = "dev.mark.vali_portal" },
 }
+local OLD = { lk_fall = "dev.mark.lk_fall", lk_back = "dev.mark.lk_back", rot_nw = "dev.mark.rot_nw",
+    rot_ne = "dev.mark.rot_ne", rot_sw = "dev.mark.rot_sw", rot_se = "dev.mark.rot_se" }
 local byKey = {}
 for i = 1, #Marks.list do byKey[Marks.list[i].key] = Marks.list[i] end
 function Marks.Clean(text)
@@ -44,10 +40,10 @@ end
 function Marks.Label(key, text)
     local def = byKey[tostring(key)]
     if def and def.room and text and text ~= "" then return format(ns.T("dev.mark.at"), ns.T(def.label), Marks.Clean(text)) end
-    if def and def.toggle and (text == "on" or text == "off") then
-        return format(ns.T("dev.mark." .. text), ns.T(def.label))
-    end
     if def then return ns.T(def.label) end
+    local old = OLD[tostring(key)]
+    if old and (text == "on" or text == "off") then return format(ns.T("dev.mark." .. text), ns.T(old)) end
+    if old then return ns.T(old) end
     local s = Marks.Clean(text)
     if s ~= "" then return s end
     return Marks.Clean(key)
@@ -73,16 +69,4 @@ function Marks.Write(key, text)
 end
 function Marks.Def(key)
     return byKey[key]
-end
-Marks.on = {}
-function Marks.Toggle(key)
-    local def = byKey[key]
-    if not def or not def.toggle then return false, ns.T("dev.mark.unknown") end
-    local on = not Marks.on[key]
-    local s = on and "on" or "off"
-    local rec = ns.Recorder
-    if not rec or not rec.Mark then return false, ns.T("dev.mark.norec") end
-    if not rec.Mark(SUB, nil, UnitName("player"), 0, nil, nil, 0, key, s) then return false, ns.T("dev.mark.norec") end
-    Marks.on[key] = on
-    return true, Marks.Line(key, s)
 end

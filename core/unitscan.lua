@@ -5,15 +5,9 @@ local MAX_PARTY = 4
 local Scan = { n = 0, unit = {}, guid = {}, key = {}, name = {}, attack = {}, boss = {}, combat = {}, dead = {},
                hits = {}, near = {}, hp = {}, hpMax = {} }
 ns.UnitScan = Scan
-local RAID_T, RAID_TT, PARTY_T, PARTY_TT = {}, {}, {}, {}
-for i = 1, MAX_RAID do
-    RAID_T[i] = "raid" .. i .. "target"
-    RAID_TT[i] = RAID_T[i] .. "target"
-end
-for i = 1, MAX_PARTY do
-    PARTY_T[i] = "party" .. i .. "target"
-    PARTY_TT[i] = PARTY_T[i] .. "target"
-end
+local RAID_T, RAID_TT, PARTY_T, PARTY_TT = ns.Units.raidTarget, {}, ns.Units.partyTarget, {}
+for i = 1, MAX_RAID do RAID_TT[i] = RAID_T[i] .. "target" end
+for i = 1, MAX_PARTY do PARTY_TT[i] = PARTY_T[i] .. "target" end
 local NEAR = { "target", "focus" }
 local FAR = { "mouseover", "targettarget" }
 local slot = {}

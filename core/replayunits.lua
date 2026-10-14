@@ -32,9 +32,7 @@ local function CastTime(id)
     return v / 1000
 end
 function RU.New(scene)
-    local names = {}
-    for k = 1, #scene.tracks do names[scene.tracks[k].name] = true end
-    return { names = names, open = {}, fw = {}, succ = {}, done = {}, out = {}, inst = {},
+    return { names = ns.Replay.ByK(scene), open = {}, fw = {}, succ = {}, done = {}, out = {}, inst = {},
              stats = { casts = 0, chans = 0, ends = 0, cuts = 0, guessed = 0, instants = 0 } }
 end
 local function Add(c, name, rec)
@@ -119,7 +117,7 @@ local function OnFw(c, ts, name, kind, left)
         Close(c, name, ts, true)
     end
 end
-function RU.Event(c, ts, sub, src, dst, a1, a2, a4)
+function RU.Event(c, ts, sub, src, dst, a1, a2, a4, id)
     if sub == FW then
         if src and c.names[src] then OnFw(c, ts, src, tonumber(a1) or -1, tonumber(a2)) end
         return
@@ -133,7 +131,7 @@ function RU.Event(c, ts, sub, src, dst, a1, a2, a4)
         return
     end
     if not src or not c.names[src] then return end
-    local id = tonumber(a1)
+    id = id or tonumber(a1)
     if sub == "SPELL_CAST_START" then
         Close(c, src, ts, false)
         local rec = { from = ts, id = id }
@@ -220,7 +218,7 @@ local function ManaOf(segs, name, from, to)
     local T, V, held
     for i = 1, #segs do
         local seg = segs[i]
-        if ns.Store.IsNew(seg) and seg.mana then
+        if seg.mana then
             for ts, mp, mpMax in ns.Decode.Mana(seg, name, from, to) do
                 if ts > to then break end
                 if mpMax > 0 then

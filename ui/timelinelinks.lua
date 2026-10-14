@@ -11,10 +11,7 @@ ns.TimelineLinks = Links
 local focus
 local line
 local band
-local function Clock(sec)
-    local m = floor(sec / 60)
-    return format("%d:%02d", m, floor(sec - m * 60))
-end
+local Clock = ns.Clock
 function Links.Culprit(it, player)
     local who = it.victim or it.src
     if who == nil or who == player then return nil end

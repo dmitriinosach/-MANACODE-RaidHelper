@@ -34,6 +34,9 @@ local ROW_ICON = 12
 local NOTE_ICON = 10
 local COLGAP = 6
 local NAMEGAP = 4
+local CELL_ICON = 14
+local CELL_GAP = 2
+local CELL_PAD = 8
 local CLASS_TEX = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
 local ARROW_TEX = "Interface\\TalentFrame\\UI-TalentArrows"
 local ARROW = { out = { 0, 0.5, 0.5, 0 }, ["in"] = { 0, 0.5, 0, 0.5 } }
@@ -86,12 +89,8 @@ function Badges.Skin(f, color)
     end
     f.stripe:SetTexture(color[1], color[2], color[3], 1)
 end
-local function ShowLines(self)
-    if self.lines then ns.Tip.Dock(self, self.lines, self.tipIcon) end
-end
-local function HideTip()
-    ns.Tip.Hide()
-end
+local ShowLines = ns.Kit.ShowLines
+local HideTip = ns.Kit.HideLines
 function Badges.Highlight(names, source)
     Badges.Unhighlight()
     for i = 1, #names do
@@ -129,19 +128,7 @@ function Badges.ResetLinks()
     Badges.Unhighlight()
     for k in pairs(named) do named[k] = nil end
 end
-local function Fit(fs, text, room)
-    fs:SetWidth(0)
-    fs:SetText(text)
-    local need = fs:GetStringWidth() or 0
-    if text == "" or room < 1 then
-        fs:Hide()
-        return 0, text ~= ""
-    end
-    local w = min(ceil(need) + 2, room)
-    fs:SetWidth(w)
-    fs:Show()
-    return w, need > room
-end
+local Fit = ns.Kit.Fit
 local function SubParts(m)
     local parts = {}
     if m.sub and m.sub ~= "" then parts[1] = m.sub end
@@ -165,10 +152,7 @@ local function FullLines(m, parts)
     end
     return out
 end
-local function OneLine(fs)
-    fs:SetJustifyH("LEFT")
-    fs:SetWordWrap(false)
-end
+local OneLine = ns.Kit.OneLine
 function Badges.Total(parent)
     local f = CreateFrame("Frame", nil, parent)
     Badges.Skin(f, style.edge)
@@ -273,6 +257,144 @@ local function Columns(f)
         end
         row.val:SetWidth(valW)
     end
+    f.valFix = hasNote and valW or nil
+    f.rightFix = 2 + (hasNote and (noteW + COLGAP + (coin and NOTE_ICON + 2 or 0)) or 0)
+    local nameW, numW, most, grid = 0, 0, 0, false
+    for i = 1, #list do
+        local cells = list[i].cells
+        if cells then
+            grid = true
+            f.probe:SetText(list[i].who or "")
+            nameW = max(nameW, f.probe:GetStringWidth() or 0)
+            most = max(most, #cells)
+            for k = 1, #cells do
+                f.probe:SetText(tostring(cells[k].n))
+                numW = max(numW, f.probe:GetStringWidth() or 0)
+            end
+        end
+    end
+    f.cellW = grid and CELL_ICON + CELL_GAP + ceil(numW) + CELL_PAD or nil
+    f.nameCol = grid and ceil(nameW) + NAMEGAP * 2 or nil
+    f.needW = grid and 6 + (f.rowR or ROW_R) + 4 + f.nameCol + most * f.cellW + 2 or nil
+end
+local function Clip(fs, text, room)
+    fs:SetText(text)
+    if room < 1 or (fs:GetStringWidth() or 0) <= room then return end
+    local piece, vis, i, n = {}, {}, 1, #text
+    while i <= n do
+        local _, e = text:find("^|c%x%x%x%x%x%x%x%x", i)
+        if not e then _, e = text:find("^|r", i) end
+        local k = #piece + 1
+        if e then
+            vis[k] = false
+        else
+            local b = text:byte(i)
+            e = i + (b < 128 and 0 or b < 224 and 1 or b < 240 and 2 or 3)
+            vis[k] = true
+        end
+        piece[k] = text:sub(i, e)
+        i = e + 1
+    end
+    for k = #piece, 1, -1 do
+        if vis[k] then
+            local out, open = {}, false
+            for j = 1, k - 1 do
+                out[j] = piece[j]
+                if not vis[j] then open = piece[j] ~= "|r" end
+            end
+            fs:SetText((tconcat(out):gsub("[%s,]+$", "")) .. "…" .. (open and "|r" or ""))
+            if (fs:GetStringWidth() or 0) <= room then return end
+        end
+    end
+    fs:SetText("…")
+end
+local function NameRoom(f, row, icon)
+    local val = f.valFix or ceil(row.val:GetStringWidth() or 0)
+    local left = icon and 3 + ROW_ICON + 3 or 4
+    return (f:GetWidth() or 0) - 6 - (f.rowR or ROW_R) - left - NAMEGAP - val - (f.rightFix or 2)
+end
+local function NewCell(row, k)
+    local c = CreateFrame("Frame", nil, row)
+    c:SetHeight(LINEH)
+    c:EnableMouse(true)
+    c:SetScript("OnEnter", ShowLines)
+    c:SetScript("OnLeave", HideTip)
+    c.icon = c:CreateTexture(nil, "ARTWORK")
+    c.icon:SetWidth(CELL_ICON)
+    c.icon:SetHeight(CELL_ICON)
+    c.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    c.icon:SetPoint("LEFT", c, "LEFT", 0, 0)
+    c.num = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ns.Kit.Text(c.num, "text.bright")
+    c.num:SetJustifyH("LEFT")
+    c.num:SetPoint("LEFT", c.icon, "RIGHT", CELL_GAP, 0)
+    row.cells[k] = c
+    return c
+end
+local function DrawCells(f, row, e)
+    row.cells = row.cells or {}
+    local list = f.cellW and e and e.cells or {}
+    local x0 = 4 + (f.nameCol or 0)
+    local shown, rest = #list, 0
+    if #list > 0 then
+        local fit = max(1, floor(((f:GetWidth() or 0) - 6 - (f.rowR or ROW_R) - x0 - 2) / f.cellW))
+        if #list > fit then
+            shown = fit - 1
+            rest = #list - shown
+        end
+        row.name:SetPoint("RIGHT", row, "LEFT", x0 - NAMEGAP, 0)
+    end
+    for k = 1, max(shown, #row.cells) do
+        local c = row.cells[k]
+        if k <= shown then
+            c = c or NewCell(row, k)
+            local d = list[k]
+            c:ClearAllPoints()
+            c:SetPoint("LEFT", row, "LEFT", x0 + (k - 1) * f.cellW, 0)
+            c:SetWidth(f.cellW - CELL_PAD)
+            c.icon:SetTexture(d.icon)
+            c.num:SetText(tostring(d.n))
+            c.lines = d.lines
+            c:Show()
+        elseif c then
+            c:Hide()
+        end
+    end
+    if rest > 0 then
+        if not row.rest then
+            row.rest = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            ns.Kit.Text(row.rest, "text.off")
+        end
+        row.rest:ClearAllPoints()
+        row.rest:SetPoint("LEFT", row, "LEFT", x0 + shown * f.cellW, 0)
+        row.rest:SetText(format("+%d", rest))
+        row.rest:Show()
+    elseif row.rest then
+        row.rest:Hide()
+    end
+    return rest > 0
+end
+local function RowEnter(self)
+    ShowLines(self)
+    local link = self.link
+    if not (link and GameTooltip and GetItemInfo and GetItemInfo(link)) then return end
+    GameTooltip:SetOwner(self, "ANCHOR_NONE")
+    GameTooltip:SetHyperlink(link)
+    GameTooltip:ClearAllPoints()
+    local tip, side
+    if ns.Tip.Docked then tip, side = ns.Tip.Docked() end
+    if tip and side == "RIGHT" then
+        GameTooltip:SetPoint("TOPRIGHT", tip, "TOPLEFT", -2, 0)
+    elseif tip then
+        GameTooltip:SetPoint("TOPLEFT", tip, "TOPRIGHT", 2, 0)
+    else
+        GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT", 0, 2)
+    end
+    GameTooltip:Show()
+end
+local function RowLeave(self)
+    HideTip()
+    if self.link and GameTooltip then GameTooltip:Hide() end
 end
 local function RowNote(row, e)
     local note = e and e.note
@@ -348,7 +470,7 @@ end
 local function Crown(f, lines)
     local list = f.list
     local over = #list > lines
-    f.over = over and not f.modal
+    f.over = (over or f.cut == true) and not f.modal
     local right = over and RESERVE or 8
     if f.modal then right = RESERVE end
     if over then
@@ -369,17 +491,20 @@ local function DrawRows(f)
     local list = f.list
     local lines = f.lineCount
     local most = max(0, #list - lines)
+    local cut = false
     f.offset = max(0, min(most, f.offset or 0))
     for k = 1, #f.rows do
         local row = f.rows[k]
         local e = k <= lines and list[k + f.offset]
         if e then
-            row.name:SetText(e.who)
-            row.name:SetTextColor(ClassRGB(e.class))
-            RowIcon(row, e.icon)
             row.val:SetText(e.text)
+            RowIcon(row, e.icon)
+            if f.fit then Clip(row.name, e.who or "", NameRoom(f, row, e.icon ~= nil)) else row.name:SetText(e.who) end
+            row.name:SetTextColor(ClassRGB(e.class))
             RowNote(row, e)
+            if DrawCells(f, row, e) then cut = true end
             row.lines = e.lines
+            row.link = e.link
             row.tipIcon = e.tipIcon
             row:Show()
         else
@@ -387,6 +512,7 @@ local function DrawRows(f)
         end
         if f.paint then f.paint(row, e or nil) end
     end
+    f.cut = cut
     Crown(f, lines)
     if #list == 0 then
         local row = f.rows[1]
@@ -397,6 +523,8 @@ local function DrawRows(f)
         RowNote(row, nil)
         row.lines = nil
         row.tipIcon = nil
+        row.link = nil
+        DrawCells(f, row, nil)
         if f.paint then f.paint(row, nil) end
         row:Show()
     end
@@ -421,8 +549,8 @@ local function NewDetailRow(f, k)
     row:SetPoint("TOPLEFT", 6, -(8 + k * LINEH))
     row:SetPoint("TOPRIGHT", -(f.rowR or ROW_R), -(8 + k * LINEH))
     row:EnableMouse(true)
-    row:SetScript("OnEnter", ShowLines)
-    row:SetScript("OnLeave", HideTip)
+    row:SetScript("OnEnter", RowEnter)
+    row:SetScript("OnLeave", RowLeave)
     row.icon = row:CreateTexture(nil, "ARTWORK")
     row.icon:SetWidth(ROW_ICON)
     row.icon:SetHeight(ROW_ICON)
@@ -496,6 +624,7 @@ function Badges.Detail(parent, modal)
             for k = 1, #self.rows do self.paint(self.rows[k], nil) end
         end
         self.paint = m.paint
+        self.fit, self.fitW = m.fit, nil
         self.offset = 0
         Grow(self, LINES)
         Columns(self)
@@ -514,6 +643,10 @@ function Badges.Detail(parent, modal)
         local h = 14 + (max(1, min(lines, #self.list)) + 1) * LINEH
         self:SetWidth(width)
         self:SetHeight(h)
+        if (self.fit or self.cellW) and self.fitW ~= width then
+            self.fitW = width
+            DrawRows(self)
+        end
         return h
     end
     return f
@@ -782,8 +915,9 @@ local function CellNum(s)
     if not s or s == "" then return nil end
     local m, sec = s:match("^(%d+):(%d%d)$")
     if m then return tonumber(m) * 60 + tonumber(sec) end
-    local num, rest = s:match("^%s*(%-?%d+%.?%d*)%s*(.-)%s*$")
-    num = tonumber(num)
+    local dot = ns.lang == "enUS" and "%." or "[%.,]"
+    local num, rest = s:match("^%s*(%-?%d+" .. dot .. "?%d*)%s*(.-)%s*$")
+    num = num and tonumber((num:gsub(",", ".")))
     if not num then return nil end
     if rest == ns.T("num.m") then return num * 1e6 end
     if rest == ns.T("num.k") then return num * 1e3 end

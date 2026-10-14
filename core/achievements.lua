@@ -1,18 +1,15 @@
 local _, ns = ...
 local band = bit.band
 local find = string.find
-local match = string.match
 local tsort = table.sort
-local F_PLAYER = 0x400
+local floor = math.floor
+local F_PLAYER = ns.F.PLAYER
 local TAIL = 3
 local LATE = 60
 local LEAD = 30
 local FRESH = 10
 local HIT_WINDOW = 1.5
-local BIG_RAID = 12
 local MAX_TAIL = 6
-local SKIP_HP = { "FW_HP" }
-local HP_ENTRY = "^%d+%.(%d+):%d+:%d+:(%d+):%d+"
 local Ach = {}
 ns.Achievements = Ach
 local cache = setmetatable({}, { __mode = "k" })
@@ -20,14 +17,7 @@ local byBoss = {}
 local byKey = nil
 local raidKeys = setmetatable({}, { __mode = "k" })
 local fightKeys = setmetatable({}, { __mode = "k" })
-local function Set(list)
-    local set = {}
-    for i = 1, #(list or {}) do set[ns.NpcKeyOf(list[i])] = true end
-    return set
-end
-local function IsBoss(fight, guid)
-    return ns.IsBossOf(fight, guid)
-end
+local IsBoss = ns.IsBossOf
 local function Same(key, boss)
     key = ns.NpcKeyOf(key)
     return key == boss or ns.bosses[key] == boss
@@ -38,13 +28,6 @@ local function Matches(entry, boss)
         if Same(entry[i], boss) then return true end
     end
     return false
-end
-function Ach.SizeOf(fight)
-    local raid = fight.raid
-    if raid and raid.size then return raid.size end
-    local n = 0
-    for _ in pairs(fight.players or {}) do n = n + 1 end
-    return n > BIG_RAID and 25 or 10
 end
 local function BySize(v, size)
     if type(v) == "table" then return v[size] or v[25] or v[10] end
@@ -253,18 +236,6 @@ local function OnSide(st, ctx, ts, name, x)
         at[#at + 1] = ts - ctx.from
     end
 end
-local function OnHp(st, ctx, ts, body)
-    if type(body) ~= "string" or not ctx.seg then return end
-    local dict = ctx.seg.dict
-    local p = 1
-    while p do
-        local nameId, x = match(body, HP_ENTRY, p)
-        local name = nameId and dict[tonumber(nameId)]
-        if name then OnSide(st, ctx, ts, name, (tonumber(x) or 0) / 10000) end
-        local nx = find(body, ";", p, true)
-        p = nx and nx + 1 or nil
-    end
-end
 local function OnStreams(st, ctx, seg)
     local fight = ctx.fight
     for name in pairs(fight.players) do
@@ -294,7 +265,7 @@ local function VisitsEnd(st)
         end
     end
 end
-local function Close(st, fight)
+local function CloseState(st, fight)
     local kind, kill = st.kind, fight.killed
     if kind == "auraLonger" then
         for name, on in pairs(st.on) do
@@ -364,7 +335,7 @@ local function NewState(def, size)
     return {
         def = def, kind = def.kind, id = def.id[size], limit = BySize(def.limit, size), need = BySize(def.need, size),
         value = 0, who = {}, mark = {}, on = {}, units = {}, dead = {}, personal = {},
-        names = Set(def.names), srcs = def.srcs and Set(def.srcs) or nil,
+        names = ns.NpcSet(def.names), srcs = def.srcs and ns.NpcSet(def.srcs) or nil,
     }
 end
 local function Watch(index, spell, st, fn, pre)
@@ -387,9 +358,9 @@ local SPELL_FN = {
     vampire = OnVampire,
 }
 local DIES = { deathBy = true, aliveAt = true, noKill = true, killed = true, lastDied = true, killSpan = true }
-local function Build(fight)
+local function Prepare(fight)
     local defs = Ach.Defs(fight.boss)
-    local size = Ach.SizeOf(fight)
+    local size = ns.RaidSize(fight)
     local states, bySpell, died, big, hp, track = {}, {}, {}, {}, {}, {}
     local late, early = false, false
     for i = 1, #defs do
@@ -416,56 +387,103 @@ local function Build(fight)
             if def.kind == "lastDied" or def.kind == "killSpan" then late = true end
         end
     end
-    local out = {}
-    if #states == 0 then return out end
-    local ctx = { fight = fight, from = fight.from }
-    local to = fight.to + (late and LATE or TAIL)
-    local from = fight.from - (early and LEAD or 0)
-    local skip = #hp == 0 and SKIP_HP or nil
-    local segs = ns.Encounters.Segs(fight)
-    for si = 1, #segs do
-        local seg = segs[si]
-        ctx.seg = seg
-        if ns.Store.IsNew(seg) then
-            for k = 1, #hp do OnStreams(hp[k], ctx, seg) end
-        end
-        for ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a3, a4, a5
-            in ns.Store.Events(seg, from, to, skip, MAX_TAIL) do
-            ns.Jobs.Step()
-            local sk = ns.SpellOf(sub, a1)
-            local list = sk and bySpell[sk]
-            local live = ts >= fight.from
-            if list then
-                for k = 1, #list do
-                    local e = list[k]
-                    if live or e.pre then
-                        e.fn(e.st, ctx, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags,
-                            a1, a2, a3, a4, a5)
-                    end
-                end
-            end
-            if live then
-                for k = 1, #track do
-                    local st = track[k]
-                    if srcGUID then Touch(st, srcGUID, srcName, ts, false) end
-                    if dstGUID then Touch(st, dstGUID, dstName, ts, sub == "UNIT_DIED") end
-                end
-                if sub == "UNIT_DIED" then
-                    for k = 1, #died do OnDied(died[k], ctx, ts, dstName, dstFlags, dstGUID) end
-                elseif sub == "FW_HP" then
-                    if ts <= fight.to then
-                        for k = 1, #hp do OnHp(hp[k], ctx, ts, a1) end
-                    end
-                elseif #big > 0 then
-                    for k = 1, #big do
-                        OnBigHit(big[k], ctx, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags,
-                            a1, a2, a3, a4)
-                    end
-                end
+    if #states == 0 then return nil end
+    return {
+        fight = fight, states = states, bySpell = bySpell, died = died, big = big, hp = hp, track = track,
+        ctx = { fight = fight, from = fight.from }, late = late,
+        to = fight.to + (late and LATE or TAIL), from = fight.from - (early and LEAD or 0),
+    }
+end
+local function Feed(r, ts, sub, sk, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a3, a4, a5)
+    local ctx, fight = r.ctx, r.fight
+    local list = sk and r.bySpell[sk]
+    local live = ts >= fight.from
+    if list then
+        for k = 1, #list do
+            local e = list[k]
+            if live or e.pre then
+                e.fn(e.st, ctx, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags,
+                    a1, a2, a3, a4, a5)
             end
         end
     end
-    for i = 1, #states do out[#out + 1] = Close(states[i], fight) end
+    if live then
+        local track = r.track
+        for k = 1, #track do
+            local st = track[k]
+            if srcGUID then Touch(st, srcGUID, srcName, ts, false) end
+            if dstGUID then Touch(st, dstGUID, dstName, ts, sub == "UNIT_DIED") end
+        end
+        if sub == "UNIT_DIED" then
+            local died = r.died
+            for k = 1, #died do OnDied(died[k], ctx, ts, dstName, dstFlags, dstGUID) end
+        elseif #r.big > 0 then
+            local big = r.big
+            for k = 1, #big do
+                OnBigHit(big[k], ctx, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags,
+                    a1, a2, a3, a4)
+            end
+        end
+    end
+end
+local function SegStart(r, seg)
+    for k = 1, #r.hp do OnStreams(r.hp[k], r.ctx, seg) end
+    r.t0 = seg.t0
+    r.lo = (r.from - seg.t0) * 1000 - 1
+    r.hi = (r.to - seg.t0) * 1000 + 1
+end
+local function Close(r)
+    local out = {}
+    for i = 1, #r.states do out[#out + 1] = CloseState(r.states[i], r.fight) end
+    return out
+end
+local function Build(fight)
+    local r = Prepare(fight)
+    if not r then return {} end
+    local SpellOf = ns.SpellOf
+    local segs = ns.Encounters.Segs(fight)
+    for si = 1, #segs do
+        local seg = segs[si]
+        SegStart(r, seg)
+        for ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a3, a4, a5
+            in ns.Store.Events(seg, r.from, r.to, MAX_TAIL) do
+            ns.Jobs.Step()
+            Feed(r, ts, sub, SpellOf(sub, a1), srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a3, a4, a5)
+        end
+    end
+    return Close(r)
+end
+function Ach.Begin(fight)
+    if cache[fight] then return nil end
+    local r = Prepare(fight)
+    if not r then cache[fight] = {} end
+    return r
+end
+function Ach.Seg(r, seg)
+    SegStart(r, seg)
+end
+function Ach.Feed(r, ts, sub, sk, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a3, a4, a5)
+    local m = floor((ts - r.t0) * 1000 + 0.5)
+    if m < r.lo or m > r.hi then return end
+    Feed(r, ts, sub, sk, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a3, a4, a5)
+end
+function Ach.Tail(r, seg, upTo)
+    if r.to <= upTo then return end
+    local cut = (upTo - seg.t0) * 1000 + 1
+    local t0, lo, hi = seg.t0, r.lo, r.hi
+    local SpellOf = ns.SpellOf
+    for ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a3, a4, a5
+        in ns.Store.Events(seg, upTo, r.to, MAX_TAIL) do
+        ns.Jobs.Step()
+        local m = floor((ts - t0) * 1000 + 0.5)
+        if m > cut and m >= lo and m <= hi then
+            Feed(r, ts, sub, SpellOf(sub, a1), srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a3, a4, a5)
+        end
+    end
+end
+function Ach.Finish(r)
+    local out = Close(r)
+    cache[r.fight] = out
     return out
 end
 function Ach.Build(fight)
@@ -474,9 +492,6 @@ function Ach.Build(fight)
     r = Build(fight)
     cache[fight] = r
     return r
-end
-function Ach.Get(fight)
-    return cache[fight]
 end
 function Ach.Keep(fight, list)
     cache[fight] = list
@@ -589,11 +604,11 @@ function Ach.FightRows(fight, list, got)
         rows[#rows + 1] = { def = r.def, id = r.id, scope = "encounter", status = r.status, result = r, fight = fight }
     end
     Merge(rows, got)
-    return Finish(rows, Ach.SizeOf(fight))
+    return Finish(rows, ns.RaidSize(fight))
 end
 function Ach.ForRaid(raid, onDone, got)
     local fights = RaidFights(raid)
-    local size = raid.size or (fights[1] and Ach.SizeOf(fights[1])) or 25
+    local size = raid.size or (fights[1] and ns.RaidSize(fights[1])) or 25
     local pending = {}
     local best, bestFight, order = {}, {}, {}
     for i = 1, #fights do

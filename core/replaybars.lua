@@ -18,23 +18,26 @@ function RB.Defs(boss)
 end
 function RB.New(fight)
     local defs = RB.Defs(fight.boss)
-    local by, t, who = {}, {}, {}
+    local by, want, t, who = {}, {}, {}, {}
     for i = 1, #defs do
         local def = defs[i]
         for s = 1, #def.sub do
             local m = by[def.sub[s]] or {}
             by[def.sub[s]] = m
-            for k = 1, #def.spell do m[def.spell[k]] = m[def.spell[k]] or i end
+            for k = 1, #def.spell do
+                m[def.spell[k]] = m[def.spell[k]] or i
+                want[def.spell[k]] = true
+            end
         end
         t[i], who[i] = {}, {}
     end
-    return { defs = defs, by = by, players = fight.players or {}, gap = ns.replayBars and ns.replayBars.gap or 3,
-             t = t, who = who }
+    return { defs = defs, by = by, want = want, players = fight.players or {},
+             gap = ns.replayBars and ns.replayBars.gap or 3, t = t, who = who }
 end
-function RB.Event(ctx, ts, sub, src, dst, a1)
+function RB.Event(ctx, ts, sub, src, dst, a1, id)
     local m = ctx.by[sub]
     if not m then return end
-    local id = tonumber(a1)
+    id = id or tonumber(a1)
     local i = id and m[id]
     if not i or (src and ctx.players[src]) then return end
     local list, names = ctx.t[i], ctx.who[i]
@@ -87,11 +90,6 @@ local function NextIdx(list, t)
         if list[mid] > t then hi = mid else lo = mid + 1 end
     end
     return lo
-end
-local function LastIdx(list, t)
-    local k = NextIdx(list, t)
-    if k then return k - 1 end
-    return #list
 end
 local function PhaseStart(B, prev, nextT)
     local start = prev
@@ -156,20 +154,7 @@ function RB.Alerts(B, t, out)
     for i = #out, n + 1, -1 do out[i] = nil end
     return n
 end
-function RB.LastAlert(B, t)
-    if not B or #B.alerts == 0 then return nil end
-    local list = B.alerts
-    local lo, hi = 1, #list
-    while lo <= hi do
-        local mid = floor((lo + hi) / 2)
-        if list[mid].t <= t then lo = mid + 1 else hi = mid - 1 end
-    end
-    return hi > 0 and list[hi].t or nil
-end
 function RB.Spell(def)
     local name, _, icon = GetSpellInfo(def.spell[1])
     return name or tostring(def.spell[1]), icon
-end
-function RB.Count(tr, t)
-    return LastIdx(tr.t, t)
 end

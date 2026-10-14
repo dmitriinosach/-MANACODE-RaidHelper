@@ -2,7 +2,6 @@ local ADDON, root = ...
 root.Lead = root.Lead or {}
 local ns = root.Lead
 local I = {}
-ns.Inspect = I
 local MIN_ITEMS = 15
 local SLOTS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 }
 local PRIORITY = { hand = 3, inspect = 2, whisper = 1 }
@@ -74,7 +73,4 @@ end
 if root.Specs then
     root.Specs.Want(I.Running)
     root.Specs.OnRead(read)
-end
-function I.Ilvl(name)
-    return ns.Session.Player(name).ilvl
 end

@@ -24,18 +24,27 @@ function C.New(fight)
     if not D then return nil end
     local rings, arrows, links = D.rings[fight.boss], D.arrows[fight.boss], D.links[fight.boss]
     if not (rings or arrows or links) then return nil end
+    local want = {}
+    local function Want(ids)
+        for i = 1, ids and #ids or 0 do want[ns.SpellKey(ids[i])] = true end
+    end
+    for i = 1, rings and #rings or 0 do
+        Want(rings[i].cast)
+        Want(rings[i].hit)
+    end
+    for i = 1, arrows and #arrows or 0 do Want(arrows[i].cast) end
+    for i = 1, links and #links or 0 do Want(links[i].aura) end
     return {
         fight = fight, players = fight.players or {}, bosses = ns.Index.BossKeys(fight),
         rings = rings or {}, arrows = arrows or {}, links = links or {},
-        ringOut = {}, open = {}, arrowRaw = {}, linkOn = {}, linkRaw = {},
+        ringOut = {}, open = {}, arrowRaw = {}, linkOn = {}, linkRaw = {}, want = want,
     }
 end
-local function Rings(ctx, ts, sub, srcGUID, dst, id)
+local function Rings(ctx, ts, sub, srcGUID, dst, id, key)
     local defs = ctx.rings
     for di = 1, #defs do
         local def = defs[di]
         if sub == def.sub and Has(def.cast, id) then
-            local key = ns.NpcKey(srcGUID)
             local own = def.npc and key == ns.NpcKeyOf(def.npc) or (not def.npc and key and ctx.bosses[key])
             if own and #ctx.ringOut < LIMIT then
                 local o = { from = ts, r = def.r, n = 0, def = def, guid = def.npc and srcGUID or nil }
@@ -51,16 +60,18 @@ local function Rings(ctx, ts, sub, srcGUID, dst, id)
         end
     end
 end
-function C.Event(ctx, ts, sub, srcGUID, src, dst, a1)
-    local id = ns.SpellOf(sub, a1)
+function C.Event(ctx, ts, sub, srcGUID, src, dst, a1, sk, srcKey)
+    local id = sk
+    if id == nil then id = ns.SpellOf(sub, a1) end
     if not id then return end
+    if srcKey == nil then srcKey = ns.NpcKey(srcGUID) end
+    local key = srcKey or nil
     local P = ctx.players
-    if #ctx.rings > 0 then Rings(ctx, ts, sub, srcGUID, dst, id) end
+    if #ctx.rings > 0 then Rings(ctx, ts, sub, srcGUID, dst, id, key) end
     if CASTS[sub] and dst and P[dst] and #ctx.arrowRaw < LIMIT then
         local defs = ctx.arrows
         for di = 1, #defs do
             if Has(defs[di].cast, id) then
-                local key = ns.NpcKey(srcGUID)
                 local from = (src and P[src]) and src or ((key and ctx.bosses[key]) and "" or nil)
                 if from and from ~= dst then
                     ctx.arrowRaw[#ctx.arrowRaw + 1] = { t = ts, src = from ~= "" and from or nil, dst = dst, def = defs[di] }
@@ -90,8 +101,7 @@ local function ByFrom(a, b)
     return a.from < b.from
 end
 function C.Done(ctx, L, scene)
-    local byK = {}
-    for k = 1, #scene.tracks do byK[scene.tracks[k].name] = k end
+    local byK = ns.Replay.ByK(scene)
     local addBy = {}
     for i = 1, #(L.adds or {}) do addBy[L.adds[i].guid] = L.adds[i] end
     local hi = ctx.fight.to

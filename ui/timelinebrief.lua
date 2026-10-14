@@ -58,16 +58,8 @@ local function FoldClick(head)
     ui.briefFold[head.foldKey] = not ui.briefFold[head.foldKey] or nil
     if last then last.ctx.redraw() end
 end
-local function Short(n)
-    return ns.BadgeTips and ns.BadgeTips.Short(n) or tostring(floor(n + 0.5))
-end
-local function LastBefore(items, t)
-    local found = nil
-    for i = 1, items and #items or 0 do
-        if items[i].t <= t then found = items[i] else break end
-    end
-    return found
-end
+local Short = ns.Short
+local LastBefore = ns.TimelineCursor.LastBefore
 local function Visible(c, y, h)
     return y + h > 0 and y < c.canvas:GetHeight()
 end
@@ -236,7 +228,7 @@ local function DrawStates(c, rows, y)
                     b.tip, b.at, b.spellId = a.label, a.t, tonumber(a.id)
                     b.jumpTo = a.src ~= c.player and c.fight.players[a.src or ""] and a.src or nil
                     b.tip2 = format(ns.T("tl.span.fmt"), c.Clock(a.t - c.fight.from), c.Clock(to - c.fight.from),
-                        to - a.t, a.src and ("  |  " .. a.src) or "")
+                        ns.Fixed(to - a.t), a.src and ("  |  " .. a.src) or "")
                 end
             end
         end

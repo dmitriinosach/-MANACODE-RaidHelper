@@ -4,6 +4,11 @@ local tonumber = tonumber
 local tostring = tostring
 local strsub = string.sub
 local rawget = rawget
+ns.F = { PLAYER = 0x400, NPC = 0x800, BY_PLAYER = 0x100, HOSTILE = 0x40, FRIENDLY = 0x10, GROUP = 0x07 }
+local U = { raid = {}, raidPet = {}, raidTarget = {}, party = {}, partyPet = {}, partyTarget = {} }
+ns.Units = U
+for i = 1, 40 do U.raid[i], U.raidPet[i], U.raidTarget[i] = "raid" .. i, "raidpet" .. i, "raid" .. i .. "target" end
+for i = 1, 4 do U.party[i], U.partyPet[i], U.partyTarget[i] = "party" .. i, "partypet" .. i, "party" .. i .. "target" end
 ns.spellGroups = ns.spellGroups or {}
 ns.npcGroups = ns.npcGroups or {}
 local spellKey = {}
@@ -39,17 +44,12 @@ local function IsSpellSub(sub)
     end
     return v
 end
-ns.IsSpellSub = IsSpellSub
 function ns.SpellOf(sub, id)
     if not IsSpellSub(sub) then return nil end
     if not built then Build() end
     id = tonumber(id)
     if not id then return nil end
     return spellKey[id] or id
-end
-function ns.SpellKeys()
-    if not built then Build() end
-    return spellKey
 end
 function ns.NpcEntry(guid)
     if type(guid) ~= "string" or #guid ~= 18 or strsub(guid, 1, 4) ~= "0xF1" then return nil end
@@ -83,22 +83,32 @@ end
 function ns.ConsumableName(id, spell, item)
     local name = id and GetItemInfo and GetItemInfo(id)
     if name then return name end
-    if spell and (GetLocale() ~= "ruRU" or ns.lang ~= "ruRU") then
-        name = GetSpellInfo(spell)
-        if name then return name end
-    end
-    return item or ("#" .. tostring(id))
+    local ru = ns.lang == "ruRU"
+    if ru and item and GetLocale() == "ruRU" then return item end
+    name = spell and GetSpellInfo and GetSpellInfo(spell)
+    if name then return name end
+    if ru and item then return item end
+    if id then return string.format(ns.T("item.id"), id) end
+    return "#" .. tostring(spell)
 end
 function ns.NpcKeyOf(id)
     if not id then return nil end
     if not built then Build() end
     return npcKey[id] or id
 end
-function ns.SpellSet(list, out)
+function ns.SpellSet(list, out, exact)
     out = out or {}
     for i = 1, #(list or {}) do
-        local k = ns.SpellKey(list[i])
-        if k then out[k] = true end
+        local v = list[i]
+        if exact then out[v] = true else out[ns.SpellKey(v) or v] = true end
+    end
+    return out
+end
+function ns.NpcSet(list, out, exact)
+    out = out or {}
+    for i = 1, #(list or {}) do
+        local v = list[i]
+        if exact then out[v] = true else out[ns.NpcKeyOf(v) or v] = true end
     end
     return out
 end
@@ -157,11 +167,24 @@ function ns.EncByName(name)
     end
     return name
 end
-function ns.IsBossKey(fight, key)
+local function IsBossKey(fight, key)
     if key == nil or not fight then return false end
     return key == fight.boss or (ns.bosses ~= nil and ns.bosses[key] == fight.boss)
         or (fight.names ~= nil and fight.names[key] == true)
 end
+ns.IsBossKey = IsBossKey
+local NpcKey = ns.NpcKey
 function ns.IsBossOf(fight, guid)
-    return ns.IsBossKey(fight, ns.NpcKey(guid))
+    return IsBossKey(fight, NpcKey(guid))
+end
+local band = bit and bit.band
+local F_PLAYER, F_BY_PLAYER = ns.F.PLAYER, ns.F.BY_PLAYER
+function ns.WhoOf(flags, guid, name, owners, pets)
+    if not flags or band(flags, F_BY_PLAYER) == 0 then return nil end
+    if band(flags, F_PLAYER) > 0 then return name end
+    if not guid then return nil end
+    return owners[guid] or (pets and pets[guid]) or nil
+end
+function ns.NoteOwner(owners, sub, flags, name, guid)
+    if sub == "SPELL_SUMMON" and guid and flags and band(flags, F_PLAYER) > 0 then owners[guid] = name end
 end

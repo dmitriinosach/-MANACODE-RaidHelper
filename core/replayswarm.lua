@@ -10,10 +10,14 @@ ns.ReplaySwarm = SW
 function SW.New(fight)
     local def = ns.replaySwarm and ns.replaySwarm[fight.boss]
     if not def then return nil end
-    return { def = def, fight = fight, marks = {}, open = {}, sName = {}, sT = {}, sLife = {} }
+    local want = {}
+    for _, set in ipairs({ def.cast, def.aura, def.summon }) do
+        for id in pairs(set) do want[id] = true end
+    end
+    return { def = def, fight = fight, marks = {}, open = {}, sName = {}, sT = {}, sLife = {}, want = want }
 end
-function SW.Event(ctx, ts, sub, src, dst, a1)
-    local id = tonumber(a1)
+function SW.Event(ctx, ts, sub, src, dst, a1, id)
+    id = id or tonumber(a1)
     if not id then return end
     local def = ctx.def
     if sub == "SPELL_SUMMON" then
@@ -72,8 +76,7 @@ local function SortPuffs(S)
 end
 function SW.Done(ctx, L, scene)
     local def, hi = ctx.def, ctx.fight.to
-    local byK = {}
-    for k = 1, #scene.tracks do byK[scene.tracks[k].name] = k end
+    local byK = ns.Replay.ByK(scene)
     local S = { r = def.r, tones = def.tones, n = 0, x = {}, y = {}, from = {}, to = {}, v = {},
                 nm = 0, mk = {}, mFrom = {}, mOn = {}, mTo = {} }
     local PosAt = ns.Replay.PosAtTime

@@ -43,7 +43,7 @@ local DOT = 4
 local DOTGAP = 2
 local DOTS = 5
 local DOTX = 22
-local NAVBTN = 18
+local NAVBTN = ns.Kit.Space.tool
 local NAVGAP = 4
 local PLAYSZ = 10
 local PLAYW = PLAYSZ + 4
@@ -104,16 +104,13 @@ local openEnc
 local Tips = {}
 local Del = {}
 local gone = setmetatable({}, { __mode = "k" })
-local function Clock(sec)
-    local m = floor(sec / 60)
-    return format("%d:%02d", m, floor(sec - m * 60))
-end
+local Clock = ns.Clock
 local function Hour(t)
     return date("%H:%M", t)
 end
 local function When(raid)
-    local day = date("%d.%m", raid.from)
-    local tail = date("%d.%m", raid.to) == day and Hour(raid.to) or date("%d.%m %H:%M", raid.to)
+    local day = ns.Date(raid.from)
+    local tail = ns.Date(raid.to) == day and Hour(raid.to) or ns.Date(raid.to, "dayTime")
     return format(ns.T("fl.when"), day, Hour(raid.from), tail)
 end
 local function Skulls(n)
@@ -125,24 +122,7 @@ local function Line(text, token, gap)
     local r, g, b = Kit.Color(token)
     return { text, r, g, b, gap }
 end
-function FL.Fit(fs, text, width)
-    fs:SetWidth(width)
-    fs:SetText(text)
-    if fs:GetStringWidth() <= width then return end
-    local cut = text
-    while #cut > 1 do
-        local i = #cut
-        while i > 1 do
-            local b = cut:byte(i)
-            if b < 128 or b >= 192 then break end
-            i = i - 1
-        end
-        cut = cut:sub(1, i - 1)
-        fs:SetText(cut .. "…")
-        if fs:GetStringWidth() <= width then return end
-    end
-    fs:SetText("…")
-end
+FL.Fit = ns.FitText
 local Fit = FL.Fit
 local function Label(parent, font, h, justify)
     local fs = parent:CreateFontString(nil, "OVERLAY", font)
@@ -845,9 +825,7 @@ local function Step(step)
     if f then Open(f) end
 end
 local function NavButton(label, tip, step)
-    local b = Kit.Button(nav)
-    b:SetWidth(NAVBTN)
-    b:SetHeight(NAVBTN)
+    local b = Kit.ToolButton(nav)
     b.text:SetText(label)
     b.tipTitle = ns.T(tip)
     b.onClick = function() Step(step) end
@@ -857,7 +835,6 @@ local function AttachNav(host, title, status)
     nav = CreateFrame("Frame", nil, host)
     nav:SetHeight(NAVBTN)
     nav:SetWidth(1)
-    nav:SetPoint("LEFT", title, "RIGHT", NAVGAP * 2, 0)
     navPrev = NavButton("<", "fl.nav.prev", -1)
     navPrev:SetPoint("LEFT", 0, 0)
     navNo = Label(nav, "GameFontHighlightSmall", 12, "CENTER")
@@ -868,11 +845,13 @@ local function AttachNav(host, title, status)
     navOut = Label(nav, "GameFontHighlightSmall", 12)
     navOut:SetPoint("LEFT", navNext, "RIGHT", NAVGAP * 2, 0)
     nav:Hide()
-    local play = ns.ReplayLink.Head(host, nav)
-    play = ns.ReplayLink.SaveHead(host, play)
-    local last = ns.ThreatView and ns.ThreatView.Head(host, play) or play
+    local bar = Kit.ToolBar(host, "LEFT", title, "RIGHT", NAVGAP * 2, 0)
+    bar:Add(nav)
+    bar:Add(ns.ReplayLink.Head(host))
+    bar:Add(ns.ReplayLink.SaveHead(host))
+    if ns.ThreatView then bar:Add(ns.ThreatView.Head(host)) end
     if ns.SumHide then ns.SumHide.Head(host) end
-    if status then status:SetPoint("LEFT", last, "RIGHT", NAVGAP * 2, 0) end
+    if status then status:SetPoint("LEFT", bar.tail, "RIGHT", NAVGAP, 0) end
 end
 Tips.raid = function(r)
     local raid = r.line.raid
@@ -882,7 +861,7 @@ Tips.raid = function(r)
         out[#out + 1] = Line(format(ns.T("fl.tip.diff"), ns.T(raid.heroic and "fl.diff.hc" or "fl.diff.nm")),
             raid.heroic and "tip.body" or "tip.dim")
     end
-    out[#out + 1] = Line(format(ns.T("fl.tip.when"), date("%d.%m %H:%M", raid.from), date("%d.%m %H:%M", raid.to)),
+    out[#out + 1] = Line(format(ns.T("fl.tip.when"), ns.Date(raid.from, "dayTime"), ns.Date(raid.to, "dayTime")),
         "tip.dim")
     out[#out + 1] = Line(raid.id and format(ns.T("fl.tip.lock"), raid.id) or ns.T("fl.tip.nolock"), "tip.dim")
     out[#out + 1] = Line(format(ns.T("fl.tip.passed"), raid.passed, raid.total, raid.tries,
@@ -907,7 +886,7 @@ Tips.enc = function(r)
         out[#out + 1] = Line(ns.T("zb.kill"), "tip.body")
     end
     local from = max(1, n - TIPMAX + 1)
-    if from > 1 then out[#out + 1] = Line(format(ns.T("fl.tip.more"), from - 1), "tip.dim") end
+    if from > 1 then out[#out + 1] = Line(format(ns.T("fl.tip.more"), from - 1, ns.Plural(from - 1, ns.T("rsum.w.tries.nom"))), "tip.dim") end
     for i = from, n do
         local f = enc.fights[i]
         local token = f == fight and "sem.pick" or (f.killed and "sem.win" or "tip.dim")
@@ -989,7 +968,7 @@ end
 function Del.AskTry(f, n)
     local spot = ns.FightTree.Spot(f)
     Del.Ask(format(ns.T("fl.del.try.ask"), n, ns.EncName(f.boss), ns.T(f.killed and "fl.win" or "fl.wipe"), Clock(f.to - f.from),
-        date("%d.%m %H:%M", f.from)), { f }, Del.Last(spot and spot.raid, { f }))
+        ns.Date(f.from, "dayTime")), { f }, Del.Last(spot and spot.raid, { f }))
 end
 function Del.AskEnc(enc)
     local list = {}
@@ -997,7 +976,7 @@ function Del.AskEnc(enc)
     Del.Ask(format(ns.T("fl.del.enc.ask"), ns.EncName(enc.boss), #list), list, Del.Last(enc.raid, list))
 end
 function Del.AskRaid(raid)
-    Del.Ask(format(ns.T("fl.del.raid.ask"), RaidName(raid), date("%d.%m", raid.from), raid.tries),
+    Del.Ask(format(ns.T("fl.del.raid.ask"), RaidName(raid), ns.Date(raid.from), raid.tries),
         ns.FightTree.RaidFights(raid), Del.RaidSegs(raid))
 end
 function Del.RaidMenu(row)

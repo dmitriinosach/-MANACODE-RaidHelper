@@ -22,10 +22,7 @@ local plan = nil
 local planCasts, planCuts, planWho = nil, nil, nil
 local widthPps, widthMin = nil, nil
 local function Clock(sec)
-    local sign = sec < 0 and "-" or ""
-    local a = abs(sec)
-    local m = floor(a / 60)
-    return format("%s%d:%04.1f", sign, m, a - m * 60)
+    return ns.Clock(sec, true, true)
 end
 local function Sec(v)
     return ns.Dec(format("%.1f", max(0, v)))

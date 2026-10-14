@@ -3,6 +3,7 @@ local max = math.max
 local min = math.min
 local sin = math.sin
 local sqrt = math.sqrt
+local cos = math.cos
 local huge = math.huge
 local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\replay\\"
 local DISC = ART .. "disc256"
@@ -32,6 +33,12 @@ local BEAM_W = 2
 local HEAD = 10
 local MIN_R = 4
 local SMOKE = "Spells\\ALPHACLOUD"
+local RUNE = "Spells\\DemonicRuneSummon01"
+local WISP = "Spells\\MAIL_RAIDHUNTER_G_01_PARTICLE01A"
+local WISP_K = 0.78
+local SPIN = 2 * math.pi / 5.5
+local GROW = 0.63
+local BORN = 0.2
 local PUFF_DRAW = 48
 local PUFF_GROW = 0.45
 local PUFF_CORE = 0.55
@@ -40,8 +47,8 @@ ns.ReplayClassView = V
 local Kit = ns.Kit
 local Replay = ns.Replay
 local KINDS = { "zones", "rings", "cones", "arrows", "circles", "beams" }
-local pool = { zones = {}, edges = {}, marks = {}, rings = {}, cones = {}, arrows = {}, heads = {}, circles = {}, beams = {},
-               icons = {}, puffs = {}, cores = {} }
+local pool = { zones = {}, edges = {}, marks = {}, rings = {}, cones = {}, arrows = {}, heads = {}, circles = {}, wisps = {},
+               beams = {}, icons = {}, puffs = {}, cores = {} }
 local used = { zones = 0, rings = 0, cones = 0, arrows = 0, circles = 0, beams = 0, icons = 0, puffs = 0 }
 local memo = { cls = nil, from = 0, to = -1 }
 local active = { zones = {}, rings = {}, cones = {}, arrows = {}, circles = {}, beams = {} }
@@ -69,7 +76,14 @@ function V.Build(v, layer)
         pool.arrows[i] = Tex(layer, LINE, "BORDER")
         pool.heads[i] = Tex(layer, CONE, "BORDER")
     end
-    for i = 1, CIRCLE_DRAW do pool.circles[i] = Tex(layer, RING_S, "BORDER", "sem.rep.clsCircle") end
+    for i = 1, CIRCLE_DRAW do
+        pool.circles[i] = Tex(layer, RUNE, "BORDER")
+        pool.circles[i]:SetBlendMode("ADD")
+        for j = 2 * i - 1, 2 * i do
+            pool.wisps[j] = Tex(layer, WISP, "BORDER")
+            pool.wisps[j]:SetBlendMode("ADD")
+        end
+    end
     for i = 1, BEAM_DRAW do pool.beams[i] = Tex(layer, LINE, "BORDER", "sem.rep.clsBeacon") end
     for i = 1, PUFF_DRAW do
         pool.puffs[i] = Tex(layer, SMOKE, "BACKGROUND")
@@ -159,6 +173,23 @@ local function PutLine(tex, ax, ay, bx, by, w)
     end
     local nx, ny = -dy / d * w * 2, dx / d * w * 2
     return ns.ReplayLayersView.Affine(tex, ax - nx / 2, ay - ny / 2, dx, dy, nx, ny)
+end
+local function PutFloor(tex, scene, cam, x, y, R, a)
+    local ox, oy, ko = Screen(cam, scene, x, y)
+    if ko <= 0 then
+        tex:Hide()
+        return false
+    end
+    R = max(R, MIN_R / (cam.zoom * ko))
+    local c, s = cos(a) * R, sin(a) * R
+    local ux, uy, ku = Screen(cam, scene, x + c, y + s)
+    local vx, vy, kv = Screen(cam, scene, x - s, y + c)
+    if ku <= 0 or kv <= 0 then
+        tex:Hide()
+        return false
+    end
+    ux, uy, vx, vy = ux - ox, uy - oy, vx - ox, vy - oy
+    return ns.ReplayLayersView.Affine(tex, ox - ux - vx, oy - uy - vy, ux * 2, uy * 2, vx * 2, vy * 2)
 end
 local function PlaceRound(scene, cam, t)
     local Ellipse = ns.ReplayLayersView.Ellipse
@@ -272,19 +303,34 @@ local function PlaceMoves(scene, cam, t)
     for i = 1, nact.circles do
         local it = list[i]
         if nc >= CIRCLE_DRAW then break end
-        local sx, sy, k = Screen(cam, scene, it.x, it.y)
-        local rw = max(MIN_R, it.r * scene.ppy * cam.zoom * k)
-        local tex = pool.circles[nc + 1]
-        if k > 0 and ns.ReplayLayersView.Ellipse(tex, sx, sy, rw, max(1, rw * min(1, cam.tilt * k))) then
+        local age = t - it.from
+        local g = min(1, (it.to - t) / GROW)
+        local a = min(1, (it.to - t) / FADE_OUT)
+        if not it.pre then
+            g = min(g, age / GROW)
+            a = min(a, age / FADE_IN)
+        end
+        local R = it.r * scene.ppy * (BORN + (1 - BORN) * max(0, g))
+        local rune, w1, w2 = pool.circles[nc + 1], pool.wisps[2 * nc + 1], pool.wisps[2 * nc + 2]
+        if PutFloor(rune, scene, cam, it.x, it.y, R, 0) then
             nc = nc + 1
-            Tone(tex, "sem.rep.clsCircle", Fade(1, it, t))
+            Tone(rune, "sem.rep.clsRune", a)
+            if PutFloor(w1, scene, cam, it.x, it.y, R * WISP_K, age * SPIN) then Tone(w1, "sem.rep.clsWisp", a) end
+            if PutFloor(w2, scene, cam, it.x, it.y, R * WISP_K, math.pi - age * SPIN) then Tone(w2, "sem.rep.clsWisp", a) end
+        else
+            w1:Hide()
+            w2:Hide()
         end
     end
     for i = n + 1, used.arrows do
         pool.arrows[i]:Hide()
         pool.heads[i]:Hide()
     end
-    for i = nc + 1, used.circles do pool.circles[i]:Hide() end
+    for i = nc + 1, used.circles do
+        pool.circles[i]:Hide()
+        pool.wisps[2 * i - 1]:Hide()
+        pool.wisps[2 * i]:Hide()
+    end
     used.arrows, used.circles = n, nc
     probe.arrows, probe.circles = n, nc
 end

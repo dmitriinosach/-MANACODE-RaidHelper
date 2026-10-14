@@ -14,7 +14,6 @@ local ROWH = 14
 local GAP = 3
 local FOOT = 8
 local GRIP = 14
-local CLOSE = 22
 local LEADW = 30
 local PCTW = 32
 local VIEWGAP = 2
@@ -124,9 +123,7 @@ local function RowEnter(self)
     if not lines or #lines == 0 then return end
     ns.Tip.Show(self, lines)
 end
-local function TipHide()
-    if ns.Tip then ns.Tip.Hide() end
-end
+local TipHide = Kit.HideLines
 local function RowClick(self)
     local e = self.e
     if not e or e.kind == "note" then return end
@@ -284,7 +281,7 @@ local function Outcome(f)
     return Kit.Hex(f.killed and "sem.win" or "sem.wipe") .. ns.T(f.killed and "fl.win" or "fl.wipe") .. "|r"
 end
 local function FightTitle(f)
-    local clock = ns.MiniRows.Clock(max(0, f.to - f.from))
+    local clock = ns.Clock(max(0, f.to - f.from))
     local spot = ns.FightTree and ns.FightTree.Spot(f)
     if spot and spot.n then return format(ns.T("mini.title"), ns.EncName(f.boss), spot.n, Outcome(f), clock) end
     return format(ns.T("mini.title1"), ns.EncName(f.boss), Outcome(f), clock)
@@ -344,14 +341,14 @@ local function LiveRows(heal)
     local M = ns.Meter
     if not (M and next(heal and M.heals or M.who)) then return false end
     local sec, rate = ns.MiniRows.Live(list, ClassOf, heal)
-    Title(format(ns.T("mini.live"), ns.MiniRows.Clock(sec)), ns.BadgeTips.Short(rate))
+    Title(format(ns.T("mini.live"), ns.Clock(sec)), ns.Short(rate))
     return true
 end
 local function FightRows(f, s)
     local view = View()
     local sub
     if RATE[view] then
-        sub = ns.BadgeTips.Short(ns.MiniRows.Dps(list, s, view == "hps"))
+        sub = ns.Short(ns.MiniRows.Dps(list, s, view == "hps"))
     elseif view == "targets" then
         ns.MiniRows.Targets(list, f, s)
     else
@@ -474,7 +471,7 @@ end
 local function PickLabel(f)
     local spot = ns.FightTree and ns.FightTree.Spot(f)
     local when = date("%H:%M", f.from)
-    local tail = Kit.Hex(f.killed and "sem.win" or "sem.wipe") .. ns.MiniRows.Clock(max(0, f.to - f.from)) .. "|r"
+    local tail = Kit.Hex(f.killed and "sem.win" or "sem.wipe") .. ns.Clock(max(0, f.to - f.from)) .. "|r"
     if spot and spot.n then return format(ns.T("mini.pick.row"), spot.n, ns.EncName(f.boss), when, tail) end
     return format(ns.T("mini.pick.row1"), ns.EncName(f.boss), when, tail)
 end
@@ -544,13 +541,10 @@ local function BuildTabs()
 end
 local function BuildHead()
     BuildTabs()
-    close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    close:SetWidth(CLOSE)
-    close:SetHeight(CLOSE)
-    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -2)
-    close:SetScript("OnClick", function()
+    close = Kit.CloseButton(frame, function()
         if ns.Shell then ns.Shell.Hide() else frame:Hide() end
     end)
+    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, -4)
     restore = Kit.FoldButton(frame, true)
     restore:SetPoint("RIGHT", close, "LEFT", 0, 0)
     restore.tip = ns.T("mini.restore.tip")

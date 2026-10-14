@@ -19,6 +19,7 @@ local STREAK = ART .. "streak"
 local BEAM = ART .. "beam"
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local POOL_DRAW = 48
+local AIM_DRAW = 2
 local WAVE_DRAW = 6
 local CONE_DRAW = 8
 local BLAST_DRAW = 16
@@ -72,12 +73,13 @@ local Layers = ns.ReplayLayers
 local Shield = ns.ReplayShield
 local pools, cones, blasts, lines, hits = {}, {}, {}, {}, {}
 local counts, chaseLines, chaseRings, addRings = {}, {}, {}, {}
+local aimRings = {}
 local winter = { waves = {}, rs = {}, as = {} }
 local vortex = { fill = {}, edge = {}, swirl = {}, wave = {} }
 local drop = { ice = {}, trail = {}, aim = {}, beam = {} }
 local hitbox
 local bomb
-local used = { pool = 0, cone = 0, blast = 0, line = 0, hit = 0, count = 0, chase = 0, ring = 0, wave = 0, addRing = 0,
+local used = { pool = 0, aim = 0, cone = 0, blast = 0, line = 0, hit = 0, count = 0, chase = 0, ring = 0, wave = 0, addRing = 0,
                vortex = 0, vortexWave = 0, drop = 0, boom = 0 }
 local view, marks
 local hw, hh = 0, 0
@@ -91,10 +93,80 @@ local fxList = {}
 local focusName
 local fxRow = { tex = {}, more = nil, owner = nil, key = nil }
 local pactK, pactFrom = {}, {}
-local stats = { badges = 0, pools = 0, cones = 0, blasts = 0, adds = 0, counts = 0, countTop = nil, chases = 0,
+local stats = { badges = 0, pools = 0, aims = 0, cones = 0, blasts = 0, adds = 0, counts = 0, countTop = nil, chases = 0,
                 chaseLines = 0, waves = 0, edge = 0, waveR = 0, collects = 0, addRings = 0, fx = 0, vortex = 0,
                 vortexWave = 0, drops = 0, booms = 0 }
 V.stats = stats
+local cursors = setmetatable({}, { __mode = "k" })
+local function Cursor(L, t)
+    local c = cursors[L]
+    if not c then
+        c = { t = huge, act = {}, hi = 0, blast = 1, cone = 1, hit = 1 }
+        cursors[L] = c
+    end
+    if t < c.t then
+        c.blast, c.cone, c.hit, c.hi = 1, 1, 1, 0
+        local act = c.act
+        for i = #act, 1, -1 do act[i] = nil end
+    end
+    c.t = t
+    return c
+end
+local function FromOrder(a, b, F)
+    if F[a] ~= F[b] then return F[a] < F[b] end
+    return a < b
+end
+local function ActivePools(L, t)
+    local c = Cursor(L, t)
+    local np = L.np
+    local F, T = L.plFrom, L.plTo
+    local act = c.act
+    if c.np ~= np then
+        local ord = {}
+        for j = 1, np do ord[j] = j end
+        table.sort(ord, function(a, b) return FromOrder(a, b, F) end)
+        c.ord, c.np, c.hi = ord, np, 0
+        for i = #act, 1, -1 do act[i] = nil end
+    end
+    local ord, hi = c.ord, c.hi
+    while hi < np and F[ord[hi + 1]] <= t do
+        hi = hi + 1
+        local j = ord[hi]
+        if T[j] > t then
+            local n = #act
+            act[n + 1] = j
+            while n >= 1 and act[n] > j do
+                act[n + 1], act[n] = act[n], j
+                n = n - 1
+            end
+        end
+    end
+    c.hi = hi
+    local w = 0
+    for r = 1, #act do
+        local j = act[r]
+        if T[j] > t then
+            w = w + 1
+            act[w] = j
+        end
+    end
+    for r = #act, w + 1, -1 do act[r] = nil end
+    return act
+end
+local function RingAdds(L, defs)
+    local list = L.adds
+    local c = cursors[L] or Cursor(L, huge)
+    local n = list and #list or 0
+    if c.ringN ~= n or c.ringDefs ~= defs then
+        local out = {}
+        for i = 1, n do
+            local a = list[i]
+            if a.npc and defs[a.npc] then out[#out + 1] = i end
+        end
+        c.rings, c.ringN, c.ringDefs = out, n, defs
+    end
+    return c.rings
+end
 local function PutRect(tex, l, t, r, b, u0, v0, u1, v1)
     local cl, ct, cr, cb = max(l, -hw), max(t, -hh), min(r, hw), min(b, hh)
     if cr - cl < 1 or cb - ct < 1 then
@@ -162,6 +234,7 @@ end
 function V.Build(v, m)
     view, marks = v, m
     for i = 1, POOL_DRAW do pools[i] = Tex(marks, RIM, "BACKGROUND") end
+    for i = 1, AIM_DRAW do aimRings[i] = Tex(marks, RING, "BORDER") end
     for i = 1, RING_DRAW do addRings[i] = Tex(marks, RIM, "BACKGROUND") end
     for i = 1, WAVE_DRAW do winter.waves[i] = Tex(marks, RING, "BORDER") end
     winter.edge = Tex(marks, RING, "BORDER")
@@ -237,7 +310,6 @@ function V.Sharp(tex, rw)
         tex.sharpP = want
     end
 end
-V.Rim = V.Sharp
 function V.AddDebuff(fig, id)
     local tex = fig.adb
     if not id then
@@ -312,6 +384,7 @@ end
 function V.Use(scene)
     if not view then return end
     for i = 1, #pools do pools[i]:Hide() end
+    for i = 1, #aimRings do aimRings[i]:Hide() end
     for i = 1, #cones do cones[i]:Hide() end
     for i = 1, #blasts do blasts[i]:Hide() end
     for i = 1, #lines do lines[i]:Hide() end
@@ -370,7 +443,9 @@ local function PlacePools(scene, cam, t)
     local boss = scene.bossState
     local nc = 0
     stats.countTop = nil
-    for j = 1, L.np do
+    local act = ActivePools(L, t)
+    for r = 1, #act do
+        local j = act[r]
         if n >= POOL_DRAW then break end
         if L.plFrom[j] <= t and L.plTo[j] > t then
             local x, y = L.plX[j], L.plY[j]
@@ -384,6 +459,8 @@ local function PlacePools(scene, cam, t)
                     if PutEllipse(tex, sx, sy, rw, max(1, rw * min(1, cam.tilt * k))) then
                         n = n + 1
                         local r, g, b, a = Kit.Color(def.tone)
+                        local solid = def.fade and L.plSolid and L.plSolid[j]
+                        if solid and t > solid then a = a * (L.plTo[j] - t) / (L.plTo[j] - solid) end
                         tex:SetVertexColor(r, g, b, Fade(a, L.plFrom[j], L.plTo[j], t))
                         if def.boom and nc < COUNT_DRAW then
                             nc = nc + 1
@@ -398,6 +475,30 @@ local function PlacePools(scene, cam, t)
     for i = nc + 1, used.count do counts[i]:Hide() end
     used.pool, used.count = n, nc
     stats.pools, stats.counts = n, nc
+end
+local function PlaceAims(scene, cam, t)
+    local L = scene.layers
+    local A, K = L.plAimT, L.plAimK
+    local n = 0
+    for j = 1, A and L.np or 0 do
+        if n >= AIM_DRAW then break end
+        local from = A[j]
+        local s = from and from <= t and L.plFrom[j] > t and scene.states[K[j]]
+        if s and s.vis then
+            local sx, sy, k = Replay.Project(cam, s.x, s.y)
+            local def = L.plDef[j]
+            local rw = def.r0 * scene.ppy * cam.zoom * k
+            local tex = aimRings[n + 1]
+            if k > 0 and PutEllipse(tex, sx, sy, rw, max(1, rw * min(1, cam.tilt * k))) then
+                n = n + 1
+                local r, g, b, a = Kit.Color(def.ring or def.tone)
+                tex:SetVertexColor(r, g, b, Fade(a, from, L.plFrom[j] + FADE, t))
+            end
+        end
+    end
+    for i = n + 1, used.aim do aimRings[i]:Hide() end
+    used.aim = n
+    stats.aims = n
 end
 local function PlaceChase(scene, cam, t)
     local C = scene.layers.chase
@@ -435,9 +536,10 @@ local function PlaceRings(scene, cam, t)
     local defs = ns.replayData.rings
     local RV = ns.ReplayRealmView
     local n = 0
-    for i = 1, list and #list or 0 do
+    local idx = RingAdds(scene.layers, defs)
+    for r = 1, #idx do
         if n >= RING_DRAW then break end
-        local a = list[i]
+        local a = list[idx[r]]
         local def = a.npc and defs[a.npc]
         local to = a.to or huge
         if def and a.from <= t and to > t and not (RV and RV.HideAdd(scene, a)) then
@@ -463,7 +565,11 @@ local function PlaceBlasts(scene, cam, t)
     local L = scene.layers
     local n = 0
     local zoom = cam.zoom
-    for j = 1, L.nb do
+    local c = Cursor(L, t)
+    local lo = c.blast
+    while lo <= L.nb and L.bT[lo] + BLAST_SHOW <= t do lo = lo + 1 end
+    c.blast = lo
+    for j = lo, L.nb do
         if n >= BLAST_DRAW or L.bT[j] > t then break end
         if L.bT[j] + BLAST_SHOW > t then
             local sx, sy, k = Replay.Project(cam, L.bX[j], L.bY[j])
@@ -485,7 +591,11 @@ end
 local function PlaceCones(scene, cam, t)
     local L = scene.layers
     local n = 0
-    for j = 1, L.nc do
+    local c = Cursor(L, t)
+    local lo = c.cone
+    while lo <= L.nc and L.cnTo[lo] <= t do lo = lo + 1 end
+    c.cone = lo
+    for j = lo, L.nc do
         if n >= CONE_DRAW or L.cnT[j] > t then break end
         if L.cnTo[j] > t and L.cnX[j] >= 0 then
             local ox, oy = L.cnX[j], L.cnY[j]
@@ -518,7 +628,7 @@ function V.Adds(scene, t, out)
     for i = 1, #list do
         if n >= ADD_DRAW then break end
         local a = list[i]
-        if a.from <= t and a.to > t and not a.mdl and not a.look and not (RV and RV.HideAdd(scene, a)) then
+        if a.from <= t and a.to > t and not a.look and not (RV and RV.HideAdd(scene, a)) then
             local x, y, chase = -1, -1, false
             if a.chaseK and t < a.chaseTo then
                 x, y = Replay.PosAtTime(scene.tracks[a.chaseK], t)
@@ -541,7 +651,11 @@ local function PlaceHits(scene, cam, t)
     local n = 0
     local w0 = 2 * HIT_YD * scene.ppy * cam.zoom
     local lo = t - HIT_SHOW
-    for i = 1, L.nh do
+    local c = Cursor(L, t)
+    local first = c.hit
+    while first <= L.nh and L.hiT[first] < lo do first = first + 1 end
+    c.hit = first
+    for i = first, L.nh do
         if n >= HIT_DRAW or L.hiT[i] > t then break end
         if L.hiT[i] >= lo then
             local sx, sy, k = Replay.Project(cam, L.hiX[i], L.hiY[i])
@@ -947,6 +1061,7 @@ function V.Place(scene, cam, t, figs)
     if not L or not view then return end
     hw, hh = cam.w / 2, cam.h / 2
     PlacePools(scene, cam, t)
+    PlaceAims(scene, cam, t)
     PlaceRings(scene, cam, t)
     PlaceWinter(scene, cam, t)
     PlaceVortex(scene, cam, t)
@@ -998,9 +1113,3 @@ end
 V.FxRow = fxRow
 V.Ellipse = PutEllipse
 V.Affine = PutAffine
-function V.Lift(fig)
-    return fig.lift or 0
-end
-function V.Round(v)
-    return floor(v + 0.5)
-end

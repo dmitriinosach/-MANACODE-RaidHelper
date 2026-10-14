@@ -6,9 +6,6 @@ local SEC = 3
 local AGE = 2
 local Mech = {}
 ns.LichMech = Mech
-local function Fill(set, list)
-    for i = 1, #(list or {}) do set[ns.SpellKey(list[i]) or list[i]] = true end
-end
 function Mech.Begin(s, fight)
     local st
     for i = 1, #s.badges do
@@ -21,10 +18,10 @@ function Mech.Begin(s, fight)
             if npc then st.npcs[npc] = true end
             if bd.kind == "frenzy" then
                 st.frenzy, st.fzNpc, st.sec = i, npc, bd.sec or SEC
-                Fill(st.fz, bd.spells)
+                ns.SpellSet(bd.spells, st.fz)
             else
                 st.spirit, st.spNpc, st.age = i, npc, bd.age or AGE
-                Fill(st.sp, bd.spells)
+                ns.SpellSet(bd.spells, st.sp)
             end
         end
     end

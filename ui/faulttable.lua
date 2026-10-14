@@ -15,9 +15,6 @@ ns.FaultTable = FT
 local open = {}
 local fresh
 local freshGen = 0
-function FT.IsOpen(name)
-    return open[name] == true
-end
 function FT.SetOpen(name, on)
     open[name] = on and true or nil
     if on then
@@ -428,7 +425,7 @@ local function FillFault(r, d, fight, c)
     if ev.wipe then text = text .. " " .. ns.Kit.Hex("text.note") .. ns.T("ft.wipe") .. "|r" end
     r.name:SetText(text)
     ns.Kit.Text(r.name, done and "text.muted" or "text.primary")
-    r.when:SetText(ev.t and ns.GPList.Clock(ev.t - fight.from) or ns.T("ft.whole"))
+    r.when:SetText(ev.t and ns.Clock(ev.t - fight.from) or ns.T("ft.whole"))
     if done then
         local tip = done.n and format(ns.T("ft.tip.done"), done.n, ns.Ledger.Unit(done.s)) or ns.T("led.menu.old")
         Done(r, c, L, done.n, tip, ns.Ledger.CanUndo(ev.key))

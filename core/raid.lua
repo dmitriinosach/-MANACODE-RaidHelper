@@ -40,18 +40,25 @@ function Raid.Locks()
     return out
 end
 function Raid.LockoutId(raid, at, locks)
-    if not raid or not raid.name then return nil end
+    if not raid or not raid.name then return nil, false end
     locks = locks or Raid.Locks()
     local want, name, best = Raid.Wanted(raid), Plain(raid.name), nil
     for i = 1, #locks do
         local l = locks[i]
         local fits = not at or (at >= l.from and at <= l.to)
         if fits and l.size == raid.size and Plain(l.name) == name then
-            if l.diff == want then return l.id end
+            if l.diff == want then return l.id, true end
             best = best or l.id
         end
     end
-    return best
+    return best, false
+end
+local function Guessed(raid, locks)
+    local want = Raid.Wanted(raid)
+    for i = 1, #locks do
+        if locks[i].id == raid.id then return locks[i].diff ~= want end
+    end
+    return false
 end
 function Raid.MapNow()
     if not GetMapInfo or (WorldMapFrame and WorldMapFrame:IsShown()) then return nil end
@@ -120,14 +127,15 @@ function Raid.Label(raid)
 end
 local function FillSeg(seg, me, locks)
     local raid = seg.raid
-    if not raid or raid.id then return false end
+    if not raid then return false end
     if raid.who then
         if raid.who ~= me then return false end
     elseif not raid.info then
         return false
     end
-    local id = Raid.LockoutId(raid, seg.t0, locks)
-    if not id then return false end
+    local id, exact = Raid.LockoutId(raid, seg.t0, locks)
+    if not id or id == raid.id then return false end
+    if raid.id and not (exact and Guessed(raid, locks)) then return false end
     raid.id = id
     return true
 end

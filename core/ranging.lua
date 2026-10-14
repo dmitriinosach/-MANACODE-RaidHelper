@@ -33,9 +33,6 @@ local Ranging = {}
 ns.Ranging = Ranging
 Ranging.PREFIX = PREFIX
 Ranging.VERSION = VERSION
-Ranging.MIN_LO = MIN_LO
-Ranging.MIN_HI = MIN_HI
-Ranging.MIN_DEFAULT = MIN_DEFAULT
 Ranging.MEASURERS = MEASURERS
 local FUSE = ns.rangingData.fuse
 local session = nil
@@ -91,7 +88,7 @@ local function Attempt()
     local _, kind = GetInstanceInfo()
     if kind ~= "raid" then return nil end
     local live = ns.Store.Live()
-    if not live or not live.pull or not ns.Store.IsNew(live) then return nil end
+    if not live or not live.pull then return nil end
     return live
 end
 Ranging.Attempt = Attempt
@@ -294,24 +291,6 @@ local function MeasureAll(s, n, now)
         end
     end
     if k > 0 then Send("M" .. concat(parts, ";", 1, k), now) end
-end
-function Ranging.Why()
-    if session then return nil end
-    if not Ranging.Enabled() then return "off" end
-    if GetNumRaidMembers() == 0 then return "noraid" end
-    local Rec = ns.Recorder
-    if not Rec or not Rec.IsOn() or Rec.IsPaused() then return "rec" end
-    if not Rec.InZone() then return "zone" end
-    local _, kind = GetInstanceInfo()
-    if kind ~= "raid" then return "inst" end
-    local live = ns.Store.Live()
-    if not live or not live.pull then return "pull" end
-    if not ns.Store.IsNew(live) then return "old" end
-    if live == halt.seg then return "halt" end
-    local n, enc = FindUnits(nil)
-    if n == 0 then return "noboss" end
-    if not enc then return "nocombat" end
-    return nil
 end
 local function Tick(now)
     local seg = Ranging.Enabled() and GetNumRaidMembers() > 0 and Attempt() or nil

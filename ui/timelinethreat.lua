@@ -103,6 +103,3 @@ function TT.Readout(fight, who, t)
     if s.ceil then return format(ns.T("thr.read.below"), s.ceil, s.mob.name) end
     return nil
 end
-function TT.State()
-    return state
-end

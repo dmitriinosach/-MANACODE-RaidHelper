@@ -91,15 +91,6 @@ function Bar.TogglePlay()
     run.playing = not run.playing
     Bar.UpdatePlay()
 end
-function Bar.StepSpeed(dir)
-    local run = st.run
-    local at = 1
-    for i = 1, #SPEEDS do
-        if SPEEDS[i] == run.speed then at = i end
-    end
-    run.speed = SPEEDS[(at - 1 + dir) % #SPEEDS + 1]
-    Bar.UpdatePlay()
-end
 function Bar.Step()
     if st.run.scrubbing then SeekToCursor() end
 end

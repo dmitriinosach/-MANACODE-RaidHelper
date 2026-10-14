@@ -654,12 +654,6 @@ function Shell.FoldTo(view)
     if not Shell.IsFolded() then Fold() end
     ns.ShellMini.SetView(view)
 end
-function Shell.ToggleMax()
-    if frame and frame:IsShown() then ToggleMax() end
-end
-function Shell.IsMax()
-    return Saved().max == true
-end
 function Shell.Probe()
     return { frame = frame, strip = strip, maxBtn = maxBtn, fold = fold, grip = grip, close = close,
              acts = { toolGroup, winGroup, about, zoomOut, zoomIn, fold, maxBtn, close } }

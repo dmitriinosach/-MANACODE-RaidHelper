@@ -2,7 +2,6 @@ local ADDON, ns = ...
 local format = string.format
 local floor = math.floor
 local max = math.max
-local min = math.min
 local tsort = table.sort
 local MARGIN = 8
 local BAR_ROOM = 8
@@ -23,13 +22,11 @@ local BTNPAD = 24
 local BTNMIN = 60
 local CHATH = 16
 local CHATPAD = 14
-local WHEEL = 40
 local UNKNOWN_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local SKULL_ICON = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8"
 local CTL_ICON = "Interface\\Icons\\INV_Sword_04"
 local CTL_SPELL = 71289
 local TRANQ_SPELL = 19801
-local RELAYOUT_DELAY = 0.15
 local ROLE_ORDER = { "tank", "heal", "dps" }
 local ARROWS = { given = "out", rebuff = "out", got = "in", rebuffed = "in" }
 local LINKED = { rebuff = true, rebuffed = true, cc = true, blast = true, pulled = true }
@@ -38,9 +35,9 @@ ns.SummaryView = View
 local Badges = ns.Badges
 local Grid = ns.Grid
 local style = Badges.style
-local host, scroll, content, bg, hint, art
+local host, content, bg, hint, art
+local pane
 local fight, summary
-local offset = 0
 local stats, panels, heads, tiles = {}, {}, {}, {}
 local wides = {}
 local failPanel
@@ -49,12 +46,8 @@ local laid
 local Render
 local pens = {}
 local gpModel
-local lastW = 0
-local relayoutAt = 0
-local pump = CreateFrame("Frame")
-pump:Hide()
 local Tips = ns.BadgeTips
-local Short = Tips.Short
+local Short = ns.Short
 local Rate = Tips.Rate
 local function Good(x)
     return x.goodDmg or x.dmg
@@ -64,29 +57,13 @@ local function AllLine(dmg, sec)
     if not key then return "" end
     return ns.Kit.Hex("text.muted") .. format(ns.T(key), Rate(dmg / sec)) .. "|r"
 end
-local Clock = Tips.Clock
+local Clock = ns.Clock
 local function Icon(id)
     if type(id) == "string" then return id end
     return id and ns.Effects.IconById(id) or UNKNOWN_ICON
 end
-local pageBar
-local function SyncBar()
-    if pageBar and content then pageBar:SetState(offset, host:GetHeight(), content:GetHeight()) end
-end
-local function Rescroll()
-    if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
-    offset = min(offset, max(0, content:GetHeight() - host:GetHeight()))
-    scroll:SetVerticalScroll(offset)
-    SyncBar()
-end
 local function PageWheel(delta)
-    if not content then return false end
-    local most = max(0, content:GetHeight() - host:GetHeight())
-    local was = offset
-    offset = max(0, min(most, offset - delta * WHEEL))
-    scroll:SetVerticalScroll(offset)
-    SyncBar()
-    return offset ~= was
+    return pane ~= nil and pane:Wheel(delta)
 end
 local function Stat(i)
     stats[i] = stats[i] or Badges.Total(content)
@@ -484,10 +461,7 @@ end
 local function Inside()
     return not ns.SumSide or ns.SumSide.Inside()
 end
-local function SideWheel(delta)
-    if Inside() then return PageWheel(delta) end
-    return ns.SumSide.Wheel(delta)
-end
+local SideWheel = ns.SumSide and ns.SumSide.PageWheel(PageWheel) or PageWheel
 local function HeadLine(f, font)
     local fs = f.head:CreateFontString(nil, "OVERLAY", font)
     fs:SetJustifyH("LEFT")
@@ -590,7 +564,7 @@ local function BlockList(b)
         elseif kind == "parries" then
             text = ns.ActionTips.ParryText(b, who, v)
         else
-            text = format("%s  %s%.1f%%|r", Short(v), ns.Kit.Hex("text.note"), v * 100 / max(1, b.total))
+            text = format("%s  %s%s%%|r", Short(v), ns.Kit.Hex("text.note"), ns.Fixed(v * 100 / max(1, b.total)))
         end
         local known = summary.byName and summary.byName[who]
         local class = ns.Encounters.ClassOf(who) or (known and known.class)
@@ -669,7 +643,7 @@ local function DrawBlocks(s, y, w)
     if loot then
         np = np + 1
         local f = Panel(np)
-        f:SetModel({ title = loot.title, rows = loot.rows, empty = loot.empty, onWheel = PageWheel })
+        f:SetModel({ title = loot.title, rows = loot.rows, empty = loot.empty, onWheel = PageWheel, fit = true })
         list[#list + 1] = f
     end
     for i = np + 1, #panels do panels[i]:Hide() end
@@ -716,7 +690,7 @@ local function DrawTiles(s, y, w)
 end
 function Render()
     if not host or not host:IsShown() then return end
-    lastW = floor(host:GetWidth())
+    pane:Laid()
     local file = fight and ns.RaidArtFile and ns.RaidArtFile(fight.boss, fight.raid and fight.raid.map) or nil
     ns.Kit.RaidArtSet(art, host, file)
     if failPanel then failPanel:Hide() end
@@ -735,7 +709,7 @@ function Render()
         hint:SetText(err and format(ns.T("sum.fail"), err) or ns.T("sum.busy"))
         hint:Show()
         content:SetHeight(host:GetHeight())
-        Rescroll()
+        pane:Rescroll()
         return
     end
     hint:Hide()
@@ -754,7 +728,7 @@ function Render()
     y = DrawTiles(summary, y, w)
     Mark("players", top, y)
     content:SetHeight(max(host:GetHeight(), y + MARGIN))
-    Rescroll()
+    pane:Rescroll()
 end
 function View.Attach(frame)
     host = frame
@@ -762,27 +736,9 @@ function View.Attach(frame)
     bg:SetAllPoints()
     ns.Kit.Paint(bg, "surface.page")
     art = ns.Kit.RaidArt(host)
-    scroll = CreateFrame("ScrollFrame", nil, host)
-    scroll:SetAllPoints()
-    content = CreateFrame("Frame", nil, scroll)
-    content:SetWidth(1)
-    content:SetHeight(1)
-    scroll:SetScrollChild(content)
-    scroll:EnableMouseWheel(true)
-    scroll:SetScript("OnMouseWheel", function(_, delta) PageWheel(delta) end)
-    local deck = CreateFrame("Frame", nil, host)
-    deck:SetFrameLevel(host:GetFrameLevel() + 40)
-    deck:SetPoint("TOPRIGHT", host, "TOPRIGHT", -1, -MARGIN)
-    deck:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -1, MARGIN)
-    deck:SetWidth(8)
-    pageBar = ns.Kit.ScrollBar(deck, 1)
-    pageBar:SetPoint("TOPRIGHT", deck, "TOPRIGHT", 0, 0)
-    pageBar:SetPoint("BOTTOMRIGHT", deck, "BOTTOMRIGHT", 0, 0)
-    pageBar.onScroll = function(want)
-        offset = max(0, min(max(0, content:GetHeight() - host:GetHeight()), want))
-        scroll:SetVerticalScroll(offset)
-        SyncBar()
-    end
+    pane = ns.Kit.ScrollPage(host, { fill = true, bar = "deck", inset = MARGIN,
+        relayout = function() Render() end, prof = "ui.sum" })
+    content = pane.content
     hint = content:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     ns.Kit.Text(hint, "text.bright")
     hint:SetPoint("TOPLEFT", MARGIN * 2, -MARGIN * 2)
@@ -794,7 +750,7 @@ end
 function View.Show(f)
     if not host then return end
     fight = f
-    offset = 0
+    pane.offset = 0
     summary = ns.Summary.Get(f)
     host:Show()
     Render()
@@ -823,11 +779,6 @@ function View.Details()
     end
     return out
 end
-pump:SetScript("OnUpdate", ns.Prof.Wrap("ui.sum", function(self)
-    if GetTime() < relayoutAt then return end
-    self:Hide()
-    Render()
-end))
 function View.Refresh()
     Render()
 end
@@ -838,9 +789,7 @@ if ns.GPList then ns.GPList.OnChange(function() Render() end) end
 function View.Relayout()
     if not host or not host:IsShown() then return end
     ns.Kit.RaidArtFit(art, host)
-    if floor(host:GetWidth()) == lastW then return end
-    relayoutAt = GetTime() + RELAYOUT_DELAY
-    pump:Show()
+    pane:Relayout()
 end
 function View.IsShown()
     return host ~= nil and host:IsShown() and true or false

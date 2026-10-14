@@ -72,10 +72,6 @@ local function Geometry(fig, look)
         y = 0
     else
         local top = fig.top or base
-        if fig.modelOn and fig.model then
-            top = max(top, fig.model:GetHeight())
-            w = max(w, fig.model:GetWidth())
-        end
         H = max((top + base) * PAD, w)
         W = max(w * WIDTH_K, H * (ASPECT[look.tex] or 1)) * look.k
         H = H * look.k

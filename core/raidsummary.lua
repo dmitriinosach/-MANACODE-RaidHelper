@@ -1,6 +1,7 @@
 local _, ns = ...
 local floor = math.floor
 local max = math.max
+local min = math.min
 local tsort = table.sort
 local SESSION_GAP = 3600
 local QUIET_OUT = 3600
@@ -76,7 +77,23 @@ local function NewPlayer(name)
              deaths = 0, deathBy = {}, flask = 0, elixir = 0, potion = 0, food = 0, scroll = 0, other = 0,
              stone = 0, used = {}, tries = 0, prio = 0, prioBy = {}, bad = 0, badHits = 0, badBy = {}, kicks = 0,
              cures = 0, purges = 0, first = 0, firstBy = {}, buffN = 0, buffSec = 0, buffBy = {}, rod = 0, rodBy = {},
-             jopo = 0, jopoKill = 0, jopoBy = {} }
+             jopo = 0, jopoKill = 0, jopoBy = {}, ab = {}, hb = {},
+             waste = { all = 0, enc = 0, boss = 0, cut = 0 } }
+end
+local function AddAbs(into, from, enc, cut)
+    for key, e in pairs(from or {}) do
+        local s = into[key]
+        if not s then
+            s = { i = e.i, all = 0, enc = 0, boss = 0, cut = 0 }
+            into[key] = s
+        end
+        s.all = s.all + e.a
+        if enc then
+            s.enc = s.enc + e.a
+            s.boss = s.boss + (e.b or 0)
+        end
+        if cut then s.cut = s.cut + e.a end
+    end
 end
 local function TimeOf(fights)
     local t = { combat = 0, wipe = 0, idle = 0, gaps = 0 }
@@ -178,15 +195,22 @@ local function AddUse(st, piece)
 end
 local function AddTrash(st, piece)
     local res = st.res
+    local cutAt = res.cutAt
+    local ivs = piece.ivs or {}
+    local before = cutAt ~= nil and #ivs > 0
+    for k = 1, before and #ivs or 0 do
+        if ivs[k].to > cutAt then before = false end
+    end
     for name, r in pairs(piece.rows or {}) do
         local p = st.byName[name]
         if p then
             p.all = p.all + r.all
             p.heal = p.heal + r.heal
             res.trash = res.trash + r.all
+            AddAbs(p.ab, r.ab, false, before)
+            AddAbs(p.hb, r.hb, false, false)
         end
     end
-    local cutAt = res.cutAt
     for k = 1, cutAt and #(piece.ivs or {}) or 0 do
         local iv = piece.ivs[k]
         if iv.to <= cutAt then
@@ -217,6 +241,8 @@ local function AddAttempt(st, f, s)
             p.boss = p.boss + r.boss
             p.heal = p.heal + r.heal
             if inCut then p.cut = p.cut + r.all end
+            AddAbs(p.ab, r.ab, true, inCut)
+            AddAbs(p.hb, r.hb, false, false)
         end
     end
     AddUse(st, piece)
@@ -321,10 +347,19 @@ local function Settle(st, f, s)
         local p = byName[who]
         local waste = full - (u.by[who] or 0)
         if p and waste > 0 then
+            local w = p.waste
+            w.enc = w.enc + min(p.enc, waste)
             p.enc = max(0, p.enc - waste)
-            if bossy then p.boss = max(0, p.boss - waste) end
+            if bossy then
+                w.boss = w.boss + min(p.boss, waste)
+                p.boss = max(0, p.boss - waste)
+            end
+            w.all = w.all + min(p.all, waste)
             p.all = max(0, p.all - waste)
-            if inCut then p.cut = max(0, p.cut - waste) end
+            if inCut then
+                w.cut = w.cut + min(p.cut, waste)
+                p.cut = max(0, p.cut - waste)
+            end
         end
     end
 end

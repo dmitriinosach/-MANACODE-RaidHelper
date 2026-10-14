@@ -2,7 +2,6 @@ local _, ns = ...
 local format = string.format
 local max = math.max
 local ceil = math.ceil
-local BTN = 18
 local ICON = 14
 local GAP = 4
 local HEAD_PAD = 6
@@ -331,15 +330,10 @@ local function Sync()
     SetBoss(f and f.boss)
 end
 function Hide.Head(host)
-    local b = Kit.Button(host)
-    b:SetWidth(BTN)
-    b:SetHeight(BTN)
+    local b = Kit.ToolButton(host, nil, Kit.GEAR_TEX)
     b:SetPoint("RIGHT", host, "TOPRIGHT", -HEAD_PAD, HEAD_Y)
-    b.icon = b:CreateTexture(nil, "OVERLAY")
     b.icon:SetWidth(ICON)
     b.icon:SetHeight(ICON)
-    b.icon:SetPoint("CENTER", b, "CENTER", 0, 0)
-    b.icon:SetTexture(Kit.GEAR_TEX)
     Kit.Tint(b.icon, "text.title")
     b.tipTitle = T("sum.hide.btn")
     b.tip = T("sum.hide.btn.tip")

@@ -73,6 +73,14 @@ function FC.New(fight)
     for id in pairs(ns.defensives or {}) do defs[ns.SpellKey(id)] = true end
     local acts = ns.actions
     Fill(selfRez, acts and acts.selfRez)
+    local aim = nil
+    local pools = D and D.pools and D.pools[boss]
+    for i = 1, pools and #pools or 0 do
+        if pools[i].aim then
+            aim = aim or {}
+            aim[ns.SpellKey(pools[i].spell)] = pools[i].aim
+        end
+    end
     local db = ns.GetDB()
     return {
         fight = fight, from = fight.from, to = fight.to, players = fight.players or {},
@@ -82,6 +90,7 @@ function FC.New(fight)
         stone = acts and ns.SpellKey(acts.stone), stoneId = acts and acts.stoneId,
         valkyr = D ~= nil and D.valkyr ~= nil and D.valkyr.boss == boss,
         veh = {}, dead = {}, stoneT = {}, last = {}, heroAt = -1e9, auraIds = {}, helpIds = {},
+        aim = aim, aimAt = {}, btT = {}, btN = {},
         r = { n = 0, t = {}, kind = {}, icon = {}, imp = {}, key = {}, head = {}, obj = {}, who = {}, text = {},
               tip = {} },
     }
@@ -125,6 +134,30 @@ local function BossCast(fc, ts, dst, spell, id)
     local on = dst and fc.players[dst] and dst or false
     local text = on and format(ns.T("rep.f.cast"), spell, on) or spell
     Row(fc, ts, "boss", n, true, "b|" .. spell, spell, false, on, text)
+end
+local function AimFlush(fc, guid, on)
+    local cast = fc.aimAt[guid]
+    if not cast then return end
+    fc.aimAt[guid] = nil
+    BossCast(fc, cast.t, on, cast.spell, cast.id)
+end
+local function AimCast(fc, ts, guid, spell, id, win)
+    AimFlush(fc, guid, nil)
+    fc.aimAt[guid] = { t = ts, spell = spell, id = id, win = win }
+    local bt = fc.btT[guid]
+    if bt and ts - bt <= -win[1] and fc.btN[guid] then AimFlush(fc, guid, fc.btN[guid]) end
+end
+local function AimTarget(fc, ts, guid, dst)
+    if not guid then return end
+    local on = dst and fc.players[dst] and dst or false
+    fc.btT[guid], fc.btN[guid] = ts, on
+    local cast = fc.aimAt[guid]
+    if not cast then return end
+    if ts - cast.t > cast.win[2] then
+        AimFlush(fc, guid, nil)
+    elseif on then
+        AimFlush(fc, guid, on)
+    end
 end
 local function BossAura(fc, ts, dst, spell, id)
     local c = fc.last["c" .. spell]
@@ -214,7 +247,12 @@ end
 local function OnCast(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, a1, a2, sk)
     if type(a2) ~= "string" or not sk then return end
     if Enemy(srcFlags) or fc.bosses[ns.NpcKey(srcGUID) or 0] then
-        if fc.casts[sk] then BossCast(fc, ts, dst, a2, a1) end
+        local win = fc.aim and fc.aim[sk]
+        if win and srcGUID and fc.casts[sk] then
+            if sub == "SPELL_CAST_START" then AimCast(fc, ts, srcGUID, a2, a1, win) end
+        elseif fc.casts[sk] then
+            BossCast(fc, ts, dst, a2, a1)
+        end
         return
     end
     local who = Actor(fc, srcGUID, src, srcFlags)
@@ -257,8 +295,12 @@ local function OnVehicle(fc, ts, src, on)
     end
     fc.veh[src] = on or nil
 end
-function FC.Event(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4, a5)
-    local sk = ns.SpellOf(sub, a1)
+function FC.Event(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4, a5, sk)
+    if sk == nil then
+        sk = ns.SpellOf(sub, a1)
+    elseif not sk then
+        sk = nil
+    end
     if sub == "SPELL_AURA_APPLIED" then
         OnApplied(fc, ts, srcGUID, src, srcFlags, dst, a1, a2, sk)
     elseif sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CAST_START" or sub == "SPELL_SUMMON" then
@@ -284,6 +326,8 @@ function FC.Event(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a
         if dst and fc.dead[dst] and ts <= fc.to then Rez(fc, ts, dst, src or "?", a2, a1) end
     elseif sub == "SPELL_AURA_REMOVED" then
         if sk and sk == fc.stone and dst and fc.players[dst] then fc.stoneT[dst] = ts end
+    elseif sub == "FW_BTGT" then
+        if fc.aim then AimTarget(fc, ts, srcGUID, dst) end
     elseif sub == "FW_VEH" then
         OnVehicle(fc, ts, src, tonumber(a1) == 1)
     elseif sub == "FW_MARK" and ns.DevMarks then
@@ -367,6 +411,7 @@ local function Merge(L, r, order)
     L.nf = n
 end
 function FC.Done(fc, L, res)
+    for guid in pairs(fc.aimAt) do AimFlush(fc, guid, nil) end
     Phases(fc, res)
     local r = fc.r
     local order = {}

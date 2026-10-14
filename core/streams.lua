@@ -9,19 +9,6 @@ local MAP_UNITS = 10000
 local NPC_MARK = 35
 local Streams = {}
 ns.Streams = Streams
-function Streams.New(segs)
-    local out = {}
-    for i = 1, #segs do
-        if ns.Store.IsNew(segs[i]) then out[#out + 1] = segs[i] end
-    end
-    return out
-end
-function Streams.Any(segs)
-    for i = 1, #segs do
-        if ns.Store.IsNew(segs[i]) then return true end
-    end
-    return false
-end
 function Streams.GuidKey(guid)
     if sub(guid, 1, 2) == "0x" then guid = sub(guid, 3) end
     return "#" .. guid
@@ -34,18 +21,16 @@ function Streams.HpList(segs, who, from, to)
     local held = nil
     for i = 1, #segs do
         local seg = segs[i]
-        if ns.Store.IsNew(seg) then
-            for ts, hp, hpMax in ns.Decode.Hp(seg, who, from, to) do
-                if hpMax > 0 then
-                    if ts < from then
-                        held = { t = from, hp = hp, max = hpMax, pct = hp / hpMax }
-                    elseif ts <= to then
-                        if held then
-                            out[#out + 1] = held
-                            held = nil
-                        end
-                        out[#out + 1] = { t = ts, hp = hp, max = hpMax, pct = hp / hpMax }
+        for ts, hp, hpMax in ns.Decode.Hp(seg, who, from, to) do
+            if hpMax > 0 then
+                if ts < from then
+                    held = { t = from, hp = hp, max = hpMax, pct = hp / hpMax }
+                elseif ts <= to then
+                    if held then
+                        out[#out + 1] = held
+                        held = nil
                     end
+                    out[#out + 1] = { t = ts, hp = hp, max = hpMax, pct = hp / hpMax }
                 end
             end
         end
@@ -58,7 +43,7 @@ function Streams.ManaList(segs, who, from, to)
     local held = nil
     for i = 1, #segs do
         local seg = segs[i]
-        if ns.Store.IsNew(seg) and seg.mana then
+        if seg.mana then
             for ts, mp, mpMax in ns.Decode.Mana(seg, who, from, to) do
                 if mpMax > 0 then
                     local pct = min(1, mp / mpMax)
@@ -83,14 +68,12 @@ function Streams.NpcHp(segs, guid, to)
     local ts, ps
     for i = 1, #segs do
         local seg = segs[i]
-        if ns.Store.IsNew(seg) then
-            for t, hp, hpMax in ns.Decode.Hp(seg, key, nil, to) do
-                if t > to then break end
-                if hpMax > 0 then
-                    if not ts then ts, ps = {}, {} end
-                    local n = #ts + 1
-                    ts[n], ps[n] = t, min(1, hp / hpMax)
-                end
+        for t, hp, hpMax in ns.Decode.Hp(seg, key, nil, to) do
+            if t > to then break end
+            if hpMax > 0 then
+                if not ts then ts, ps = {}, {} end
+                local n = #ts + 1
+                ts[n], ps[n] = t, min(1, hp / hpMax)
             end
         end
     end
@@ -101,15 +84,13 @@ function Streams.Real(segs, who, t)
     local seen, zero, heldHp = false, false, nil
     for i = 1, #segs do
         local seg = segs[i]
-        if ns.Store.IsNew(seg) then
-            for ts, hp, hpMax in ns.Decode.Hp(seg, who, from, to) do
-                if hpMax > 0 then
-                    if ts < from then
-                        heldHp = hp
-                    else
-                        seen = true
-                        if hp == 0 then zero = true end
-                    end
+        for ts, hp, hpMax in ns.Decode.Hp(seg, who, from, to) do
+            if hpMax > 0 then
+                if ts < from then
+                    heldHp = hp
+                else
+                    seen = true
+                    if hp == 0 then zero = true end
                 end
             end
         end
@@ -164,7 +145,6 @@ local function MapAt(marks, t, k)
     return k
 end
 function Streams.Frames(segs, out, from, to)
-    segs = Streams.New(segs)
     if #segs == 0 then return end
     local times = {}
     local pos = Tracks(segs, "pos", from - POS_HOLD, to, times)
@@ -227,26 +207,11 @@ function Streams.Frames(segs, out, from, to)
                           floor = level, units = snap, lost = lost }
     end
 end
-function Streams.PosX(segs, who, from, to)
-    local ts, xs = {}, {}
-    for i = 1, #segs do
-        local seg = segs[i]
-        if ns.Store.IsNew(seg) then
-            for t, x in ns.Decode.Pos(seg, who, from, to) do
-                if t <= to then
-                    ts[#ts + 1] = t
-                    xs[#xs + 1] = x
-                end
-            end
-        end
-    end
-    return ts, xs
-end
 local function SegAt(ts)
     local live = ns.Store.Live()
-    if ns.Store.IsNew(live) and ts >= live.t0 then return live end
+    if live and ts >= live.t0 then return live end
     for _, seg in ns.Store.Segments() do
-        if ns.Store.IsNew(seg) and ts >= seg.t0 and ts <= (seg.t1 or seg.t0) + 1 then return seg end
+        if ts >= seg.t0 and ts <= (seg.t1 or seg.t0) + 1 then return seg end
     end
     return nil
 end
@@ -282,13 +247,11 @@ end
 function Streams.Names(segs, kind)
     local seen, out = {}, {}
     for i = 1, #segs do
-        if ns.Store.IsNew(segs[i]) then
-            local names = ns.Decode.Names(segs[i], kind)
-            for k = 1, #names do
-                if not seen[names[k]] and not (kind == "hp" and Streams.IsNpc(names[k])) then
-                    seen[names[k]] = true
-                    out[#out + 1] = names[k]
-                end
+        local names = ns.Decode.Names(segs[i], kind)
+        for k = 1, #names do
+            if not seen[names[k]] and not (kind == "hp" and Streams.IsNpc(names[k])) then
+                seen[names[k]] = true
+                out[#out + 1] = names[k]
             end
         end
     end

@@ -39,10 +39,19 @@ function R.New(fight)
         leave = ns.SpellSet(rd.leave), split = ns.SpellSet(rd.split), cutHit = ns.SpellSet(cd and cd.hit),
         cutPulse = ns.SpellSet(cd and cd.pulse), cutStart = ns.SpellSet(cd and cd.start),
         pudAura = {}, pudMark = {}, marks = {}, puds = {}, meteorHit = ns.SpellSet(rd.meteor and rd.meteor.hit),
-        meteors = {}, shared = {},
+        meteors = {}, shared = {}, entry = {},
     }
     R.PudIndex(ctx)
     return ctx
+end
+local function Entry(ctx, guid)
+    if not guid then return nil end
+    local e = ctx.entry[guid]
+    if e == nil then
+        e = ns.NpcEntry(guid) or false
+        ctx.entry[guid] = e
+    end
+    return e or nil
 end
 function R.PudIndex(ctx)
     local list = ctx.rd.puddles or {}
@@ -89,7 +98,7 @@ local function Puddle(ctx, ts, sub, sid, dst)
         ctx.marks[i][dst] = nil
     end
 end
-function R.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1, a2)
+function R.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1, a2, sk)
     if sub == STACK then
         local id = ns.SpellKey(a1)
         if id and ctx.aura[id] and src and ctx.players[src] then Add(ctx, src, ts, (tonumber(a2) or 0) > 0 and ON or OFF) end
@@ -104,7 +113,7 @@ function R.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1, a2)
         return
     end
     local P = ctx.players
-    local sn, dn = ns.NpcEntry(srcGUID), ns.NpcEntry(dstGUID)
+    local sn, dn = Entry(ctx, srcGUID), Entry(ctx, dstGUID)
     Boss(ctx, sn, src, ts)
     Boss(ctx, dn, dst, ts)
     if sub == "UNIT_DIED" then
@@ -121,7 +130,8 @@ function R.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1, a2)
         local w = npc and (ctx.twi[npc] and TWI or ctx.phys[npc] and PHYS)
         if w then Add(ctx, pl, ts, w) end
     end
-    local sid = ns.SpellOf(sub, a1)
+    local sid = sk
+    if sid == nil then sid = ns.SpellOf(sub, a1) end
     if not sid then return end
     if ctx.aura[sid] and dst and P[dst] then
         if sub == "SPELL_AURA_APPLIED" then

@@ -435,7 +435,7 @@ local function buildMenu()
         if btn == "RightButton" then
             ns.Session.AddOffRoll(m.name, -1)
         else
-            ns.Session.AddOffRoll(m.name, 1, ns.T("noteOffRoll", date("%d.%m %H:%M")))
+            ns.Session.AddOffRoll(m.name, 1, ns.T("noteOffRoll", date(ns.T("noteDate"))))
         end
         self:SetText(ns.T("menuDice", ns.Session.Player(m.name).offRolls or 0))
     end

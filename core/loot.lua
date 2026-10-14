@@ -14,6 +14,23 @@ local SKIP = {
 }
 local Loot = {}
 ns.Loot = Loot
+local gems
+function Loot.Skip(id)
+    if SKIP[id] then return true end
+    if not gems then
+        gems = {}
+        local list = ns.lootGems or {}
+        for i = 1, #list do
+            local r = list[i]
+            if type(r) == "table" then
+                for k = r[1], r[2] do gems[k] = true end
+            else
+                gems[r] = true
+            end
+        end
+    end
+    return gems[id] == true
+end
 local function Pattern(fmt)
     if type(fmt) ~= "string" then return nil end
     local p = fmt:gsub("%%%d%$", "%%"):gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1")
@@ -57,7 +74,7 @@ function Loot.OnChat(msg)
     local who, link, n = Loot.Parse(msg)
     if not who then return end
     local id, name, q = Loot.Item(link)
-    if not id or q < MIN_QUALITY or SKIP[id] then return end
+    if not id or q < MIN_QUALITY or Loot.Skip(id) then return end
     who = who:match("^([^%-]+)") or who
     local t = R.Now()
     local list = Store()
@@ -91,7 +108,9 @@ function Loot.ForFight(fight)
     local list = Store()
     for i = 1, #list do
         local e = list[i]
-        if e.t >= fight.to and e.t < stop and (not inst or e.inst == inst) then out[#out + 1] = e end
+        if e.t >= fight.to and e.t < stop and (not inst or e.inst == inst) and not Loot.Skip(e.id) then
+            out[#out + 1] = e
+        end
     end
     tsort(out, function(a, b) return a.t < b.t end)
     return out
@@ -101,40 +120,81 @@ local function Hex(q)
     if q >= 5 then return "ffff8000" end
     return "ffa335ee"
 end
-local function Row(e, boss)
+local function Row(e)
     local class = ns.Encounters.ClassOf and ns.Encounters.ClassOf(e.who) or nil
     local name = format("|c%s%s|r", Hex(e.q), e.name) .. (e.n > 1 and format(" x%d", e.n) or "")
     local lines = { { kind = "head", left = format("|c%s%s|r", Hex(e.q), e.name), right = e.n > 1 and format("x%d", e.n) or nil },
                     { kind = "row", left = ns.T("loot.tt.who"), right = e.who },
                     { kind = "sub", left = ns.T("loot.tt.when"), right = date("%H:%M", floor(e.t)) } }
-    if boss then lines[#lines + 1] = { kind = "sub", left = ns.T("loot.tt.boss"), right = boss } end
     return { who = name, icon = GetItemIcon and GetItemIcon(e.id) or nil, text = e.who, class = class, v = e.t,
-             note = boss, noteLit = false, lines = lines }
+             lines = lines }
 end
 function Loot.FightDetail(fight)
     local list = Loot.ForFight(fight)
     if #list == 0 then return nil end
     local rows = {}
-    for i = 1, #list do rows[i] = Row(list[i], nil) end
-    return { title = format(ns.T("loot.title.n"), #list), rows = rows, empty = ns.T("loot.none") }
+    for i = 1, #list do rows[i] = Row(list[i]) end
+    return { title = format(ns.T("loot.title.n"), #list), rows = rows, empty = ns.T("loot.none"), fit = true }
 end
-function Loot.RaidDetail(raid)
-    local rows = {}
+local function Kills(raid)
+    local out = {}
     for _, enc in ipairs(raid and raid.encs or {}) do
         for _, f in ipairs(enc.fights or {}) do
-            if f.killed then
-                local boss = ns.EncName(f.boss)
-                local list = Loot.ForFight(f)
-                for i = 1, #list do rows[#rows + 1] = Row(list[i], boss) end
+            if f.killed then out[#out + 1] = f end
+        end
+    end
+    tsort(out, function(a, b) return a.to < b.to end)
+    return out
+end
+function Loot.RaidDetail(raid)
+    local rows, n = {}, 0
+    local head = ns.Kit and ns.Kit.Hex("text.title") or ""
+    local close = head ~= "" and "|r" or ""
+    local kills = Kills(raid)
+    for i = 1, #kills do
+        local list = Loot.ForFight(kills[i])
+        if #list > 0 then
+            rows[#rows + 1] = { who = head .. ns.EncName(kills[i].boss) .. close, text = format("x%d", #list),
+                                v = kills[i].to }
+            for k = 1, #list do rows[#rows + 1] = Row(list[k]) end
+            n = n + #list
+        end
+    end
+    if n == 0 then return nil end
+    return { key = "loot", title = format(ns.T("loot.title.n"), n), rows = rows, empty = ns.T("loot.none"), fit = true }
+end
+function Loot.ShardTotal(raid)
+    local id = ns.lootShard
+    local by, order, total = {}, {}, 0
+    local kills = Kills(raid)
+    for i = 1, #kills do
+        local list = Loot.ForFight(kills[i])
+        for k = 1, #list do
+            local e = list[k]
+            if e.id == id then
+                if not by[e.who] then order[#order + 1] = e.who end
+                by[e.who] = (by[e.who] or 0) + e.n
+                total = total + e.n
             end
         end
     end
-    if #rows == 0 then return nil end
-    tsort(rows, function(a, b) return a.v < b.v end)
-    return { key = "loot", title = format(ns.T("loot.title.n"), #rows), rows = rows, empty = ns.T("loot.none") }
+    if total == 0 then return nil end
+    tsort(order, function(a, b)
+        if by[a] ~= by[b] then return by[a] > by[b] end
+        return a < b
+    end)
+    local title = ns.T("loot.shards")
+    local lines = { { kind = "head", left = title, right = tostring(total) } }
+    for i = 1, #order do
+        local who = order[i]
+        lines[#lines + 1] = { kind = "row", left = who, right = format("x%d", by[who]),
+                              class = ns.Encounters.ClassOf and ns.Encounters.ClassOf(who) or nil }
+    end
+    return { title = title, value = tostring(total), sub = format(ns.T("loot.shards.who"), #order),
+             color = "text.accent", lines = lines }
 end
 local DEMO = {
-    { id = 50274, name = "Осколок Темной Скорби", q = 5, n = 2 },
+    { id = 50274, name = "Осколок Льда Тьмы", q = 5, n = 2 },
     { id = 49908, name = "Первозданный саронит", q = 4, n = 1 },
     { id = 50415, name = "Бринтролл, Костяной арбитр", q = 4, n = 1 },
     { id = 50363, name = "Воля Смертоносного", q = 4, n = 1 },

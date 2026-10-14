@@ -264,6 +264,75 @@ function Kit.IconButton(parent, tex, size, name)
     Kit.ButtonKind(b, "icon")
     return b
 end
+local TOOL_PAD = 10
+local TOOL_MIN = 60
+local TOOL_ICON = 10
+local TOOL_ICONGAP = 3
+local function SetLabel(self, text)
+    self.text:SetText(text)
+    local w = (self.text:GetStringWidth() or 0) + TOOL_PAD * 2
+    if self.icon then
+        w = w + TOOL_ICON + TOOL_ICONGAP
+        self.text:ClearAllPoints()
+        self.text:SetPoint("CENTER", self, "CENTER", (TOOL_ICON + TOOL_ICONGAP) / 2, 0)
+        self.icon:ClearAllPoints()
+        self.icon:SetPoint("RIGHT", self.text, "LEFT", -TOOL_ICONGAP, 0)
+    end
+    self:SetWidth(max(self.minW or TOOL_MIN, floor(w + 0.5)))
+end
+function Kit.ToolButton(parent, name, icon, kind)
+    local b = Kit.Button(parent, name, kind)
+    local h = Kit.Space.tool
+    b:SetHeight(h)
+    b:SetWidth(h)
+    if icon then
+        b.icon = b:CreateTexture(nil, "OVERLAY")
+        b.icon:SetWidth(TOOL_ICON)
+        b.icon:SetHeight(TOOL_ICON)
+        b.icon:SetPoint("CENTER", b, "CENTER", 0, 0)
+        b.icon:SetTexture(icon)
+    end
+    b.tipTitle = false
+    b.SetLabel = SetLabel
+    return b
+end
+local function Chain(bar, f, prev)
+    f:ClearAllPoints()
+    if not prev then
+        f:SetPoint(bar.side, bar.anchor, bar.rel, bar.x, bar.y)
+    elseif bar.side == "RIGHT" then
+        f:SetPoint("RIGHT", prev, "LEFT", -Kit.Space.toolGap, 0)
+    else
+        f:SetPoint("LEFT", prev, "RIGHT", Kit.Space.toolGap, 0)
+    end
+end
+local function Layout(bar)
+    local prev
+    for i = 1, #bar.items do
+        local f = bar.items[i]
+        if f:IsShown() then
+            Chain(bar, f, prev)
+            prev = f
+        end
+    end
+    Chain(bar, bar.tail, prev)
+end
+local function Add(bar, b)
+    bar.items[#bar.items + 1] = b
+    b:HookScript("OnShow", function() Layout(bar) end)
+    b:HookScript("OnHide", function() Layout(bar) end)
+    Layout(bar)
+    return b
+end
+function Kit.ToolBar(host, side, anchor, rel, x, y)
+    local tail = CreateFrame("Frame", nil, host)
+    tail:SetWidth(1)
+    tail:SetHeight(Kit.Space.tool)
+    local bar = { items = {}, side = side, anchor = anchor, rel = rel, x = x or 0, y = y or 0, tail = tail,
+                  Add = Add, Layout = Layout }
+    Layout(bar)
+    return bar
+end
 function Kit.Tab(parent, icon, size)
     local b = Make(parent, "tab", StyleTab, PrepTab)
     b.clickSfx = "tab"

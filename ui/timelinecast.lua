@@ -11,16 +11,10 @@ ns.TimelineCast = TC
 local function T(key)
     return ns.T(key)
 end
-function TC.Num(n)
-    if n >= 1e6 then return ns.Dec(format("%.2f", n / 1e6)) .. T("num.m") end
-    if n >= 1e5 then return format("%.0f", n / 1e3) .. T("num.k") end
-    if n >= 1e3 then return ns.Dec(format("%.1f", n / 1e3)) .. T("num.k") end
-    return tostring(floor(n + 0.5))
-end
 function TC.Sec(v)
     return ns.Dec(format("%.1f", max(0, v)))
 end
-local Num, Sec = TC.Num, TC.Sec
+local Num, Sec = ns.Short, TC.Sec
 local function MissName(how, short)
     local key = (short and "tl.cast.s." or "tl.cast.miss.") .. tostring(how)
     local text = T(key)
@@ -38,17 +32,17 @@ local function Parts(tg, bare)
     local out = {}
     if tg.dmg > 0 then
         local s = format(T("tl.cast.dmg"), Num(tg.dmg))
-        if tg.n > 1 and tg.heal == 0 then s = s .. format(T("tl.cast.hits"), tg.n) end
+        if tg.n > 1 and tg.heal == 0 then s = s .. format(T("tl.cast.hits"), tg.n, ns.Plural(tg.n, T("tl.w.times"))) end
         if tg.heal == 0 and tg.crit == 1 and tg.n == 1 then s = s .. T("tl.cast.crit")
-        elseif tg.heal == 0 and tg.crit > 0 then s = s .. format(T("tl.cast.crits"), tg.crit) end
+        elseif tg.heal == 0 and tg.crit > 0 then s = s .. format(T("tl.cast.crits"), tg.crit, ns.Plural(tg.crit, T("tl.w.crit"))) end
         out[#out + 1] = s
     end
     if tg.heal > 0 then
         local s = format(T("tl.cast.heal"), Num(max(0, tg.heal - tg.over)))
         if tg.over > 0 then s = s .. format(T("tl.cast.over"), Num(tg.over)) end
-        if tg.n > 1 and tg.dmg == 0 then s = s .. format(T("tl.cast.hits"), tg.n) end
+        if tg.n > 1 and tg.dmg == 0 then s = s .. format(T("tl.cast.hits"), tg.n, ns.Plural(tg.n, T("tl.w.times"))) end
         if tg.dmg == 0 and tg.crit == 1 and tg.n == 1 then s = s .. T("tl.cast.crit")
-        elseif tg.dmg == 0 and tg.crit > 0 then s = s .. format(T("tl.cast.crits"), tg.crit) end
+        elseif tg.dmg == 0 and tg.crit > 0 then s = s .. format(T("tl.cast.crits"), tg.crit, ns.Plural(tg.crit, T("tl.w.crit"))) end
         out[#out + 1] = s
     end
     if tg.miss and not bare then

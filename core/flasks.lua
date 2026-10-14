@@ -7,7 +7,6 @@ local ALCH_DUR = 7000
 local EVENING = 8 * HOUR
 local RECENT = 12 * HOUR
 local PICK = 3
-local MELEE_SHARE = 0.15
 local AURAS = 40
 local DEF = { hours = 2, limit = 2, own = "warn", whisper = false, auto = true }
 local Flasks = {}
@@ -17,7 +16,6 @@ Flasks.HOUR = HOUR
 local on = false
 local listeners = {}
 local sources = {}
-local hasSource
 local byId
 local byKey
 local byAura
@@ -192,12 +190,9 @@ local function MainTank(name, class)
 end
 local function SummaryRole(p, class)
     if p.role == "tank" or p.role == "heal" then return p.role end
-    if class and ns.flaskDpsClass[class] then return "melee" end
-    local dmg = tonumber(p.dmg) or 0
-    if dmg <= 0 then return nil end
-    local by = type(p.dmgBy) == "table" and p.dmgBy["#melee"]
-    local melee = type(by) == "table" and tonumber(by.a) or 0
-    return melee / dmg >= MELEE_SHARE and "melee" or "ranged"
+    local melee = ns.IsMelee(p.class and p or { class = class, tree = p.tree, dmg = p.dmg, swingDmg = p.swingDmg })
+    if melee == nil then return nil end
+    return melee and "melee" or "ranged"
 end
 local function FromRecord(name, class)
     local E, S = ns.Encounters, ns.Summary
@@ -281,11 +276,8 @@ local function RaidInfoHas(name)
     end
     return n
 end
-function Flasks.HasSource(fn)
-    hasSource = fn
-end
 function Flasks.Has(name)
-    local ok, n = pcall(hasSource or RaidInfoHas, name)
+    local ok, n = pcall(RaidInfoHas, name)
     if ok and type(n) == "number" then return n end
     return nil
 end

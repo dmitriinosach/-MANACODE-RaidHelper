@@ -140,8 +140,7 @@ local function Follow(idx, guid, who, t0, off)
     local k = ns.Index.Seek(idx, list, t0)
     while k <= total do
         ns.Jobs.Step()
-        local seg, s, at = ns.Index.Line(idx, list[k])
-        local ts, sub, srcGUID, _, _, _, dstName, _, a1 = ns.Store.Decode(seg, s, at, 1)
+        local ts, sub, srcGUID, _, _, _, dstName, _, a1 = ns.Index.Read(idx, list, k, 1)
         if ts and ts > stop then break end
         if ts and srcGUID == guid then
             local hit = { who = dstName, dt = ts - t0 }

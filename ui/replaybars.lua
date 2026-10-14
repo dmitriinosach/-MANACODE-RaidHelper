@@ -52,7 +52,7 @@ function View.Color(kind, k)
     return r0 + (r1 - r0) * k, g0 + (g1 - g0) * k, b0 + (b1 - b0) * k
 end
 function View.Clock(left)
-    if left < DECIMAL then return format("%.1f", left) end
+    if left < DECIMAL then return ns.Fixed(left) end
     if left < MINUTE then return format("%d", floor(left)) end
     local s = floor(left)
     return format("%d:%02d", floor(s / MINUTE), s % MINUTE)

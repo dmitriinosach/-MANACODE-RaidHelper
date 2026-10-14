@@ -2,21 +2,25 @@ local _, ns = ...
 local band = bit.band
 local max = math.max
 local find = string.find
-local F_PLAYER = 0x400
-local F_BY_PLAYER = 0x100
-local F_HOSTILE = 0x40
+local tsort = table.sort
+local F_PLAYER = ns.F.PLAYER
+local F_BY_PLAYER = ns.F.BY_PLAYER
+local F_HOSTILE = ns.F.HOSTILE
 local FEIGN = 5384
 local FEIGN_WINDOW = 2
 local COMBAT_GAP = 5
 local PREPOT = 5
 local MINE = { potion = true, other = true, stone = true }
+local AB_KEEP = 8
+local PET = "p|"
+local OWN = "s|"
 local RaidPart = {}
 ns.RaidPart = RaidPart
-function RaidPart.New(fight, pets, hp, known)
+function RaidPart.New(fight, pets, known)
     return { rows = {}, use = {}, got = {}, owners = {}, pets = pets, fight = fight,
              from = fight and fight.from or nil, to = fight and fight.to or nil,
              fightAt = 0, total = 0, feign = {}, died = {}, ivs = {}, known = known or (fight and fight.players) or {},
-             shields = not fight and ns.Absorbs.New(hp) or nil }
+             shields = not fight and ns.Absorbs.New() or nil }
 end
 function RaidPart.Interval(st, upto)
     local all = {}
@@ -26,15 +30,35 @@ end
 local function Row(st, name)
     local r = st.rows[name]
     if not r then
-        r = { all = 0, boss = 0, heal = 0 }
+        r = { all = 0, boss = 0, heal = 0, ab = {}, hb = {} }
         st.rows[name] = r
     end
     return r
 end
 RaidPart.Row = Row
-local function IsBoss(fight, guid)
-    return ns.IsBossOf(fight, guid)
+local IsBoss = ns.IsBossOf
+local function Ab(map, key, id)
+    local e = map[key]
+    if not e then
+        e = { i = id, a = 0 }
+        map[key] = e
+    end
+    return e
 end
+local function AddAb(r, pet, swing, id, spell, amount, boss)
+    local melee = ns.Totals.MELEE
+    local e
+    if pet then
+        e = Ab(r.ab, PET .. pet, swing and melee or tonumber(id))
+    elseif swing then
+        e = Ab(r.ab, OWN .. ns.Totals.MELEE_KEY, melee)
+    else
+        e = Ab(r.ab, OWN .. (type(spell) == "string" and spell or tostring(id)), tonumber(id))
+    end
+    e.a = e.a + amount
+    if boss then e.b = (e.b or 0) + amount end
+end
+RaidPart.PET, RaidPart.OWN = PET, OWN
 local function Use(st, name, c, spell)
     local u = st.use[c.item]
     if not u then
@@ -46,11 +70,13 @@ end
 local function IsPlayer(flags)
     return flags ~= nil and band(flags, F_PLAYER) > 0
 end
-function RaidPart.Hit(st, who, dstGUID, dstFlags, amount)
+function RaidPart.Hit(st, who, dstGUID, dstFlags, amount, pet, swing, id, spell)
     if amount <= 0 or IsPlayer(dstFlags) then return end
     local r = Row(st, who)
     r.all = r.all + amount
-    if IsBoss(st.fight, dstGUID) then r.boss = r.boss + amount end
+    local boss = IsBoss(st.fight, dstGUID)
+    if boss then r.boss = r.boss + amount end
+    AddAb(r, pet, swing, id, spell, amount, boss)
 end
 local function Which(sub, who, srcName, srcFlags, a1, dstName, dstFlags, a2)
     if sub == "SPELL_AURA_APPLIED" then
@@ -97,19 +123,12 @@ function RaidPart.Got(st, id, name, ts)
 end
 function RaidPart.Feed(st, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a3, a4, a5, a6, a7, a9)
     if sub == "SPELL_SUMMON" then
-        if IsPlayer(srcFlags) and dstGUID then st.owners[dstGUID] = srcName end
+        ns.NoteOwner(st.owners, sub, srcFlags, srcName, dstGUID)
         return
     end
     local f = st.fight
     if f and (ts < st.from or ts > st.to) then return end
-    local who
-    if srcFlags and band(srcFlags, F_BY_PLAYER) > 0 then
-        if band(srcFlags, F_PLAYER) > 0 then
-            who = srcName
-        elseif srcGUID then
-            who = st.owners[srcGUID] or st.pets[srcGUID]
-        end
-    end
+    local who = ns.WhoOf(srcFlags, srcGUID, srcName, st.owners, st.pets)
     local dst = dstName ~= nil and (IsPlayer(dstFlags) or st.known[dstName] ~= nil)
     if find(sub, "_DAMAGE", 1, true) then
         local swing = find(sub, "SWING", 1, true) ~= nil
@@ -118,8 +137,10 @@ function RaidPart.Feed(st, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName
             if amount > 0 then
                 local r = Row(st, who)
                 r.all = r.all + amount
+                local boss = f ~= nil and IsBoss(f, dstGUID)
+                AddAb(r, srcName ~= who and srcName or nil, swing, a1, a2, amount, boss)
                 if f then
-                    if IsBoss(f, dstGUID) then r.boss = r.boss + amount end
+                    if boss then r.boss = r.boss + amount end
                 else
                     st.total = st.total + amount
                     local cut = st.cutBy
@@ -150,6 +171,8 @@ function RaidPart.Feed(st, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName
             if eff > 0 then
                 local r = Row(st, who)
                 r.heal = r.heal + eff
+                local e = Ab(r.hb, OWN .. (type(a2) == "string" and a2 or tostring(a1)), tonumber(a1))
+                e.a = e.a + eff
             end
         end
     elseif sub == "FW_ACH" then
@@ -175,16 +198,57 @@ function RaidPart.Feed(st, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName
         end
     end
 end
+local function ByA(a, b)
+    if a.e.a ~= b.e.a then return a.e.a > b.e.a end
+    return a.k < b.k
+end
+local function ByB(a, b)
+    local x, y = a.e.b or 0, b.e.b or 0
+    if x ~= y then return x > y end
+    return a.k < b.k
+end
+local function Trim(map, boss)
+    local list = {}
+    for k, e in pairs(map) do list[#list + 1] = { k = k, e = e } end
+    if #list <= AB_KEEP then return map end
+    local keep = {}
+    tsort(list, ByA)
+    for n = 1, AB_KEEP do keep[list[n].k] = list[n].e end
+    if boss then
+        tsort(list, ByB)
+        for n = 1, AB_KEEP do
+            if (list[n].e.b or 0) > 0 then keep[list[n].k] = list[n].e end
+        end
+    end
+    return keep
+end
 function RaidPart.Close(st, players)
-    for src, amount in pairs(st.shields and st.shields.by or {}) do
+    local m = st.shields
+    for src, amount in pairs(m and m.by or {}) do
         if amount > 0 then
             local r = Row(st, src)
             r.heal = r.heal + amount
+            for id, c in pairs(m.spells[src] or {}) do
+                local e = Ab(r.hb, OWN .. ns.Absorbs.Name(m, id), id)
+                e.a = e.a + c.a
+            end
         end
     end
     for i = 1, players and #players or 0 do
         local p = players[i]
-        if p.heal > 0 then Row(st, p.name).heal = p.heal end
+        if p.heal > 0 then
+            local r = Row(st, p.name)
+            r.heal = p.heal
+            local hb = {}
+            for key, e in pairs(p.healBy or {}) do
+                if e.a > 0 then hb[OWN .. key] = { i = e.id, a = e.a } end
+            end
+            r.hb = hb
+        end
+    end
+    for _, r in pairs(st.rows) do
+        r.ab = Trim(r.ab, true)
+        r.hb = Trim(r.hb, false)
     end
     local piece = { rows = st.rows, use = st.use, got = st.got }
     if not st.fight then piece.total, piece.ivs = st.total, st.ivs end

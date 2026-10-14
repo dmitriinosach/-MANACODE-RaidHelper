@@ -2,8 +2,6 @@ local _, ns = ...
 local concat = table.concat
 local tonumber = tonumber
 local MAX_AURAS = 40
-local MAX_RAID = 40
-local MAX_PARTY = 4
 local SUB = "FW_BUFFSNAP"
 local TANK_SUB = "FW_TANKSNAP"
 local SEP = ","
@@ -12,9 +10,7 @@ ns.BuffSnap = Snap
 Snap.SUB = SUB
 Snap.TANK_SUB = TANK_SUB
 Snap.SEP = SEP
-local RAID, PARTY = {}, {}
-for i = 1, MAX_RAID do RAID[i] = "raid" .. i end
-for i = 1, MAX_PARTY do PARTY[i] = "party" .. i end
+local RAID, PARTY = ns.Units.raid, ns.Units.party
 local units = {}
 local function Units()
     wipe(units)

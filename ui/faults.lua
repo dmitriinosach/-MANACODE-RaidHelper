@@ -305,7 +305,7 @@ local function PaintGive()
         end
     end
     give.title:SetText(format(ns.T("fp.try"), ns.EncName(current.boss), n, total,
-        ns.T(current.killed and "fl.win" or "fl.wipe"), ns.GPList.Clock(current.to - current.from)))
+        ns.T(current.killed and "fl.win" or "fl.wipe"), ns.Clock(current.to - current.from)))
     local summary = ns.Summary.Get(current)
     if not summary then
         model = nil
@@ -327,7 +327,7 @@ local function PaintGive()
     giveOffset = max(0, min(giveOffset, #rows - give.slots))
     give.list:Draw(current, model, width, giveOffset, give.slots)
     give.list:Show()
-    give.total:SetText(format(ns.T("fp.pending"), model.pending, unit, model.ready))
+    give.total:SetText(format(ns.T("fp.pending"), model.pending, unit, model.ready, ns.Plural(model.ready, ns.T("gp.players"))))
     Fit(give.giveAll, format(ns.T("sum.gp.all"), model.pending))
     if model.pending > 0 then give.giveAll:Enable() else give.giveAll:Disable() end
     local marked, count = ns.GPList.Marked(model, give.list.sel), 0

@@ -15,8 +15,3 @@ function Kit.PopOut(region, done)
     region:SetAlpha(1)
     if done then done() end
 end
-function Kit.Still(region)
-end
-function Kit.Moving(region)
-    return nil
-end

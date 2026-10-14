@@ -21,11 +21,7 @@ end
 function GPList.Changed()
     for i = 1, #listeners do listeners[i]() end
 end
-local function Clock(sec)
-    local m = floor(sec / 60)
-    return format("%d:%02d", m, floor(sec - m * 60))
-end
-GPList.Clock = Clock
+local Clock = ns.Clock
 function GPList.Icon(id)
     if type(id) == "string" then return id end
     return id and ns.Effects and ns.Effects.IconById(id) or UNKNOWN_ICON
@@ -36,12 +32,6 @@ function GPList.ClassRGB(class)
     end
     local c = ns.Badges.style.noClass
     return c[1], c[2], c[3]
-end
-function GPList.Small(b)
-    if b.kitStyle then return end
-    b:SetNormalFontObject("GameFontNormalSmall")
-    b:SetHighlightFontObject("GameFontHighlightSmall")
-    b:SetDisabledFontObject("GameFontDisableSmall")
 end
 function GPList.Pending(events)
     return ns.Ledger.Pending(events)

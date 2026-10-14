@@ -85,7 +85,8 @@ local function PaintAH(r, it)
     if c then
         r.ah:SetText(GoldText(c))
         ns.Kit.Text(r.ah, "text.secondary")
-        hit.tip = format(ns.T("set.cost.tip.scan"), Cost.Stamp(t), rec.n or 0, rec.l or 0)
+        hit.tip = format(ns.T("set.cost.tip.scan"), Cost.Stamp(t), rec.n or 0, ns.Plural(rec.n or 0, ns.T("ah.items")),
+            rec.l or 0, ns.Plural(rec.l or 0, ns.T("ah.lots.in")))
     else
         c, t = Cost.AH(it.item)
         r.ah:SetText(GoldText(c))

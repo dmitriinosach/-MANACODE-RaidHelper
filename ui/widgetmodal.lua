@@ -7,7 +7,6 @@ local WIDEN = 1.15
 local WIDTH_DETAIL = 440
 local WIDTH_WIDE = 560
 local BAR_R = 5
-local CLOSE = 22
 local LEVEL = 50
 local STRATA = "FULLSCREEN_DIALOG"
 local Modal = {}
@@ -67,12 +66,9 @@ local function Panel(panel)
     f = panel.wide and ns.Badges.Wide(dim, true) or ns.Badges.Detail(dim, true)
     f:EnableMouse(true)
     f:SetFrameStrata(STRATA)
-    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    local close = ns.Kit.CloseButton(f, Close)
     close:SetFrameLevel(f:GetFrameLevel() + 10)
-    close:SetWidth(CLOSE)
-    close:SetHeight(CLOSE)
-    close:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
-    close:SetScript("OnClick", Close)
+    close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
     local bar = ns.Kit.ScrollBar(f, 100)
     bar:SetFrameLevel(f:GetFrameLevel() + 6)
     bar.onScroll = function(offset)
@@ -106,7 +102,7 @@ function Modal.Open(source)
     local px = box:GetEffectiveScale()
     local boxW, boxH = box:GetWidth() * px, box:GetHeight() * px
     local least = source.wide and WIDTH_WIDE or WIDTH_DETAIL
-    local want = max(source:GetWidth(), least) * WIDEN
+    local want = max(max(source:GetWidth(), least) * WIDEN, (source.needW or 0) + 8)
     local eff = source:GetEffectiveScale() * ZOOM
     if want + MARGIN * 2 > boxW / eff then eff = boxW / (want + MARGIN * 2) end
     f:SetScale(eff / f:GetParent():GetEffectiveScale())

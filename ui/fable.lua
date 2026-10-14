@@ -12,7 +12,7 @@ local BUSY = { queue = true, build = true, wait = true }
 local LIST_MAX = 5
 local SEP = " / "
 local NONE = "—"
-local GRADE_TONE = { ["справедливо"] = "text.bad", ["спорно"] = "text.warn", ["несправедливо"] = "text.good" }
+local GRADE_TONE = { fair = "text.bad", disputed = "text.warn", unfair = "text.good" }
 local View = {}
 ns.FableView = View
 local hovered
@@ -37,10 +37,17 @@ end
 local function Verdict(st)
     local v = st.verdict ~= "" and st.verdict or T("fable.none")
     if not st.grade then return v end
-    local token = GRADE_TONE[st.grade]
-    local g = (token and ns.Kit and ns.Kit.Hex) and (ns.Kit.Hex(token) .. st.grade .. "|r") or st.grade
+    local code = ns.Fable.GradeCode(st.grade)
+    local word = code and T("fable.grade." .. code) or st.grade
+    local token = code and GRADE_TONE[code]
+    local g = (token and ns.Kit and ns.Kit.Hex) and (ns.Kit.Hex(token) .. word .. "|r") or word
     local parts = { g }
-    if st.could and st.could ~= "" and st.could ~= NONE then parts[#parts + 1] = st.could end
+    local could = ns.Fable.CouldCode(st.could)
+    if could then
+        parts[#parts + 1] = T("fable.could." .. could)
+    elseif st.could and st.could ~= "" and st.could ~= NONE then
+        parts[#parts + 1] = st.could
+    end
     parts[#parts + 1] = v
     return table.concat(parts, SEP)
 end
@@ -56,7 +63,7 @@ local function Value(st)
 end
 local function Item(ask, k)
     local st = ns.Fable.State(ask.key)
-    local when = ask.at and ns.BadgeTips.Clock(ask.at - ask.fight.from) or T("ft.whole")
+    local when = ask.at and ns.Clock(ask.at - ask.fight.from) or T("ft.whole")
     local head = format("%d. %s ", k, when)
     if st and st.st == "done" then
         local x = (st.text and st.text ~= "") and (" — " .. st.text) or ""

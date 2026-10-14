@@ -35,7 +35,9 @@ local Kit = ns.Kit
 local Replay = ns.Replay
 local Core = ns.ReplayRealm
 local st = { mode = nil, orbs = {}, beams = {}, flashes = {}, pools = {}, booms = {}, byName = {}, used = 0, usedP = 0,
-             usedB = 0, show = { true, true }, inW = { {}, {} }, swText = {}, swTip = {} }
+             usedB = 0, show = { true, true }, inW = { {}, {} }, swText = {}, swTip = {},
+             swPrev = { {}, {}, s1 = nil, s2 = nil, sec = false } }
+local EMPTY = {}
 local view
 local sw = {}
 local hw, hh = 0, 0
@@ -100,8 +102,7 @@ function V.Use(scene)
     if not view then return end
     HideAll()
     for w = 1, #sw do sw[w]:Hide() end
-    st.byName, st.counted = {}, nil
-    for k = 1, scene and #scene.tracks or 0 do st.byName[scene.tracks[k].name] = k end
+    st.byName, st.counted = scene and Replay.ByK(scene) or EMPTY, nil
 end
 local function Inverse(ox, oy, ux, uy, vx, vy, x, y)
     local det = ux * vy - uy * vx
@@ -152,7 +153,6 @@ end
 local function Twilight(scene, name, t)
     return Core.In(scene.layers.realm.spans[name], t)
 end
-V.Twilight = Twilight
 local function RealmOf(R, name, s, t, rec)
     if Core.In(R.spans[name], t) then return 2 end
     if rec and R.p2 and t >= R.p2 and s.stale and not s.dead then return rec == 2 and 1 or 2 end
@@ -170,6 +170,13 @@ local function Recorder(scene, R, t)
     end
     return twi > phys and 2 or 1
 end
+local function Same(a, b)
+    if #a ~= #b then return false end
+    for i = 1, #a do
+        if a[i] ~= b[i] then return false end
+    end
+    return true
+end
 local function Switch(R, t, shown)
     if #sw == 0 then return end
     if not (R.p2 and t >= R.p2) then
@@ -180,13 +187,21 @@ local function Switch(R, t, shown)
         return
     end
     local inW = st.inW
-    tsort(inW[1])
-    tsort(inW[2])
-    local key = (shown[1] and "1" or "0") .. (shown[2] and "1" or "0") .. tconcat(inW[1], ",") .. "|" .. tconcat(inW[2], ",")
-    local shared = R.shared or {}
-    if next(shared) then key = key .. floor(t) end
-    if st.counted == key then return end
-    st.counted = key
+    local shared = R.shared or EMPTY
+    local sec = next(shared) and floor(t) or false
+    local prev = st.swPrev
+    if st.counted and prev.s1 == shown[1] and prev.s2 == shown[2] and prev.sec == sec
+        and Same(prev[1], inW[1]) and Same(prev[2], inW[2]) then
+        return
+    end
+    st.counted = true
+    prev.s1, prev.s2, prev.sec = shown[1], shown[2], sec
+    for w = 1, 2 do
+        local keep, list = prev[w], inW[w]
+        for i = #keep, #list + 1, -1 do keep[i] = nil end
+        for i = 1, #list do keep[i] = list[i] end
+        tsort(list)
+    end
     for w = 1, 2 do
         local b, list = sw[w], inW[w]
         st.swText[w] = format(ns.T(SW_TEXT[w]), #list)
@@ -355,7 +370,7 @@ function V.Place(scene, cam, t)
         return
     end
     hw, hh = cam.w / 2, cam.h / 2
-    PlacePuddles(L.puddles or {}, scene, cam, t)
+    PlacePuddles(L.puddles or EMPTY, scene, cam, t)
     local cut = L.cutter
     if not cut or not st.show[2] or t < cut.from or t > cut.to then
         for i = 1, #st.beams do st.beams[i]:Hide() end

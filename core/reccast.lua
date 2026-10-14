@@ -13,8 +13,8 @@ local EVENTS = {
 local RecCast = { SUB = SUB, CAST = CAST, CHANNEL = CHANNEL, MOVED = MOVED, CUT = CUT }
 ns.RecCast = RecCast
 local UNITS = { player = true }
-for i = 1, MAX_RAID do UNITS["raid" .. i] = true end
-for i = 1, MAX_PARTY do UNITS["party" .. i] = true end
+for i = 1, MAX_RAID do UNITS[ns.Units.raid[i]] = true end
+for i = 1, MAX_PARTY do UNITS[ns.Units.party[i]] = true end
 local open = {}
 local frame = CreateFrame("Frame")
 local function Writing()

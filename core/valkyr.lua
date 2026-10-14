@@ -22,12 +22,12 @@ local function RowTip(b, who, st, class)
     local Tips = ns.BadgeTips
     local v = b.by[who] or 0
     local out = { { kind = "head", left = who, class = class } }
-    Put(out, "row", T(b.normal and "sum.tt.total" or "sum.tt.useful"), Tips.Short(v))
+    Put(out, "row", T(b.normal and "sum.tt.total" or "sum.tt.useful"), ns.Short(v))
     local waves = b.waves and b.waves[who] or {}
     local shown = 0
     for w = 1, #(b.waveList or {}) do
         if waves[w] then
-            Put(out, "sub", format(T("sum.tt.wave"), w), Tips.Short(waves[w]))
+            Put(out, "sub", format(T("sum.tt.wave"), w), ns.Short(waves[w]))
             shown = shown + 1
         end
     end
@@ -41,7 +41,7 @@ local function RowTip(b, who, st, class)
         for k = 1, n do
             local a, z = st.times[k], st.outs and st.outs[k]
             local w = st.waves and st.waves[k]
-            local left = w and format("%s, %s", Tips.Clock(a), format(T("sum.tt.wave"), w)) or Tips.Clock(a)
+            local left = w and format("%s, %s", ns.Clock(a), format(T("sum.tt.wave"), w)) or ns.Clock(a)
             Put(out, "sub", left, z and format(T("sum.vk.held"), z - a) or nil)
         end
     end
@@ -69,7 +69,7 @@ function Valkyr.View(b, s, classOf)
         if vx ~= vy then return vx > vy end
         return x < y
     end)
-    local Short = ns.BadgeTips.Short
+    local Short = ns.Short
     local icon = ri and (s.icons and s.icons[ri] or s.badges[ri].id) or false
     local rows = {}
     for i = 1, #names do
@@ -77,7 +77,7 @@ function Valkyr.View(b, s, classOf)
         local st = stats[who]
         local v = b.by[who] or 0
         local class = classOf and classOf(who) or nil
-        local cells = { v > 0 and Short(v) or "—", format("%.1f%%", v * 100 / max(1, b.total)) }
+        local cells = { v > 0 and Short(v) or "—", ns.Fixed(v * 100 / max(1, b.total)) .. "%" }
         rows[i] = { who = who, class = class, cells = cells,
                     marks = { st and icon and { id = icon, n = st.n } or false },
                     lines = RowTip(b, who, st, class) }

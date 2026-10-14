@@ -106,9 +106,3 @@ function Platform.State(tl, def, ring, t)
     end
     return false, done
 end
-function Platform.Next(tl, kind, from)
-    for i = 1, #tl do
-        if tl[i].kind == kind and tl[i].t >= from then return tl[i] end
-    end
-    return nil
-end

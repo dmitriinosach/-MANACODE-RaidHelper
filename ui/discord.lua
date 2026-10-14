@@ -1,10 +1,5 @@
 local _, ns = ...
 local format = string.format
-local floor = math.floor
-local max = math.max
-local BTN_H = 18
-local BTN_W = 74
-local BTN_PAD = 16
 local HEAD_PAD = 6
 local HEAD_Y = -19
 local GEAR_GAP = 4
@@ -45,12 +40,18 @@ local function Place(b, host)
 end
 function DV.Attach(host)
     if btn then return end
-    local b = Kit.Button(host)
-    b:SetHeight(BTN_H)
-    Place(b, host)
-    b:HookScript("OnShow", function(self) Place(self, host) end)
-    b.text:SetText(T("dc.btn"))
-    b:SetWidth(max(BTN_W, floor(b.text:GetStringWidth() + BTN_PAD)))
+    local bar = ns.Timeline and ns.Timeline.ToolBar and ns.Timeline.ToolBar()
+    local b = Kit.ToolButton(bar and (host:GetParent() or host) or host)
+    b:SetLabel(T("dc.btn"))
+    if bar then
+        if not host:IsShown() then b:Hide() end
+        host:HookScript("OnShow", function() b:Show() end)
+        host:HookScript("OnHide", function() b:Hide() end)
+        bar:Add(b)
+    else
+        Place(b, host)
+        b:HookScript("OnShow", function(self) Place(self, host) end)
+    end
     b.tipTitle = T("dc.head")
     b.tip = T("dc.tip")
     b.onClick = Click

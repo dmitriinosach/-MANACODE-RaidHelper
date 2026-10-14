@@ -15,14 +15,9 @@ local function T(key)
     return ns.T(key)
 end
 local function Num(n)
-    if n >= 1e6 then return format("%.1f", n / 1e6) .. T("num.m") end
-    if n >= 1e3 then return format("%.1f", n / 1e3) .. T("num.k") end
-    return tostring(floor(n + 0.5))
+    return ns.Short(n, 1, false)
 end
-local function Clock(sec)
-    local m = floor(sec / 60)
-    return format("%d:%02d", m, floor(sec - m * 60))
-end
+local Clock = ns.Clock
 local function Saved()
     local s = ns.GetDB().settings
     if type(s.report) ~= "table" then s.report = {} end

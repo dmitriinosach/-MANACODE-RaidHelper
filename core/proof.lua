@@ -43,19 +43,12 @@ local function Plain(s)
     return (tostring(s or ""):gsub("[|\r\n]", ""))
 end
 local function Short(n)
-    if n >= 1e6 then return format("%.1f", n / 1e6) .. ns.T("num.m") end
-    if n >= 1e4 then return format("%d", floor(n / 1e3 + 0.5)) .. ns.T("num.k") end
-    if n >= 1e3 then return format("%.1f", n / 1e3) .. ns.T("num.k") end
-    return tostring(floor(n + 0.5))
+    return ns.Short(n, 1, 1e4)
 end
 local function Dec(v)
     return ns.Dec(format("%.1f", v))
 end
-local function Clock(sec)
-    if sec < 0 then sec = 0 end
-    local m = floor(sec / 60)
-    return format("%d:%02d", m, floor(sec - m * 60))
-end
+local Clock = ns.Clock
 function Proof.Link(id, name)
     local link = id and GetSpellLink and GetSpellLink(id)
     if type(link) == "string" and link:find(LINK) then return link end
@@ -592,9 +585,6 @@ pump:SetScript("OnUpdate", ns.Prof.Wrap("bg.proof", function(self)
     end
     Drain()
 end))
-function Proof.Pending()
-    return #queue
-end
 local function Forget(now)
     for k, t in pairs(sentAt) do
         if now - t >= DUP then sentAt[k] = nil end

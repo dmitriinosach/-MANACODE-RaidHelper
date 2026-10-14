@@ -11,7 +11,7 @@ local function Opt()
 end
 local function Secs(v)
     if v == floor(v) then return format(T("set.unit.sec"), v) end
-    return format(T("set.unit.sec1"), v)
+    return format(T("set.unit.sec1"), ns.Fixed(v))
 end
 local function Pct(v)
     return format("%d%%", v)
@@ -246,9 +246,7 @@ local function Tuner(key, label, lo, hi, step, fmt, order)
              set = function(v) ns.SetTune(key, v) end }
 end
 local function Deaths(v)
-    local d, h = v % 10, v % 100
-    local few = d >= 2 and d <= 4 and (h < 12 or h > 14)
-    return format(T(few and "set.unit.deaths2" or "set.unit.deaths"), v)
+    return format(ns.Plural(v, T("set.unit.deaths")), v)
 end
 S.Section("parse", "grade", {
     label = "set.grade",

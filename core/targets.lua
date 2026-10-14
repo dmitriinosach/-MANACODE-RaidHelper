@@ -15,7 +15,7 @@ local function Put(out, kind, left, right, mid, tone)
     out[#out + 1] = { kind = kind, left = left, right = right, mid = mid, tone = tone }
 end
 local function Cell(v)
-    return v > 0 and ns.BadgeTips.Short(v) or "—"
+    return v > 0 and ns.Short(v) or "—"
 end
 local function Index(def)
     local idx = indexed[def]
@@ -118,7 +118,7 @@ local function RestNames(b, who, out)
         return x.k < y.k
     end)
     local shown = min(REST_KEEP, #list)
-    for i = 1, shown do Put(out, "sub", list[i].k, ns.BadgeTips.Short(list[i].v)) end
+    for i = 1, shown do Put(out, "sub", list[i].k, ns.Short(list[i].v)) end
     if #list > shown then Put(out, "sub", (format(T("sum.tip.more"), #list - shown):gsub("^%s+", "")), nil, nil, "dim") end
 end
 local function ColLines(b, who, c, out)
@@ -162,14 +162,14 @@ local function CellTip(b, who, class, c)
     return out
 end
 local function RowTip(b, who, class, cols)
-    local out = { { kind = "head", left = who, right = ns.BadgeTips.Short(b.by[who] or 0), class = class } }
+    local out = { { kind = "head", left = who, right = ns.Short(b.by[who] or 0), class = class } }
     for i = 1, #cols - 1 do ColLines(b, who, cols[i], out) end
     Put(out, "sep")
-    Put(out, "row", T("sum.tt.total"), ns.BadgeTips.Short(b.by[who] or 0))
+    Put(out, "row", T("sum.tt.total"), ns.Short(b.by[who] or 0))
     return out
 end
 local function PanelTip(b, cols)
-    local Short = ns.BadgeTips.Short
+    local Short = ns.Short
     local out = { { kind = "head", left = T(b.def.label), right = Short(b.total) } }
     local under = {}
     for i = 1, #(b.def.lead and b.def.lead.of or {}) do under[b.def.lead.of[i]] = true end
@@ -178,7 +178,7 @@ local function PanelTip(b, cols)
         local v = 0
         for k = 1, #c.gs do v = v + (b.gsum and b.gsum[c.gs[k]] or 0) end
         Put(out, (not c.lead and under[c.gs[1]]) and "sub" or "row", c.label, Cell(v),
-            b.total > 0 and format("%.1f%%", v / b.total * 100) or nil, v == 0 and "dim" or nil)
+            b.total > 0 and (ns.Fixed(v / b.total * 100) .. "%") or nil, v == 0 and "dim" or nil)
     end
     return out
 end
@@ -210,6 +210,6 @@ function Targets.View(b, classOf)
         rows[i] = { who = who, class = class, cells = cells, vals = vals, tips = tips, marks = {},
                     lines = RowTip(b, who, class, cols) }
     end
-    return { title = format(T("sum.k.title"), T(b.def.label), ns.BadgeTips.Short(max(0, b.total))), cols = labels,
+    return { title = format(T("sum.k.title"), T(b.def.label), ns.Short(max(0, b.total))), cols = labels,
              heads = {}, rows = rows, tip = PanelTip(b, cols), span = 2 }
 end

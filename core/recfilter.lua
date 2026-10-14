@@ -1,8 +1,8 @@
 local _, ns = ...
 local band = bit.band
 local find = string.find
-local F_BY_PLAYER = 0x100
-local F_GROUP = 0x07
+local F_BY_PLAYER = ns.F.BY_PLAYER
+local F_GROUP = ns.F.GROUP
 local DROP = {
     SPELL_ENERGIZE = true, SPELL_PERIODIC_ENERGIZE = true,
     SPELL_CAST_FAILED = true, SPELL_EXTRA_ATTACKS = true,

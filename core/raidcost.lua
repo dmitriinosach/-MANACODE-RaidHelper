@@ -114,9 +114,9 @@ function Cost.GoldIcon(copper)
 end
 function Cost.Date(stamp)
     if not stamp then return ns.T("cost.nodate") end
-    return date("%d.%m.%Y", stamp)
+    return ns.Date(stamp, "year")
 end
 function Cost.Stamp(stamp)
     if not stamp then return ns.T("cost.nodate") end
-    return date("%d.%m %H:%M", stamp)
+    return ns.Date(stamp, "dayTime")
 end

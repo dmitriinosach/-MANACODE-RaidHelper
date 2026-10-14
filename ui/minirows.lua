@@ -12,14 +12,7 @@ local COUNT_KINDS = { dispels = true, casts = true, removed = true }
 local HIT_KINDS = { taken = true, shades = true }
 local Rows = {}
 ns.MiniRows = Rows
-local function Short(n)
-    return ns.BadgeTips.Short(n)
-end
-local function Clock(sec)
-    local m = floor(sec / 60)
-    return format("%d:%02d", m, floor(sec - m * 60))
-end
-Rows.Clock = Clock
+local Short = ns.Short
 local function ClassOf(who, s)
     local known = s and s.byName and s.byName[who]
     return (ns.Encounters and ns.Encounters.ClassOf(who)) or (known and known.class) or nil
@@ -135,13 +128,6 @@ local function BlockRows(b, s, out)
     if #list > shown then Note(out, format(ns.T("mini.more"), #list - shown)) end
     if #list == 0 then Note(out, ns.T("sum.k.none")) end
 end
-local function Fill(set, list, keyOf)
-    if type(list) ~= "table" then return end
-    for i = 1, #list do
-        local k = keyOf(list[i])
-        if k then set[k] = true end
-    end
-end
 local function SpellKey(id)
     return ns.SpellKey and ns.SpellKey(id) or id
 end
@@ -153,9 +139,9 @@ local function RuleKeys(boss)
     local rules = ns.Penalties and ns.Penalties.Rules and ns.Penalties.Rules(boss) or {}
     for i = 1, #rules do
         local r = rules[i]
-        Fill(spells, r.spells, SpellKey)
-        Fill(npcs, r.targets, NpcKey)
-        Fill(npcs, r.srcs, NpcKey)
+        ns.SpellSet(r.spells, spells)
+        ns.NpcSet(r.targets, npcs)
+        ns.NpcSet(r.srcs, npcs)
         if r.npc then npcs[NpcKey(tonumber(r.npc) or r.npc)] = true end
     end
     return spells, npcs

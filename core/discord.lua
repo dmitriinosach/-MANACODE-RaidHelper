@@ -294,6 +294,3 @@ function Discord.Queue(res)
     while #posts > KEEP do tremove(posts, 1) end
     return post
 end
-function Discord.Posts()
-    return Box().posts
-end

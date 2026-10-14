@@ -28,7 +28,7 @@ local function SanityTip(st, ins, who, class)
     local n = ins and ins.n or 0
     if n > 0 then
         Put(out, "row", T("sum.uld.insane"), format("x%d", n), nil, "bad")
-        for k = 1, min(TIMES, n) do Put(out, "sub", Tips.Clock(ins.times[k])) end
+        for k = 1, min(TIMES, n) do Put(out, "sub", ns.Clock(ins.times[k])) end
         if n > TIMES then Put(out, "sub", (format(T("sum.tip.more"), n - TIMES):gsub("^%s+", ""))) end
     end
     return out

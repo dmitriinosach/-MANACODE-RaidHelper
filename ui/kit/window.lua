@@ -192,7 +192,7 @@ local STRIP_H = 28
 local STRIP_PAD = 10
 local STRIP_GAP = 4
 local STRIP_ICON = 12
-local STRIP_CLOSE = 26
+local STRIP_CLOSE_X = -4
 local STRIP_TEXT_H = 14
 local ARROW_TEX = "Interface\\ChatFrame\\ChatFrameExpandArrow"
 local ARROW_A, ARROW_B = 0.125, 0.875
@@ -281,6 +281,13 @@ end
 function Kit.MaxButton(parent)
     local b = Kit.GlyphButton(parent, "max")
     Kit.MaxLook(b, false)
+    return b
+end
+function Kit.CloseButton(parent, onClose)
+    local b = Kit.GlyphButton(parent, "close")
+    local T = ns.T or tostring
+    b.tipTitle = T("kit.win.close")
+    b.onClick = function() onClose() end
     return b
 end
 local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\kit\\"
@@ -381,7 +388,7 @@ local function Num(v)
 end
 local function StripLayout(s)
     s.shut:ClearAllPoints()
-    s.shut:SetPoint("RIGHT", s, "RIGHT", 0, 0)
+    s.shut:SetPoint("RIGHT", s, "RIGHT", STRIP_CLOSE_X, 0)
     s.restore:ClearAllPoints()
     s.restore:SetPoint("RIGHT", s.shut, "LEFT", 0, 0)
     local anchor = s.restore
@@ -432,10 +439,7 @@ function Kit.Strip(spec)
     Kit.Text(s.value, "text.secondary")
     s.restore = Kit.FoldButton(s, true)
     s.restore.onClick = function() spec.onRestore() end
-    s.shut = CreateFrame("Button", nil, s, "UIPanelCloseButton")
-    s.shut:SetWidth(STRIP_CLOSE)
-    s.shut:SetHeight(STRIP_CLOSE)
-    s.shut:SetScript("OnClick", function() spec.onClose() end)
+    s.shut = Kit.CloseButton(s, function() spec.onClose() end)
     StripLayout(s)
     return s
 end

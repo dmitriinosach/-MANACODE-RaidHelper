@@ -3,9 +3,7 @@ local format = string.format
 local floor = math.floor
 local View = {}
 ns.ExpectView = View
-local function Short(n)
-    return ns.BadgeTips.Short(n)
-end
+local Short = ns.Short
 local function Tone(got, exp, kill)
     if not kill then return "text.muted" end
     local k = got / math.max(1, exp)

@@ -14,17 +14,21 @@ function MK.Defs(boss)
 end
 function MK.New(fight)
     local defs = MK.Defs(fight.boss)
-    local by = {}
+    local by, want = {}, {}
     for i = 1, #defs do
         local def = defs[i]
         local subs = type(def.sub) == "table" and def.sub or { def.sub }
         for s = 1, #subs do
             local m = by[subs[s]] or {}
             by[subs[s]] = m
-            for k = 1, #def.ids do m[def.ids[k]] = i end
+            for k = 1, #def.ids do
+                m[def.ids[k]] = i
+                want[def.ids[k]] = true
+            end
         end
     end
-    return { from = fight.from, defs = defs, by = by, players = fight.players or {}, last = {}, lastTs = {}, list = {} }
+    return { from = fight.from, defs = defs, by = by, want = want, players = fight.players or {}, last = {},
+             lastTs = {}, list = {} }
 end
 local function AddWho(list, name)
     if not name or #list >= WHO_MAX then return end
@@ -33,10 +37,10 @@ local function AddWho(list, name)
     end
     list[#list + 1] = name
 end
-function MK.Event(mc, ts, sub, src, dst, a1)
+function MK.Event(mc, ts, sub, src, dst, a1, id)
     local m = mc.by[sub]
     if not m then return end
-    local id = tonumber(a1)
+    id = id or tonumber(a1)
     local i = id and m[id]
     if not i or (src and mc.players[src]) then return end
     local who = sub ~= "SPELL_SUMMON" and dst ~= src and dst or nil

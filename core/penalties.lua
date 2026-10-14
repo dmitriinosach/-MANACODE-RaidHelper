@@ -7,10 +7,7 @@ local tsort = table.sort
 local DEFAULT = "spartans"
 local HIT_GAP = 2
 local DEATH_WINDOW = 6
-local MELEE_SHARE = 0.15
 local MAX_SHORT = 64
-local MELEE_CLASS = { WARRIOR = true, ROGUE = true, DEATHKNIGHT = true, PALADIN = true }
-local RANGED_CLASS = { HUNTER = true, MAGE = true, WARLOCK = true, PRIEST = true }
 local SKULL = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8"
 local ICONS = {
     mcweapon = "Interface\\Icons\\INV_Sword_04",
@@ -190,25 +187,17 @@ function Penalties.Rules(boss)
     end
     return out
 end
-local function Fill(set, list)
-    if not list then return end
-    for i = 1, #list do set[ns.SpellKey(list[i]) or list[i]] = true end
-end
-local function FillN(set, list)
-    if not list then return end
-    for i = 1, #list do set[ns.NpcKeyOf(list[i]) or list[i]] = true end
-end
 function Penalties.Watch(boss)
     local w = { hit = {}, mc = {}, targets = {}, casts = {}, npcs = {}, deaths = {} }
     for _, preset in pairs(ns.penaltyPresets) do
         for i = 1, #preset.rules do
             local r = preset.rules[i]
             if ForBoss(r, boss) then
-                if r.kind == "hit" then Fill(w.hit, r.spells) end
+                if r.kind == "hit" then ns.SpellSet(r.spells, w.hit) end
                 if r.kind == "death" then w.deaths[#w.deaths + 1] = r end
-                if r.kind == "mccast" then Fill(w.mc, r.spells) end
+                if r.kind == "mccast" then ns.SpellSet(r.spells, w.mc) end
                 if r.kind == "mcweapon" and not w.ctl then w.ctl = r end
-                if r.kind == "mindmg" then FillN(w.targets, r.targets) end
+                if r.kind == "mindmg" then ns.NpcSet(r.targets, w.targets) end
                 if r.kind == "chased" and r.npc then w.npcs[ns.NpcKeyOf(r.npc)] = true end
                 if r.kind == "expect" and r.by then
                     for _, b in pairs(r.by) do
@@ -231,7 +220,7 @@ local function Episodes(times, gap)
 end
 local function AsSet(set, list)
     set = set or {}
-    Fill(set, list)
+    ns.SpellSet(list, set)
     return set
 end
 local function Applies(rule, fight)
@@ -246,7 +235,7 @@ end
 local function DeathMatch(rule, d)
     local spells = AsSet(nil, rule.spells)
     local srcs = {}
-    FillN(srcs, rule.srcs)
+    ns.NpcSet(rule.srcs, srcs)
     local k = d.killer
     if k and ((k.key and spells[k.key]) or (k.srcKey and srcs[k.srcKey])) then return true end
     if rule.ticks and rule.spells then
@@ -289,11 +278,6 @@ function Penalties.Duties(s, fight, p)
         end
     end
     return out
-end
-local function IsMelee(p)
-    if p.class and MELEE_CLASS[p.class] then return true end
-    if p.class and RANGED_CLASS[p.class] then return false end
-    return p.dmg > 0 and p.swingDmg / p.dmg >= MELEE_SHARE
 end
 function Penalties.Hangs(s, p, spell)
     local want = ns.SpellKey(spell)
@@ -471,7 +455,7 @@ local function Detect(rule, p, s, fight)
         if p.role == "dps" then
             local sum = 0
             for i = 1, #(rule.targets or {}) do sum = sum + (p.targetDmg[ns.NpcKeyOf(rule.targets[i])] or 0) end
-            local melee = IsMelee(p)
+            local melee = ns.IsMelee(p) == true
             local need = melee and rule.melee or rule.ranged
             if need and sum < need then out[1] = { t = nil, amount = sum, need = need, melee = melee } end
         end

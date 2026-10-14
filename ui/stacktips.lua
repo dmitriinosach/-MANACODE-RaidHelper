@@ -16,10 +16,7 @@ local function Plural(n, forms)
     if not one then return forms end
     return ns.PluralPick(n, one, few, many)
 end
-local function Clock(sec)
-    local m = floor(sec / 60)
-    return format("%d:%02d", m, floor(sec - m * 60))
-end
+local Clock = ns.Clock
 local function Sec(v)
     return floor(v + 0.5)
 end

@@ -15,8 +15,8 @@ local CAST = { SPELL_CAST_START = true, SPELL_CAST_SUCCESS = true }
 local SWING = { SWING_DAMAGE = true, SWING_MISSED = true }
 local REMOVED = { SPELL_AURA_REMOVED = true, SPELL_AURA_BROKEN = true, SPELL_AURA_BROKEN_SPELL = true }
 local BTGT = "FW_BTGT"
-local BOMB_LATE = 1.5
-local BLAST_SLACK = 2
+local FLASK_HIT = 0.5
+local VICTIM_LIMIT = 2000
 local SPAWN_EARLY = 0.1
 local SOUL_DIE = 1
 local SOUL_JOIN = 10
@@ -35,6 +35,15 @@ function M.New(fight)
     local zones = D and D.zones[fight.boss] or {}
     local bomb = D and D.bombs and D.bombs[fight.boss]
     local chase = D and D.chase and D.chase[fight.boss] or {}
+    local oozes = ns.ReplayOoze and D and D.oozes and D.oozes[fight.boss]
+    if oozes and #chase > 0 then
+        local skip, left = {}, {}
+        for i = 1, #oozes do skip[oozes[i].npc] = true end
+        for i = 1, #chase do
+            if not skip[chase[i].npc] then left[#left + 1] = chase[i] end
+        end
+        chase = left
+    end
     local winter = D and D.winters and D.winters[fight.boss]
     local soul = D and D.souls and D.souls[fight.boss]
     if not trap and #zones == 0 and not bomb and #chase == 0 and not winter and not soul then return nil end
@@ -67,6 +76,14 @@ function M.New(fight)
         for k, v in pairs(Set(z.drop, zi)) do ctx.zDrop[k] = v end
         for k, v in pairs(Set(z.hit, zi)) do ctx.zHit[k] = v end
         ctx.zCasts[zi] = {}
+    end
+    if #chase == 0 then
+        local want = {}
+        for _, set in ipairs({ ctx.wAura, ctx.wHit, ctx.sAura, ctx.trapCast, ctx.trapBoom, ctx.bCast, ctx.bGas,
+                               ctx.bBoom, ctx.bTomb, ctx.bFall, ctx.zCast, ctx.zSum, ctx.zDrop, ctx.zHit }) do
+            for id in pairs(set) do want[id] = true end
+        end
+        ctx.want = want
     end
     return ctx
 end
@@ -320,9 +337,8 @@ local function Waited(ctx, w)
         end
     end
 end
-local function Chase(ctx, ts, sub, srcGUID, dstGUID, dst, a1)
+local function Chase(ctx, ts, sub, srcGUID, dstGUID, dst, id, sk, dk)
     local target = dst and ctx.players[dst] and dst or nil
-    local sk, dk = ns.NpcKey(srcGUID), ns.NpcKey(dstGUID)
     local si, dI = sk and ctx.cNpc[sk], dk and ctx.cNpc[dk]
     if sub == "UNIT_DIED" then
         if dI then RunEnd(ctx, dstGUID, ts) end
@@ -342,7 +358,6 @@ local function Chase(ctx, ts, sub, srcGUID, dstGUID, dst, a1)
         if run and run.name ~= target then RunStart(ctx, srcGUID, target, ts, run.npc) end
         return
     end
-    local id = tonumber(a1)
     if not id then return end
     local ai = ctx.cAura[id]
     if ai and si == ai then
@@ -359,9 +374,14 @@ local function Chase(ctx, ts, sub, srcGUID, dstGUID, dst, a1)
         Waited(ctx, w)
     end
 end
-function M.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1, amount)
+function M.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1, amount, id, srcKey, dstKey)
     local P = ctx.players
-    if #ctx.chase > 0 then Chase(ctx, ts, sub, srcGUID, dstGUID, dst, a1) end
+    id = id or tonumber(a1)
+    if #ctx.chase > 0 then
+        if srcKey == nil then srcKey = ns.NpcKey(srcGUID) end
+        if dstKey == nil then dstKey = ns.NpcKey(dstGUID) end
+        Chase(ctx, ts, sub, srcGUID, dstGUID, dst, id, srcKey or nil, dstKey or nil)
+    end
     if sub == BTGT then
         if dst and P[dst] then ctx.btgt[#ctx.btgt + 1] = { t = ts, src = src, dst = dst } end
         return
@@ -370,7 +390,6 @@ function M.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1, amount)
         if ctx.soul and dst and P[dst] then SoulDied(ctx, ts, dst) end
         return
     end
-    local id = tonumber(a1)
     if not id or (src and P[src]) then return end
     local target = dst and P[dst] and dst or nil
     if ctx.bomb then
@@ -588,57 +607,6 @@ function M.Solve(ctx, posAt, ppy, names)
     end
     tsort(traps, function(a, b) return a.from < b.from end)
 end
-local function NearBomb(list, x, y, reach, ppy)
-    local best, bestD
-    for i = 1, #list do
-        local d = Dist(x, y, list[i].x, list[i].y, ppy)
-        if d <= reach and (not bestD or d < bestD) then best, bestD = list[i], d end
-    end
-    return best
-end
-function M.Bombs(ctx, posAt, ppy)
-    local D = ctx.bomb
-    local out = {}
-    if not D or D.show ~= "floor" then return out end
-    local casts, hits = ctx.bCasts, ctx.bHits
-    for ci = 1, #casts do
-        local c = casts[ci]
-        local stop = min(c.t + D.fuse + BOMB_LATE, casts[ci + 1] and casts[ci + 1].t or c.t + D.fuse + BOMB_LATE)
-        local list = {}
-        for pass = 1, 2 do
-            for i = 1, #hits do
-                local h = hits[i]
-                if h.t >= c.t and h.t < stop and (pass == 2) == (h.boom == true) then
-                    local x, y = posAt(h.name, h.t)
-                    if x then
-                        local b = NearBomb(list, x, y, h.boom and D.blast + BLAST_SLACK or D.reach, ppy)
-                        if not b then
-                            b = { x = x, y = y, n = 0, gas = 0, victims = 0 }
-                            list[#list + 1] = b
-                        end
-                        if h.boom then
-                            b.victims = b.victims + 1
-                            b.boomT = min(b.boomT or h.t, h.t)
-                        else
-                            b.gas = b.gas + 1
-                        end
-                        if not h.boom or b.gas == 0 then
-                            b.n = b.n + 1
-                            b.x, b.y = b.x + (x - b.x) / b.n, b.y + (y - b.y) / b.n
-                        end
-                    end
-                end
-            end
-        end
-        for i = 1, #list do
-            local b = list[i]
-            local to = min(b.boomT or c.t + D.fuse, ctx.fight.to)
-            out[#out + 1] = { cast = c.t, from = min(c.t + D.spawn, to), to = to, x = b.x, y = b.y, gas = b.gas,
-                              victims = b.victims }
-        end
-    end
-    return out
-end
 local function InsertBlast(L, t, x, y, r, n, spell)
     local j = L.nb + 1
     while j > 1 and L.bT[j - 1] > t do
@@ -763,12 +731,6 @@ function M.Done(ctx, L, posAt, ppy, fc, byK)
         if not z.def.spin then AddPool(L, z.from, z.to, z.x, z.y, z.def.r, z.def.tone) end
     end
     local B = ctx.bomb
-    ctx.floorBombs = M.Bombs(ctx, posAt, ppy)
-    for i = 1, #ctx.floorBombs do
-        local b = ctx.floorBombs[i]
-        AddPool(L, b.from, b.to, b.x, b.y, B.r, B.tone, b.to)
-        InsertBlast(L, b.to, b.x, b.y, B.blast * ppy, b.victims, B.boom[1])
-    end
     if B and B.show == "banner" then
         local list = Banner(ctx)
         if B.fall then list = Falls(ctx, list) end
@@ -794,18 +756,102 @@ function M.Done(ctx, L, posAt, ppy, fc, byK)
         Pulse(ctx.wHits, ring, W)
         AddRing(L, ring, W)
     end
-    L.mech = { traps = ctx.traps, booms = ctx.booms, zones = ctx.zoneOut, bombs = ctx.floorBombs, drops = ctx.drops, casts = ctx.bCasts,
+    L.mech = { traps = ctx.traps, booms = ctx.booms, zones = ctx.zoneOut, drops = ctx.drops, casts = ctx.bCasts,
                runs = ctx.runs, rings = ctx.rings, winter = W, winterHits = ctx.wHits }
     L.souls = ctx.soul and Waves(ctx) or nil
+end
+local function AddVictim(L, t, k)
+    if L.nv >= VICTIM_LIMIT then return end
+    local j = L.nv + 1
+    while j > 1 and L.vT[j - 1] > t do
+        L.vT[j], L.vK[j] = L.vT[j - 1], L.vK[j - 1]
+        j = j - 1
+    end
+    L.vT[j], L.vK[j] = t, k
+    L.nv = L.nv + 1
+end
+local function NearFlask(list, first, x, y)
+    local best, bestD = list[first], nil
+    for i = first, #list do
+        local d = (list[i].x - x) ^ 2 + (list[i].y - y) ^ 2
+        if not bestD or d < bestD then best, bestD = list[i], d end
+    end
+    return best
+end
+local function AddOnce(list, name)
+    for i = 1, #list do
+        if list[i] == name then return end
+    end
+    list[#list + 1] = name
+end
+local function ByFrom(a, b)
+    return a.from < b.from
+end
+function M.Flasks(ctx, L, scene)
+    local B = ctx.bomb
+    local out = {}
+    if not B or B.show ~= "flask" then return out end
+    ctx.flasks = out
+    if L.mech then L.mech.flasks = out end
+    local boss, ppy = scene.boss, scene.ppy
+    if not boss then return out end
+    local Replay = ns.Replay
+    local byK = Replay.ByK(scene)
+    local casts, hits = ctx.bCasts, ctx.bHits
+    local def = { tone = B.tone, flashTone = B.flashTone, tex = B.tex }
+    local cue = L.cue or { rings = {}, arrows = {}, links = {} }
+    L.cue = cue
+    local hi = ctx.fight.to
+    for ci = 1, #casts do
+        local c = casts[ci]
+        local bx, by = Replay.PosAtTime(boss, c.t)
+        local bi = Replay.IndexAt(boss, c.t)
+        if bx >= 0 and bi > 0 and c.t < hi then
+            local fx, fy = boss.fx and boss.fx[bi] or 0, boss.fy and boss.fy[bi] or 1
+            local boom = c.t + B.fuse
+            for i = 1, #hits do
+                local h = hits[i]
+                if h.boom and math.abs(h.t - boom) <= B.slack then
+                    boom = h.t
+                    break
+                end
+            end
+            boom = min(boom, hi)
+            local from = min(c.t + B.spawn, boom)
+            local first = #out + 1
+            for a = 1, #B.at do
+                local f, r = B.at[a][1] * ppy, B.at[a][2] * ppy
+                out[#out + 1] = { cast = c.t, from = from, boom = boom, x = bx + f * fx + r * fy, y = by + f * fy - r * fx,
+                                  gas = {}, hit = {} }
+            end
+            for i = 1, #hits do
+                local h = hits[i]
+                local mine = h.t >= (h.boom and boom or from) - FLASK_HIT and h.t <= boom + FLASK_HIT
+                local k = mine and byK[h.name]
+                if k then
+                    local x, y = Replay.PosOf(scene, h.name, h.t)
+                    local fl = x and NearFlask(out, first, x, y) or out[first]
+                    AddOnce(h.boom and fl.hit or fl.gas, h.name)
+                    AddVictim(L, h.t, k)
+                end
+            end
+            for i = first, #out do
+                local fl = out[i]
+                AddPool(L, fl.from, fl.boom, fl.x, fl.y, B.r, B.tone)
+                cue.rings[#cue.rings + 1] = { from = fl.from, boom = fl.boom, to = fl.boom + B.flash, r = B.blast,
+                                              n = #fl.hit, def = def, x = fl.x, y = fl.y }
+            end
+        end
+    end
+    tsort(cue.rings, ByFrom)
+    return out
 end
 local function Marks(fight)
     local out = {}
     local segs = ns.Encounters.Segs(fight)
     for i = 1, #segs do
-        if ns.Store.IsNew(segs[i]) then
-            local m = ns.Decode.Maps(segs[i])
-            for k = 1, #m do out[#out + 1] = m[k] end
-        end
+        local m = ns.Decode.Maps(segs[i])
+        for k = 1, #m do out[#out + 1] = m[k] end
     end
     tsort(out, function(a, b) return a.t < b.t end)
     return out
@@ -830,13 +876,11 @@ function M.LogPos(fight)
         if not tr then
             tr = { t = {}, x = {}, y = {} }
             for i = 1, #segs do
-                if ns.Store.IsNew(segs[i]) then
-                    for ts, x, y in ns.Decode.Pos(segs[i], name, fight.from - 5, fight.to + 5) do
-                        if ts > fight.to + 5 then break end
-                        if x > 0 or y > 0 then
-                            local n = #tr.t + 1
-                            tr.t[n], tr.x[n], tr.y[n] = ts, x, y
-                        end
+                for ts, x, y in ns.Decode.Pos(segs[i], name, fight.from - 5, fight.to + 5) do
+                    if ts > fight.to + 5 then break end
+                    if x > 0 or y > 0 then
+                        local n = #tr.t + 1
+                        tr.t[n], tr.x[n], tr.y[n] = ts, x, y
                     end
                 end
             end

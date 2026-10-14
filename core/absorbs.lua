@@ -3,9 +3,6 @@ local band = bit.band
 local floor = math.floor
 local min = math.min
 local abs = math.abs
-local find = string.find
-local match = string.match
-local sub = string.sub
 local LEVEL_CAP = 80 * 125
 local AEGIS_SHARE = 0.3
 local KINGS_SHARE = 0.15
@@ -15,7 +12,6 @@ local SWEEP = 60
 local GONE = 0.1
 local MAX_HP_GUESS = 45000
 local DEFAULT_AMOUNT = 1000
-local HP_BACK = 64
 local LOW_HP = 36
 local SHARE_TOL = 0.01
 local HINTS = 2
@@ -54,60 +50,12 @@ local order = {}
 function Absorbs.Known(id)
     return id ~= nil and SPELLS[id] ~= nil
 end
-function Absorbs.New(lines)
+function Absorbs.New()
     return { shields = {}, heals = {}, learned = {}, queued = {}, passive = {}, hints = {}, by = {}, spells = {},
-             names = {}, lines = lines, hp = {} }
-end
-local function HpIn(s, at, needle)
-    local stop = find(s, "\n", at, true)
-    local line = sub(s, at, stop and stop - 1 or nil)
-    local p = find(line, needle, 1, true)
-    if not p then return nil, nil end
-    local cur, top = match(line, "^%.%d+:(%d+):(%d+)", p)
-    local hp, hpMax = tonumber(cur), tonumber(top)
-    if hp and hpMax and hpMax > 0 then return hp, hpMax end
-    return nil, nil
+             names = {} }
 end
 local function Health(m, name)
-    local lines = m.lines
-    local list = lines and lines.list
-    local own = list and list[#list]
-    if not own then return ns.Streams.HealthAt(m, name, m.now) end
-    local memo = m.hp[name]
-    if not memo then
-        memo = { i = 0 }
-        m.hp[name] = memo
-    end
-    if memo.own == own then
-        if memo.needle then
-            for i = memo.i + 1, #own.t do
-                local hp, top = HpIn(own.s[i], own.at[i], memo.needle)
-                if hp then memo.hp, memo.top = hp, top end
-            end
-        end
-        memo.i = #own.t
-        return memo.hp, memo.top
-    end
-    local id = ns.Store.IdOf(own.seg, name)
-    memo.own, memo.i, memo.needle, memo.hp, memo.top = own, #own.t, id and ("." .. id .. ":") or nil, nil, nil
-    local left = HP_BACK
-    for k = #list, 1, -1 do
-        local o = list[k]
-        local oid = o == own and id or ns.Store.IdOf(o.seg, name)
-        if oid then
-            local needle = "." .. oid .. ":"
-            for i = #o.t, 1, -1 do
-                local hp, top = HpIn(o.s[i], o.at[i], needle)
-                if hp then
-                    memo.hp, memo.top = hp, top
-                    return hp, top
-                end
-                left = left - 1
-                if left <= 0 then return nil, nil end
-            end
-        end
-    end
-    return nil, nil
+    return ns.Streams.HealthAt(m, name, m.now)
 end
 local function MaxHp(m, name)
     local _, top = Health(m, name)

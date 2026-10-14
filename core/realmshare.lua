@@ -32,7 +32,6 @@ local function InFight()
     end
     return false
 end
-S.InFight = InFight
 local function MyRealm()
     local rd = ns.replayMech.realms
     for _, def in pairs(rd) do

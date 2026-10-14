@@ -12,24 +12,14 @@ local SUBS = { SPELL_AURA_APPLIED = true, SPELL_AURA_REMOVED = true, SPELL_DISPE
                SPELL_CAST_SUCCESS = true, SWING_DAMAGE = true, SWING_MISSED = true }
 local DD = {}
 ns.DeathDeps = DD
-local function Set(list)
-    local out = {}
-    for i = 1, #(list or {}) do out[ns.SpellKey(list[i]) or list[i]] = true end
-    return out
-end
-local function SetN(list)
-    local out = {}
-    for i = 1, #(list or {}) do out[ns.NpcKeyOf(list[i]) or list[i]] = true end
-    return out
-end
 function DD.Begin(fight, def, s)
     local dd = def.deps or {}
     local w = { s = s, def = dd, subs = SUBS, debuffs = {}, auras = {}, cured = {}, srcs = {}, swings = {},
-                tanked = SetN(dd.tanked), tankHits = Set(dd.tankHits), mechs = {} }
+                tanked = ns.NpcSet(dd.tanked), tankHits = ns.SpellSet(dd.tankHits), mechs = {} }
     for i = 1, #(dd.dispel or {}) do w.debuffs[ns.SpellKey(dd.dispel[i].spell)] = dd.dispel[i] end
     for i = 1, #(dd.mechs or {}) do
         local m = dd.mechs[i]
-        w.mechs[i] = { def = m, spells = Set(m.spells), srcs = SetN(m.srcs) }
+        w.mechs[i] = { def = m, spells = ns.SpellSet(m.spells), srcs = ns.NpcSet(m.srcs) }
         for k = 1, #(m.srcs or {}) do w.srcs[ns.NpcKeyOf(m.srcs[k])] = true end
         if m.by == "chased" then w.chase = w.chase or {} end
     end
@@ -78,10 +68,8 @@ local function Marks(w, fight)
     local out = {}
     local segs = ns.Encounters.Segs(fight)
     for i = 1, #segs do
-        if ns.Store.IsNew(segs[i]) then
-            local m = ns.Decode.Maps(segs[i])
-            for k = 1, #m do out[#out + 1] = m[k] end
-        end
+        local m = ns.Decode.Maps(segs[i])
+        for k = 1, #m do out[#out + 1] = m[k] end
     end
     tsort(out, function(a, b) return a.t < b.t end)
     w.marks = out
@@ -108,13 +96,11 @@ local function Track(w, fight, name)
     tr = { t = {}, x = {}, y = {} }
     local segs = ns.Encounters.Segs(fight)
     for i = 1, #segs do
-        if ns.Store.IsNew(segs[i]) then
-            for ts, x, y in ns.Decode.Pos(segs[i], name, fight.from - 5, fight.to + 5) do
-                if ts > fight.to + 5 then break end
-                if x > 0 or y > 0 then
-                    local n = #tr.t + 1
-                    tr.t[n], tr.x[n], tr.y[n] = ts, x, y
-                end
+        for ts, x, y in ns.Decode.Pos(segs[i], name, fight.from - 5, fight.to + 5) do
+            if ts > fight.to + 5 then break end
+            if x > 0 or y > 0 then
+                local n = #tr.t + 1
+                tr.t[n], tr.x[n], tr.y[n] = ts, x, y
             end
         end
     end
@@ -206,9 +192,7 @@ local function Dispel(w, fight, p, d)
     return { kind = "dispel", by = best, spell = dk, held = floor((d.t - on) * 10 + 0.5) / 10,
              near = bestDist and floor(bestDist + 0.5) or nil }
 end
-local function IsBoss(fight, key)
-    return ns.IsBossKey(fight, key)
-end
+local IsBoss = ns.IsBossKey
 local function HitBy(d, src)
     for i = 1, #(d.recent or {}) do
         if d.recent[i].src == src then return true end
@@ -427,7 +411,7 @@ function DD.FirstCause(s, fight, pens)
         end
         if n >= ns.Tune("waveMin") then
             best = { t = e.d.t, who = format(ns.T("sum.dd.wavewho"), e.p.name, n - 1),
-                     text = format(ns.T("sum.dd.wave"), n) }
+                     text = format(ns.T("sum.dd.wave"), n, ns.Plural(n, ns.T("sum.w.deaths.gen"))) }
         else
             best = { t = e.d.t, who = e.p.name, text = DeathWhat(e.p, e.d) }
         end

@@ -89,8 +89,7 @@ end
 function V.Use(scene)
     st.scene, st.n, st.shown, st.placed, st.hidden, st.title = scene, 0, 0, 0, 0, nil
     st.mode, st.mapKey = "soul", nil
-    st.byName = {}
-    for k = 1, scene and #scene.tracks or 0 do st.byName[scene.tracks[k].name] = k end
+    st.byName = scene and ns.Replay.ByK(scene) or {}
     if not box then return end
     for i = 1, #st.dots do
         HideDot(st.dots[i])

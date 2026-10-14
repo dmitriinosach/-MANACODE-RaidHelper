@@ -6,27 +6,22 @@ local min = math.min
 local tsort = table.sort
 local concat = table.concat
 local TOP = 5
+local AB_TOP = 8
 local HOUR = 3600
 local Model = {}
 ns.RaidModel = Model
 local function T(key)
     return ns.T(key)
 end
-function Model.Short(n)
-    if n >= 1e6 then return format("%.2f", n / 1e6) .. ns.T("num.m") end
-    if n >= 1e5 then return format("%.0f", n / 1e3) .. ns.T("num.k") end
-    if n >= 1e3 then return format("%.1f", n / 1e3) .. ns.T("num.k") end
-    return tostring(floor(n + 0.5))
-end
-local Short = Model.Short
+local Short = ns.Short
 local function Dec(v, digits)
     return ns.Dec(format("%." .. digits .. "f", v))
 end
 local function Stamp(t)
-    return date("%d.%m %H:%M", t)
+    return ns.Date(t, "dayTime")
 end
 function Model.Span(res)
-    local d0, d1 = date("%d.%m", res.from), date("%d.%m", res.to)
+    local d0, d1 = ns.Date(res.from), ns.Date(res.to)
     if d0 == d1 then return format(T("rsum.span.day"), d0, date("%H:%M", res.from), date("%H:%M", res.to)) end
     return format(T("rsum.span.days"), Stamp(res.from), Stamp(res.to))
 end
@@ -77,7 +72,7 @@ local function Totals(res)
         Put(encTip, "row", T("zb.raid.tip"), format(T("zb.of"), #unbuffed, kills))
         for i = 1, #unbuffed do
             local f = unbuffed[i]
-            Put(encTip, "row", ns.EncName(f.boss), date("%d.%m %H:%M", f.from), "dim")
+            Put(encTip, "row", ns.EncName(f.boss), ns.Date(f.from, "dayTime"), "dim")
         end
     end
     return {
@@ -104,12 +99,42 @@ local function Ranked(res, key)
     end)
     return list
 end
-local function DamageTip(res, p, share)
+local function ByAb(a, b)
+    if a.v ~= b.v then return a.v > b.v end
+    return a.key < b.key
+end
+local function AbLines(out, map, field, total, waste)
+    local list = {}
+    for key, e in pairs(map) do
+        if e[field] > 0 then list[#list + 1] = { key = key, e = e, v = e[field] } end
+    end
+    tsort(list, ByAb)
+    local whole = total + waste
+    local shown = 0
+    local pet, melee = ns.RaidPart.PET, ns.Totals.MELEE_KEY
+    for k = 1, min(AB_TOP, #list) do
+        local key, e = list[k].key, list[k].e
+        local name = key:sub(#pet + 1)
+        if key:sub(1, #pet) == pet then
+            name = format(T("sum.ab.pet"), name)
+        elseif name == melee then
+            name = T("sum.ab.melee")
+        end
+        ns.Totals.AbilityLine(out, e.i, name, list[k].v, whole)
+        shown = shown + list[k].v
+    end
+    if waste >= 1 then
+        out[#out + 1] = { kind = "sub", left = T("rsum.tt.waste"), right = "-" .. Short(waste), tone = "dim", v = -waste }
+    end
+    local rest = whole - shown
+    if rest >= 1 then
+        out[#out + 1] = { kind = "sub", left = T("rsum.tt.rest"), tone = "dim", v = rest,
+                          right = format(T("sum.ab.share"), Short(rest), floor(rest * 100 / max(1, whole) + 0.5)) }
+    end
+end
+local function DamageTip(p, key, share)
     local out = { { kind = "head", left = p.name, right = share, class = p.class } }
-    Put(out, "row", T("rsum.d.all"), Short(p.all))
-    if res.cut then Put(out, "row", T("rsum.d.cut"), Short(p.cut)) end
-    Put(out, "row", T("rsum.d.enc"), Short(p.enc))
-    Put(out, "row", T("rsum.d.boss"), Short(p.boss))
+    AbLines(out, p.ab, key, p[key], p.waste[key])
     return out
 end
 local function Damage(res, key, label)
@@ -118,20 +143,22 @@ local function Damage(res, key, label)
     local rows = {}
     for i = 1, min(TOP, #list) do
         local p = list[i]
-        local share = format("%.1f%%", p[key] / max(1, total) * 100)
+        local share = ns.Fixed(p[key] / max(1, total) * 100) .. "%"
         rows[i] = { who = p.name, class = p.class, text = Short(p[key]), note = share, v = p[key],
-                    lines = DamageTip(res, p, share) }
+                    lines = DamageTip(p, key, share) }
     end
     return { key = key, title = format(T("rsum.title.sum"), T(label), Short(total)), rows = rows,
              empty = T("rsum.none") }
 end
 local function Heal(res)
     local list = Ranked(res, "heal")
+    local total = Sum(res, "heal")
     local rows = {}
     for i = 1, min(TOP, #list) do
         local p = list[i]
-        local tip = { { kind = "head", left = p.name, class = p.class } }
-        Put(tip, "row", T("rsum.tt.heal"), Short(p.heal))
+        local tip = { { kind = "head", left = p.name, right = ns.Fixed(p.heal / max(1, total) * 100) .. "%",
+                        class = p.class } }
+        AbLines(tip, p.hb, "all", p.heal, 0)
         rows[i] = { who = p.name, class = p.class, text = Short(p.heal), v = p.heal, lines = tip }
     end
     return { key = "heal", title = format(T("rsum.title.sum"), T("rsum.d.heal"), Short(Sum(res, "heal"))),
@@ -225,36 +252,52 @@ local function CostLines(tip, pr, p)
     Put(tip, "row", T("rsum.tt.cost"), c > 0 and ns.RaidCost.Gold(c) or T("rsum.noprice"))
     if miss > 0 then Put(tip, "note", format(T("rsum.tt.unpriced"), miss)) end
 end
-local function UseTip(res, pr, p)
-    local tip = { { kind = "head", left = p.name, class = p.class } }
-    local list = Pairs(p.used)
-    local any = false
-    for k = 1, #list do
-        local sp = pr.by[list[k].k]
-        if sp and DRUNK[sp.cat] then
-            any = true
-            tip[#tip + 1] = { kind = "row", left = Inline(sp.id, ICON_TIP, sp.spell) .. " " .. SpName(sp),
-                              right = format("x%d", list[k].v) }
+local function Rank(res)
+    local list = {}
+    for i = 1, #res.spent do list[i] = res.spent[i] end
+    tsort(list, function(a, b)
+        local ca, cb = ns.RaidCost.CatOrder(a.cat), ns.RaidCost.CatOrder(b.cat)
+        if ca ~= cb then return ca < cb end
+        if a.n ~= b.n then return a.n > b.n end
+        if (a.id or 0) ~= (b.id or 0) then return (a.id or 0) < (b.id or 0) end
+        return a.item < b.item
+    end)
+    local rank = {}
+    for i = 1, #list do rank[list[i].item] = i end
+    return rank
+end
+local function Cells(pr, rank, p)
+    local out = {}
+    for item, n in pairs(p.used) do
+        local sp = pr.by[item]
+        if sp and rank[item] then
+            out[#out + 1] = { icon = ns.RaidCost.Icon(sp.id, sp.spell), n = n, rank = rank[item], key = item,
+                              lines = { { kind = "head", left = SpName(sp), right = format("x%d", n) } } }
         end
     end
-    if not any then Put(tip, "note", T("rsum.tt.nodrunk")) end
+    tsort(out, function(a, b) return a.rank < b.rank end)
+    return out
+end
+local function UseTip(pr, p, cells)
+    local tip = { { kind = "head", left = p.name, class = p.class } }
+    for k = 1, #cells do
+        local sp = pr.by[cells[k].key]
+        tip[#tip + 1] = { kind = "row", left = Inline(sp.id, ICON_TIP, sp.spell) .. " " .. SpName(sp),
+                          right = format("x%d", cells[k].n) }
+    end
+    if #cells == 0 then Put(tip, "note", T("rsum.tt.nodrunk")) end
     CostLines(tip, pr, p)
     return tip
 end
 local function Drunk(res, pr)
     local rows = {}
-    local flasks, potions = 0, 0
+    local rank = Rank(res)
     for i = 1, #res.players do
         local p = res.players[i]
         local fl, po = p.flask + p.elixir, p.potion
-        flasks, potions = flasks + fl, potions + po
-        local parts, list = {}, Pairs(p.used)
-        for k = 1, #list do
-            local sp = pr.by[list[k].k]
-            if sp then parts[#parts + 1] = Inline(sp.id, ICON_ROW, sp.spell) .. list[k].v end
-        end
-        rows[#rows + 1] = { who = p.name, class = p.class, text = concat(parts, "  "),
-                            v = fl * 1000 + po, lines = UseTip(res, pr, p) }
+        local cells = Cells(pr, rank, p)
+        rows[#rows + 1] = { who = p.name, class = p.class, text = "", cells = cells,
+                            v = fl * 1000 + po, lines = UseTip(pr, p, cells) }
     end
     tsort(rows, function(a, b)
         if a.v ~= b.v then return a.v > b.v end
@@ -659,8 +702,8 @@ local function TopRows(res)
     local rows = {}
     for i = 1, min(AWARD_TOP, #list) do
         local p = list[i]
-        local share = format("%.1f%%", p.boss / max(1, total) * 100)
-        rows[i] = { who = p.name, class = p.class, text = Short(p.boss), v = p.boss, lines = DamageTip(res, p, share) }
+        local share = ns.Fixed(p.boss / max(1, total) * 100) .. "%"
+        rows[i] = { who = p.name, class = p.class, text = Short(p.boss), v = p.boss, lines = DamageTip(p, "boss", share) }
     end
     return rows
 end

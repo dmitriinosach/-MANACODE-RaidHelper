@@ -2,14 +2,14 @@ local _, ns = ...
 local band = bit.band
 local WINDOW = 30
 local IDLE_END = 3
-local AFFIL_RAID = 0x7
+local AFFIL_RAID = ns.F.GROUP
 local AFFIL_MINE = 0x1
-local HOSTILE = 0x40
+local HOSTILE = ns.F.HOSTILE
 local SPELL_DMG = 1
 local SWING_DMG = 2
 local HEAL = 3
 local CURVE_MAX = 64
-local TYPE_PLAYER = 0x400
+local TYPE_PLAYER = ns.F.PLAYER
 local OWNERS_MAX = 400
 local KIND = {
     SWING_DAMAGE = SWING_DMG,
@@ -39,9 +39,8 @@ local wants = {}
 local split = false
 local owners = {}
 local ownersN = 0
-local RAID_UNITS, RAID_PETS, PARTY_UNITS, PARTY_PETS = {}, {}, {}, {}
-for i = 1, 40 do RAID_UNITS[i], RAID_PETS[i] = "raid" .. i, "raidpet" .. i end
-for i = 1, 4 do PARTY_UNITS[i], PARTY_PETS[i] = "party" .. i, "partypet" .. i end
+local U = ns.Units
+local RAID_UNITS, RAID_PETS, PARTY_UNITS, PARTY_PETS = U.raid, U.raidPet, U.party, U.partyPet
 local fighting = false
 local fightAt, fightDur = 0, 0
 local fightDmg, fightHeal = 0, 0
@@ -53,7 +52,7 @@ local seenAll = 0
 local borrowed, borrowBase = false, 0
 local counter = CreateFrame("Frame")
 local LOG_FIX = { tick = 1, silent = 5, gap = 15, say = 60, few = 5, each = 0.8, quiet = 0, acc = 0, last = -1,
-                  at = -60, saidAt = -60, n = 0 }
+                  at = -60, saidAt = -60 }
 local function Clear()
     if CombatLogClearEntries then CombatLogClearEntries() end
 end
@@ -124,16 +123,13 @@ counter:SetScript("OnUpdate", function(_, elapsed)
     F.quiet = F.quiet + dt
     local now = GetTime()
     if F.quiet < F.silent or now - F.at < F.gap then return end
-    F.quiet, F.at, F.n = 0, now, F.n + 1
+    F.quiet, F.at = 0, now
     Clear()
     if now - F.saidAt >= F.say then
         F.saidAt = now
         ns.Print(ns.T("log.revived"))
     end
 end)
-function Meter.LogRevived()
-    return LOG_FIX.n
-end
 function Meter.Seen()
     return SeenNow()
 end

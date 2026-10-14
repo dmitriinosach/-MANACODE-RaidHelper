@@ -11,7 +11,7 @@ local GUARD_WINDOW = 10
 local GAP_MIN = 3
 local HEAL_LOW = 0.15
 local HP_BACK = 30
-local REACT_MAX = 10
+local HP_SKEW = 0.3
 local CHAIN_GAP = 2
 local LOCK_SLACK = 0.5
 local ENRAGE_HOLD = 3
@@ -176,33 +176,50 @@ local function Rules(fight)
     end
     return out
 end
+local function React(d)
+    local recent, from = d.recent or {}, d.t
+    for i = #recent, 1, -1 do
+        if from - recent[i].t > CHAIN_GAP then break end
+        from = recent[i].t
+    end
+    return d.t - from
+end
+local function HurtIn(d, from, to)
+    local sum, recent = 0, d.recent or {}
+    for i = 1, #recent do
+        local h = recent[i]
+        if h.t > from and h.t < to and h.amount then sum = sum + h.amount - (h.over or 0) end
+    end
+    return sum
+end
 local function Facts(ctx, p, d)
-    local hp = ns.Encounters.HpTrail(ctx.lines, p.name, d.t - HP_BACK, d.t)
-    local most, below, high, pre = 0, nil, false, nil
+    local from = d.t - HP_BACK
+    local lo, hi = nil, d.burstT
+    if hi then
+        lo = hi - math.min(d.gap or 0, HP_BACK) + HP_SKEW
+        if lo > hi then lo = hi end
+        if lo < from then from = lo end
+    end
+    local kt = d.killer and d.killer.t - HP_SKEW
+    local hp = ns.Streams.HpList(ctx.segs, p.name, from, d.t)
+    local most, top, before, last = 0, nil, nil, nil
     for i = 1, #hp do
         local h = hp[i]
         if h.max > most then most = h.max end
-        if h.hp >= HALF * h.max then
-            below, high = nil, true
-        elseif not below then
-            below = h.t
+        if lo and h.t <= hi then
+            if h.t >= lo then
+                if not top or h.pct > top then top = h.pct end
+            else
+                before = h
+            end
         end
-        if d.burstT and h.t < d.burstT then pre = h.hp / h.max end
+        if kt and h.t <= kt then last = h end
     end
-    local react
-    if #hp > 0 then
-        react = not high and REACT_MAX or (below and d.t - below or 0)
-    else
-        local recent, from = d.recent or {}, d.t
-        for i = #recent, 1, -1 do
-            if from - recent[i].t > CHAIN_GAP then break end
-            from = recent[i].t
-        end
-        react = d.t - from
+    if not top and before then
+        top = math.max(0, before.hp - HurtIn(d, before.t, hi)) / before.max
     end
-    local k = d.killer
-    local oneshot = k ~= nil and most > 0 and (k.amount or 0) - (k.over or 0) >= ONESHOT * most
-    return react, most, pre, oneshot
+    local blow = last and math.max(0, last.hp - HurtIn(d, last.t, d.killer.t)) or nil
+    return most, top, blow
 end
 local function Blocked(lock, id)
     for i = 1, lock and #lock or 0 do
@@ -367,7 +384,7 @@ local function Tank(ctx, p, d, k, most, react, ready, n)
 end
 local function Judge(ctx, p, d)
     if d.tail then return end
-    local react, most, pre, oneshot = Facts(ctx, p, d)
+    local react = React(d)
     d.react = floor(react * 10) / 10
     local ready, n, used = Guards(ctx, p, d)
     local k = d.killer
@@ -388,6 +405,7 @@ local function Judge(ctx, p, d)
         Set(d, "red", rule.sure)
         return Ready(d, ready, n, fast)
     end
+    local most, pre, blow = Facts(ctx, p, d)
     if rule then
         local short = pre ~= nil and pre < HALF and (d.gap or 0) >= GAP_MIN and most > 0
             and (d.gapHeal or 0) < HEAL_LOW * most
@@ -409,6 +427,10 @@ local function Judge(ctx, p, d)
         Set(d, quick and "green" or "yellow", quick and "wavefast" or "wave")
         return Ready(d, ready, n, quick)
     end
+    local took = (k.amount or 0) - (k.over or 0)
+    if (k.over or 0) <= 0 and blow and blow < took then took = blow end
+    local oneshot = fast and most > 0 and took >= ONESHOT * most
+    if oneshot then d.oneHp, d.oneMax = floor(took), most end
     if ready then
         Set(d, fast and "green" or "yellow", fast and (oneshot and "oneshot" or "late") or "ready")
         return Ready(d, ready, n, fast)
@@ -423,10 +445,11 @@ local function Clean(s)
             local d = p.deathInfo[k]
             d.burstT = nil
             if d.why ~= "noheal" then d.gap, d.gapHeal = nil, nil end
+            if d.why ~= "oneshot" then d.oneHp, d.oneMax = nil, nil end
         end
     end
 end
-function DG.Run(s, fight, lines)
+function DG.Run(s, fight)
     local gw = s.gw or DG.Watch({})
     s.gw = nil
     local list = {}
@@ -436,7 +459,7 @@ function DG.Run(s, fight, lines)
     end
     tsort(list, Earlier)
     if not fight.killed then Tail(s, list) end
-    local ctx = { s = s, gw = gw, lines = lines, rules = Rules(fight), marked = Marked(s),
+    local ctx = { s = s, gw = gw, segs = ns.Encounters.Segs(fight), rules = Rules(fight), marked = Marked(s),
                   noReset = DG.NoReset(s) }
     for i = 1, #list do Judge(ctx, list[i].p, list[i].d) end
     if ns.DeathDeps then ns.DeathDeps.Run(s, fight) end

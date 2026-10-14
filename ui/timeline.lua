@@ -38,16 +38,10 @@ local FXBAR = FXROW - FXPAD * 2
 local MISSH = 5
 local THEAD = 14
 local TOPPAD = 6
-local HANDLEH = 7
-local TRACKMAX = 600
 local NAMEX = 3
-local READOUTW = 110
 local PHASEW = 90
 local SKULLSZ = 16
 local ZEROBAR = 2
-local DOTMIN = 4
-local DOTMAX = 12
-local DOTSHARE = 0.14
 local TRACKS = {
     { key = "boss",   min = 24, want = 68, color = "sem.lane.boss" },
     { key = "casts",  min = 22, want = 38, color = "sem.lane.casts" },
@@ -59,13 +53,12 @@ local TRACKS = {
 }
 local TL = {}
 ns.Timeline = TL
+local Rows, Tracks, Cursor = ns.TimelineRows, ns.TimelineTracks, ns.TimelineCursor
 local frame, canvas, ruler, overlay, statusText, titleText, bareNote
-local cursorLine, cursorLabel, cursorBg, hpDot
-local detailAnchor, rowGlow
+local toolBar
+local detailAnchor
 local lastBounds
-local hov = {}
 local auraBar
-local trackHeads = {}
 local gutter, nameW = GUTTERMIN, GUTTERMIN - 6
 local blockPool, barPool = {}, {}
 local usedBlocks, usedBars = 0, 0
@@ -77,13 +70,11 @@ local dragging, dragX, dragFrom, dragY, dragScroll
 local auraRows = {}
 local hitRows, healRows = {}, {}
 local trackScroll, trackTotal = 0, 0
-local readouts = {}
 local panelMissing = false
 local catHeads = {}
 local foldTracks, foldCats
 local lineH = 11
 local dropMode = false
-local handles, resize = {}, nil
 local function Folds()
     if not foldTracks then
         local ui = ns.GetDB().settings.ui
@@ -96,13 +87,6 @@ end
 local function TrackFolded(key)
     local tracks = Folds()
     return tracks[key] == true
-end
-local function CatFolded(key)
-    local _, cats = Folds()
-    return cats[key] == true
-end
-local function FoldMark(label, folded)
-    return (folded and "+ " or "- ") .. label
 end
 local function GetBlock()
     usedBlocks = usedBlocks + 1
@@ -216,38 +200,27 @@ local function Band(y, h)
     return y >= 0 and (y + h) <= canvas:GetHeight() + 1
 end
 local function Clock(sec)
-    local sign = sec < 0 and "-" or ""
-    local abs = sec < 0 and -sec or sec
-    local m = floor(abs / 60)
-    return format("%s%d:%02d", sign, m, floor(abs - m * 60))
+    return ns.Clock(sec, true)
 end
-local function ClockMs(sec)
-    local sign = sec < 0 and "-" or ""
-    local abs = sec < 0 and -sec or sec
-    local m = floor(abs / 60)
-    local s = abs - m * 60
-    return format("%s%d:%02d.%03d", sign, m, floor(s), floor((s - floor(s)) * 1000))
-end
-local function FitText(fs, text, width)
-    fs:SetWidth(width)
-    fs:SetText(text)
-    if fs:GetStringWidth() <= width then return end
-    local cut = text
-    while #cut > 1 do
-        local i = #cut
-        while i > 1 do
-            local b = cut:byte(i)
-            if b < 128 or b >= 192 then break end
-            i = i - 1
+local FitText = ns.FitText or function(fs, text) fs:SetText(text) end
+local function GlowBand(y)
+    if not lastBounds then return false end
+    local band = nil
+    for i = 1, #lastBounds do
+        local bd = lastBounds[i]
+        if y >= bd.y and y < bd.y + bd.h then
+            local rowsTop = TRACKS[i].rows and (bd.y + FXPAD) or bd.y
+            band = { y = bd.y, h = bd.h }
+            if TRACKS[i].rows and not TrackFolded(TRACKS[i].key)
+                and y >= rowsTop then
+                local slot = floor((y - rowsTop) / FXROW)
+                band = { y = rowsTop + slot * FXROW, h = FXROW - 1 }
+            end
+            break
         end
-        cut = cut:sub(1, i - 1)
-        fs:SetText(cut .. "…")
-        if fs:GetStringWidth() <= width then return end
     end
-    fs:SetText("…")
-end
-local function ContentTop(index, bound)
-    return TRACKS[index].rows and (bound.y + FXPAD) or bound.y
+    if band and Band(band.y, band.h) then return band.y, band.h end
+    return nil
 end
 local function TrackWant(track)
     local ui = ns.GetDB().settings.ui
@@ -296,66 +269,6 @@ local function TrackBounds()
         y = y + want[i]
     end
     return out, total
-end
-local function SetTrackHeight(key, height)
-    local ui = ns.GetDB().settings.ui
-    if type(ui.trackH) ~= "table" then ui.trackH = {} end
-    ui.trackH[key] = height
-    ns.Timeline.Redraw()
-end
-local function PlaceHandle(index, bound)
-    local track = TRACKS[index]
-    local h = handles[index]
-    if not h then
-        h = CreateFrame("Frame", nil, canvas)
-        h:SetHeight(HANDLEH)
-        h:EnableMouse(true)
-        h:SetFrameLevel(canvas:GetFrameLevel() + 6)
-        h.tex = h:CreateTexture(nil, "OVERLAY")
-        h.tex:SetAllPoints()
-        h:SetScript("OnEnter", function(self)
-            ns.Kit.Shade(self.tex, "surface.handle")
-            GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
-            GameTooltip:AddLine(ns.T("tl.track.size"))
-            GameTooltip:Show()
-        end)
-        h:SetScript("OnLeave", function(self)
-            if not resize then ns.Kit.Shade(self.tex, "surface.clear") end
-            GameTooltip:Hide()
-        end)
-        h:SetScript("OnMouseDown", function(self, button)
-            if button == "RightButton" then
-                SetTrackHeight(self.key, nil)
-                return
-            end
-            resize = { key = self.key, min = self.min, h = self.h0,
-                       y = GetCursorPosition() / self:GetEffectiveScale() }
-        end)
-        h:SetScript("OnMouseUp", function() resize = nil end)
-        handles[index] = h
-    end
-    h.key = track.key
-    h.min = track.min or FXROW
-    h.h0 = bound.h
-    if not resize or resize.key ~= track.key then
-        ns.Kit.Shade(h.tex, "surface.clear")
-    end
-    h:SetWidth(canvas:GetWidth())
-    h:ClearAllPoints()
-    h:SetPoint("TOPLEFT", canvas, "TOPLEFT", 0,
-        -(bound.hy + bound.full - floor(HANDLEH / 2)))
-    h:Show()
-end
-local function PlaceHandles(bounds)
-    for i = 1, #TRACKS do
-        local track = TRACKS[i]
-        local fits = bounds[i].hy + bounds[i].full < canvas:GetHeight()
-        if track.rows or TrackFolded(track.key) or not fits then
-            if handles[i] then handles[i]:Hide() end
-        else
-            PlaceHandle(i, bounds[i])
-        end
-    end
 end
 local function DrawGrid(bounds)
     for i = 1, #TRACKS do
@@ -421,193 +334,13 @@ local function DrawRuler()
         t = t + step
     end
 end
-local function Glued()
-    local ui = ns.GetDB().settings.ui
-    return ui.glue ~= false
-end
-local function GlueIds()
-    if not data then return {} end
-    if not data.glueIds then
-        local set = {}
-        local lists = { data.healed, data.taken }
-        for k = 1, #lists do
-            local list = lists[k]
-            for i = 1, #list do
-                local id = tonumber(list[i].id)
-                if id then set[id] = true end
-            end
-        end
-        data.glueIds = set
-    end
-    return data.glueIds
-end
 local function BuildAuraRows()
-    auraRows = {}
-    local cats = ns.Effects.categories
-    local buckets = {}
-    for i = 1, #cats do
-        buckets[cats[i].key] = { bad = {}, good = {}, off = {} }
-    end
-    buckets[ns.Effects.ROOT] = { bad = {}, good = {}, off = {} }
-    local items = data and data.auras
-    local glue = Glued()
-    if items then
-        tsort(items, function(a, b) return a.t < b.t end)
-        local index = {}
-        for i = 1, #items do
-            local a = items[i]
-            local id = tonumber(a.id)
-            local key = ns.Effects.GlueTo(id) or id
-            if id and not (glue and GlueIds()[key]) then
-                local row = index[key]
-                if not row then
-                    row = { label = ns.Effects.Name(key), id = key, kind = a.kind,
-                            items = {} }
-                    index[key] = row
-                    local bucket = buckets[ns.Effects.Category(key)] or buckets.aura
-                    local into
-                    if not ns.Effects.Tracked(key) then
-                        into = bucket.off
-                    else
-                        into = (a.kind == "debuff") and bucket.bad or bucket.good
-                    end
-                    into[#into + 1] = row
-                end
-                row.items[#row.items + 1] = a
-                if id ~= key then
-                    row.parts = row.parts or {}
-                    row.parts[id] = (row.parts[id] or 0) + 1
-                end
-            end
-        end
-    end
-    local function Emit(key, base)
-        local bucket = buckets[key]
-        if #bucket.off > 0 or dropMode then
-            local hkey = key .. ":off"
-            local hfold = not CatFolded(hkey)
-            auraRows[#auraRows + 1] = {
-                head = true,
-                sub = true,
-                cat = hkey,
-                depth = base,
-                label = ns.T("fx.cat.hidden"),
-                count = #bucket.off,
-                folded = hfold,
-            }
-            if not hfold then
-                for j = 1, #bucket.off do
-                    bucket.off[j].depth = base + 1
-                    auraRows[#auraRows + 1] = bucket.off[j]
-                end
-            end
-        end
-        for j = 1, #bucket.bad do
-            bucket.bad[j].depth = base
-            auraRows[#auraRows + 1] = bucket.bad[j]
-        end
-        for j = 1, #bucket.good do
-            bucket.good[j].depth = base
-            auraRows[#auraRows + 1] = bucket.good[j]
-        end
-    end
-    local root = buckets[ns.Effects.ROOT]
-    if #root.bad + #root.good + #root.off > 0 or dropMode then
-        Emit(ns.Effects.ROOT, 0)
-    end
-    for i = 1, #cats do
-        local key = cats[i].key
-        local bucket = buckets[key]
-        local count = #bucket.bad + #bucket.good
-        if count > 0 or #bucket.off > 0 or dropMode then
-            local folded = CatFolded(key)
-            auraRows[#auraRows + 1] = {
-                head = true,
-                cat = key,
-                depth = 0,
-                label = ns.Effects.CategoryLabel(key),
-                count = count,
-                folded = folded,
-            }
-            if not folded then Emit(key, 1) end
-        end
-    end
-end
-local function RowTotal(row, heal)
-    local text = format(heal and ns.T("tl.row.heal") or ns.T("tl.row.hit"), ns.Num(row.total), row.hits,
-        ns.Plural(row.hits, ns.T(heal and "tl.w.heal" or "tl.w.hit")))
-    if row.misses > 0 then text = text .. format(ns.T("tl.row.miss"), row.misses) end
-    return text
-end
-local function MissText(it)
-    local word = ns.L["tl.miss." .. it.miss] or it.miss
-    if (it.missN or 0) > 0 then return word .. " " .. ns.Num(it.missN) end
-    return word
-end
-local function SplitHot(rows, track)
-    local root, hot, off = {}, {}, {}
-    for i = 1, #rows do
-        local row = rows[i]
-        local set = ns.Effects.RowCat(row.id, track)
-        local into
-        if set == "off" then
-            into = off
-            row.off = true
-        elseif set == "hot" then
-            into = hot
-        elseif set == "root" then
-            into = root
-        elseif row.hot or row.spans then
-            into = hot
-        else
-            into = root
-        end
-        into[#into + 1] = row
-    end
-    local out = {}
-    local function Shelf(bucket, key, label, sub, foldDefault)
-        if #bucket == 0 and not dropMode then return end
-        local folded = foldDefault ~= CatFolded(key)
-        out[#out + 1] = { head = true, cat = key, sub = sub, depth = 0,
-                          folded = folded, label = label, count = #bucket }
-        if folded then return end
-        for i = 1, #bucket do
-            bucket[i].depth = 1
-            out[#out + 1] = bucket[i]
-        end
-    end
-    Shelf(off, track .. ":off", ns.T("fx.cat.hidden"), true, true)
-    for i = 1, #root do
-        root[i].depth = 0
-        out[#out + 1] = root[i]
-    end
-    Shelf(hot, track .. ":hot", ns.T("fx.cat.hot"), false, false)
-    return out
-end
-local function AttachSpans(rows)
-    if not Glued() or not data or not data.auras then return end
-    local byId = {}
-    for i = 1, #rows do
-        local id = tonumber(rows[i].id)
-        if id then byId[id] = rows[i] end
-    end
-    for i = 1, #data.auras do
-        local a = data.auras[i]
-        local id = tonumber(a.id)
-        local row = byId[ns.Effects.GlueTo(id) or id]
-        if row then
-            row.spans = row.spans or {}
-            row.spans[#row.spans + 1] = a
-        end
-    end
+    local _, cats = Folds()
+    auraRows = Rows.Aura(data, cats, dropMode, Rows.Glued())
 end
 local function BuildAmountRows()
-    hitRows = ns.Encounters.GroupRows(data and data.taken)
-    healRows = ns.Encounters.GroupRows(data and data.healed)
-    AttachSpans(healRows)
-    AttachSpans(hitRows)
-    healRows = SplitHot(healRows, "healed")
-    hitRows = SplitHot(hitRows, "taken")
+    local _, cats = Folds()
+    hitRows, healRows = Rows.Amount(data, cats, dropMode, Rows.Glued())
 end
 local function DrawPoints(items, bound, color, own)
     if not items then return end
@@ -686,8 +419,8 @@ local function DrawHead(row, y, indent)
     head.label:SetPoint("LEFT", 4, 0)
     head.label:SetWidth(max(nameW, canvas:GetWidth() - indent - 10))
     head.label:SetText(row.folded
-        and format(ns.T("tl.fx.folded"), FoldMark(row.label, true), row.count)
-        or FoldMark(row.label, false))
+        and format(ns.T("tl.fx.folded"), Tracks.FoldMark(row.label, true), row.count)
+        or Tracks.FoldMark(row.label, false))
     head.tip = row.label
     head.jumpTo = nil
     head.spellId = nil
@@ -781,7 +514,7 @@ local function DrawAuras(bound)
                 b.spellId = tonumber(a.id)
                 b.jumpTo = Culprit(a)
                 b.tip2 = format(ns.T("tl.span.fmt"), Clock(a.t - fight.from),
-                    Clock(to - fight.from), to - a.t,
+                    Clock(to - fight.from), ns.Fixed(to - a.t),
                     a.src and ("  |  " .. a.src) or "")
             end
         end
@@ -811,7 +544,7 @@ local function DrawAmountRows(rows, bound, color, heal)
         gut.tip = row.label
         gut.spellId = tonumber(row.id)
         gut.jumpTo = nil
-        gut.tip2 = RowTotal(row, heal)
+        gut.tip2 = Rows.Total(row, heal)
         gut.tip3 = ns.T("tl.row.bind")
         if row.id then
             catHeads[#catHeads + 1] = { frame = gut, tex = gut.tex,
@@ -890,16 +623,16 @@ local function DrawAmountRows(rows, bound, color, heal)
                         extra = extra .. format(ns.T("tl.tip.absorbed"), it.absorbed)
                     end
                     b.tip2 = format(heal and ns.T("tl.tip.gotheal") or ns.T("tl.tip.gothit"),
-                        it.src or "?", player or "?", it.miss and MissText(it) or ns.Num(it.amount), extra)
+                        it.src or "?", player or "?", it.miss and Rows.MissText(it) or ns.Num(it.amount), extra)
                     if it.mc then
                         b.tip3 = format(ns.T("tl.tip.mc"), it.src or "?")
                     end
                     if it.victim then
-                        b.tip3 = format(ns.T("tl.tip.chaser"), it.victim, it.chaseFor or 0)
+                        b.tip3 = format(ns.T("tl.tip.chaser"), it.victim, ns.Fixed(it.chaseFor or 0))
                         b.tip4 = format(ns.T("tl.tip.splash"), it.chaseN or 0,
-                            ns.Num(it.chaseSum or 0))
+                            ns.Plural(it.chaseN or 0, ns.T("tl.w.splash")), ns.Num(it.chaseSum or 0))
                     end
-                    b.tip5 = format(ns.T("tl.tip.when"), Clock(it.t - fight.from), RowTotal(row, heal))
+                    b.tip5 = format(ns.T("tl.tip.when"), Clock(it.t - fight.from), Rows.Total(row, heal))
                     lastX = x
                 end
             end
@@ -1063,88 +796,30 @@ local function DrawDeaths()
         end
     end
 end
-local function LastBefore(items, t)
-    if not items then return nil end
-    local found = nil
-    for i = 1, #items do
-        if items[i].t <= t then found = items[i] else break end
-    end
-    return found
+local function SyncBar(total)
+    if not auraBar then return end
+    auraBar:SetHeight(canvas:GetHeight())
+    auraBar:ClearAllPoints()
+    auraBar:SetPoint("TOPRIGHT", canvas, "TOPRIGHT", -1, 0)
+    auraBar:SetState(trackScroll, canvas:GetHeight(), total)
+    if total > canvas:GetHeight() then auraBar:Show() else auraBar:Hide() end
 end
-local function ShowReadouts(t)
+local function Status()
     if not data then
-        for i = 1, #readouts do readouts[i]:Hide() end
-        return
+        local bare = fight and ns.Store.Bare(fight)
+        statusText:SetText(ns.T(bare and "rec.bare" or "tl.pickplayer"))
+        if bare then bareNote:Show() else bareNote:Hide() end
+        return false
     end
-    if ns.TimelineBrief and ns.TimelineBrief.On() then return ns.TimelineBrief.Readouts(t, readouts, hpDot) end
-    local bounds = TrackBounds()
-    local x = XOf(t)
-    local flip = (canvas:GetWidth() - x) < READOUTW
-    local text = {}
-    local b = LastBefore(data.boss, t)
-    text[1] = b and b.label or nil
-    local c = LastBefore(data.casts, t)
-    text[2] = c and (ns.TimelineCast and ns.TimelineCast.Readout(c) or c.label) or nil
-    local active = 0
-    for slot = 1, #auraRows do
-        local list = auraRows[slot].items
-        for j = 1, (list and #list or 0) do
-            local a = list[j]
-            if a.t <= t and (a.to or a.t) >= t then active = active + 1 break end
-        end
-    end
-    text[3] = active > 0 and format(ns.T("tl.read.auras"), active) or nil
-    local heal = LastBefore(data.healed, t)
-    text[4] = heal and (t - heal.t) < 3 and format("%s: +%d", heal.label, heal.amount) or nil
-    local d = LastBefore(data.taken, t)
-    text[5] = d and (t - d.t) < 3 and (d.miss and format("%s: %s", d.label, MissText(d))
-        or format("%s: %d", d.label, d.amount)) or nil
-    local h = LastBefore(data.hp, t)
-    if h then
-        text[6] = h.hp and format("%d%%  (%d)", floor(h.pct * 100 + 0.5), h.hp)
-            or format("%d%%", floor(h.pct * 100 + 0.5))
-    end
-    text[7] = ns.TimelineThreat and ns.TimelineThreat.Readout(fight, player, t) or nil
-    if h and hpDot and not TrackFolded("hp") then
-        local b = bounds[6]
-        local top = b.y + 4
-        local hh = b.h - 8
-        local dot = max(DOTMIN, min(DOTMAX, floor(hh * DOTSHARE)))
-        hpDot:SetWidth(dot)
-        hpDot:SetHeight(dot)
-        hpDot:ClearAllPoints()
-        hpDot:SetPoint("CENTER", overlay, "TOPLEFT", x, -(top + hh - h.pct * hh))
-        hpDot:Show()
-    elseif hpDot then
-        hpDot:Hide()
-    end
-    for i = 1, #readouts do
-        local fs = readouts[i]
-        if text[i] and not TrackFolded(TRACKS[i].key) then
-            local ty = bounds[i].y + 2
-            fs:ClearAllPoints()
-            if flip then
-                fs:SetPoint("TOPRIGHT", overlay, "TOPLEFT", x - 4, -ty)
-                fs:SetJustifyH("RIGHT")
-            else
-                fs:SetPoint("TOPLEFT", overlay, "TOPLEFT", x + 4, -ty)
-                fs:SetJustifyH("LEFT")
-            end
-            fs:SetText(text[i])
-            fs:Show()
-        else
-            fs:Hide()
-        end
-    end
-end
-local function HideReadouts()
-    for i = 1, #readouts do readouts[i]:Hide() end
-    if hpDot then hpDot:Hide() end
+    bareNote:Hide()
+    local span = max(1, fight.to - fight.from)
+    statusText:SetText(format(ns.T("tl.window"),
+        Clock(viewFrom - fight.from), Clock(viewTo - fight.from), ns.Fixed(viewTo - viewFrom),
+        floor((data.dmgDone or 0) / span), floor((data.healDone or 0) / span)))
+    return true
 end
 local function DrawBrief()
-    for i = 1, #TRACKS do
-        if handles[i] then handles[i]:Hide() end
-    end
+    Tracks.HideHandles()
     lastBounds = nil
     local total, scroll = ns.TimelineBrief.Draw({
         canvas = canvas, overlay = overlay, GetBlock = GetBlock, GetBar = GetBar, XOf = XOf,
@@ -1153,36 +828,20 @@ local function DrawBrief()
         gutter = gutter, nameW = nameW, scroll = trackScroll,
     })
     trackScroll, trackTotal = scroll, total
-    if auraBar then
-        auraBar:SetHeight(canvas:GetHeight())
-        auraBar:ClearAllPoints()
-        auraBar:SetPoint("TOPRIGHT", canvas, "TOPRIGHT", -1, 0)
-        auraBar:SetState(trackScroll, canvas:GetHeight(), total)
-        if total > canvas:GetHeight() then auraBar:Show() else auraBar:Hide() end
-    end
+    SyncBar(total)
     DrawRuler()
     if ns.TimelineLinks then ns.TimelineLinks.Paint() end
     DrawPhases()
-    if not data then
-        local bare = ns.Store.Bare(fight)
-        statusText:SetText(ns.T(bare and "rec.bare" or "tl.pickplayer"))
-        if bare then bareNote:Show() else bareNote:Hide() end
-        return
-    end
-    bareNote:Hide()
+    if not Status() then return end
     DrawDeaths()
-    local span = max(1, fight.to - fight.from)
-    statusText:SetText(format(ns.T("tl.window"),
-        Clock(viewFrom - fight.from), Clock(viewTo - fight.from), viewTo - viewFrom,
-        floor((data.dmgDone or 0) / span), floor((data.healDone or 0) / span)))
 end
 local function RedrawNow()
-    hov.x = nil
+    Cursor.Reset()
     if not player and ns.SummaryView and ns.SummaryView.IsShown() then return end
     if ns.ThreatView and ns.ThreatView.IsShown() then return end
     local p0 = ns.Prof.on and debugprofilestop()
     ReleaseAll()
-    for i = 1, #trackHeads do trackHeads[i]:Hide() end
+    Tracks.HideHeads()
     if not fight then return end
     if ns.TimelineBrief and ns.TimelineBrief.On() then
         DrawBrief()
@@ -1192,50 +851,14 @@ local function RedrawNow()
     local bounds, total = TrackBounds()
     trackTotal = total
     lastBounds = bounds
-    if auraBar then
-        auraBar:SetHeight(canvas:GetHeight())
-        auraBar:ClearAllPoints()
-        auraBar:SetPoint("TOPRIGHT", canvas, "TOPRIGHT", -1, 0)
-        auraBar:SetState(trackScroll, canvas:GetHeight(), total)
-        if total > canvas:GetHeight() then auraBar:Show() else auraBar:Hide() end
-    end
+    SyncBar(total)
     DrawGrid(bounds)
-    PlaceHandles(bounds)
+    Tracks.PlaceHandles(bounds)
     DrawRuler()
     if ns.TimelineLinks then ns.TimelineLinks.Paint() end
-    local view = canvas:GetHeight()
-    for i = 1, #TRACKS do
-        local head = trackHeads[i]
-        local key = TRACKS[i].key
-        local folded = TrackFolded(key)
-        local top = max(0, bounds[i].hy)
-        local room = min(view, bounds[i].hy + bounds[i].full) - top
-        if room < 8 then
-            head:Hide()
-        else
-            head:ClearAllPoints()
-            head:SetPoint("TOPLEFT", canvas, "TOPLEFT", 1, -(top + 1))
-            head:SetWidth(max(24, gutter - 2))
-            head:SetHeight(min(room, THEAD - 1))
-            head.text:ClearAllPoints()
-            head.text:SetPoint("LEFT", 3, 0)
-            head.text:SetWidth(max(10, gutter - 7))
-            head.text:SetText(FoldMark(ns.T("tl.track." .. key), folded))
-            head:Show()
-            if not folded and (key == "auras" or key == "healed" or key == "taken") then
-                catHeads[#catHeads + 1] = { frame = head, tex = head.bg,
-                                            cat = key == "auras" and ns.Effects.ROOT or key }
-            end
-        end
-    end
+    Tracks.PlaceHeads(bounds, gutter, catHeads)
     DrawAuras(bounds[3])
-    if not data then
-        local bare = fight and ns.Store.Bare(fight)
-        statusText:SetText(ns.T(bare and "rec.bare" or "tl.pickplayer"))
-        if bare then bareNote:Show() else bareNote:Hide() end
-        return
-    end
-    bareNote:Hide()
+    if not Status() then return end
     if not TrackFolded("boss") then
         DrawPoints(data.boss, bounds[1], TRACKS[1].color)
     end
@@ -1256,13 +879,21 @@ local function RedrawNow()
     end
     DrawPhases()
     DrawDeaths()
-    local span = max(1, fight.to - fight.from)
-    statusText:SetText(format(ns.T("tl.window"),
-        Clock(viewFrom - fight.from), Clock(viewTo - fight.from), viewTo - viewFrom,
-        floor((data.dmgDone or 0) / span), floor((data.healDone or 0) / span)))
     if p0 then ns.Prof.Add("tl.draw", debugprofilestop() - p0, usedBlocks + usedBars) end
 end
 local Redraw = ns.Prof.Wrap("ui.tl", RedrawNow)
+local function FoldTrack(key)
+    local tracks = Folds()
+    tracks[key] = not tracks[key] or nil
+    Redraw()
+end
+local cur = { tracks = TRACKS, Folded = TrackFolded, Bounds = TrackBounds, XOf = XOf, Glow = GlowBand }
+local function CursorCtx()
+    cur.canvas, cur.overlay = canvas, overlay
+    cur.fight, cur.player, cur.data, cur.auraRows = fight, player, data, auraRows
+    cur.from, cur.to, cur.scroll, cur.gutter = viewFrom, viewTo, trackScroll, gutter
+    return cur
+end
 function SelectPlayer(name)
     if ns.ThreatView then ns.ThreatView.Hide() end
     if ns.SummaryView then ns.SummaryView.Hide() end
@@ -1328,7 +959,6 @@ local function BuildFrame(host)
     statusText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     ns.Kit.Text(statusText, "text.bright")
     statusText:SetPoint("LEFT", titleText, "RIGHT", 16, 0)
-    statusText:SetPoint("RIGHT", frame, "TOPRIGHT", -446, -19)
     statusText:SetJustifyH("LEFT")
     statusText:SetHeight(14)
     if ns.FightList then ns.FightList.Attach(frame, MARGIN, SIDETOP, titleText, statusText) end
@@ -1384,66 +1014,11 @@ local function BuildCanvas()
             Redraw()
         end
     end
-    cursorLine = overlay:CreateTexture(nil, "OVERLAY")
-    ns.Kit.Paint(cursorLine, "sem.cursor")
-    cursorLine:SetWidth(1)
-    cursorLine:Hide()
-    cursorBg = overlay:CreateTexture(nil, "OVERLAY")
-    ns.Kit.Paint(cursorBg, "surface.shade")
-    cursorBg:Hide()
-    cursorLabel = overlay:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    ns.Kit.Text(cursorLabel, "sem.cursorText")
-    cursorLabel:Hide()
-    hpDot = overlay:CreateTexture(nil, "OVERLAY")
-    ns.Kit.Paint(hpDot, "sem.cursorDot")
-    hpDot:SetWidth(DOTMIN)
-    hpDot:SetHeight(DOTMIN)
-    hpDot:Hide()
-    rowGlow = canvas:CreateTexture(nil, "BACKGROUND")
-    ns.Kit.Paint(rowGlow, "surface.line")
-    rowGlow:Hide()
+    Cursor.Build(canvas, overlay, #TRACKS)
     detailAnchor = CreateFrame("Frame", nil, frame)
     detailAnchor:SetHeight(1)
     detailAnchor:SetPoint("BOTTOMLEFT", canvas, "BOTTOMLEFT", 0, 0)
-    for i = 1, #TRACKS do
-        local fs = overlay:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        ns.Kit.Text(fs, "sem.readout")
-        fs:Hide()
-        readouts[i] = fs
-    end
-    for i = 1, #TRACKS do
-        local head = CreateFrame("Button", nil, canvas)
-        head:SetHeight(THEAD - 1)
-        head:SetFrameLevel(canvas:GetFrameLevel() + 10)
-        head.key = TRACKS[i].key
-        head.bg = head:CreateTexture(nil, "BACKGROUND")
-        head.bg:SetAllPoints()
-        ns.Kit.Paint(head.bg, "surface.laneHead")
-        head.text = head:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        head.text:SetJustifyH("LEFT")
-        ns.Kit.Text(head.text, "surface.laneText")
-        head:SetScript("OnEnter", function(self)
-            ns.Kit.Paint(self.bg, "surface.laneHeadHover")
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:AddLine(ns.T("tl.track." .. self.key))
-            ns.Kit.TipAdd(ns.T("tl.track.fold"), "text.secondary")
-            GameTooltip:Show()
-        end)
-        head:SetScript("OnLeave", function(self)
-            ns.Kit.Paint(self.bg, "surface.laneHeadIdle")
-            GameTooltip:Hide()
-        end)
-        head:SetScript("OnMouseDown", function()
-            if ns.FxDrag then ns.FxDrag.Clear() end
-        end)
-        head:SetScript("OnClick", function(self)
-            local tracks = Folds()
-            tracks[self.key] = not tracks[self.key] or nil
-            Redraw()
-        end)
-        head:Hide()
-        trackHeads[i] = head
-    end
+    Tracks.Build(canvas, TRACKS, TrackFolded, FoldTrack, FXROW, THEAD)
     canvas:SetScript("OnMouseWheel", function(self, delta)
         if not fight then return end
         local mx = GetCursorPosition() / self:GetEffectiveScale() - self:GetLeft()
@@ -1475,19 +1050,9 @@ local function BuildCanvas()
     end)
     canvas:SetScript("OnMouseUp", function() dragging = false end)
     canvas:SetScript("OnUpdate", ns.Prof.Wrap("ui.tl", function(self)
-        if resize then
-            if not IsMouseButtonDown("LeftButton") then
-                resize = nil
-            else
-                local y = GetCursorPosition() / self:GetEffectiveScale()
-                local hh = max(resize.min, min(TRACKMAX, floor(resize.h + resize.y - y)))
-                local ui = ns.GetDB().settings.ui
-                if type(ui.trackH) ~= "table" then ui.trackH = {} end
-                if ui.trackH[resize.key] ~= hh then
-                    ui.trackH[resize.key] = hh
-                    Redraw()
-                end
-            end
+        local held, changed = Tracks.Drag(self)
+        if held then
+            if changed then Redraw() end
             return
         end
         if not fight then return end
@@ -1505,111 +1070,42 @@ local function BuildCanvas()
                 Redraw()
             end
         end
-        local x = cursor - self:GetLeft()
-        local over = self:IsMouseOver() and x >= gutter and x <= self:GetWidth()
-        local _, rawY = GetCursorPosition()
-        if over and hov.x == x and hov.y == rawY and hov.from == viewFrom and hov.to == viewTo
-            and hov.scroll == trackScroll and hov.fight == fight then
-            return
-        end
-        if not over and hov.out then return end
-        hov.x, hov.y, hov.from, hov.to, hov.scroll, hov.fight = over and x or nil, rawY, viewFrom, viewTo,
-            trackScroll, fight
-        hov.out = not over
-        if over then
-            local t = viewFrom + (x - gutter) / PlotWidth() * (viewTo - viewFrom)
-            cursorLine:ClearAllPoints()
-            cursorLine:SetPoint("TOPLEFT", overlay, "TOPLEFT", x, 0)
-            cursorLine:SetHeight(self:GetHeight())
-            cursorLine:Show()
-            cursorLabel:SetText(ClockMs(t - fight.from))
-            cursorBg:SetWidth(cursorLabel:GetStringWidth() + 8)
-            cursorBg:SetHeight(cursorLabel:GetStringHeight() + 4)
-            cursorBg:ClearAllPoints()
-            cursorBg:SetPoint("TOPLEFT", overlay, "TOPLEFT", x + 2, -2)
-            cursorBg:Show()
-            cursorLabel:ClearAllPoints()
-            cursorLabel:SetPoint("LEFT", cursorBg, "LEFT", 4, 0)
-            cursorLabel:Show()
-            ShowReadouts(t)
-            if ns.MapView then ns.MapView.ShowAt(t, player) end
-            local _, cy = GetCursorPosition()
-            local top = self:GetTop()
-            if rowGlow and top and lastBounds then
-                local y = top - cy / self:GetEffectiveScale()
-                local band = nil
-                for i = 1, #lastBounds do
-                    local bd = lastBounds[i]
-                    if y >= bd.y and y < bd.y + bd.h then
-                        local rowsTop = ContentTop(i, bd)
-                        band = { y = bd.y, h = bd.h }
-                        if TRACKS[i].rows and not TrackFolded(TRACKS[i].key)
-                            and y >= rowsTop then
-                            local slot = floor((y - rowsTop) / FXROW)
-                            band = { y = rowsTop + slot * FXROW, h = FXROW - 1 }
-                        end
-                        break
-                    end
-                end
-                if band and Band(band.y, band.h) then
-                    rowGlow:ClearAllPoints()
-                    rowGlow:SetPoint("TOPLEFT", self, "TOPLEFT", 0, -band.y)
-                    rowGlow:SetWidth(self:GetWidth())
-                    rowGlow:SetHeight(band.h)
-                    rowGlow:Show()
-                else
-                    rowGlow:Hide()
-                end
-            end
-        else
-            cursorLine:Hide()
-            cursorBg:Hide()
-            cursorLabel:Hide()
-            if rowGlow then rowGlow:Hide() end
-            HideReadouts()
-        end
+        Cursor.Hover(self, CursorCtx(), cursor)
     end))
 end
 local function BuildTools()
-    if ns.MakeButton then
-        local fxBtn = ns.MakeButton(frame, "HTP_FailWatchFxToggle")
-        fxBtn:SetWidth(104)
-        fxBtn:SetHeight(20)
-        fxBtn:SetPoint("TOPRIGHT", -MARGIN, -9)
-        fxBtn.text:SetText(ns.T("tl.btn.fx"))
+    if ns.Kit.ToolBar then
+        local Kit = ns.Kit
+        toolBar = Kit.ToolBar(frame, "RIGHT", frame, "TOPRIGHT", -MARGIN, -19)
+        local gear = ns.SumHide and ns.SumHide.HeadFrame()
+        if gear then toolBar:Add(gear) end
+        statusText:SetPoint("RIGHT", toolBar.tail, "LEFT", 0, 0)
+        local fxBtn = toolBar:Add(Kit.ToolButton(frame, "HTP_FailWatchFxToggle"))
+        fxBtn:SetLabel(ns.T("tl.btn.fx"))
         fxBtn.onClick = function() TL.TogglePanel() end
-        local mapBtn = ns.MakeButton(frame, "HTP_FailWatchMapToggle")
-        mapBtn:SetWidth(84)
-        mapBtn:SetHeight(20)
-        mapBtn:SetPoint("RIGHT", fxBtn, "LEFT", -6, 0)
-        mapBtn.text:SetText(ns.T("tl.btn.map"))
+        local mapBtn = toolBar:Add(Kit.ToolButton(frame, "HTP_FailWatchMapToggle"))
+        mapBtn:SetLabel(ns.T("tl.btn.map"))
         mapBtn.onClick = function()
             if not ns.MapView then return end
             ns.MapView.Toggle()
             if fight then ns.MapView.SetFight(fight) end
         end
-        local glueBtn = ns.MakeButton(frame, "HTP_FailWatchGlueToggle")
-        glueBtn:SetWidth(104)
-        glueBtn:SetHeight(20)
-        glueBtn:SetPoint("RIGHT", mapBtn, "LEFT", -6, 0)
-        glueBtn.text:SetText(ns.T(Glued() and "tl.btn.glue.on" or "tl.btn.glue.off"))
+        local glueBtn = toolBar:Add(Kit.ToolButton(frame, "HTP_FailWatchGlueToggle"))
+        glueBtn:SetLabel(ns.T(Rows.Glued() and "tl.btn.glue.on" or "tl.btn.glue.off"))
         glueBtn.onClick = function()
             local ui = ns.GetDB().settings.ui
-            ui.glue = not Glued()
-            glueBtn.text:SetText(ns.T(Glued() and "tl.btn.glue.on" or "tl.btn.glue.off"))
+            ui.glue = not Rows.Glued()
+            glueBtn:SetLabel(ns.T(Rows.Glued() and "tl.btn.glue.on" or "tl.btn.glue.off"))
             if player then SelectPlayer(player) end
         end
-        local viewBtn = ns.MakeButton(frame, "HTP_FailWatchViewToggle")
-        viewBtn:SetWidth(120)
-        viewBtn:SetHeight(20)
-        viewBtn:SetPoint("RIGHT", glueBtn, "LEFT", -6, 0)
+        local viewBtn = toolBar:Add(Kit.ToolButton(frame, "HTP_FailWatchViewToggle"))
         local brief = ns.TimelineBrief
-        viewBtn.text:SetText(ns.T(brief and brief.On() and "tl.view.brief" or "tl.view.full"))
+        viewBtn:SetLabel(ns.T(brief and brief.On() and "tl.view.brief" or "tl.view.full"))
         viewBtn.tipTitle, viewBtn.tip = ns.T("tl.view.tip"), ns.T("tl.view.tipBody")
         viewBtn.onClick = function()
             if not brief then return end
             brief.Toggle()
-            viewBtn.text:SetText(ns.T(brief.On() and "tl.view.brief" or "tl.view.full"))
+            viewBtn:SetLabel(ns.T(brief.On() and "tl.view.brief" or "tl.view.full"))
             trackScroll = 0
             if fight then
                 viewFrom, viewTo = lead, tail
@@ -1667,6 +1163,9 @@ function TL.HighlightDrop(cat)
             ns.Kit.Paint(tex, "surface.drop")
         end
     end
+end
+function TL.ToolBar()
+    return toolBar
 end
 function TL.TogglePanel()
     if not (ns.EffectPanel and ns.MakeRowButton) then

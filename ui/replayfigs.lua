@@ -525,7 +525,7 @@ local function Toggle(tex, on, fig, key)
     fig[key] = on
     if on then tex:Show() else tex:Hide() end
 end
-function Figs.Parts(fig, icon, ring, model)
+function Figs.Parts(fig, icon, ring)
     Toggle(fig.icon, icon, fig, "iconOn")
     Toggle(fig.ring, ring and fig.ringWant ~= false, fig, "ringOn")
     Toggle(fig.side, ring and fig.sideWant or false, fig, "sideOn")
@@ -537,7 +537,6 @@ function Figs.Parts(fig, icon, ring, model)
     Toggle(fig.trail, ring and fig.trailWant or false, fig, "trailOn")
     Toggle(fig.dot, icon and fig.dotNow or false, fig, "dotOn")
     Toggle(fig.pct, icon and fig.pctWant or false, fig, "pctOn")
-    if fig.model then Toggle(fig.model, model, fig, "modelOn") end
 end
 function Figs.Pulse(fig, extra)
     if st.kind == "vol" and fig.pw then
@@ -588,9 +587,22 @@ function Figs.Probe(fig)
              trail = fig.trailOn or false, tall = fig.tall, arcOk = st.arcOk,
              pct = fig.pctOn and fig.pctN or nil, grow = fig.growK or 1 }
 end
-if ns.Settings and ns.Settings.Item then
-    ns.Settings.Item("look", "replay", {
-        kind = "check", key = "figHp", label = "set.replay.hp", tip = "set.replay.hp.tip", default = true, order = 1,
-        get = Figs.HpOn, set = Figs.SetHp,
+if ns.Settings and ns.Settings.Section then
+    ns.Settings.Section("look", "replay", {
+        label = "set.replay",
+        order = 30,
+        items = {
+            { kind = "choice", key = "room", buttons = true, label = "set.replay.room", tip = "set.replay.room.tip",
+              options = { { key = "flat", label = "set.replay.room.flat" }, { key = "real", label = "set.replay.room.real" } },
+              default = "real",
+              hint = function() return ns.RoomPacks and ns.RoomPacks.Hint(nil) or "" end,
+              get = function()
+                  local iso = ns.GetDB().settings.iso
+                  return type(iso) == "table" and iso.geo == false and "flat" or "real"
+              end,
+              set = function(k) ns.ReplayIso.SetGeo(k == "real", true) end },
+            { kind = "check", key = "figHp", label = "set.replay.hp", tip = "set.replay.hp.tip", default = true, order = 1,
+              get = Figs.HpOn, set = Figs.SetHp },
+        },
     })
 end

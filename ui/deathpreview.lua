@@ -63,7 +63,7 @@ local View = {}
 ns.DeathPreviewView = View
 local DP = ns.DeathPreview
 local Replay = ns.Replay
-local Short = ns.BadgeTips.Short
+local Short = ns.Short
 local frame, pump, anchorLine, sumText, font, probe, tagLayer
 local tagBg, tagFs = {}, {}
 local usedTag = 0

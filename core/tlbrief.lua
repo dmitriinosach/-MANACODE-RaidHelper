@@ -1,6 +1,5 @@
 local _, ns = ...
 local tsort = table.sort
-local SKIP_HP = { "FW_HP" }
 local MAX_TAIL = 5
 local STATE_PRIO = 55
 local DEATH_BACK = 20
@@ -38,7 +37,7 @@ function BD.Feed(fight, fn)
         local segs = ns.Encounters.Segs(fight)
         for o = 1, #segs do
             for ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, _, a4, a5
-                in ns.Store.Events(segs[o], fight.from, fight.to, SKIP_HP, MAX_TAIL) do
+                in ns.Store.Events(segs[o], fight.from, fight.to, MAX_TAIL) do
                 ns.Jobs.Step()
                 if ph then ns.Phases.Feed(ph, ts, sub, a1) end
                 FC.Event(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4, a5)
@@ -142,8 +141,8 @@ local function Acts()
     local help = ns.replayFeed and ns.replayFeed.help or {}
     for id in pairs(help) do acts[ns.SpellKey(id)] = true end
     local A = ns.actions or {}
-    for i = 1, #(A.kicks or {}) do acts[ns.SpellKey(A.kicks[i])] = true end
-    for i = 1, #(A.selfRez or {}) do acts[ns.SpellKey(A.selfRez[i])] = true end
+    ns.SpellSet(A.kicks, acts)
+    ns.SpellSet(A.selfRez, acts)
     if A.stone then acts[ns.SpellKey(A.stone)] = true end
     local P = Pick()
     for key, mark in pairs(P) do
@@ -228,8 +227,8 @@ local function HelpKeys()
     local help = ns.replayFeed and ns.replayFeed.help or {}
     for id in pairs(help) do helpKeys[ns.SpellKey(id)] = true end
     local A = ns.actions or {}
-    for i = 1, #(A.kicks or {}) do helpKeys[ns.SpellKey(A.kicks[i])] = true end
-    for i = 1, #(A.selfRez or {}) do helpKeys[ns.SpellKey(A.selfRez[i])] = true end
+    ns.SpellSet(A.kicks, helpKeys)
+    ns.SpellSet(A.selfRez, helpKeys)
     if A.stone then helpKeys[ns.SpellKey(A.stone)] = true end
     for id in pairs(ns.taunts or {}) do helpKeys[ns.SpellKey(id)] = true end
     for key, mark in pairs(Pick()) do
@@ -274,9 +273,4 @@ function BD.Window(data, lead, tail)
     local to = math.min(tail, d + DEATH_AHEAD)
     if to - from < 10 then return nil, nil end
     return from, to
-end
-function BD.Reset()
-    pick, acts, helpKeys = nil, nil, nil
-    for k in pairs(feeds) do feeds[k] = nil end
-    for k in pairs(faults) do faults[k] = nil end
 end

@@ -50,12 +50,11 @@ local NpcPos = {}
 ns.NpcPos = NpcPos
 NpcPos.off = false
 NpcPos.WINDOW = WINDOW
-NpcPos.MELEE_MIN = MELEE_MIN
-NpcPos.RNG_MIN = RNG_MIN
 NpcPos.EASE = EASE
 local px, py, qx, qy, sx, sy = {}, {}, {}, {}, {}, {}
 local rmx, rmy, rlo, rhi = {}, {}, {}, {}
 local pick = {}
+local gRx, gRy, gMx, gMy, gPy, gY, gMid = {}, {}, {}, {}, {}, {}, {}
 function NpcPos.New(scene, c)
     if NpcPos.off then return nil end
     return {
@@ -384,17 +383,74 @@ function NpcPos.Range(np, rs, t, offYd, reachYd, gx, gy, m, strong)
         wp, span = RNG_W_WEAK, RNG_FAR
     end
     local bx, by, best = gx, gy, huge
+    for q = 1, cnt do
+        if rhi[q] then gMid[q] = (rlo[q] + rhi[q]) / 2 end
+    end
+    local bound = Cost(gx, gy, cnt, m, reachYd, gx, gy, wp, ppy)
     local step = 2
     local ox, oy, half = gx, gy, span
     for _ = 1, 3 do
         local steps = floor(half / step + 0.5)
+        local cols = 0
+        for j = -steps, steps do
+            cols = cols + 1
+            local y = oy + j * step * ppy
+            gY[cols] = y
+            local base = (cols - 1) * cnt
+            for q = 1, cnt do
+                local dy = y - rmy[q]
+                gRy[base + q] = dy * dy
+            end
+            base = (cols - 1) * m
+            for q = 1, m do
+                local dy = y - py[q]
+                gMy[base + q] = dy * dy
+            end
+            local pdy = (y - gy) / ppy
+            gPy[cols] = pdy * pdy
+        end
         for i = -steps, steps do
             ns.Jobs.Step()
             local x = ox + i * step * ppy
-            for j = -steps, steps do
-                local y = oy + j * step * ppy
-                local v = Cost(x, y, cnt, m, reachYd, gx, gy, wp, ppy)
-                if v < best then bx, by, best = x, y, v end
+            for q = 1, cnt do
+                local dx = x - rmx[q]
+                gRx[q] = dx * dx
+            end
+            for q = 1, m do
+                local dx = x - px[q]
+                gMx[q] = dx * dx
+            end
+            local pdx = (x - gx) / ppy
+            local pxx = pdx * pdx
+            for col = 1, cols do
+                local s = 0
+                local base = (col - 1) * cnt
+                local q = 1
+                while q <= cnt and s < best and s <= bound do
+                    local d = sqrt(gRx[q] + gRy[base + q]) / ppy
+                    local lo, hi = rlo[q], rhi[q]
+                    if d < lo then
+                        s = s + (lo - d) * (lo - d)
+                    elseif hi and d > hi then
+                        s = s + (d - hi) * (d - hi)
+                    end
+                    if hi then
+                        local e = d - gMid[q]
+                        s = s + RNG_W_MID * e * e
+                    end
+                    q = q + 1
+                end
+                if q > cnt and s < best and s <= bound then
+                    base = (col - 1) * m
+                    for r = 1, m do
+                        local d = sqrt(gMx[r] + gMy[base + r]) / ppy
+                        if d > reachYd then s = s + RNG_W_MELEE * (d - reachYd) * (d - reachYd) end
+                    end
+                    if s < best and s <= bound then
+                        local v = s + wp * (pxx + gPy[col])
+                        if v < best then bx, by, best = x, gY[col], v end
+                    end
+                end
             end
         end
         ox, oy, half = bx, by, step

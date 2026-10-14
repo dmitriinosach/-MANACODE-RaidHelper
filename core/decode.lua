@@ -73,16 +73,6 @@ function Decode.Tables(seg)
     tables[seg] = T
     return T
 end
-function Decode.IdOf(seg, s)
-    local T = Decode.Tables(seg)
-    local index = T.index
-    if not index or T.indexN ~= #T.strs then
-        index = {}
-        for i = 1, #T.strs do index[T.strs[i]] = i end
-        T.index, T.indexN = index, #T.strs
-    end
-    return index[s]
-end
 local function Generic(T, s)
     local n = tonumber(s)
     if n then return n end
@@ -220,6 +210,11 @@ function Decode.Decode(seg, s, at, maxTail)
     if n == 0 then return nil end
     return unpack(ret, 1, n)
 end
+function Decode.At(seg, s, at, ms, maxTail)
+    local n = DecodeAt(seg, Decode.Tables(seg), s, at, ms, maxTail)
+    if n == 0 then return nil end
+    return unpack(ret, 1, n)
+end
 local function FirstChunk(seg, from)
     local chunks = seg.chunks
     local ci = 1
@@ -273,30 +268,18 @@ local function Next(w)
         w.s, w.pos = chunk, 1
     end
 end
-local function SkipSet(seg, names)
-    if not names then return nil end
-    local set = {}
-    for k, v in pairs(names) do
-        local id = Decode.IdOf(seg, type(k) == "string" and k or v)
-        if id then set[tostring(id)] = true end
-    end
-    return set
-end
-function Decode.Events(seg, from, to, skip, maxTail)
+function Decode.Events(seg, from, to, maxTail)
     local T = Decode.Tables(seg)
     local w = Walk(seg, from, to)
     local fromMs = from and (from - seg.t0) * 1000 - 1 or nil
     local toMs = to and (to - seg.t0) * 1000 + 1 or nil
-    local skipIds = SkipSet(seg, skip)
     return function()
         while true do
             local s, at, _, ms = Next(w)
             if not s then return nil end
             if (not fromMs or ms >= fromMs) and (not toMs or ms <= toMs) then
-                if not (skipIds and skipIds[match(s, "^%-?%d*,g?(%d+)", at)]) then
-                    local n = DecodeAt(seg, T, s, at, ms, maxTail)
-                    if n > 0 then return unpack(ret, 1, n) end
-                end
+                local n = DecodeAt(seg, T, s, at, ms, maxTail)
+                if n > 0 then return unpack(ret, 1, n) end
             end
         end
     end

@@ -5,15 +5,10 @@ local max = math.max
 local Kit = ns.Kit
 local LEAD = 5
 local PLAY_TEX = "Interface\\OptionsFrame\\VoiceChat-Play"
-local HEADW = 74
-local HEADH = 18
-local HEADICON = 10
-local HEADGAP = 16
 local MINIPAD = 4
 local RL = {}
 ns.ReplayLink = RL
 RL.LEAD = LEAD
-RL.TEX = PLAY_TEX
 local head
 local save
 local function Clock(sec)
@@ -43,7 +38,6 @@ end
 function RL.Line(fight, t, who)
     local s = RL.Start(fight, t)
     if not (s and ns.ReplayIso) then return nil end
-    if who then return { kind = "foot", left = format(ns.T("rp.shift.who"), Clock(s), who) } end
     return { kind = "foot", left = format(ns.T("rp.shift"), Clock(s)) }
 end
 function RL.Tag(lines, fight, t)
@@ -65,31 +59,18 @@ local function HeadClick(b)
     if TL and TL.View then f, who = TL.View() end
     RL.Open(b.fight, nil, f == b.fight and who or nil)
 end
-function RL.Head(host, anchor)
-    local b = Kit.Button(host)
-    b:SetWidth(HEADW)
-    b:SetHeight(HEADH)
-    b:SetPoint("LEFT", anchor, "RIGHT", HEADGAP, 0)
-    b.text:SetText(ns.T("rp.btn"))
-    b.text:ClearAllPoints()
-    b.text:SetPoint("CENTER", HEADICON / 2 + 1, 0)
-    b.icon = b:CreateTexture(nil, "OVERLAY")
-    b.icon:SetWidth(HEADICON)
-    b.icon:SetHeight(HEADICON)
-    b.icon:SetPoint("RIGHT", b.text, "LEFT", -3, 0)
-    b.icon:SetTexture(PLAY_TEX)
+function RL.Head(host)
+    local b = Kit.ToolButton(host, nil, PLAY_TEX)
+    b:SetLabel(ns.T("rp.btn"))
     b.tipTitle = ns.T("rp.head")
     b.onClick = HeadClick
     head = b
     RL.SetFight(nil)
     return b
 end
-function RL.SaveHead(host, anchor)
-    local b = Kit.Button(host)
-    b:SetHeight(HEADH)
-    b:SetPoint("LEFT", anchor, "RIGHT", HEADGAP / 2, 0)
-    b.text:SetText(ns.T("save.btn"))
-    b:SetWidth(max(HEADW, floor(b.text:GetStringWidth() + 16)))
+function RL.SaveHead(host)
+    local b = Kit.ToolButton(host)
+    b:SetLabel(ns.T("save.btn"))
     b.tipTitle = ns.T("save.head")
     b.tip = ns.T("save.tip")
     b.onClick = function()

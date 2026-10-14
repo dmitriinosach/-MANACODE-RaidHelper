@@ -63,10 +63,8 @@ local function Marks(st)
     local out = {}
     local segs = ns.Encounters.Segs(st.fight)
     for i = 1, #segs do
-        if ns.Store.IsNew(segs[i]) then
-            local m = ns.Decode.Maps(segs[i])
-            for k = 1, #m do out[#out + 1] = m[k] end
-        end
+        local m = ns.Decode.Maps(segs[i])
+        for k = 1, #m do out[#out + 1] = m[k] end
     end
     tsort(out, function(a, b) return a.t < b.t end)
     st.marks = out
@@ -93,13 +91,11 @@ local function Track(st, name)
     local from, to = st.fight.from - 5, st.fight.to + 5
     local segs = ns.Encounters.Segs(st.fight)
     for i = 1, #segs do
-        if ns.Store.IsNew(segs[i]) then
-            for ts, x, y in ns.Decode.Pos(segs[i], name, from, to) do
-                if ts > to then break end
-                if x > 0 or y > 0 then
-                    local n = #tr.t + 1
-                    tr.t[n], tr.x[n], tr.y[n] = ts, x, y
-                end
+        for ts, x, y in ns.Decode.Pos(segs[i], name, from, to) do
+            if ts > to then break end
+            if x > 0 or y > 0 then
+                local n = #tr.t + 1
+                tr.t[n], tr.x[n], tr.y[n] = ts, x, y
             end
         end
     end

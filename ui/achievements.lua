@@ -40,10 +40,10 @@ local function T(key)
     return ns.T(key)
 end
 local function Short(n)
-    return ns.BadgeTips.Short(n or 0)
+    return ns.Short(n or 0)
 end
 local function Clock(sec)
-    return ns.BadgeTips.Clock(max(0, sec or 0))
+    return ns.Clock(sec or 0)
 end
 local function Paint(token, text)
     return ns.Kit.Hex(token) .. text .. "|r"
@@ -54,11 +54,11 @@ function View.Name(id)
 end
 function View.Progress(r)
     local def, k = r.def, r.def.kind
-    if k == "auraLonger" then return format(T("ach.p.longer"), r.value, r.limit) end
+    if k == "auraLonger" then return format(T("ach.p.longer"), ns.Fixed(r.value), r.limit) end
     if k == "maxStack" then return format(T("ach.p.stack"), r.value, r.limit) end
     if k == "reachStack" then return format(T("ach.p.reach"), r.value, r.need) end
-    if k == "auraCount" then return format(T("ach.p.count"), r.value, r.limit) end
-    if k == "casts" then return format(T("ach.p.casts"), r.value) end
+    if k == "auraCount" then return format(T("ach.p.count"), r.value, ns.Plural(r.value, T("rsum.w.times")), r.limit) end
+    if k == "casts" then return format(T("ach.p.casts"), r.value, ns.Plural(r.value, T("rsum.w.times"))) end
     if k == "hitBy" then return format(T("ach.p.hits"), r.value) end
     if k == "deathBy" then return format(T("ach.p.deaths"), r.value) end
     if k == "hitOver" then return format(T("ach.p.big"), Short(r.value), Short(r.limit)) end
@@ -82,7 +82,7 @@ local function Detail(r, e)
     local k = r.def.kind
     local extra
     if k == "auraLonger" then
-        extra = format(T("ach.who.sec"), e.v or 0)
+        extra = format(T("ach.who.sec"), ns.Fixed(e.v or 0))
     elseif k == "maxStack" then
         extra = format(T("ach.who.stack"), e.v or 0)
     elseif k == "auraCount" then
@@ -92,7 +92,7 @@ local function Detail(r, e)
     elseif k == "hitOver" then
         extra = Short(e.v or 0) .. (e.note and (", " .. e.note) or "")
     elseif k == "casts" then
-        extra = e.n > 1 and format(T("ach.who.times"), e.n) or nil
+        extra = e.n > 1 and format(T("ach.who.times"), e.n, ns.Plural(e.n, T("rsum.w.times"))) or nil
     elseif k == "visits" then
         local at = {}
         for i = 1, min(#(e.times or {}), 4) do at[i] = Clock(e.times[i]) end
@@ -174,7 +174,7 @@ local function GotLines(got, out)
     local parts = Nicks(got)
     out[#out + 1] = { kind = "sep" }
     out[#out + 1] = { kind = "head", left = format(T("ach.tt.got"), #parts),
-                      right = got.t and date("%d.%m %H:%M", floor(got.t)) or nil }
+                      right = got.t and ns.Date(got.t, "dayTime") or nil }
     out[#out + 1] = { kind = "text", left = concat(parts, ", ") }
 end
 function View.Extra(row)
@@ -186,7 +186,7 @@ function View.Extra(row)
     end
     if row.got then GotLines(row.got, out) end
     if row.result and row.fight and row.scope == "encounter" and row.fight.raid then
-        out[#out + 1] = { kind = "foot", left = format(T("ach.tt.fight"), date("%d.%m %H:%M", floor(row.fight.from))) }
+        out[#out + 1] = { kind = "foot", left = format(T("ach.tt.fight"), ns.Date(row.fight.from, "dayTime")) }
     end
     return out
 end

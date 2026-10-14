@@ -14,14 +14,16 @@ function Ooze.New(fight)
     local flood = M and M.floods and M.floods[fight.boss]
     if not defs and not flood then return nil end
     defs = defs or {}
-    local ctx = { defs = defs, byNpc = {}, aura = {}, boom = {}, slow = {}, o = {}, flood = flood, fHit = {}, fHits = {} }
-    for _, id in ipairs(flood and flood.hit or {}) do ctx.fHit[id] = true end
+    local want = {}
+    local ctx = { defs = defs, byNpc = {}, aura = {}, boom = {}, slow = {}, o = {}, flood = flood, fHit = {},
+                  fHits = {}, want = want }
+    for _, id in ipairs(flood and flood.hit or {}) do ctx.fHit[id], want[id] = true, true end
     for i = 1, #defs do
         local d = defs[i]
         ctx.byNpc[d.npc] = i
-        for _, id in ipairs(d.aura) do ctx.aura[id] = i end
-        for _, id in ipairs(d.boom or d.catch or {}) do ctx.boom[id] = i end
-        for _, id in ipairs(d.slow or {}) do ctx.slow[id] = i end
+        for _, id in ipairs(d.aura) do ctx.aura[id], want[id] = i, true end
+        for _, id in ipairs(d.boom or d.catch or {}) do ctx.boom[id], want[id] = i, true end
+        for _, id in ipairs(d.slow or {}) do ctx.slow[id], want[id] = i, true end
     end
     return ctx
 end
@@ -29,14 +31,14 @@ local function Raw(ctx, guid)
     if not guid then return nil end
     local o = ctx.o[guid]
     if o then return o end
-    local di = ctx.byNpc[ns.Replay.NpcOf(guid) or 0]
+    local di = ctx.byNpc[ns.NpcEntry(guid) or 0]
     if not di then return nil end
     o = { di = di, runs = {}, booms = {}, slowT = {}, slowOn = {} }
     ctx.o[guid] = o
     return o
 end
-function Ooze.Event(ctx, ts, sub, srcGUID, dstGUID, dst, a1)
-    local id = tonumber(a1)
+function Ooze.Event(ctx, ts, sub, srcGUID, dstGUID, dst, a1, id)
+    id = id or tonumber(a1)
     if not id then return end
     if ctx.fHit[id] and dst and (sub == "SPELL_AURA_APPLIED" or sub == "SPELL_DAMAGE" or sub == "SPELL_MISSED") then
         ctx.fHits[#ctx.fHits + 1] = { t = ts, n = dst }
@@ -190,12 +192,51 @@ end
 local function ByStart(a, b)
     return a.a < b.a
 end
+local function ChaseLayer(ctx, L, scene)
+    local byK = ns.Replay.ByK(scene)
+    local list = {}
+    local adds = L.adds
+    for i = 1, adds and #adds or 0 do
+        local add = adds[i]
+        local o = ctx.o[add.guid or ""]
+        local to = add.to or add.from
+        if o and to > add.from then
+            tsort(o.runs, ByStart)
+            local t = add.from
+            for k = 1, #o.runs do
+                local r = o.runs[k]
+                if r.a >= to then break end
+                local nxt = o.runs[k + 1]
+                local e = min(r.e or (nxt and nxt.a) or to, to)
+                local a = r.a < t and t or r.a
+                local tk = byK[r.n]
+                if tk and e > a then
+                    list[#list + 1] = { k = tk, from = a, to = e, add = add, npc = ctx.defs[o.di].npc }
+                end
+                t = e
+            end
+        end
+    end
+    if #list == 0 then return end
+    tsort(list, function(x, y) return x.from < y.from end)
+    local C = L.chase or { n = 0, k = {}, from = {}, to = {}, add = {}, npc = {} }
+    for i = 1, #list do
+        local e = list[i]
+        local n = C.n + 1
+        C.n = n
+        C.k[n], C.from[n], C.to[n], C.add[n], C.npc[n] = e.k, e.from, e.to, e.add, e.npc
+    end
+    L.chase = C
+end
 function Ooze.Done(ctx, L, scene, Pos, ppy)
     local p0 = debugprofilestop()
     local room = scene.room
     local st = { adds = 0, runs = 0, caught = {}, ms = 0, floods = 0 }
     L.ooze = st
-    if not room then return end
+    if not room then
+        ChaseLayer(ctx, L, scene)
+        return
+    end
     st.floods = Floods(ctx, L, scene, Pos, ppy)
     local adds = L.adds
     for i = 1, adds and #adds or 0 do
@@ -233,5 +274,6 @@ function Ooze.Done(ctx, L, scene, Pos, ppy)
             st.adds = st.adds + 1
         end
     end
+    ChaseLayer(ctx, L, scene)
     st.ms = debugprofilestop() - p0
 end

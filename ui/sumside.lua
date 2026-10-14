@@ -1,13 +1,11 @@
 local _, ns = ...
 local floor = math.floor
 local max = math.max
-local min = math.min
 local W = 360
 local OVERLAP = 4
 local INSET = 6
 local PAD = 6
 local GAP = 6
-local WHEEL = 40
 local TOGGLE = 32
 local LEVEL = 60
 local ARROW = "Interface\\Buttons\\UI-SpellbookIcon-%sPage-%s"
@@ -16,13 +14,13 @@ local Side = {}
 ns.SumSide = Side
 local Kit = ns.Kit
 local side, pageBg, scroll, content, toggle, shell
+local pane
 local owner
 local redraws = {}
 local items = {}
 local hosts = {}
 local placed = {}
 local dock = "right"
-local offset = 0
 local laid
 local function Ui()
     local set = ns.GetDB().settings
@@ -45,12 +43,13 @@ local function Inner()
     return p
 end
 function Side.Wheel(delta)
-    if not content then return false end
-    local most = max(0, content:GetHeight() - scroll:GetHeight())
-    local was = offset
-    offset = max(0, min(most, offset - delta * WHEEL))
-    scroll:SetVerticalScroll(offset)
-    return offset ~= was
+    return pane ~= nil and pane:Wheel(delta)
+end
+function Side.PageWheel(pageWheel)
+    return function(delta)
+        if Side.Inside() then return pageWheel(delta) end
+        return Side.Wheel(delta)
+    end
 end
 local function PickDock()
     local left, right = nil, nil
@@ -124,9 +123,7 @@ local function Stack()
     placed = {}
     for i = 1, #items do placed[i] = items[i] end
     content:SetHeight(max(1, y))
-    local most = max(0, y - scroll:GetHeight())
-    offset = min(offset, most)
-    scroll:SetVerticalScroll(offset)
+    pane:ScrollTo(pane.offset)
 end
 local function Live()
     if not owner or #items == 0 or not shell or not shell:IsShown() then return false end
@@ -177,13 +174,8 @@ local function Build()
     if ns.Shell and ns.Shell.Handle then ns.Shell.Handle(side) end
     pageBg = side:CreateTexture(nil, "BORDER")
     Kit.Paint(pageBg, "surface.page")
-    scroll = CreateFrame("ScrollFrame", nil, side)
-    content = CreateFrame("Frame", nil, scroll)
-    content:SetWidth(1)
-    content:SetHeight(1)
-    scroll:SetScrollChild(content)
-    scroll:EnableMouseWheel(true)
-    scroll:SetScript("OnMouseWheel", function(_, delta) Side.Wheel(delta) end)
+    pane = Kit.ScrollPage(side)
+    scroll, content = pane.scroll, pane.content
     side:Hide()
     toggle = CreateFrame("Button", "HTP_FailWatchSideToggle", shell)
     toggle:SetWidth(TOGGLE)
@@ -214,7 +206,7 @@ function Side.Watch(key, host, redraw)
 end
 function Side.Show(key, list)
     Build()
-    if owner ~= key then offset = 0 end
+    if owner ~= key then pane.offset = 0 end
     owner = key
     items = list or {}
     Refresh()

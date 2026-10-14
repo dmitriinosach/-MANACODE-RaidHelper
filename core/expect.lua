@@ -1,7 +1,6 @@
 local _, ns = ...
 local band = bit.band
-local F_PLAYER = COMBATLOG_OBJECT_TYPE_PLAYER or 0x400
-local SKIP_HP = { "FW_HP" }
+local F_PLAYER = ns.F.PLAYER
 local NEAR = 4 * 3600
 local LOOK = 16
 local ROLE = { tank = "t", heal = "h", dps = "d" }
@@ -38,7 +37,7 @@ local function Guids(fight, names)
     end
     local segs = ns.Encounters.Segs(fight)
     for si = 1, #segs do
-        for _, _, srcGUID, srcName, srcFlags in ns.Store.Events(segs[si], fight.from, fight.to, SKIP_HP, 0) do
+        for _, _, srcGUID, srcName, srcFlags in ns.Store.Events(segs[si], fight.from, fight.to, 0) do
             ns.Jobs.Step()
             if srcName and want[srcName] and srcGUID and srcFlags and band(srcFlags, F_PLAYER) > 0 then
                 out[srcName] = srcGUID
@@ -60,7 +59,7 @@ local function Build(fight, s, mode, boss)
             list[#list + 1] = p
         end
     end
-    local guids = Guids(fight, names)
+    local guids = s.guids or Guids(fight, names)
     local res = { mode = mode, boss = boss, kill = fight.killed and true or false, by = {}, sum = 0, got = 0,
         all = 0, have = 0, of = 0 }
     local dur = math.max(1, ns.Totals.Time(s))

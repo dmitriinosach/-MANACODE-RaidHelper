@@ -180,9 +180,8 @@ local function Build()
     Kit.Window(frame)
     tinsert(UISpecialFrames, "HTP_FailWatchAbout")
     frame.rows, frame.chars, frame.tiles = {}, {}, {}
-    local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 2, 2)
-    close:SetScript("OnClick", function() frame:Hide() end)
+    local close = Kit.CloseButton(frame, function() frame:Hide() end)
+    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
     local y = 16
     frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     frame.title:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y)

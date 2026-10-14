@@ -3,12 +3,11 @@ local floor = math.floor
 local abs = math.abs
 local format = string.format
 local tsort = table.sort
-local TOTALS_VERSION = 43
-local TRASH_VERSION = 2
+local TOTALS_VERSION = 47
+local TRASH_VERSION = 3
 local ABIL_KEEP = 10
 local TRASH_KEY = "#trash"
 local FROZEN = "frozen"
-local SKIP_HP = { "FW_HP" }
 local MAX_TAIL = 9
 local TO_SLACK = 0.01
 local ROOTS = { "summaries", "buffsGiven", "actions", "achDefs", "bossPhases", "penaltyPresets", "immunities",
@@ -235,10 +234,6 @@ function Digest.ZoneBuff(fight)
     local e = Entry(fight)
     return e and e.zb or nil
 end
-function Digest.Size(fight)
-    local e = Entry(fight)
-    return e and #e.s or 0
-end
 function Digest.Clear()
     for _, seg in ns.Store.Segments() do
         if not seg.bare then
@@ -269,9 +264,9 @@ local function WinSig(wins)
     end
     return table.concat(parts, ",")
 end
-local function ReadGap(part, seg, lo, hi, lines)
+local function ReadGap(part, seg, lo, hi)
     for ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a3, a4, a5, a6, a7, _, a9
-        in ns.Store.Events(seg, lo, hi, SKIP_HP, MAX_TAIL, ns.Encounters.KeepHp, lines) do
+        in ns.Store.Events(seg, lo, hi, MAX_TAIL) do
         ns.Jobs.Step()
         if sub and (not lo or ts > lo) and (not hi or ts < hi) then
             ns.RaidPart.Feed(part, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags,
@@ -279,16 +274,15 @@ local function ReadGap(part, seg, lo, hi, lines)
         end
     end
 end
-local function TrashPass(i, seg)
+local function TrashPass(seg)
     local wins, before = Windows(seg)
-    local shared = ns.Encounters.HpLines(-math.huge, math.huge)
     local known = {}
     for k = 1, #wins do
         for name in pairs(wins[k].players or {}) do known[name] = true end
     end
-    local part = ns.RaidPart.New(nil, ns.GetDB().pets or {}, shared, known)
+    local part = ns.RaidPart.New(nil, ns.GetDB().pets or {}, known)
     part.fightAt = before
-    local died, lines = {}, {}
+    local died = {}
     local lo = nil
     for k = 1, #wins + 1 do
         local w = wins[k]
@@ -296,12 +290,8 @@ local function TrashPass(i, seg)
         if not (lo and hi and hi <= lo) then
             ns.RaidPart.Interval(part, hi or seg.t1 or seg.t0)
             local from = #part.died
-            ReadGap(part, seg, lo, hi, shared)
-            local hp = { from = lo or -math.huge, to = hi or math.huge, list = shared.list, bySeg = shared.bySeg }
-            for d = from + 1, #part.died do
-                died[#died + 1] = part.died[d]
-                lines[#died] = hp
-            end
+            ReadGap(part, seg, lo, hi)
+            for d = from + 1, #part.died do died[#died + 1] = part.died[d] end
         end
         if w then
             lo = lo and math.max(lo, w.to) or w.to
@@ -312,7 +302,7 @@ local function TrashPass(i, seg)
     local deaths = {}
     for d = 1, #died do
         local e = died[d]
-        if ns.Encounters.RealDeathIn({ seg = i }, e.who, e.t, lines[d], seg) then
+        if ns.Streams.Real({ seg }, e.who, e.t) then
             deaths[e.who] = (deaths[e.who] or 0) + 1
         end
     end
@@ -331,7 +321,7 @@ function Digest.Trash(i, seg)
         local piece, ok = ns.Codec.Decode(e.s, nil)
         if ok and type(piece) == "table" then return piece end
     end
-    local piece = TrashPass(i, seg)
+    local piece = TrashPass(seg)
     seg.totals = seg.totals or {}
     seg.totals[TRASH_KEY] = { sig = sig, s = ns.Codec.Encode(piece, nil, nil) }
     return piece
@@ -351,11 +341,6 @@ function Digest.Lite(i)
     Digest.Trash(i, seg)
     ns.Store.Strip(seg)
     return true
-end
-function Digest.HasTrash(i, seg)
-    local e = seg.totals and seg.totals[TRASH_KEY]
-    if seg.bare then return true end
-    return type(e) == "table" and (e.sig == FROZEN or e.sig == WinSig((Windows(seg))))
 end
 function Digest.Freeze(seg, piece)
     seg.totals = seg.totals or {}

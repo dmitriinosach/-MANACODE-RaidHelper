@@ -79,8 +79,6 @@ function View.Refresh()
     local api = st.api
     if not (api and st.menu) then return end
     Mark(st.rows.figs, ns.ReplayFigs.Kind())
-    Mark(st.rows.players, api.Models())
-    Mark(st.rows.enemies, ns.ReplayModels.Mode())
     RoomRow(api.Room())
     WorldRow()
     st.heal:SetChecked(api.Heal())
@@ -92,10 +90,6 @@ local function Pick(key, opt)
     local api = st.api
     if key == "figs" then
         ns.ReplayFigs.SetKind(opt.key)
-    elseif key == "players" then
-        api.SetModels(opt.key)
-    elseif key == "enemies" then
-        ns.ReplayModels.SetMode(opt.key)
     elseif key == "room" then
         if ns.ReplayGeo.Has(api.Room()) then api.SetGeo(opt.key == "vol") end
     elseif key == "world" then
@@ -171,10 +165,6 @@ function View.Build(ui, run, api)
     Kit.Text(title, "text.title")
     local y = PAD + TITLE_H
     Row(menu, "figs", "iso.view.figs", Opts("iso.figs.", "iso.tip.figs.", { "chip", "disc", "vol" }), y)
-    y = y + ROW
-    Row(menu, "players", "iso.view.players", Opts("iso.fig.", "iso.tip.fig.", { "none", "picked", "all" }), y)
-    y = y + ROW
-    Row(menu, "enemies", "iso.view.enemies", Opts("iso.m3d.", "iso.tip.m3d.", { "off", "boss", "all" }), y)
     y = y + ROW
     Row(menu, "room", "iso.view.room", Opts("iso.geo.", "iso.tip.geo.", { "vol", "flat" }), y)
     y = y + ROW

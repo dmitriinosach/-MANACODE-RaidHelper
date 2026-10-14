@@ -189,29 +189,11 @@ local function Handler(msg)
         elseif arg == "check" then
             ns.AutoRec.DevState()
         elseif arg == "iso" then
-            local far = rest:match("^fog%s+([%d%.]+)$")
-            local camera = rest:match("^cam%s*(%-?%d*)$")
-            local mpos = rest:match("^mpos%s*(.-)$")
-            local mfit = rest:match("^mfit%s+([%d%.]+)$")
             if ns.ReplayIso then ns.ReplayIso.dev = true end
             if not ns.ReplayIso then
                 ns.Print(ns.T("slash.diag.restart"))
-            elseif far then
-                ns.ReplayIso.SetFog(tonumber(far) or 0)
-            elseif mfit then
-                ns.ReplayModels.SetFit(tonumber(mfit) or 1)
-                ns.Print(format(ns.T("iso.mfit"), ns.ReplayModels.fit))
-            elseif mpos then
-                local x, y, z = mpos:match("^(%-?[%d%.]+)%s+(%-?[%d%.]+)%s+(%-?[%d%.]+)$")
-                ns.ReplayModels.SetPos(tonumber(x), tonumber(y), tonumber(z))
-                ns.Print(x and format(ns.T("iso.mpos"), tonumber(x), tonumber(y), tonumber(z)) or ns.T("iso.mpos.off"))
-            elseif rest == "flip" then
-                ns.ReplayIso.FlipFace()
             elseif rest == "geo" then
                 ns.ReplayIso.SetGeo(not ns.ReplayGeo.on)
-            elseif camera then
-                local index = tonumber(camera)
-                ns.ReplayIso.SetCamera(index and index >= 0 and index or nil)
             else
                 ns.ReplayIso.Toggle()
             end
@@ -272,7 +254,7 @@ local function Handler(msg)
             ns.Print(ns.T("slash.status.on"))
         end
         ns.Print(format(ns.T("slash.status.body"),
-            segs, events, bytes / 1048576,
+            segs, events, ns.Fixed(bytes / 1048576),
             format(ns.T("slash.status.limit"), ns.Store.Limit())))
         local why, enc, at = ns.Recorder.LastClose()
         if why then

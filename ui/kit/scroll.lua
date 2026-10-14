@@ -76,27 +76,28 @@ function Kit.ScrollBar(parent, height)
         overThumb = false
         Highlight()
     end)
+    local function Drop(self)
+        dragging = false
+        self:SetScript("OnUpdate", nil)
+        Highlight()
+    end
+    local function Drag(self)
+        if not IsMouseButtonDown("LeftButton") then
+            Drop(self)
+            return
+        end
+        local _, y = GetCursorPosition()
+        SeekTo(y / self:GetEffectiveScale(), grab)
+    end
     thumb:SetScript("OnMouseDown", function(self)
         local _, y = GetCursorPosition()
         local tt = self:GetTop()
         grab = tt and max(0, tt - y / self:GetEffectiveScale()) or 0
         dragging = true
+        self:SetScript("OnUpdate", Drag)
         Highlight()
     end)
-    thumb:SetScript("OnMouseUp", function()
-        dragging = false
-        Highlight()
-    end)
-    thumb:SetScript("OnUpdate", function(self)
-        if not dragging then return end
-        if not IsMouseButtonDown("LeftButton") then
-            dragging = false
-            Highlight()
-            return
-        end
-        local _, y = GetCursorPosition()
-        SeekTo(y / self:GetEffectiveScale(), grab)
-    end)
+    thumb:SetScript("OnMouseUp", Drop)
     bar:SetScript("OnSizeChanged", Apply)
     bar:SetScript("OnEnter", function()
         overBar = true
@@ -111,4 +112,80 @@ function Kit.ScrollBar(parent, height)
         SeekTo(y / self:GetEffectiveScale(), (Sizes(Tall())) / 2)
     end)
     return bar
+end
+local DECK_W = 8
+local DECK_LEVEL = 40
+local function PageSync(p)
+    if p.bar then p.bar:SetState(p.offset, p.view:GetHeight(), p.content:GetHeight()) end
+end
+local function PageScrollTo(p, want)
+    p.offset = max(0, min(max(0, p.content:GetHeight() - p.view:GetHeight()), want))
+    p.scroll:SetVerticalScroll(p.offset)
+    PageSync(p)
+end
+local function PageRescroll(p)
+    if p.scroll.UpdateScrollChildRect then p.scroll:UpdateScrollChildRect() end
+    PageScrollTo(p, p.offset)
+end
+local function PageWheel(p, delta)
+    local was = p.offset
+    PageScrollTo(p, p.offset - delta * p.wheel)
+    return p.offset ~= was
+end
+local function PageLaid(p)
+    p.laidW = floor(p.view:GetWidth())
+end
+local function PageRelayout(p)
+    if not p.pump or floor(p.view:GetWidth()) == p.laidW then return end
+    p.relayoutAt = GetTime() + p.delay
+    p.pump:Show()
+end
+function Kit.ScrollPage(parent, spec)
+    spec = spec or {}
+    local p = { offset = 0, laidW = 0, wheel = spec.wheel or 40, delay = spec.delay or 0.15 }
+    p.Wheel, p.ScrollTo, p.Rescroll, p.Sync = PageWheel, PageScrollTo, PageRescroll, PageSync
+    p.Laid, p.Relayout = PageLaid, PageRelayout
+    local scroll = CreateFrame("ScrollFrame", nil, parent)
+    if spec.fill then scroll:SetAllPoints() end
+    local content = CreateFrame("Frame", nil, scroll)
+    content:SetWidth(1)
+    content:SetHeight(1)
+    scroll:SetScrollChild(content)
+    scroll:EnableMouseWheel(true)
+    scroll:SetScript("OnMouseWheel", function(_, delta) PageWheel(p, delta) end)
+    p.scroll, p.content = scroll, content
+    p.view = spec.fill and parent or scroll
+    local bar
+    if spec.bar == "deck" then
+        local inset = spec.inset or 0
+        local deck = CreateFrame("Frame", nil, parent)
+        deck:SetFrameLevel(parent:GetFrameLevel() + DECK_LEVEL)
+        deck:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -1, -inset)
+        deck:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -1, inset)
+        deck:SetWidth(DECK_W)
+        bar = Kit.ScrollBar(deck, 1)
+        bar:SetPoint("TOPRIGHT", deck, "TOPRIGHT", 0, 0)
+        bar:SetPoint("BOTTOMRIGHT", deck, "BOTTOMRIGHT", 0, 0)
+    elseif spec.bar == "edge" then
+        bar = Kit.ScrollBar(parent, 1)
+        bar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, 0)
+        bar:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
+    end
+    if bar then
+        bar.onScroll = function(want) PageScrollTo(p, want) end
+        p.bar = bar
+    end
+    local relayout = spec.relayout
+    if relayout then
+        local pump = CreateFrame("Frame")
+        pump:Hide()
+        local function Tick(self)
+            if GetTime() < p.relayoutAt then return end
+            self:Hide()
+            relayout()
+        end
+        pump:SetScript("OnUpdate", spec.prof and ns.Prof.Wrap(spec.prof, Tick) or Tick)
+        p.pump, p.relayoutAt = pump, 0
+    end
+    return p
 end

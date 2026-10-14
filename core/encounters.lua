@@ -7,7 +7,6 @@ local floor = math.floor
 local sqrt = math.sqrt
 local band = bit.band
 local find = string.find
-local match = string.match
 local NpcKey = ns.NpcKey
 local IDLE_GAP = 15
 local RESUME_GAP = 180
@@ -17,25 +16,22 @@ local FX_VERSION = 5
 local SCAN_VERSION = 13
 local CLS_VERSION = 1
 local CAST_WINDOW = 3
-local DEATH_WINDOW = 1.5
 local REVIVE_GAP = 2
-local HOLD_WINDOW = 6
 local PROGRESS_EVERY = 512
-local SKIP_HP = { "FW_HP" }
 local SCAN_KEY = {}
 local TL_KEY = {}
 local POS_KEY = {}
-local F_PLAYER = 0x400
-local F_HOSTILE = 0x40
-local F_FRIENDLY = 0x10
-local F_BY_PLAYER = 0x100
+local F_PLAYER = ns.F.PLAYER
+local F_HOSTILE = ns.F.HOSTILE
+local F_FRIENDLY = ns.F.FRIENDLY
+local F_BY_PLAYER = ns.F.BY_PLAYER
 local HP_TAIL = 5
 local function HpKilled(f)
     local db = ns.GetDB()
     local list = f.segs or { f.seg }
     for k = 1, #list do
         local seg = db.segments[list[k]]
-        if seg and seg.hp and ns.Store.IsNew(seg) then
+        if seg and seg.hp then
             for key in pairs(seg.hp) do
                 if key:byte(1) == 35 and NpcKey("0x" .. key:sub(2)) == f.boss then
                     local last
@@ -134,16 +130,7 @@ function Encounters.Ending(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, ds
     if enc == nil then return nil, nil, false end
     return enc, who, not died or ns.bosses[who] ~= nil
 end
-local function IsBossKey(fight, key)
-    if key == nil then return false end
-    return key == fight.boss or ns.bosses[key] == fight.boss
-        or (fight.names ~= nil and fight.names[key] == true)
-end
-local function IsBossOf(fight, guid)
-    return IsBossKey(fight, NpcKey(guid))
-end
-Encounters.IsBossOf = IsBossOf
-Encounters.IsBossKey = IsBossKey
+local IsBossOf = ns.IsBossOf
 local RAID_MAPS = {
     IcecrownCitadel = true, Ulduar = true, TheArgentColiseum = true, TheRubySanctum = true, Naxxramas = true,
     TheObsidianSanctum = true, TheEyeofEternity = true, OnyxiasLair = true, VaultofArchavon = true,
@@ -176,7 +163,7 @@ local function SegsOf(fight)
     local want = {}
     if fight.segs then
         for k = 1, #fight.segs do want[fight.segs[k]] = true end
-    else
+    elseif fight.seg then
         want[fight.seg] = true
     end
     local out = {}
@@ -313,7 +300,7 @@ local function ScanAll()
         local guards = {}
         local seen, perEvent = 0, 1 / max(1, tonumber(seg.n) or 1)
         for ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, _, a4
-            in ns.Store.Events(seg, nil, nil, SKIP_HP, 4) do
+            in ns.Store.Events(seg, nil, nil, 4) do
             ns.Jobs.Step()
             seen = seen + 1
             if seen % PROGRESS_EVERY == 0 then ns.Jobs.Progress(i - 1 + seen * perEvent, segTotal) end
@@ -335,118 +322,116 @@ local function ScanAll()
                     list[#list + 1] = gid
                 end
             end
-            if sub ~= "FW_HP" then
-                if noteEffects then
-                    local id = tonumber(a1)
-                    if id and srcName then
-                        if sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CAST_START" then
-                            castAt[srcName .. "\0" .. id] = ts
-                        elseif sub == "SPELL_AURA_APPLIED" and dstFlags
-                            and bit.band(dstFlags, F_PLAYER) > 0 then
-                            local s = StatOf(fxStats, id, a2)
-                            s.n = s.n + 1
-                            if a4 == "DEBUFF" then s.debuff = s.debuff + 1 end
-                            if srcFlags and bit.band(srcFlags, F_HOSTILE) > 0 then
-                                s.hostile = s.hostile + 1
-                            end
-                            if srcName == dstName then s.mine = s.mine + 1 end
-                            local at = castAt[srcName .. "\0" .. id]
-                            if at and ts - at <= CAST_WINDOW then s.cast = s.cast + 1 end
-                            if dstName and not s.tg[dstName] then
-                                s.tg[dstName] = true
-                                s.tn = s.tn + 1
-                            end
+            if noteEffects then
+                local id = tonumber(a1)
+                if id and srcName then
+                    if sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CAST_START" then
+                        castAt[srcName .. "\0" .. id] = ts
+                    elseif sub == "SPELL_AURA_APPLIED" and dstFlags
+                        and bit.band(dstFlags, F_PLAYER) > 0 then
+                        local s = StatOf(fxStats, id, a2)
+                        s.n = s.n + 1
+                        if a4 == "DEBUFF" then s.debuff = s.debuff + 1 end
+                        if srcFlags and bit.band(srcFlags, F_HOSTILE) > 0 then
+                            s.hostile = s.hostile + 1
+                        end
+                        if srcName == dstName then s.mine = s.mine + 1 end
+                        local at = castAt[srcName .. "\0" .. id]
+                        if at and ts - at <= CAST_WINDOW then s.cast = s.cast + 1 end
+                        if dstName and not s.tg[dstName] then
+                            s.tg[dstName] = true
+                            s.tn = s.tn + 1
                         end
                     end
                 end
-                local asSrc = EncounterIn(srcGUID, srcName, own, alias, dummy)
-                local asDst = EncounterIn(dstGUID, dstName, own, alias, dummy)
-                local hurt = sub:find("_DAMAGE", 1, true) ~= nil
-                local touched = hurt or sub:find("_HEAL", 1, true) ~= nil
-                if (hurt or sub == "SPELL_INSTAKILL") and dstName and dstFlags
-                    and bit.band(dstFlags, F_PLAYER) > 0 then
-                    hitAt[dstName] = ts
-                    hitId[dstName] = sub:find("SWING", 1, true) == nil and a1 or false
+            end
+            local asSrc = EncounterIn(srcGUID, srcName, own, alias, dummy)
+            local asDst = EncounterIn(dstGUID, dstName, own, alias, dummy)
+            local hurt = sub:find("_DAMAGE", 1, true) ~= nil
+            local touched = hurt or sub:find("_HEAL", 1, true) ~= nil
+            if (hurt or sub == "SPELL_INSTAKILL") and dstName and dstFlags
+                and bit.band(dstFlags, F_PLAYER) > 0 then
+                hitAt[dstName] = ts
+                hitId[dstName] = sub:find("SWING", 1, true) == nil and a1 or false
+            end
+            local byPlayer = touched and srcFlags ~= nil
+                and bit.band(srcFlags, F_BY_PLAYER) > 0
+            local dstKey = byPlayer and auto ~= nil and dstName ~= nil and auto[dstName] and NpcKey(dstGUID)
+            if dstKey and not ns.bosses[dstKey] and not ns.trashBosses[dstKey] and not alias[dstKey] and not open[dstKey] then
+                local host = Busy(open, ts)
+                if host then
+                    alias[dstKey] = host.boss
+                    segAlias[dstKey] = host.boss
+                    host.names = host.names or {}
+                    host.names[dstKey] = true
+                    asDst = host.boss
                 end
-                local byPlayer = touched and srcFlags ~= nil
-                    and bit.band(srcFlags, F_BY_PLAYER) > 0
-                local dstKey = byPlayer and auto ~= nil and dstName ~= nil and auto[dstName] and NpcKey(dstGUID)
-                if dstKey and not ns.bosses[dstKey] and not ns.trashBosses[dstKey] and not alias[dstKey] and not open[dstKey] then
-                    local host = Busy(open, ts)
-                    if host then
-                        alias[dstKey] = host.boss
-                        segAlias[dstKey] = host.boss
-                        host.names = host.names or {}
-                        host.names[dstKey] = true
-                        asDst = host.boss
+            end
+            local enc = asDst or asSrc
+            if enc then
+                local f = open[enc]
+                local pulled = asDst ~= nil and byPlayer
+                    and not (ns.bossYield and ns.bossYield[asDst] and dstFlags ~= nil
+                        and bit.band(dstFlags, F_FRIENDLY) > 0)
+                local stale = f ~= nil
+                    and (ts - f.last > (f.killed and IDLE_GAP or RESUME_GAP)
+                        or (not f.killed and ts - f.last > IDLE_GAP and Wiped(f)))
+                if pulled and (not f or stale) then
+                    if f and f.to - f.from >= MinFight(f) then
+                        Push(f)
                     end
-                end
-                local enc = asDst or asSrc
-                if enc then
-                    local f = open[enc]
-                    local pulled = asDst ~= nil and byPlayer
-                        and not (ns.bossYield and ns.bossYield[asDst] and dstFlags ~= nil
-                            and bit.band(dstFlags, F_FRIENDLY) > 0)
-                    local stale = f ~= nil
-                        and (ts - f.last > (f.killed and IDLE_GAP or RESUME_GAP)
-                            or (not f.killed and ts - f.last > IDLE_GAP and Wiped(f)))
-                    if pulled and (not f or stale) then
-                        if f and f.to - f.from >= MinFight(f) then
-                            Push(f)
-                        end
-                        if not open[enc] then openCount = openCount + 1 end
-                        f = not f and Resumable(found, enc, ts) or nil
-                        if f then
-                            f.segs = f.segs or { f.seg }
-                            f.segs[#f.segs + 1] = segIndex
-                            f.last = ts
-                        else
-                            f = { boss = enc, from = ts, to = ts, last = ts, killed = false,
-                                  deaths = 0, seg = segIndex, players = {}, raid = seg.raid, title = dstName }
-                        end
-                        open[enc] = f
-                    end
-                    if f and (pulled or not stale) and not (f.won and ns.bossYield and ns.bossYield[enc]) then
+                    if not open[enc] then openCount = openCount + 1 end
+                    f = not f and Resumable(found, enc, ts) or nil
+                    if f then
+                        f.segs = f.segs or { f.seg }
+                        f.segs[#f.segs + 1] = segIndex
                         f.last = ts
-                        f.to = ts
-                        if pulled and enc == ns.ENC.dummy then
-                            f.names = f.names or {}
-                            f.names[NpcKey(dstGUID)] = true
-                        end
-                        if f.killed and pulled and not f.won
-                            and ts - (f.diedAt or ts) > REVIVE_GAP then
-                            f.killed = false
-                        end
-                        local ended, _, died = EndOf(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags,
-                            a1, own, alias, bossSeen)
-                        if ended == enc then
-                            f.killed = true
-                            if died then f.diedAt = ts else f.won = true end
-                        end
+                    else
+                        f = { boss = enc, from = ts, to = ts, last = ts, killed = false,
+                              deaths = 0, seg = segIndex, players = {}, raid = seg.raid, title = dstName }
+                    end
+                    open[enc] = f
+                end
+                if f and (pulled or not stale) and not (f.won and ns.bossYield and ns.bossYield[enc]) then
+                    f.last = ts
+                    f.to = ts
+                    if pulled and enc == ns.ENC.dummy then
+                        f.names = f.names or {}
+                        f.names[NpcKey(dstGUID)] = true
+                    end
+                    if f.killed and pulled and not f.won
+                        and ts - (f.diedAt or ts) > REVIVE_GAP then
+                        f.killed = false
+                    end
+                    local ended, _, died = EndOf(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags,
+                        a1, own, alias, bossSeen)
+                    if ended == enc then
+                        f.killed = true
+                        if died then f.diedAt = ts else f.won = true end
                     end
                 end
-                if openCount > 0 then
-                    for _, f in pairs(open) do
-                        if ts - f.last <= IDLE_GAP then
-                            if srcFlags and bit.band(srcFlags, F_PLAYER) > 0 and srcName then
-                                f.players[srcName] = f.players[srcName] or 0
-                            end
-                            if dstFlags and bit.band(dstFlags, F_PLAYER) > 0 and dstName then
-                                f.players[dstName] = (f.players[dstName] or 0)
-                                if sub == "UNIT_DIED" then
-                                    local at = hitAt[dstName]
-                                    local hit = at ~= nil and ts - at <= Deaths.KILL_WINDOW
-                                    if not (hit and Deaths.ByScript(f.boss, hitId[dstName])) then
-                                        f.players[dstName] = f.players[dstName] + 1
-                                        f.deaths = f.deaths + 1
-                                        local dts = f.dts or {}
-                                        f.dts = dts
-                                        dts[#dts + 1] = ts
-                                        if not hit then
-                                            local list = quiet[f] or {}
-                                            quiet[f] = list
-                                            list[#list + 1] = { t = ts, who = dstName }
-                                        end
+            end
+            if openCount > 0 then
+                for _, f in pairs(open) do
+                    if ts - f.last <= IDLE_GAP then
+                        if srcFlags and bit.band(srcFlags, F_PLAYER) > 0 and srcName then
+                            f.players[srcName] = f.players[srcName] or 0
+                        end
+                        if dstFlags and bit.band(dstFlags, F_PLAYER) > 0 and dstName then
+                            f.players[dstName] = (f.players[dstName] or 0)
+                            if sub == "UNIT_DIED" then
+                                local at = hitAt[dstName]
+                                local hit = at ~= nil and ts - at <= Deaths.KILL_WINDOW
+                                if not (hit and Deaths.ByScript(f.boss, hitId[dstName])) then
+                                    f.players[dstName] = f.players[dstName] + 1
+                                    f.deaths = f.deaths + 1
+                                    local dts = f.dts or {}
+                                    f.dts = dts
+                                    dts[#dts + 1] = ts
+                                    if not hit then
+                                        local list = quiet[f] or {}
+                                        quiet[f] = list
+                                        list[#list + 1] = { t = ts, who = dstName }
                                     end
                                 end
                             end
@@ -583,7 +568,7 @@ end
 function Encounters.Prepare(fight, onDone)
     ns.Index.Get(fight, onDone, false)
 end
-local LEAD = 35
+local LEAD = ns.PULL_LEAD
 local TAIL = 20
 function Encounters.Lead(fight)
     local lead = fight.from - LEAD
@@ -614,10 +599,7 @@ function Encounters.Tail(fight)
     end
     return tail
 end
-local CLASS_ORDER = {
-    WARRIOR = 1, DEATHKNIGHT = 2, PALADIN = 3, DRUID = 4, SHAMAN = 5,
-    PRIEST = 6, ROGUE = 7, HUNTER = 8, MAGE = 9, WARLOCK = 10,
-}
+local CLASS_ORDER = ns.CLASS_ORDER
 function Encounters.ClassOf(name)
     return ns.GetDB().classes[name]
 end
@@ -732,84 +714,6 @@ local function InferNpcs(frames, swings, count, fight, known)
         wipe(slotOf)
     end
 end
-local HP_BODY = "^%d+,%d+,,,0,,,0,r()"
-local HP_ENTRY = "^%d+%.(%d+):(%d+):(%d+):(%d+):(%d+)"
-local ENTRY_END = "[;,\n]"
-local B_SEMI = 59
-local B_COMMA = 44
-local function PutPos(state, seen, unit, hp, top, x, y, ts)
-    if x > 0 or y > 0 then
-        state[unit] = { x = x, y = y, hp = hp, max = top }
-        seen[unit] = ts
-        return
-    end
-    local prev = state[unit]
-    if prev and (prev.x > 0 or prev.y > 0) and ts - (seen[unit] or ts) <= POS_HOLD then
-        state[unit] = { x = prev.x, y = prev.y, hp = hp, max = top, stale = true }
-    else
-        state[unit] = { x = 0, y = 0, hp = hp, max = top }
-    end
-end
-local function ReadSnaps(fight, idx, out, from, to)
-    local state, seen = {}, {}
-    local lastFloor, lastLive = nil, nil
-    local snaps = idx.snaps
-    local total = #snaps
-    from, to = max(from or fight.from, fight.from), min(to or fight.to, fight.to)
-    for k = from > fight.from and ns.Index.Seek(idx, snaps, from) or 1, total do
-        ns.Jobs.Step(16)
-        ns.Jobs.Progress(k, total)
-        local seg, s, at = ns.Index.Line(idx, snaps[k])
-        local ms = match(s, "^(%d+)", at)
-        local ts = ms and seg.t0 + tonumber(ms) / 1000
-        if ts and ts > to then break end
-        local p = ts and ts >= from and match(s, HP_BODY, at)
-        if p then
-            local dict = seg.dict
-            while true do
-                local stop = find(s, ENTRY_END, p)
-                local nameId, hp, top, x, y = match(s, HP_ENTRY, p)
-                if nameId then
-                    local unit = dict[tonumber(nameId)]
-                    if unit then
-                        PutPos(state, seen, unit, tonumber(hp), tonumber(top), tonumber(x) / 10000, tonumber(y) / 10000, ts)
-                    end
-                end
-                if not stop or s:byte(stop) ~= B_SEMI then
-                    p = stop
-                    break
-                end
-                p = stop + 1
-            end
-            local a2 = p and s:byte(p) == B_COMMA and match(s, "^,r([^,\n]*)", p) or nil
-            local mapName, floorId, areaId
-            if a2 then
-                areaId = tonumber(a2:match("^(%d+)"))
-                floorId = tonumber(a2:match("^%d+:(%d+)")) or 0
-                mapName = a2:match("^%d+:%d+:%a:(%a+)$")
-            end
-            local snap, live = {}, 0
-            for name, pt in pairs(state) do
-                if pt.stale and ts - (seen[name] or ts) > POS_HOLD then
-                    pt = { x = 0, y = 0, hp = pt.hp, max = pt.max }
-                    state[name] = pt
-                end
-                if not pt.stale and (pt.x > 0 or pt.y > 0) then live = live + 1 end
-                snap[name] = pt
-            end
-            local level = floorId or 0
-            local lost = nil
-            if live > 0 then
-                lastFloor, lastLive = level, ts
-            elseif next(snap) then
-                level = lastFloor or level
-                lost = lastLive or ts
-            end
-            out[#out + 1] = { t = ts, map = mapName, area = areaId or 0,
-                              floor = level, units = snap, lost = lost }
-        end
-    end
-end
 local function ReadSwings(fight, idx, from, to)
     local swings, count = {}, 0
     local npcFlag = COMBATLOG_OBJECT_TYPE_NPC
@@ -820,8 +724,7 @@ local function ReadSwings(fight, idx, from, to)
     for k = from > fight.from and ns.Index.Seek(idx, list, from) or 1, total do
         ns.Jobs.Step()
         ns.Jobs.Progress(k, total)
-        local seg, s, at = ns.Index.Line(idx, list[k])
-        local ts, sub, _, srcName, srcFlags, dstGUID, dstName, dstFlags = ns.Store.Decode(seg, s, at, 0)
+        local ts, sub, _, srcName, srcFlags, dstGUID, dstName, dstFlags = ns.Index.Read(idx, list, k, 0)
         if ts and ts > to then break end
         if ts and ts >= from
             and srcName and dstGUID and dstName and sub and find(sub, "SWING", 1, true) == 1
@@ -839,7 +742,6 @@ local function BuildPositions(fight, idx)
     if #idx.segs == 0 then return out, {} end
     ns.Jobs.Label("job.map")
     ns.Jobs.Band(0, 0.6)
-    ReadSnaps(fight, idx, out)
     ns.Streams.Frames(idx.segs, out, fight.from, fight.to)
     ns.Jobs.Band(0.6, 0.8)
     local swings, count = ReadSwings(fight, idx)
@@ -852,7 +754,6 @@ end
 function Encounters.PosWindow(fight, idx, from, to)
     local out = {}
     if #idx.segs == 0 then return out end
-    ReadSnaps(fight, idx, out, from - POS_HOLD, to)
     ns.Streams.Frames(idx.segs, out, max(from - POS_HOLD, fight.from), min(to, fight.to))
     local swings, count = ReadSwings(fight, idx, from - POS_HOLD - SWING_WINDOW, to + SWING_WINDOW)
     InferNpcs(out, swings, count, fight, ns.maps and ns.maps[fight.boss])
@@ -951,150 +852,8 @@ function Encounters.Rooms(fight, frames)
     end
     return rooms
 end
-local function ReadHp(fight, who, idx, from, to)
-    if ns.Streams.Any(idx.segs) then return ns.Streams.HpList(idx.segs, who, from, to) end
-    local hp = {}
-    local needles = {}
-    local snaps = idx.snaps
-    for k = 1, #snaps do
-        ns.Jobs.Step()
-        local seg, s, at = ns.Index.Line(idx, snaps[k])
-        local needle = needles[seg]
-        if needle == nil then
-            local id = ns.Store.IdOf(seg, who)
-            needle = id and ("." .. id .. ":") or false
-            needles[seg] = needle
-        end
-        if needle then
-            local ts = seg.t0 + tonumber(match(s, "^(%d+)", at)) / 1000
-            if ts >= from and ts <= to then
-                local stop = find(s, "\n", at, true)
-                local p = find(s, needle, at, true)
-                if p and (not stop or p < stop) then
-                    local cur, top = match(s, "^%.%d+:(%d+):(%d+)", p)
-                    local hpNow, hpMax = tonumber(cur), tonumber(top)
-                    if hpNow and hpMax and hpMax > 0 then
-                        hp[#hp + 1] = { t = ts, hp = hpNow, max = hpMax, pct = hpNow / hpMax }
-                    end
-                end
-            end
-        end
-    end
-    return hp
-end
-local function RealDeaths(deaths, hp)
-    local real = {}
-    for i = 1, #deaths do
-        local t = deaths[i]
-        local zero, seen, held = false, false, nil
-        for k = 1, #hp do
-            local h = hp[k]
-            if h.t < t - DEATH_WINDOW then
-                held = h
-            elseif h.t <= t + DEATH_WINDOW then
-                seen = true
-                if h.hp == 0 then
-                    zero = true
-                    break
-                end
-            else
-                break
-            end
-        end
-        if not seen and held and t - held.t <= HOLD_WINDOW then
-            seen = true
-            zero = held.hp == 0
-        end
-        if zero or not seen then real[#real + 1] = t end
-    end
-    return real
-end
-local function ByT(a, b)
-    return a.t < b.t
-end
-local function HpIn(s, at, needle, ts, hp)
-    local stop = find(s, "\n", at, true)
-    local p = find(s, needle, at, true)
-    if p and (not stop or p < stop) then
-        local cur, top = match(s, "^%.%d+:(%d+):(%d+)", p)
-        local hpNow, hpMax = tonumber(cur), tonumber(top)
-        if hpNow and hpMax and hpMax > 0 then hp[#hp + 1] = { t = ts, hp = hpNow, max = hpMax } end
-    end
-end
 function Encounters.RealDeath(fight, who, t)
-    local segs = SegsOf(fight)
-    if ns.Streams.Any(segs) then return ns.Streams.Real(segs, who, t) end
-    local hp = {}
-    local from, to = t - HOLD_WINDOW - DEATH_WINDOW, t + DEATH_WINDOW
-    for si = 1, #segs do
-        local seg = segs[si]
-        local id = ns.Store.IdOf(seg, who)
-        local needle = id and ("." .. id .. ":")
-        if needle then
-            for s, at, _, ts, sub in ns.Store.Heads(seg, from, to) do
-                ns.Jobs.Step()
-                if sub == "FW_HP" and ts >= from and ts <= to then HpIn(s, at, needle, ts, hp) end
-            end
-        end
-    end
-    tsort(hp, ByT)
-    return #RealDeaths({ t }, hp) > 0
-end
-function Encounters.HpLines(from, to)
-    return { from = from, to = to, list = {}, bySeg = {} }
-end
-function Encounters.KeepHp(lines, seg, s, at, ms)
-    local own = lines.bySeg[seg]
-    if not own then
-        own = { seg = seg, s = {}, at = {}, t = {} }
-        lines.bySeg[seg] = own
-        lines.list[#lines.list + 1] = own
-    end
-    local n = #own.t + 1
-    own.s[n], own.at[n], own.t[n] = s, at, seg.t0 + tonumber(ms) / 1000
-end
-function Encounters.RealDeathIn(fight, who, t, lines, only)
-    if only and ns.Store.IsNew(only) then return ns.Streams.Real({ only }, who, t) end
-    if not only and fight.seg then
-        local segs = SegsOf(fight)
-        if ns.Streams.Any(segs) then return ns.Streams.Real(segs, who, t) end
-    end
-    local from, to = t - HOLD_WINDOW - DEATH_WINDOW, t + DEATH_WINDOW
-    if not lines or from < lines.from or to > lines.to then return Encounters.RealDeath(fight, who, t) end
-    local hp = {}
-    for k = 1, #lines.list do
-        local own = lines.list[k]
-        local seg = own.seg
-        local id = (not only or seg == only) and ns.Store.IdOf(seg, who)
-        if id then
-            local needle = "." .. id .. ":"
-            local times, strs, ats = own.t, own.s, own.at
-            for i = 1, #times do
-                ns.Jobs.Step()
-                local ts = times[i]
-                if ts >= from and ts <= to then HpIn(strs[i], ats[i], needle, ts, hp) end
-            end
-        end
-    end
-    tsort(hp, ByT)
-    return #RealDeaths({ t }, hp) > 0
-end
-function Encounters.HpTrail(lines, who, from, to)
-    local hp = {}
-    for k = 1, lines and #lines.list or 0 do
-        local own = lines.list[k]
-        local id = ns.Store.IdOf(own.seg, who)
-        if id then
-            local needle = "." .. id .. ":"
-            local times, strs, ats = own.t, own.s, own.at
-            for i = 1, #times do
-                local ts = times[i]
-                if ts >= from and ts <= to then HpIn(strs[i], ats[i], needle, ts, hp) end
-            end
-        end
-    end
-    tsort(hp, ByT)
-    return hp
+    return ns.Streams.Real(SegsOf(fight), who, t)
 end
 local function SwingLabel(srcName)
     if not srcName then return ns.T("tl.swing") end
@@ -1119,24 +878,24 @@ local function BuildTimeline(fight, who, idx)
     local starts = ns.CastGcd.New(who)
     local mine = idx.who[who] or {}
     local common = idx.common
+    local mineT, commonT = ns.Index.Times(idx, mine) or {}, ns.Index.Times(idx, common) or {}
     local i, j = 1, 1
     while true do
         local a, b = mine[i], common[j]
-        local key
+        local key, kt
         if a and (not b or a <= b) then
-            key = a
+            key, kt = a, mineT[i]
             i = i + 1
             if a == b then j = j + 1 end
         elseif b then
-            key = b
+            key, kt = b, commonT[j]
             j = j + 1
         else
             break
         end
         ns.Jobs.Step()
-        local seg, s, at = ns.Index.Line(idx, key)
         local ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, _, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10
-            = ns.Store.Decode(seg, s, at, 10)
+            = ns.Index.ReadKey(idx, key, kt, 10)
         if ts and ts >= from and ts <= to then
             if sub == "FW_MARK" and ns.DevMarks then
                 out.marks[#out.marks + 1] = { t = ts, label = ns.DevMarks.Line(a1, a2) }
@@ -1162,10 +921,7 @@ local function BuildTimeline(fight, who, idx)
                     c.sum = (c.sum or 0) + (tonumber(a4) or 0)
                 end
             end
-            if sub == "SPELL_SUMMON" and dstGUID and srcFlags
-                and band(srcFlags, F_PLAYER) > 0 then
-                owners[dstGUID] = srcName
-            end
+            ns.NoteOwner(owners, sub, srcFlags, srcName, dstGUID)
             if IsBossOf(fight, srcGUID) and BOSS_SUBS[sub] then
                 local label = tostring(a2 or a1)
                 if not bossSeen[label] or ts - bossSeen[label] > 3 then
@@ -1293,17 +1049,13 @@ local function BuildTimeline(fight, who, idx)
                      pet = band(srcFlags, F_PLAYER) == 0,
                      owner = srcGUID and owners[srcGUID] or nil }
     end
-    out.hp = ReadHp(fight, who, idx, from, to)
-    if ns.Streams.Any(idx.segs) then
-        out.mana = ns.Streams.ManaList(idx.segs, who, from, to)
-        local real = {}
-        for k = 1, #out.deaths do
-            if ns.Streams.Real(idx.segs, who, out.deaths[k]) then real[#real + 1] = out.deaths[k] end
-        end
-        out.deaths = real
-    else
-        out.deaths = RealDeaths(out.deaths, out.hp)
+    out.hp = ns.Streams.HpList(idx.segs, who, from, to)
+    out.mana = ns.Streams.ManaList(idx.segs, who, from, to)
+    local real = {}
+    for k = 1, #out.deaths do
+        if ns.Streams.Real(idx.segs, who, out.deaths[k]) then real[#real + 1] = out.deaths[k] end
     end
+    out.deaths = real
     return out
 end
 local function ByTotal(a, b)

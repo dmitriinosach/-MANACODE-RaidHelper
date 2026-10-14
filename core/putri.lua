@@ -6,16 +6,13 @@ local max = math.max
 local min = math.min
 local concat = table.concat
 local tsort = table.sort
-local F_BY_PLAYER = 0x100
+local F_BY_PLAYER = ns.F.BY_PLAYER
 local ENTER_GAP = 5
 local OOZE_SLOTS = { "rt", "gt", "ov", "gv" }
 local ABOM_SLOTS = { "slow", "eat" }
 local ONLY = { ov = "green", gv = "red" }
 local Putri = {}
 ns.Putri = Putri
-local function Fill(set, list)
-    for i = 1, #(list or {}) do set[ns.NpcKeyOf(list[i])] = true end
-end
 function Putri.Begin(s, fight, pets)
     local st
     for i = 1, #s.blocks do
@@ -40,7 +37,7 @@ function Putri.Begin(s, fight, pets)
                 st.npcs[st.npcKey] = true
                 st.spells[st.enter] = true
                 st.targets = {}
-                Fill(st.targets, b.def.names)
+                ns.NpcSet(b.def.names, st.targets)
             end
         end
     end
@@ -206,11 +203,9 @@ end
 local function Put(out, kind, left, right, mid, tone)
     out[#out + 1] = { kind = kind, left = left, right = right, mid = mid, tone = tone }
 end
-local function Short(v)
-    return ns.BadgeTips.Short(v)
-end
+local Short = ns.Short
 local function Span(a, z)
-    local Clock = ns.BadgeTips.Clock
+    local Clock = ns.Clock
     return format("%s–%s", Clock(a), z and Clock(z) or "…")
 end
 local function Cell(v)
@@ -345,7 +340,7 @@ local function Drivers(b)
     return list
 end
 local function DriverTip(b, r, class)
-    local out = { { kind = "head", left = r.who, right = ns.BadgeTips.Clock(r.secs), class = class } }
+    local out = { { kind = "head", left = r.who, right = ns.Clock(r.secs), class = class } }
     local parts = {}
     for i = 1, #r.stints do parts[i] = Span(r.stints[i].a, r.stints[i].z) end
     Put(out, "row", T("sum.ab.drove"), concat(parts, ", "))
@@ -398,8 +393,8 @@ local function AbomView(b, classOf)
         local class = classOf and r.who ~= "?" and classOf(r.who) or nil
         rows[#rows + 1] = {
             who = r.who, class = class,
-            cells = b.power and { ns.BadgeTips.Clock(r.secs), tostring(r.energy), Cell(r.got) }
-                or { ns.BadgeTips.Clock(r.secs), Cell(r.got) },
+            cells = b.power and { ns.Clock(r.secs), tostring(r.energy), Cell(r.got) }
+                or { ns.Clock(r.secs), Cell(r.got) },
             marks = { r.slows > 0 and { id = b.ids.slow or b.def.icons.slow, n = r.slows } or false,
                       r.eats > 0 and { id = b.ids.eat or b.def.icons.eat, n = r.eats } or false },
             lines = DriverTip(b, r, class),

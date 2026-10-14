@@ -1,9 +1,7 @@
 local _, ns = ...
-local SKIP_HP = { "FW_HP" }
 local MAX_TAIL = 1
 local WAVE_GAP = 5
 local SETTLE = 2
-local BIG_RAID = 12
 local Phases = {}
 ns.Phases = Phases
 local indexes = setmetatable({}, { __mode = "k" })
@@ -36,18 +34,12 @@ local function Index(def)
     indexes[def] = idx
     return idx
 end
-local function SizeOf(fight)
-    if fight.raid and fight.raid.size then return fight.raid.size end
-    local n = 0
-    for _ in pairs(fight.players or {}) do n = n + 1 end
-    return n > BIG_RAID and 25 or 10
-end
 function Phases.New(fight)
     local def = ns.bossPhases and ns.bossPhases[fight.boss]
     if not def or not def.steps or not def.steps[1] then return nil end
     local first = def.steps[1]
     local tr = {
-        def = def, idx = Index(def), from = fight.from, to = fight.to, size = SizeOf(fight),
+        def = def, idx = Index(def), from = fight.from, to = fight.to, size = ns.RaidSize(fight),
         cur = 1, key = first.key, waveAt = {},
         res = { spans = { { key = first.key, label = first.label, from = 0, to = fight.to - fight.from } },
                 waves = {}, ends = {} },
@@ -160,7 +152,7 @@ function Phases.Scan(fight)
     if not tr then return nil end
     local segs = ns.Encounters.Segs(fight)
     for si = 1, #segs do
-        for ts, sub, _, _, _, _, _, _, a1 in ns.Store.Events(segs[si], fight.from, fight.to, SKIP_HP, MAX_TAIL) do
+        for ts, sub, _, _, _, _, _, _, a1 in ns.Store.Events(segs[si], fight.from, fight.to, MAX_TAIL) do
             ns.Jobs.Step()
             Phases.Feed(tr, ts, sub, a1)
         end

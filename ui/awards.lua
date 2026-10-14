@@ -1,6 +1,5 @@
 local _, ns = ...
 local format = string.format
-local ceil = math.ceil
 local max = math.max
 local min = math.min
 local BODY = 64
@@ -27,31 +26,12 @@ local Badges = ns.Badges
 local View = {}
 ns.AwardView = View
 View.HEAD_H = 20
-local function ShowLines(self)
-    if self.lines then ns.Tip.Dock(self, self.lines, self.tipIcon) end
-end
-local function HideTip()
-    ns.Tip.Hide()
-end
-local function Hover(f)
-    f:EnableMouse(true)
-    f:SetScript("OnEnter", ShowLines)
-    f:SetScript("OnLeave", HideTip)
-end
-local function OneLine(fs)
-    fs:SetJustifyH("LEFT")
-    fs:SetWordWrap(false)
-end
+local Hover = Kit.HoverLines
+local OneLine = Kit.OneLine
 local function Coord(tex, c)
     tex:SetTexCoord(c[1], c[2], c[3], c[4])
 end
-local function Fit(fs, text, room)
-    fs:SetWidth(0)
-    fs:SetText(text)
-    local w = min(ceil(fs:GetStringWidth() or 0) + 2, max(1, room))
-    fs:SetWidth(w)
-    return w
-end
+local Fit = Kit.Fit
 local function Nick(body)
     local b = CreateFrame("Frame", nil, body)
     b:SetHeight(14)

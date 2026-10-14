@@ -41,9 +41,9 @@ local Settings = {}
 ns.Settings = Settings
 local cats = {}
 local catList = {}
-local page, nav, scroll, content, bar, ticker
+local page, nav, scroll, content, ticker
+local pane
 local current
-local offset = 0
 local tickAcc = 0
 local counter = 0
 local navRows = {}
@@ -590,13 +590,6 @@ local function LayoutCat(c, w)
     h:SetHeight(max(1, y))
     return y
 end
-local function ScrollTo()
-    local most = max(0, content:GetHeight() - scroll:GetHeight())
-    if offset > most then offset = most end
-    if offset < 0 then offset = 0 end
-    scroll:SetVerticalScroll(offset)
-    bar:SetState(offset, scroll:GetHeight(), content:GetHeight())
-end
 Layout = function()
     if not page or not current then return end
     local c = cats[current]
@@ -605,7 +598,7 @@ Layout = function()
     local h = LayoutCat(c, w)
     content:SetWidth(w)
     content:SetHeight(max(1, h))
-    ScrollTo()
+    pane:ScrollTo(pane.offset)
 end
 local function RefreshCat(c)
     for i = 1, #c.sections do
@@ -662,7 +655,7 @@ function Settings.Select(key)
     end
     current = key
     Saved().ui.setCat = key
-    offset = 0
+    pane.offset = 0
     Activate(cats[key])
     if old then Kit.FadeIn(cats[key].holder) end
 end
@@ -712,10 +705,6 @@ local function BuildNav()
         end
     end
 end
-local function Wheel(_, delta)
-    offset = offset - delta * WHEEL
-    ScrollTo()
-end
 local function Tick(_, elapsed)
     tickAcc = tickAcc + elapsed
     if tickAcc < TICK then return end
@@ -738,23 +727,11 @@ local function Build(host)
     nav:SetPoint("BOTTOMLEFT", page, "BOTTOMLEFT", 0, 0)
     nav:SetWidth(NAV_W)
     BuildNav()
-    scroll = CreateFrame("ScrollFrame", nil, page)
+    pane = Kit.ScrollPage(page, { bar = "edge", wheel = WHEEL })
+    scroll, content = pane.scroll, pane.content
     scroll:SetPoint("TOPLEFT", nav, "TOPRIGHT", GAP, 0)
     scroll:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -(BAR + BARGAP), 0)
-    content = CreateFrame("Frame", nil, scroll)
-    content:SetWidth(1)
-    content:SetHeight(1)
-    scroll:SetScrollChild(content)
-    scroll:EnableMouseWheel(true)
-    scroll:SetScript("OnMouseWheel", Wheel)
     scroll:SetScript("OnSizeChanged", function() Layout() end)
-    bar = Kit.ScrollBar(page, 1)
-    bar:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, 0)
-    bar:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", 0, 0)
-    bar.onScroll = function(want)
-        offset = want
-        ScrollTo()
-    end
     ticker = CreateFrame("Frame", nil, page)
     ticker:SetScript("OnUpdate", ns.Prof.Wrap("ui.other", Tick))
 end
@@ -803,9 +780,6 @@ end
 function Settings.Open(cat)
     ns.Shell.Open("settings")
     if cat then Settings.Select(cat) end
-end
-function Settings.Widget(item)
-    return item.w
 end
 function ns.Shell.Section(key, def)
     return Settings.Section(def.cat or "svc", key, def)

@@ -16,22 +16,12 @@ ns.BadgeTips = Tips
 local function T(key)
     return ns.T(key)
 end
-function Tips.Short(n)
-    if n >= 1e6 then return format("%.2f", n / 1e6) .. ns.T("num.m") end
-    if n >= 1e5 then return format("%.0f", n / 1e3) .. ns.T("num.k") end
-    if n >= 1e3 then return format("%.1f", n / 1e3) .. ns.T("num.k") end
-    return tostring(floor(n + 0.5))
-end
-local Short = Tips.Short
+local Short = ns.Short
 function Tips.Rate(n)
-    if n >= 1e3 then return format("%.2f", n / 1e3) .. ns.T("num.k") end
+    if n >= 1e3 then return ns.Dec(format("%.2f", n / 1e3)) .. ns.T("num.k") end
     return tostring(floor(n + 0.5))
 end
-function Tips.Clock(sec)
-    local m = floor(sec / 60)
-    return format("%d:%02d", m, floor(sec - m * 60))
-end
-local Clock = Tips.Clock
+local Clock = ns.Clock
 local function Rate(n, dur)
     return format(T("sum.tt.rate"), Short(n / max(1, dur)))
 end
@@ -113,7 +103,7 @@ local function Control(out, c, base)
         Put(out, "sub", format(T("sum.mc.count"), #c.hits))
         if c.tempo and not c.dual then Put(out, "sub", format(T("sum.mc.tempo"), Dec(c.tempo, 2))) end
         if c.procs > 0 then Put(out, "sub", format(T("sum.mc.procs"), c.procs)) end
-        if c.by == "poison" then Put(out, "sub", format(T("sum.mc.poison"), #c.hits)) end
+        if c.by == "poison" then Put(out, "sub", format(T("sum.mc.poison"), #c.hits, ns.Plural(#c.hits, T("tl.w.hit")))) end
         if c.wpn == "none" then
             Put(out, "sub", format(T("sum.mc.slots.none"), T("sum.mc.why." .. (c.why or "wait"))))
         elseif c.wpn then
@@ -216,6 +206,10 @@ function Tips.Player(p, s)
     local out = {}
     local sec = ns.Totals.Time(s)
     Head(out, p.name, T("sum.tt.role." .. p.role), p.class)
+    if p.tree and p.class and p.treeBy then
+        Put(out, "row", T("sum.tt.spec"), T("spec." .. p.class .. "." .. p.tree))
+        Put(out, "sub", T("sum.tt.spec." .. p.treeBy), nil, nil, "dim")
+    end
     if p.role == "heal" then
         Put(out, "row", T("sum.tt.heal"), Rate(p.heal, sec), Short(p.heal))
         NoIdle(out, p.heal, s)
@@ -496,7 +490,7 @@ local function Guards(out, p, d, base)
 end
 local GRADE_TONE = { red = "bad", yellow = "warn", green = "good", gray = "dim" }
 local WHY_PLAIN = { tail = true, intent = true, rule = true, horror = true, frenzy = true, must = true, wave = true,
-                    waverule = true, oneshot = true, slow = true, nodmg = true }
+                    waverule = true, slow = true, nodmg = true }
 local WHY_BY = { ally = true, link = true, mc = true }
 local WHY_REACT = { fast = true, wavefast = true }
 local function GuardName(id)
@@ -521,6 +515,8 @@ function Tips.Verdict(d)
         text = format(T(key), react)
     elseif why == "noheal" then
         text = format(T(key), Dec(d.gap or 0, 1), Short(d.gapHeal or 0))
+    elseif why == "oneshot" then
+        text = format(T(key), Short(d.oneHp or 0), Short(d.oneMax or 0))
     elseif why == "used" then
         text = format(T(key), GuardName(d.used) or "?")
     elseif why == "ready" then

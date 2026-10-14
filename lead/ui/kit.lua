@@ -4,7 +4,6 @@ local ns = root.Lead
 local Kit = root.Kit
 local C = Kit.C
 ns.Kit = Kit
-ns.Space = Kit.Space
 ns.C = C
 ns.EDGE = C["text.title"]
 ns.DANGER = C["text.bad"]
@@ -12,7 +11,6 @@ ns.Theme = setmetatable({}, {
     __index = function(_, k) return Kit.Theme()[k] end,
 })
 ns.Fill = Kit.Solid
-ns.PlainFrame = Kit.PlainFrame
 ns.Backdrop = Kit.Backdrop
 ns.Skin = Kit.Skin
 ns.PaintTitle = Kit.Title

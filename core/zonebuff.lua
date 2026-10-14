@@ -10,9 +10,7 @@ ZB.OFF = "off"
 local idSet
 local function Ids()
     if idSet then return idSet end
-    idSet = {}
-    local data = ns.zoneBuff
-    for i = 1, data and #data.ids or 0 do idSet[data.ids[i]] = true end
+    idSet = ns.SpellSet(ns.zoneBuff and ns.zoneBuff.ids, nil, true)
     return idSet
 end
 function ZB.InZone(fight)

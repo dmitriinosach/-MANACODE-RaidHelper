@@ -19,7 +19,7 @@ local function Call(mod, fn)
 end
 function MemGuard.Shed()
     local live = ns.Store and ns.Store.Live()
-    if live and not live.pull and ns.Store.IsNew(live) and ns.Trash and ns.Recorder then
+    if live and not live.pull and ns.Trash and ns.Recorder then
         pcall(ns.Trash.Step, live, ns.Recorder.Now(), true)
     end
     Call(ns.Summary, "Reset")

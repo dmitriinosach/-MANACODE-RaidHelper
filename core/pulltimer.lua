@@ -58,12 +58,14 @@ function PullTimer.Note(who, sec)
     if sec == 0 then
         if not active then return false end
         active = nil
+        if ns.Specs then ns.Specs.Soon(0) end
         return ns.Recorder.Mark(SUB, nil, who, 0, nil, nil, 0, 0)
     end
     local ends = now + sec
     if active and math.abs(ends - active.ends) <= ns.pullTimer.dup then return false end
     if not ns.Recorder.Mark(SUB, nil, who, 0, nil, nil, 0, sec) then return false end
     active = { ends = ends, start = now, sec = sec, who = who }
+    if ns.Specs then ns.Specs.Soon(sec) end
     return true
 end
 function PullTimer.OnPull(ts)
@@ -76,6 +78,7 @@ function PullTimer.OnPull(ts)
 end
 function PullTimer.Forget()
     active = nil
+    if ns.Specs then ns.Specs.Soon(0) end
 end
 function PullTimer.Feed(s, ts, who, sec, ago)
     sec = tonumber(sec)

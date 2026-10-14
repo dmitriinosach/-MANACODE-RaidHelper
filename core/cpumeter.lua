@@ -168,7 +168,7 @@ function CpuMeter.Lines(r)
     local T = ns.T
     local dur = max(1, r.dur or 0)
     local sec = floor(dur + 0.5)
-    local out = { format(T("cpu.head"), r.enc or T("cpu.fight"), format("%d:%02d", floor(sec / 60), sec % 60)) }
+    local out = { format(T("cpu.head"), r.enc or T("cpu.fight"), ns.Clock(sec)) }
     local rows = r.rows
     if rows and r.total then
         local total = max(r.total, 0.001)
@@ -336,7 +336,7 @@ function CpuMeter.WinLines(r)
     local dur = max(1, r.dur or 0)
     local sec = floor(dur + 0.5)
     local own, once = r.own or 0, r.once or 0
-    local out = { format(T("cpu.win.head"), format("%d:%02d", floor(sec / 60), sec % 60), Ms(own + once), Ms(once)),
+    local out = { format(T("cpu.win.head"), ns.Clock(sec), Ms(own + once), Ms(once)),
         format(T("cpu.win.steady"), Ms(own), Ms(own / dur), Ms(r.worst or 0)) }
     local sums = { bg = 0 }
     for key, v in pairs(r.by or {}) do

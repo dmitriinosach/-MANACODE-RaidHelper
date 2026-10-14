@@ -24,40 +24,23 @@ local NPC_STREAMS = 400
 local PULL_MUTE = 30
 local MAX_RAID = 40
 local MAX_PARTY = 4
-local F_PLAYER = 0x400
-local F_BY_PLAYER = 0x100
-local F_GROUP = 0x07
-local WPN_AURA = 71289
-local WPN_WAIT = 1.5
-local WPN_STALE = 8
-local WPN_FOREIGN = 5
-local WPN_RANGE = 1
-local WPN_CLASS = { DEATHKNIGHT = true, WARRIOR = true, ROGUE = true, PALADIN = true, SHAMAN = true }
-local SPEC_SWAP = { [63644] = true, [63645] = true }
-local ACH_EVENTS = { "CHAT_MSG_ACHIEVEMENT", "CHAT_MSG_GUILD_ACHIEVEMENT" }
-local ACH_LINK = "|Hachievement:(%d+):"
-local ACH_DUP = 30
+local F_PLAYER = ns.F.PLAYER
+local F_BY_PLAYER = ns.F.BY_PLAYER
+local F_GROUP = ns.F.GROUP
+local WPN_AURA = ns.RecWpn.AURA
+local SPEC_SWAP = ns.SpellSet(ns.specSwap, nil, true)
+local ACH_EVENTS = ns.RecAch.EVENTS
 local ASKED_MAX = 4096
-local ACH_MAX = 512
 local Recorder = {}
 ns.Recorder = Recorder
 local frame = CreateFrame("Frame")
 frame:Hide()
-local RAID, RAID_PET, RAID_TARGET = {}, {}, {}
+local U = ns.Units
+local RAID, RAID_PET, RAID_TARGET = U.raid, U.raidPet, U.raidTarget
+local PARTY, PARTY_PET, PARTY_TARGET = U.party, U.partyPet, U.partyTarget
 local TARGET_OF = { target = "targettarget", focus = "focustarget" }
-for i = 1, MAX_RAID do
-    RAID[i] = "raid" .. i
-    RAID_PET[i] = "raid" .. i .. "pet"
-    RAID_TARGET[i] = "raid" .. i .. "target"
-    TARGET_OF[RAID_TARGET[i]] = RAID_TARGET[i] .. "target"
-end
-local PARTY, PARTY_PET, PARTY_TARGET = {}, {}, {}
-for i = 1, MAX_PARTY do
-    PARTY[i] = "party" .. i
-    PARTY_PET[i] = "partypet" .. i
-    PARTY_TARGET[i] = "party" .. i .. "target"
-    TARGET_OF[PARTY_TARGET[i]] = PARTY_TARGET[i] .. "target"
-end
+for i = 1, MAX_RAID do TARGET_OF[RAID_TARGET[i]] = RAID_TARGET[i] .. "target" end
+for i = 1, MAX_PARTY do TARGET_OF[PARTY_TARGET[i]] = PARTY_TARGET[i] .. "target" end
 local ROSTER_EVENTS = { "RAID_ROSTER_UPDATE", "PARTY_MEMBERS_CHANGED", "UNIT_PET", "UNIT_NAME_UPDATE" }
 local isOn = false
 local inZone = false
@@ -88,10 +71,6 @@ local seen, kept = 0, 0
 local slotUnit, slotGuid, slotName, slotPlayer, slotPet, slotMana = {}, {}, {}, {}, {}, {}
 local slots = 0
 local rosterDirty = true
-local mapArea, mapLevel, mapName = nil, nil, nil
-local goodArea, goodLevel = nil, nil
-local levelOk = true
-local levelProbes, levelFixes = 0, 0
 local fighting = false
 local calmAt = nil
 local seenIdle = true
@@ -103,12 +82,6 @@ local specAt = nil
 local dead = {}
 local bossSeen = {}
 local closed = { why = nil, enc = nil, at = nil, mute = nil }
-local wpnQueue, wpnAt, wpnName = {}, {}, {}
-local wpnGuid, wpnUnit, wpnSent = nil, nil, nil
-local foreignUnit, foreignAt = nil, nil
-local ownAsk = false
-local achSeen = {}
-local achN = 0
 local paused = false
 local pauseWaitIdle = false
 local pauseZone = nil
@@ -138,7 +111,7 @@ function Recorder.Counts()
     return seen, kept
 end
 function Recorder.MapLevel()
-    return goodLevel, levelProbes, levelFixes
+    return ns.RecMap.Level()
 end
 local function WatchRoster(on)
     for i = 1, #ROSTER_EVENTS do
@@ -176,12 +149,6 @@ local function Listen(on)
         frame:UnregisterEvent("INSPECT_TALENT_READY")
     end
     WatchRoster(on)
-end
-local function ForgetWpn()
-    wipe(wpnQueue)
-    wipe(wpnAt)
-    wipe(wpnName)
-    wpnGuid, wpnUnit, wpnSent = nil, nil, nil
 end
 local function CloseSegment(why, enc)
     ForgetKill()
@@ -273,7 +240,7 @@ function Recorder.Pause(waitIdle)
     paused = true
     ns.GetDB().paused = true
     Listen(false)
-    ForgetWpn()
+    ns.RecWpn.Forget()
     CloseSegment("pause", nil)
     pauseWaitIdle = waitIdle or fighting
     local name = GetInstanceInfo()
@@ -305,7 +272,7 @@ function Recorder.Stop()
     else
         Listen(false)
     end
-    ForgetWpn()
+    ns.RecWpn.Forget()
     frame:Hide()
     CloseSegment("stop", nil)
     ns.Trash.Forget()
@@ -356,14 +323,13 @@ local function ResetSegmentState()
     wipe(polledY)
     ns.RecMana.Reset()
     frameHp, framePos = true, true
-    mapArea, mapLevel, mapName = nil, nil, nil
+    ns.RecMap.Reset()
     wipe(dead)
     wipe(bossSeen)
     ForgetKill()
     posElapsed = POS_PERIOD
     keyElapsed = KEY_PERIOD
     mapElapsed = MAP_PERIOD
-    levelOk = true
 end
 local function NoteVehicleFight(guid, name, key)
     key = key or ns.NpcKey(guid)
@@ -391,51 +357,6 @@ local function WatchEnd(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFl
     killAt = now + KILL_GRACE
     killEnd = now + AUTO_WAIT
     killEnc = enc
-end
-local function Asked(unit)
-    if not ownAsk then foreignUnit, foreignAt = unit, GetTime() end
-end
-if type(hooksecurefunc) == "function" and type(NotifyInspect) == "function" then
-    hooksecurefunc("NotifyInspect", Asked)
-end
-local function WpnAsk(guid, name)
-    if not guid or not name or wpnAt[guid] then return end
-    local cls = ns.GetDB().classes[name]
-    if not cls then
-        local _, c = GetPlayerInfoByGUID(guid)
-        cls = c
-    end
-    if cls and not WPN_CLASS[cls] then return end
-    wpnQueue[#wpnQueue + 1] = guid
-    wpnAt[guid] = GetTime()
-    wpnName[guid] = name
-end
-local function WpnWrite(guid, mh, oh, rg, why)
-    if ns.Store.Live() then
-        ns.Store.Append(Now(), "FW_WPN", guid, wpnName[guid], 0, nil, nil, 0, mh, oh, rg, why)
-    end
-    wpnAt[guid], wpnName[guid] = nil, nil
-end
-local function WpnRead(unit, guid)
-    WpnWrite(guid, GetInventoryItemID(unit, 16) or 0, GetInventoryItemID(unit, 17) or 0,
-        GetInventoryItemID(unit, 18) or 0, nil)
-end
-local function WpnDone()
-    wpnGuid, wpnUnit, wpnSent = nil, nil, nil
-    local back = foreignUnit and foreignAt and GetTime() - foreignAt <= WPN_FOREIGN and foreignUnit or nil
-    if back and UnitExists(back) then
-        ownAsk = true
-        NotifyInspect(back)
-        ownAsk = false
-    elseif not (InspectFrame and InspectFrame:IsShown()) then
-        ClearInspectPlayer()
-    end
-end
-local function WpnReady()
-    if not wpnGuid or UnitGUID(wpnUnit) ~= wpnGuid then return end
-    if foreignAt and foreignAt > wpnSent then return end
-    WpnRead(wpnUnit, wpnGuid)
-    WpnDone()
 end
 local function Spent(guid, name, auto)
     if not closed.mute then return false end
@@ -482,7 +403,7 @@ local function RecordEvent(ts, ...)
         and ns.Encounters.IsDummy(ns.NpcKey(dstGUID)) then
         dummyAt = GetTime()
     end
-    if spellId == WPN_AURA and sub == "SPELL_AURA_APPLIED" then WpnAsk(dstGUID, dstName) end
+    if spellId == WPN_AURA and sub == "SPELL_AURA_APPLIED" then ns.RecWpn.Ask(dstGUID, dstName) end
     if SPEC_SWAP[spellId] and sub == "SPELL_CAST_SUCCESS" then ns.Specs.Swap(srcName) end
     Anchor(ts)
     local srcKey, dstKey = ns.NpcKey(srcGUID), ns.NpcKey(dstGUID)
@@ -534,42 +455,9 @@ local function ReadRoster()
     end
     rosterDirty = false
 end
-local function UnitOf(guid)
-    for k = 1, slots do
-        if slotGuid[k] == guid and slotPlayer[k] then return slotUnit[k] end
-    end
-    return nil
-end
-local function InGroup(name)
-    if rosterDirty then ReadRoster() end
-    for k = 1, slots do
-        if slotPlayer[k] and slotName[k] == name then return true end
-    end
-    return false
-end
-local function OnAchievement(msg, sender)
-    if not inZone or type(msg) ~= "string" or type(sender) ~= "string" or sender == "" then return end
-    local id = tonumber(msg:match(ACH_LINK))
-    if not id then return end
-    local name = sender:match("^([^%-]+)") or sender
-    if not InGroup(name) then return end
-    local key = name .. ":" .. id
-    local now = GetTime()
-    if achSeen[key] and now - achSeen[key] < ACH_DUP then return end
-    if not achSeen[key] then
-        achN = achN + 1
-        if achN > ACH_MAX then
-            wipe(achSeen)
-            achN = 1
-        end
-    end
-    achSeen[key] = now
-    local ts = Now()
-    if not ns.Store.Live() then
-        ns.Store.Open(ts)
-        ResetSegmentState()
-    end
-    ns.Store.Append(ts, "FW_ACH", nil, name, 0, nil, nil, 0, id)
+function Recorder.Roster(fresh)
+    if fresh and rosterDirty then ReadRoster() end
+    return slots, slotUnit, slotGuid, slotName, slotPlayer
 end
 function Recorder.Now()
     return Now()
@@ -582,104 +470,6 @@ function Recorder.Mark(sub, ...)
         ResetSegmentState()
     end
     return ns.Store.Append(ts, sub, ...)
-end
-local function WpnStep(now)
-    if wpnGuid then
-        if now - wpnSent > WPN_WAIT then
-            WpnWrite(wpnGuid, nil, nil, nil, "wait")
-            WpnDone()
-        end
-        return
-    end
-    local guid = table.remove(wpnQueue, 1)
-    if not guid then return end
-    local unit = UnitOf(guid)
-    if now - (wpnAt[guid] or now) > WPN_STALE then
-        WpnWrite(guid, nil, nil, nil, "late")
-    elseif not unit then
-        WpnWrite(guid, nil, nil, nil, "gone")
-    elseif UnitIsUnit(unit, "player") then
-        WpnRead("player", guid)
-    elseif InspectFrame and InspectFrame:IsShown() then
-        WpnWrite(guid, nil, nil, nil, "busy")
-    elseif not (CanInspect and CanInspect(unit)) then
-        WpnWrite(guid, nil, nil, nil, "deny")
-    elseif not CheckInteractDistance(unit, WPN_RANGE) then
-        WpnWrite(guid, nil, nil, nil, "far")
-    else
-        wpnGuid, wpnUnit, wpnSent = guid, unit, now
-        ownAsk = true
-        NotifyInspect(unit)
-        ownAsk = false
-    end
-end
-local function CountOnMap()
-    if rosterDirty then ReadRoster() end
-    local on, alive = 0, 0
-    for k = 1, slots do
-        local unit = slotUnit[k]
-        if slotPlayer[k] and not UnitIsDeadOrGhost(unit) then
-            alive = alive + 1
-            local x, y = GetPlayerMapPosition(unit)
-            if (x or 0) > 0 or (y or 0) > 0 then on = on + 1 end
-        end
-    end
-    return on, alive
-end
-local function TryLevel(level)
-    levelProbes = levelProbes + 1
-    if level ~= 0 then
-        SetDungeonMapLevel(level)
-    elseif not pcall(SetDungeonMapLevel, 0) or GetCurrentMapDungeonLevel() ~= 0 then
-        return 0, 0
-    end
-    return CountOnMap()
-end
-local function PickLevel()
-    local on, alive = CountOnMap()
-    local was = GetCurrentMapDungeonLevel() or 0
-    local area = GetCurrentMapAreaID()
-    if on * 2 > alive then
-        if was > 0 then goodArea, goodLevel = area, was end
-        return true
-    end
-    local n = GetNumDungeonMapLevels() or 0
-    if n < 2 then return on > 0 end
-    local first = goodLevel and goodArea == area and goodLevel ~= was and goodLevel <= n and goodLevel or nil
-    local best, bestOn = was, on
-    if first then
-        local c = TryLevel(first)
-        if c > bestOn then best, bestOn = first, c end
-    end
-    if bestOn * 2 <= alive then
-        for level = 1, n do
-            if level ~= was and level ~= first then
-                local c = TryLevel(level)
-                if c > bestOn then best, bestOn = level, c end
-                if c * 2 > alive then break end
-            end
-        end
-    end
-    if bestOn == 0 and was ~= 0 and first ~= 0 then
-        local c = TryLevel(0)
-        if c > 0 then best, bestOn = 0, c end
-    end
-    if bestOn == 0 then best = first or was end
-    if best == 0 and bestOn == 0 and first ~= 0 then
-        SetMapToCurrentZone()
-    elseif best ~= GetCurrentMapDungeonLevel() then
-        if best ~= 0 then SetDungeonMapLevel(best) else pcall(SetDungeonMapLevel, 0) end
-    end
-    if bestOn == 0 then return false end
-    if best ~= was then levelFixes = levelFixes + 1 end
-    goodArea, goodLevel = area, best
-    return true
-end
-local function ReadMap()
-    local area, level, name = GetCurrentMapAreaID(), GetCurrentMapDungeonLevel(), GetMapInfo() or ""
-    if area == mapArea and level == mapLevel and name == mapName then return false end
-    mapArea, mapLevel, mapName = area, level, name
-    return ns.Store.Map(Now(), area, level, name)
 end
 local function PollAuras(k, guid)
     if not pollNow[1] or not slotPlayer[k] then return end
@@ -767,7 +557,7 @@ local function CollectUnits(keyframe, withPos, mapMoved)
     if keyframe then NotePets(GetNumRaidMembers()) end
     local now = Now()
     local live = ns.Store.Live()
-    if not ns.Store.IsNew(live) then return 0 end
+    if not live then return 0 end
     local forceHp, forcePos = frameHp, withPos and (framePos or mapMoved)
     for k = 1, slots do
         PutSlot(live, k, now, withPos, forceHp, forcePos)
@@ -821,7 +611,7 @@ local function PutNpc(live, S, i, now, bossOnly)
 end
 local function SampleNpcs()
     local live = ns.Store.Live()
-    if not (live and live.pull and ns.Store.IsNew(live)) then return end
+    if not (live and live.pull) then return end
     local S = ns.UnitScan.Get(true)
     local now, n = Now(), 0
     for i = 1, S.n do
@@ -887,26 +677,16 @@ local function CheckClose(now)
 end
 local function Snapshot()
     local withPos = posElapsed >= POS_PERIOD
-    local moved = false
+    local refresh = false
     if withPos then
         posElapsed = posElapsed - POS_PERIOD
         if posElapsed >= POS_PERIOD then posElapsed = 0 end
-        local busy = WorldMapFrame:IsShown()
-        local fresh = false
         if mapElapsed >= MAP_PERIOD then
             mapElapsed = 0
-            if not busy then
-                SetMapToCurrentZone()
-                fresh = true
-            end
+            refresh = true
         end
-        if not busy and (fresh or (levelOk and CountOnMap() == 0)) then
-            levelOk = PickLevel()
-        end
-        moved = ReadMap()
-    elseif not mapArea then
-        moved = ReadMap()
     end
+    local moved = ns.RecMap.Read(withPos, refresh)
     local keyframe = keyElapsed >= KEY_PERIOD
     if keyframe then
         keyElapsed = 0
@@ -924,10 +704,10 @@ frame:SetScript("OnEvent", ns.Prof.Wrap("hot.log", function(_, event, ...)
             ns.Store.Append(Now(), "FW_EMOTE", nil, sender, 0, nil, target, 0, msg)
         end
     elseif event == "INSPECT_TALENT_READY" then
-        WpnReady()
+        ns.RecWpn.Ready()
     elseif event == "CHAT_MSG_ACHIEVEMENT" or event == "CHAT_MSG_GUILD_ACHIEVEMENT" then
         local msg, sender = ...
-        OnAchievement(msg, sender)
+        ns.RecAch.On(msg, sender)
     elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
         local live = event == "PLAYER_ENTERING_WORLD" and ns.Store.Live()
         if live and not live.pull then CloseSegment("zone", nil) end
@@ -972,9 +752,9 @@ frame:SetScript("OnUpdate", ns.Prof.Wrap("hot.rec", function(_, elapsed)
     if ringElapsed >= RING_PERIOD or ringMore then
         ringElapsed = 0
         local live = ns.Store.Live()
-        ringMore = live ~= nil and not live.pull and ns.Store.IsNew(live) and ns.Trash.Step(live, Now()) or false
+        ringMore = live ~= nil and not live.pull and ns.Trash.Step(live, Now()) or false
     end
-    if wpnGuid or wpnQueue[1] then WpnStep(GetTime()) end
+    ns.RecWpn.Step()
     if ns.Threat then ns.Threat.Step(elapsed) end
     if (killAt or dummyAt or (hadFight and calmAt)) and ns.Store.Live() then
         CheckClose(GetTime())

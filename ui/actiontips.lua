@@ -11,9 +11,7 @@ ns.ActionTips = Tips
 local function T(key)
     return ns.T(key)
 end
-local function Clock(sec)
-    return ns.BadgeTips.Clock(max(0, sec))
-end
+local Clock = ns.Clock
 local function Put(out, kind, left, right, mid, tone)
     out[#out + 1] = { kind = kind, left = left, right = right, mid = mid, tone = tone }
 end
@@ -130,7 +128,7 @@ function Tips.chased(st, def)
     Head(out, T(def.tip), format("x%d", st.n))
     for k = 1, min(TIMES, st.n) do
         local cnt = st.cnt and st.cnt[k]
-        Put(out, "sub", Clock(st.times[k]), st.dmgs and st.dmgs[k] and ns.BadgeTips.Short(st.dmgs[k]) or nil,
+        Put(out, "sub", Clock(st.times[k]), st.dmgs and st.dmgs[k] and ns.Short(st.dmgs[k]) or nil,
             cnt and format(T("sum.tt.shadehit"), cnt) or nil)
         local why = st.why and st.why[k]
         if why then Put(out, "sub", WhyText(why), nil, nil, "good") end
@@ -150,9 +148,9 @@ end
 function Tips.blast(st, def)
     local out = {}
     Head(out, T(def.tip), format("x%d", st.n))
-    Put(out, "row", T("sum.tt.dmg"), ns.BadgeTips.Short(st.amount))
+    Put(out, "row", T("sum.tt.dmg"), ns.Short(st.amount))
     for k = 1, min(TIMES, st.n) do
-        Put(out, "sub", Clock(st.times[k]), ns.BadgeTips.Short(st.dmgs[k] or 0),
+        Put(out, "sub", Clock(st.times[k]), ns.Short(st.dmgs[k] or 0),
             format(T("sum.tt.shadeof"), st.notes[k]))
     end
     More(out, st.n)
@@ -282,11 +280,11 @@ function Tips.runeswap(st, def)
     for k = 1, min(TIMES, st.n) do
         Put(out, "sub", Clock(st.times[k]) .. " " .. tostring(st.bearer and st.bearer[k] or "?"),
             format(T("sum.tt.rune.ep"), B.Dec(st.dur and st.dur[k] or 0, 1), st.rh and st.rh[k] or 0,
-                B.Short(st.heal and st.heal[k] or 0)))
+                ns.Short(st.heal and st.heal[k] or 0)))
     end
     More(out, st.n)
     Put(out, "row", T("sum.tt.rune.hits"), tostring(st.hits))
-    Put(out, "row", T("sum.tt.rune.heal"), B.Short(st.amount))
+    Put(out, "row", T("sum.tt.rune.heal"), ns.Short(st.amount))
     return out
 end
 function Tips.nova(st, def)
@@ -312,7 +310,7 @@ function Tips.Shades(b, who, class)
         Put(out, "row", T("sum.tt.summoned"), tostring(b.summoned))
         Put(out, "row", T("sum.tt.caught"), tostring(b.caught))
         Put(out, "row", T("sum.tt.shadehits"), tostring(b.hit))
-        Put(out, "row", T("sum.tt.dmg"), ns.BadgeTips.Short(b.total))
+        Put(out, "row", T("sum.tt.dmg"), ns.Short(b.total))
     end
     local shown = 0
     for k = 1, #b.at do
@@ -320,7 +318,7 @@ function Tips.Shades(b, who, class)
             shown = shown + 1
             if shown <= KICK_TIMES then
                 Put(out, "sub", Clock(b.at[k]), b.vic[k] or "?",
-                    format(T("sum.tt.shadehit"), b.cnt[k]) .. ", " .. ns.BadgeTips.Short(b.dmg[k]))
+                    format(T("sum.tt.shadehit"), b.cnt[k]) .. ", " .. ns.Short(b.dmg[k]))
             end
         end
     end

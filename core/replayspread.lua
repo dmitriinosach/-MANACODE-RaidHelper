@@ -36,6 +36,11 @@ function S.New(fight)
                   cast = Index(defs, "cast"), aura = Index(defs, "aura"), hit = Index(defs, "hit"),
                   open = Index(defs, "open"), own = Index(defs, "own"), hits = {}, openT = {}, on = {}, raw = {} }
     for di = 1, #defs do ctx.on[di], ctx.raw[di] = {}, {} end
+    local want = {}
+    for _, field in ipairs({ "cast", "aura", "hit", "open", "own" }) do
+        for id in pairs(ctx[field]) do want[id] = true end
+    end
+    ctx.want = want
     return ctx
 end
 local function Add(ctx, di, name, from, to)
@@ -48,8 +53,8 @@ local function Stop(ctx, di, name, ts)
     ctx.on[di][name] = nil
     Add(ctx, di, name, from, ts + ctx.hold)
 end
-function S.Event(ctx, ts, sub, src, dst, a1)
-    local id = tonumber(a1)
+function S.Event(ctx, ts, sub, src, dst, a1, id)
+    id = id or tonumber(a1)
     if not id then return end
     local P = ctx.players
     local own = ctx.own[id]
@@ -98,8 +103,7 @@ local function ByFrom(a, b)
     return a.k < b.k
 end
 function S.Done(ctx, L, scene)
-    local byK = {}
-    for k = 1, #scene.tracks do byK[scene.tracks[k].name] = k end
+    local byK = ns.Replay.ByK(scene)
     local lo, hi = ctx.fight.from - PRE, ctx.fight.to
     local out = {}
     for di = 1, #ctx.defs do

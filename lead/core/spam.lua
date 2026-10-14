@@ -165,13 +165,13 @@ end
 local function tokens(needs)
     local n, size = ns.Session.Count()
     return {
-        [ns.T("tokRaid")]  = ns.Tpl.Name(ns.Session.Template()),
-        [ns.T("tokNeeds")] = needs,
-        [ns.T("tokCount")] = n .. "/" .. size,
-        [ns.T("tokProg")]  = ns.Session.Field("prog") or "",
-        [ns.T("tokReq")]   = reqText(),
-        [ns.T("tokLoot")]  = lootText(),
-        [ns.T("tokTime")]  = ns.Session.Field("time") or "",
+        tokRaid  = ns.Tpl.Name(ns.Session.Template()),
+        tokNeeds = needs,
+        tokCount = n .. "/" .. size,
+        tokProg  = ns.Session.Field("prog") or "",
+        tokReq   = reqText(),
+        tokLoot  = lootText(),
+        tokTime  = ns.Session.Field("time") or "",
     }
 end
 local function plain(s)
@@ -188,8 +188,12 @@ local function tidy(s)
 end
 local function fill(body, needs)
     local out = (body or ""):gsub("%c+", " ")
-    for tok, val in pairs(tokens(needs)) do
-        out = out:gsub(plain(tok), (val:gsub("%%", "%%%%")))
+    for key, val in pairs(tokens(needs)) do
+        local repl = val:gsub("%%", "%%%%")
+        for _, words in pairs(ns.locales) do
+            local tok = words[key]
+            if tok then out = out:gsub(plain(tok), repl) end
+        end
     end
     return tidy(out)
 end

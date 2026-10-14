@@ -14,9 +14,14 @@ local Q = 100
 local PCT_SIZE = 9
 local BADGE_MIN = 11
 local BADGE_K = 0.6
-local ICON_K = 0.66
-local CB_W = 72
-local CB_H = 10
+local CB_W = 60
+local CB_H = 6
+local CB_ICON = 10
+local SN_H = 3
+local SN_ICON = 8
+local SN_MIN = 26
+local NICK_N = 5
+local NICK_GAP = 1
 local IN_K = 0.8
 local IN_RISE = 0.5
 local IN_Q = 20
@@ -24,7 +29,6 @@ local V = { stats = { mana = 0, casts = 0, inst = 0 } }
 ns.ReplayUnitsView = V
 local Kit = ns.Kit
 local RU = ns.ReplayUnits
-local Figs = ns.ReplayFigs
 local st = { data = nil, focus = nil }
 local pctFont
 local function PctFont()
@@ -48,13 +52,23 @@ local function EnsureMana(fig)
     fig.mpFill:SetPoint("BOTTOMLEFT", fig.mpBg, "BOTTOMLEFT", 0, 0)
     fig.mpFill:Hide()
 end
-local function EnsureBadge(fig)
-    if fig.csIcon then return end
-    fig.csIcon = fig:CreateTexture(nil, "ARTWORK")
-    fig.csIcon:Hide()
-    fig.csRing = fig:CreateTexture(nil, "OVERLAY")
-    fig.csArcOk = fig.csRing:SetTexture(Figs.ARC_TEX) and true or false
-    fig.csRing:Hide()
+local function EnsureStrip(fig)
+    if fig.snBg then return end
+    fig.snBg = fig:CreateTexture(nil, "ARTWORK")
+    fig.snBg:SetTexture(WHITE)
+    Kit.Hue(fig.snBg, "sem.rep.castBg")
+    fig.snBg:SetHeight(SN_H)
+    fig.snBg:Hide()
+    fig.snFill = fig:CreateTexture(nil, "OVERLAY")
+    fig.snFill:SetTexture(WHITE)
+    fig.snFill:SetPoint("TOPLEFT", fig.snBg, "TOPLEFT", 0, 0)
+    fig.snFill:SetPoint("BOTTOMLEFT", fig.snBg, "BOTTOMLEFT", 0, 0)
+    fig.snFill:Hide()
+    fig.snIcon = fig:CreateTexture(nil, "ARTWORK")
+    fig.snIcon:SetWidth(SN_ICON)
+    fig.snIcon:SetHeight(SN_ICON)
+    fig.snIcon:SetPoint("RIGHT", fig.snBg, "LEFT", -1, 0)
+    fig.snIcon:Hide()
 end
 local function HideMana(fig)
     if not fig.mpOn then return end
@@ -62,6 +76,44 @@ local function HideMana(fig)
     fig.mpBg:Hide()
     fig.mpFill:Hide()
     if fig.mpPct then fig.mpPct:Hide() end
+end
+local function Short(name)
+    local out, n = {}, 0
+    for ch in name:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+        n = n + 1
+        if n > NICK_N then break end
+        out[n] = ch
+    end
+    return table.concat(out)
+end
+local function PutNick(fig)
+    local fs = fig.nkFs
+    if not fs then
+        fs = fig:CreateFontString(nil, "OVERLAY")
+        fs:SetFontObject(PctFont())
+        Kit.Text(fs, "sem.rep.nick")
+        fig.nkFs = fs
+    end
+    if fig.nkName ~= fig.name then
+        fig.nkName = fig.name
+        fig.nkTxt = Short(fig.name or "")
+        fs:SetText(fig.nkTxt)
+    end
+    local up = fig.bd ~= nil and fig.bd[1]:IsShown() and true or false
+    if fig.nkUp ~= up then
+        fig.nkUp = up
+        fs:ClearAllPoints()
+        fs:SetPoint("BOTTOM", up and fig.bd[1] or fig.icon, "TOP", 0, NICK_GAP)
+    end
+    if not fig.nkOn then
+        fig.nkOn = true
+        fs:Show()
+    end
+end
+local function HideNick(fig)
+    if not fig.nkOn then return end
+    fig.nkOn = false
+    fig.nkFs:Hide()
 end
 function V.Use(scene)
     st.data = scene and (scene.units or (scene.base and scene.base.units)) or nil
@@ -139,8 +191,8 @@ local function EnsureBar(fig)
     fig.cbFill:SetPoint("TOPLEFT", fig.cbBg, "TOPLEFT", 0, 0)
     fig.cbFill:SetPoint("BOTTOMLEFT", fig.cbBg, "BOTTOMLEFT", 0, 0)
     fig.cbIcon = fig:CreateTexture(nil, "ARTWORK")
-    fig.cbIcon:SetWidth(CB_H)
-    fig.cbIcon:SetHeight(CB_H)
+    fig.cbIcon:SetWidth(CB_ICON)
+    fig.cbIcon:SetHeight(CB_ICON)
     fig.cbIcon:SetPoint("RIGHT", fig.cbBg, "LEFT", -1, 0)
     fig.cbIcon:Hide()
     fig.cbTime = Label(fig, "LEFT")
@@ -157,54 +209,52 @@ local function HideBar(fig)
     fig.cbTime:Hide()
     fig.cbName:Hide()
 end
+local function HideStrip(fig)
+    if not fig.snOn then return end
+    fig.snOn, fig.snRec, fig.snKey, fig.snTok, fig.snQ = false, nil, nil, nil, nil
+    fig.snBg:Hide()
+    fig.snFill:Hide()
+    fig.snIcon:Hide()
+end
 local function HideCast(fig)
     HideBar(fig)
-    if not fig.csOn then return end
-    fig.csOn, fig.csRec, fig.csKey, fig.csTok, fig.csArc = false, nil, nil, nil, nil
-    fig.csIcon:Hide()
-    fig.csRing:Hide()
+    HideStrip(fig)
 end
 local function ToneOf(rec, t)
     if rec.cut and t >= rec.stop then return "sem.rep.castCut" end
     return rec.chan and "sem.rep.castChan" or "sem.rep.cast"
 end
-local function PutBadge(fig, rec, p, tok)
-    EnsureBadge(fig)
-    local uw = fig.uw or 0
-    local key = floor((fig.hy or 0) + 0.5) * 4096 + floor(uw + 0.5)
-    if fig.csKey ~= key then
-        fig.csKey = key
-        local d = max(BADGE_MIN, uw * BADGE_K)
-        local x, y = uw / 2 + d / 2, fig.hy or 0
-        local ring, icon = fig.csRing, fig.csIcon
-        ring:ClearAllPoints()
-        ring:SetWidth(d)
-        ring:SetHeight(d)
-        ring:SetPoint("CENTER", fig, "CENTER", x, y)
-        icon:ClearAllPoints()
-        icon:SetWidth(d * ICON_K)
-        icon:SetHeight(d * ICON_K)
-        icon:SetPoint("CENTER", fig, "CENTER", x, y)
+local function PutStrip(fig, rec, p, tok)
+    EnsureStrip(fig)
+    local w = max(SN_MIN, fig.uw or 0)
+    local y = fig.under - GAP - (fig.mpOn and (BAR_H + GAP) or 0)
+    local key = floor(y + 0.5) * 4096 + floor(w + 0.5)
+    if fig.snKey ~= key then
+        fig.snKey, fig.snW, fig.snQ = key, w, nil
+        fig.snBg:ClearAllPoints()
+        fig.snBg:SetWidth(w)
+        fig.snBg:SetPoint("TOP", fig, "CENTER", (SN_ICON + 1) / 2, y)
     end
-    if fig.csRec ~= rec then
-        fig.csRec = rec
-        Kit.Icon.Spell(fig.csIcon, rec.id)
+    if fig.snRec ~= rec then
+        fig.snRec = rec
+        Kit.Icon.Spell(fig.snIcon, rec.id)
     end
-    if fig.csTok ~= tok then
-        fig.csTok = tok
-        Kit.Hue(fig.csRing, tok)
+    if fig.snTok ~= tok then
+        fig.snTok = tok
+        Kit.Hue(fig.snFill, tok)
     end
-    local arc = Figs.ARC_N
-    if tok ~= "sem.rep.castCut" then arc = Figs.ArcOf(rec.chan and 1 - p or p) end
-    if fig.csArc ~= arc then
-        fig.csArc = arc
-        Figs.ArcFrame(fig.csRing, arc)
+    local share = tok == "sem.rep.castCut" and 1 or (rec.chan and 1 - p or p)
+    local q = floor(share * fig.snW + 0.5)
+    if fig.snQ ~= q then
+        fig.snQ = q
+        fig.snFill:SetWidth(max(0.01, q))
     end
-    if not fig.csOn then
-        fig.csOn = true
-        fig.csIcon:Show()
-        if fig.csArcOk then fig.csRing:Show() end
+    if not fig.snOn then
+        fig.snOn = true
+        fig.snBg:Show()
+        fig.snIcon:Show()
     end
+    if q > 0 then fig.snFill:Show() else fig.snFill:Hide() end
 end
 local function PutBar(fig, rec, p, left, tok)
     EnsureBar(fig)
@@ -252,8 +302,13 @@ local function PlaceCast(fig, cs, t, focus)
         return false
     end
     local tok = ToneOf(rec, t)
-    PutBadge(fig, rec, p, tok)
-    if focus then PutBar(fig, rec, p, left, tok) else HideBar(fig) end
+    if focus then
+        HideStrip(fig)
+        PutBar(fig, rec, p, left, tok)
+    else
+        HideBar(fig)
+        PutStrip(fig, rec, p, tok)
+    end
     return true
 end
 local function EnsureInst(fig)
@@ -402,6 +457,7 @@ function V.Place(scene, t, figs, n)
         local m = alive and data.mana[fig.name]
         local v = m and RU.ManaAt(m, t)
         local focus = fig.name == st.focus
+        if fig.shown and not focus and fig.icon then PutNick(fig) else HideNick(fig) end
         if v then
             PutMana(fig, v, focus)
             shown = shown + 1
@@ -411,7 +467,7 @@ function V.Place(scene, t, figs, n)
         local cs = alive and (all or focus) and data.casts[fig.name]
         if cs and PlaceCast(fig, cs, t, focus) then
             casting = casting + 1
-        elseif fig.csOn or fig.cbOn then
+        elseif fig.snOn or fig.cbOn then
             HideCast(fig)
         end
         local ins = alive and (all or focus) and data.inst and data.inst[fig.name]
@@ -426,8 +482,10 @@ end
 function V.Probe(fig)
     return { mana = fig.mpOn and fig.mpQ or nil, big = fig.mpPct ~= nil and fig.mpPct:IsShown() or false,
              w = fig.mpOn and fig.mpW or nil, pct = fig.mpTxt,
-             cast = fig.csOn and fig.csRec or nil, arc = fig.csOn and fig.csArc or nil, tone = fig.csOn and fig.csTok or nil,
-             ring = fig.csOn and fig.csArcOk or false, bar = fig.cbOn and fig.cbQ or nil, left = fig.cbOn and fig.cbTxt or nil,
+             cast = (fig.snOn and fig.snRec) or (fig.cbOn and fig.cbRec) or nil, strip = fig.snOn and fig.snQ or nil,
+             stripW = fig.snOn and fig.snW or nil, tone = (fig.snOn and fig.snTok) or (fig.cbOn and fig.cbTok) or nil,
+             bar = fig.cbOn and fig.cbQ or nil, left = fig.cbOn and fig.cbTxt or nil,
+             nick = fig.nkOn and fig.nkTxt or nil,
              inst = fig.inN or 0, instA = (fig.inN or 0) > 0 and fig.inA[1] / IN_Q or nil,
              instId = (fig.inN or 0) > 0 and fig.inId[1] or nil, instPos = fig.inPos and fig.inPos[1] or nil,
              instBar = fig.ibOn and fig.ibTxt or nil, instAt = fig.ibOn and fig.ibAt or nil }

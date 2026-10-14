@@ -2,15 +2,12 @@ local _, ns = ...
 local format = string.format
 local floor = math.floor
 local max = math.max
-local min = math.min
 local MARGIN = 8
 local BAR_ROOM = 8
 local GAP = 6
 local DETAILMIN = 220
 local AWARDMIN = 260
 local TOTALMIN = 140
-local WHEEL = 40
-local RELAYOUT_DELAY = 0.15
 local BUSYW = 320
 local BUSYH = 14
 local BUSYGAP = 8
@@ -20,38 +17,18 @@ local Badges = ns.Badges
 local Grid = ns.Grid
 local View = {}
 ns.RaidSummaryView = View
-local host, scroll, content, busy, art
+local host, content, busy, art
+local pane
 local shownKey, asking
-local offset = 0
 local stats, panels, tiles = {}, {}, {}
 local awardHead
-local gpPanel, laid
+local gpPanel, lootPanel, laid
 local Render
-local lastW = 0
-local relayoutAt = 0
-local pump = CreateFrame("Frame")
-pump:Hide()
 local function Backdrop(raid)
     Kit.RaidArtSet(art, host, raid and raid.map and ns.raidArt and ns.raidArt[raid.map] or nil)
 end
-local pageBar
-local function SyncBar()
-    if pageBar and content then pageBar:SetState(offset, host:GetHeight(), content:GetHeight()) end
-end
-local function Rescroll()
-    if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
-    offset = min(offset, max(0, content:GetHeight() - host:GetHeight()))
-    scroll:SetVerticalScroll(offset)
-    SyncBar()
-end
 local function PageWheel(delta)
-    if not content then return false end
-    local most = max(0, content:GetHeight() - host:GetHeight())
-    local was = offset
-    offset = max(0, min(most, offset - delta * WHEEL))
-    scroll:SetVerticalScroll(offset)
-    SyncBar()
-    return offset ~= was
+    return pane ~= nil and pane:Wheel(delta)
 end
 function View.Title(raid)
     return format(ns.T("rsum.title"), ns.Raid.Title(raid))
@@ -81,7 +58,7 @@ local function Busy()
     busy:SetPoint("CENTER", host, "CENTER", 0, 0)
     busy:SetWidth(BUSYW)
     busy:SetHeight(BUSYH * 2 + BUSYGAP)
-    busy:SetFrameLevel(scroll:GetFrameLevel() + 5)
+    busy:SetFrameLevel(pane.scroll:GetFrameLevel() + 5)
     busy.text = busy:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     Kit.Text(busy.text, "text.bright")
     busy.text:SetPoint("TOP", busy, "TOP", 0, 0)
@@ -126,7 +103,7 @@ local function Rows(rows)
     for i = 1, #rows do
         local r = rows[i]
         out[i] = { who = r.who, class = r.class, icon = r.icon, text = r.text, note = r.note, noteIcon = r.noteIcon,
-                   noteMuted = not r.noteLit, lines = r.lines }
+                   noteMuted = not r.noteLit, lines = r.lines, link = r.link, cells = r.cells }
     end
     return out
 end
@@ -158,10 +135,7 @@ end
 local function Inside()
     return not ns.SumSide or ns.SumSide.Inside()
 end
-local function SideWheel(delta)
-    if Inside() then return PageWheel(delta) end
-    return ns.SumSide.Wheel(delta)
-end
+local SideWheel = ns.SumSide and ns.SumSide.PageWheel(PageWheel) or PageWheel
 local function SplitGP(details)
     local rest, gp = {}, nil
     for i = 1, #details do
@@ -169,31 +143,37 @@ local function SplitGP(details)
     end
     return rest, gp
 end
+local function SidePanel(panel, parent, d, out)
+    if not d then
+        if panel then panel:Hide() end
+        return panel
+    end
+    panel = panel or Badges.Detail(parent)
+    panel:SetParent(parent)
+    panel:SetModel({ title = d.title, rows = Rows(d.rows), empty = d.empty, onWheel = SideWheel, fit = d.fit })
+    out[#out + 1] = panel
+    return panel
+end
 local function SideItems(raid, res, d)
     local parent = ns.SumSide and ns.SumSide.Parent(content) or content
     local out = {}
-    if d then
-        gpPanel = gpPanel or Badges.Detail(parent)
-        gpPanel:SetParent(parent)
-        gpPanel:SetModel({ title = d.title, rows = Rows(d.rows), empty = d.empty, onWheel = SideWheel })
-        out[#out + 1] = gpPanel
-    elseif gpPanel then
-        gpPanel:Hide()
-    end
+    gpPanel = SidePanel(gpPanel, parent, d, out)
     local ach = ns.AchView and ns.AchView.RaidItem(parent, raid, res.earned, SideWheel, Render)
     if ach then out[#out + 1] = ach end
+    lootPanel = SidePanel(lootPanel, parent, ns.Loot and ns.Loot.RaidDetail(raid), out)
     return out
 end
 local function DrawSide(list, y, w)
     if ns.SumSide then ns.SumSide.Show("raid", list) end
     if #list == 0 or not Inside() then return y end
-    return Grid.Place(list, MARGIN, y, w, DETAILMIN, GAP, true)
+    return Grid.Place(list, MARGIN, y, w, 1, GAP, true)
 end
 local function Mark(key, top, bottom)
     if bottom > top then laid[#laid + 1] = { key = key, top = top, bottom = bottom - GAP } end
 end
 local function HideAll()
     if gpPanel then gpPanel:Hide() end
+    if lootPanel then lootPanel:Hide() end
     for i = 1, #stats do stats[i]:Hide() end
     for i = 1, #panels do panels[i]:Hide() end
     for i = 1, #tiles do tiles[i]:Hide() end
@@ -212,7 +192,7 @@ local function Ask(raid)
 end
 Render = function()
     if not host or not host:IsShown() then return end
-    lastW = floor(host:GetWidth())
+    pane:Laid()
     HideAll()
     content:SetWidth(host:GetWidth())
     local raid = ns.RaidSummary.Find(shownKey)
@@ -228,17 +208,22 @@ Render = function()
             ShowBusy(ns.T(raid and "rsum.busy" or "rsum.gone"), raid ~= nil)
         end
         content:SetHeight(host:GetHeight())
-        Rescroll()
+        pane:Rescroll()
         if raid and not err then Ask(raid) end
         return
     end
     local model = ns.RaidModel.Build(res)
     local w = max(200, host:GetWidth() - MARGIN * 2 - BAR_ROOM)
-    local y = DrawTotals(model.totals, w)
+    local totals = model.totals
+    local shards = ns.Loot and ns.Loot.ShardTotal(raid)
+    if shards then
+        totals = {}
+        for i = 1, #model.totals do totals[i] = model.totals[i] end
+        totals[#totals + 1] = shards
+    end
+    local y = DrawTotals(totals, w)
     Mark("totals", MARGIN, y)
     local rest, gp = SplitGP(model.details)
-    local loot = ns.Loot and ns.Loot.RaidDetail(raid)
-    if loot then rest[#rest + 1] = loot end
     local top = y
     y = DrawSide(SideItems(raid, res, gp), y, w)
     Mark("gp", top, y)
@@ -249,7 +234,7 @@ Render = function()
     y = DrawAwards(model.awards, y + GAP, w)
     Mark("awards", top, y)
     content:SetHeight(max(host:GetHeight(), y + MARGIN))
-    Rescroll()
+    pane:Rescroll()
 end
 function View.Attach(frame)
     host = frame
@@ -257,34 +242,16 @@ function View.Attach(frame)
     bg:SetAllPoints()
     Kit.Paint(bg, "float.bg")
     art = Kit.RaidArt(host)
-    scroll = CreateFrame("ScrollFrame", nil, host)
-    scroll:SetAllPoints()
-    content = CreateFrame("Frame", nil, scroll)
-    content:SetWidth(1)
-    content:SetHeight(1)
-    scroll:SetScrollChild(content)
-    scroll:EnableMouseWheel(true)
-    scroll:SetScript("OnMouseWheel", function(_, delta) PageWheel(delta) end)
-    local deck = CreateFrame("Frame", nil, host)
-    deck:SetFrameLevel(host:GetFrameLevel() + 40)
-    deck:SetPoint("TOPRIGHT", host, "TOPRIGHT", -1, -MARGIN)
-    deck:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -1, MARGIN)
-    deck:SetWidth(8)
-    pageBar = ns.Kit.ScrollBar(deck, 1)
-    pageBar:SetPoint("TOPRIGHT", deck, "TOPRIGHT", 0, 0)
-    pageBar:SetPoint("BOTTOMRIGHT", deck, "BOTTOMRIGHT", 0, 0)
-    pageBar.onScroll = function(want)
-        offset = max(0, min(max(0, content:GetHeight() - host:GetHeight()), want))
-        scroll:SetVerticalScroll(offset)
-        SyncBar()
-    end
+    pane = Kit.ScrollPage(host, { fill = true, bar = "deck", inset = MARGIN,
+        relayout = function() Render() end, prof = "ui.sum" })
+    content = pane.content
     host:Hide()
     if ns.DiscordView then ns.DiscordView.Attach(host) end
     if ns.SumSide then ns.SumSide.Watch("raid", host, function() Render() end) end
 end
 function View.Show(raid)
     if not host or not raid then return end
-    if shownKey ~= raid.key then offset = 0 end
+    if shownKey ~= raid.key then pane.offset = 0 end
     if shownKey ~= raid.key or not host:IsShown() then ns.RaidSummary.Retry(raid) end
     shownKey = raid.key
     host:Show()
@@ -345,17 +312,10 @@ function View.Land(current)
         ns.Timeline.ShowFight(fight)
     end
 end
-pump:SetScript("OnUpdate", ns.Prof.Wrap("ui.sum", function(self)
-    if GetTime() < relayoutAt then return end
-    self:Hide()
-    Render()
-end))
 function View.Relayout()
     if not View.IsShown() then return end
     Kit.RaidArtFit(art, host)
-    if floor(host:GetWidth()) == lastW then return end
-    relayoutAt = GetTime() + RELAYOUT_DELAY
-    pump:Show()
+    pane:Relayout()
 end
 function View.Refresh()
     Render()

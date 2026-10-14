@@ -32,11 +32,11 @@ function ns.ApplyLang(lang)
     local missing = {}
     ns.langMissing = missing
     ns.lang = lang
-    if lang ~= "enUS" then return end
     for k in pairs(L) do
         if ns.LEN[k] == nil then missing[#missing + 1] = k end
     end
     table.sort(missing)
+    if lang ~= "enUS" then return end
     for k, v in pairs(ns.LEN) do
         local was = L[k]
         ruKept[k] = was == nil and false or was
@@ -53,18 +53,74 @@ function ns.PluralPick(n, one, few, many)
     if n10 >= 2 and n10 <= 4 and (n100 < 12 or n100 > 14) then return few end
     return many
 end
+function ns.Plural(n, forms)
+    local one, few, many = forms:match("^([^|]*)|([^|]*)|([^|]*)$")
+    if not one then return forms end
+    return ns.PluralPick(n, one, few, many)
+end
 function ns.Dec(s)
     if ns.lang == "enUS" then return s end
     return (s:gsub("%.", ","))
 end
-local preFrames = nil
-if type(EnumerateFrames) == "function" then
-    preFrames = {}
-    local f = EnumerateFrames()
-    while f do
-        preFrames[f] = true
-        f = EnumerateFrames(f)
+local DATE_FMT = {
+    ruRU = { day = "%d.%m", dayTime = "%d.%m %H:%M", year = "%d.%m.%Y" },
+    enUS = { day = "%m/%d", dayTime = "%m/%d %H:%M", year = "%m/%d/%Y" },
+}
+function ns.Date(t, kind)
+    local set = DATE_FMT[ns.lang] or DATE_FMT.ruRU
+    return date(set[kind or "day"] or set.day, t and math.floor(t) or time())
+end
+function ns.Fixed(n, digits)
+    return ns.Dec(string.format("%." .. (digits or 1) .. "f", n))
+end
+function ns.Clock(sec, signed, tenths)
+    local sign = ""
+    if sec < 0 then
+        if signed then sign, sec = "-", -sec else sec = 0 end
     end
+    local m = math.floor(sec / 60)
+    if tenths then return string.format("%s%d:%04.1f", sign, m, sec - m * 60) end
+    return string.format("%s%d:%02d", sign, m, math.floor(sec - m * 60))
+end
+function ns.Short(n, mDigits, kWhole, mWhole)
+    if n >= 1e6 then
+        if mWhole and n >= mWhole then return string.format("%.0f", n / 1e6) .. ns.T("num.m") end
+        return ns.Dec(string.format("%." .. (mDigits or 2) .. "f", n / 1e6)) .. ns.T("num.m")
+    end
+    if n >= 1e3 then
+        if kWhole == nil then kWhole = 1e5 end
+        if kWhole and n >= kWhole then return string.format("%.0f", n / 1e3) .. ns.T("num.k") end
+        return ns.Dec(string.format("%.1f", n / 1e3)) .. ns.T("num.k")
+    end
+    return tostring(math.floor(n + 0.5))
+end
+ns.PULL_LEAD = 35
+ns.CLASS_ORDER = {
+    WARRIOR = 1, DEATHKNIGHT = 2, PALADIN = 3, DRUID = 4, SHAMAN = 5,
+    PRIEST = 6, ROGUE = 7, HUNTER = 8, MAGE = 9, WARLOCK = 10,
+}
+function ns.RaidSize(fight, raid)
+    raid = raid or fight.raid
+    if raid and raid.size then return raid.size end
+    local n = 0
+    for _ in pairs(fight.players or {}) do n = n + 1 end
+    return n > 12 and 25 or 10
+end
+local MELEE_CLASS = {
+    WARRIOR = true, ROGUE = true, DEATHKNIGHT = true, PALADIN = true,
+    HUNTER = false, MAGE = false, WARLOCK = false, PRIEST = false,
+}
+local MELEE_TREE = { DRUID = 2, SHAMAN = 2 }
+local MELEE_SHARE = 0.15
+function ns.IsMelee(p)
+    local cls = p.class
+    local fixed = cls and MELEE_CLASS[cls]
+    if fixed ~= nil then return fixed end
+    local t = cls and MELEE_TREE[cls]
+    if t and p.tree then return p.tree == t end
+    local dmg = tonumber(p.dmg) or 0
+    if dmg <= 0 then return nil end
+    return (tonumber(p.swingDmg) or 0) / dmg >= MELEE_SHARE
 end
 ns.Prof = { on = false, rows = {}, keys = setmetatable({}, { __mode = "k" }) }
 local Prof = ns.Prof
@@ -520,18 +576,12 @@ function ns.TuneSig()
     return out
 end
 local LIMIT_MB = 250
-local LIMIT_MB_KEPT = 300
 local function ApplyDefaults(db)
     if type(db.settings) ~= "table" then db.settings = {} end
     if type(db.settings.ui) ~= "table" then db.settings.ui = {} end
     if db.settings.lang ~= "enUS" and db.settings.lang ~= "ruRU" then db.settings.lang = "auto" end
     if type(db.segments) ~= "table" then db.segments = {} end
-    local kept = type(db.settings.limitMB) ~= "number" and #db.segments > 0
-    if type(db.settings.limitMB) ~= "number" or db.settings.limitMB <= 0 then
-        db.settings.limitMB = kept and LIMIT_MB_KEPT or LIMIT_MB
-    end
-    if kept then db.settings.limitNote = true end
-    db.settings.limit, db.settings.limitTries = nil, nil
+    if type(db.settings.limitMB) ~= "number" or db.settings.limitMB <= 0 then db.settings.limitMB = LIMIT_MB end
     if type(db.settings.autoRaid) ~= "boolean" then db.settings.autoRaid = true end
     if type(db.settings.autoParty) ~= "boolean" then db.settings.autoParty = false end
     if db.settings.tune ~= nil and type(db.settings.tune) ~= "table" then db.settings.tune = nil end
@@ -646,16 +696,6 @@ loader:SetScript("OnEvent", function(self, event, name)
     InstallWidgetFallback()
     for i = 1, #readyCallbacks do
         readyCallbacks[i]()
-    end
-    if preFrames then
-        local own = setmetatable({}, { __mode = "k" })
-        local f = EnumerateFrames()
-        while f do
-            if not preFrames[f] then own[f] = true end
-            f = EnumerateFrames(f)
-        end
-        preFrames = nil
-        ns.ownFrames = own
     end
     if newer then ns.Print(string.format(ns.T("fmt.newer"), newer, rec)) end
 end)

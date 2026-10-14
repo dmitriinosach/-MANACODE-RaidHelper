@@ -9,7 +9,6 @@ ns.flaskKinds = { "tank", "sp", "ap" }
 ns.flaskDefault = { tank = "stone", sp = "wyrm", ap = "rage" }
 ns.flaskClass = { ROGUE = "ap", HUNTER = "ap", MAGE = "sp", WARLOCK = "sp", PRIEST = "sp" }
 ns.flaskTankClass = { WARRIOR = true, DEATHKNIGHT = true, PALADIN = true, DRUID = true }
-ns.flaskDpsClass = { WARRIOR = "ap", DEATHKNIGHT = "ap", PALADIN = "ap" }
 ns.flaskStance = {
     WARRIOR = { [71] = "tank", [2457] = "ap", [2458] = "ap" },
     DEATHKNIGHT = { [48263] = "tank", [48266] = "ap", [48265] = "ap" },

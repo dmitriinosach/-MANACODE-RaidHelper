@@ -1,7 +1,10 @@
 local _, ns = ...
 local band = bit.band
 local max = math.max
-local F_PLAYER = 0x400
+local floor = math.floor
+local format = string.format
+local GLYPH = "|T%s:14:14:0:0:64:64:5:59:5:59|t "
+local F_PLAYER = ns.F.PLAYER
 local IDLE = 10
 local MELEE = 6603
 local MELEE_KEY = "#melee"
@@ -9,8 +12,13 @@ local Totals = {}
 ns.Totals = Totals
 Totals.MELEE = MELEE
 Totals.MELEE_KEY = MELEE_KEY
-function Totals.Begin(byName, owners, pets, fight, lines)
-    return { m = ns.Absorbs.New(lines), byName = byName, owners = owners, pets = pets,
+function Totals.AbilityLine(out, id, name, amount, total)
+    local icon = id and ns.Effects and ns.Effects.IconById(id)
+    out[#out + 1] = { kind = "sub", left = (icon and format(GLYPH, icon) or "") .. name, v = amount,
+                      right = format(ns.T("sum.ab.share"), ns.Short(amount), floor(amount * 100 / max(1, total) + 0.5)) }
+end
+function Totals.Begin(byName, owners, pets, fight)
+    return { m = ns.Absorbs.New(), byName = byName, owners = owners, pets = pets,
              from = fight.from, to = fight.to, last = fight.from, idle = 0, gaps = {} }
 end
 local function Caster(t, guid, name, flags)

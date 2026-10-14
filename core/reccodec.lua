@@ -93,9 +93,6 @@ function Codec.Open(ts, raid)
     State(seg)
     return seg
 end
-function Codec.Is(seg)
-    return seg ~= nil and seg.v == VERSION
-end
 local function Str(seg, st, s)
     local id = st.si[s]
     if id then return id end
@@ -289,7 +286,6 @@ function Codec.Hp(seg, ts, name, hp, hpMax, force)
 end
 function Codec.Mana(seg, ts, name, mp, mpMax, force)
     local st = states[seg] or State(seg)
-    if not seg.mana then seg.mana = {} end
     return Level(seg, seg.mana, st.mpLast, st.mpMax, st.mpBuf, st.mpMs, st.mpOut, ts, name, mp, mpMax, force, MANA_STEP)
 end
 function Codec.Pos(seg, ts, name, x, y, force)
@@ -387,8 +383,7 @@ function Codec.Seal(seg)
     if st then
         FlushPoints(st.hpBuf, seg.hp)
         FlushPoints(st.posBuf, seg.pos)
-        if next(st.mpBuf) and not seg.mana then seg.mana = {} end
-        if seg.mana then FlushPoints(st.mpBuf, seg.mana) end
+        FlushPoints(st.mpBuf, seg.mana)
         states[seg] = nil
     end
     if ns.Decode then ns.Decode.Tables(seg) end
@@ -398,12 +393,9 @@ function Codec.Seal(seg)
     seg.maps = #seg.maps > 0 and concat(seg.maps, ";") or nil
     if not next(seg.hp) then seg.hp = nil end
     if not next(seg.pos) then seg.pos = nil end
-    if seg.mana and not next(seg.mana) then seg.mana = nil end
+    if not next(seg.mana) then seg.mana = nil end
     if seg.bosses and not next(seg.bosses) then seg.bosses = nil end
     return seg
-end
-function Codec.Sealed(seg)
-    return states[seg] == nil
 end
 local function Head(s)
     if not s then return nil end

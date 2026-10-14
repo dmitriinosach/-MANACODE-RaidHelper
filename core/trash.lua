@@ -9,8 +9,7 @@ local RING_BYTES = 10 * 1048576
 local DICT_BYTES = 262144
 local STEP_CHUNKS = 32
 local STEP_MS = 3
-local F_PLAYER = 0x400
-local F_GROUP = 0x07
+local F_GROUP = ns.F.GROUP
 local MAX_TAIL = 12
 local Trash = {}
 ns.Trash = Trash
@@ -20,7 +19,7 @@ Trash.RING_BYTES = RING_BYTES
 local live = nil
 local carry = nil
 local function Part(prev)
-    local part = ns.RaidPart.New(nil, ns.GetDB().pets or {}, nil, {})
+    local part = ns.RaidPart.New(nil, ns.GetDB().pets or {}, {})
     if prev then
         part.owners, part.feign, part.fightAt, part.shields = prev.owners, prev.feign, prev.fightAt, prev.shields
         part.shields.by, part.shields.spells = {}, {}
@@ -126,20 +125,6 @@ function Trash.Finish(a)
     out.bosses = nil
     return out
 end
-local function DeathsIn(seg)
-    local list = {}
-    for ts, sub, _, _, _, _, _, dstFlags in ns.Store.Events(seg, nil, nil, nil, 0) do
-        if sub == "UNIT_DIED" and dstFlags and band(dstFlags, F_PLAYER) > 0 then list[#list + 1] = ts end
-    end
-    return list
-end
-function Trash.Collapse(seg)
-    ns.RecCodec.Seal(seg)
-    local list = DeathsIn(seg)
-    local a = Trash.Begin(seg.raid, seg.t0)
-    for i = 1, #seg.chunks do Trash.FeedChunk(a, seg, seg.chunks[i], list) end
-    return Trash.Finish(a)
-end
 function Trash.Died(ts)
     deaths[#deaths + 1] = ts
 end
@@ -210,7 +195,4 @@ function Trash.Close(seg)
     live = nil
     wipe(deaths)
     return out
-end
-function Trash.Live()
-    return live
 end

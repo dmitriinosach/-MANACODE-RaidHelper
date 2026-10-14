@@ -6,7 +6,6 @@ local max = math.max
 local min = math.min
 local abs = math.abs
 local GUTTER = 150
-local HEADH = 22
 local RULERH = 20
 local ROWH = 18
 local BARH = 12
@@ -17,13 +16,11 @@ local MARKW = 52
 local MARKGAP = 8
 local TICKH = 4
 local LEVEL = 90
+local HEADH = 22
 local NEAR = 1.5
 local OTHERS = 8
 local CLICK_SLACK = 3
 local MIN_SPAN = 5
-local BTNW = 84
-local BTNH = 18
-local BTNGAP = 6
 local AT_SPAN = 60
 local STEPS = { 1, 2, 5, 10, 15, 30, 60, 120, 300, 600 }
 local T = ns.T
@@ -40,10 +37,7 @@ local hoverKey = nil
 local pool = { bar = {}, text = {}, rtext = {} }
 local used = { bar = 0, text = 0, rtext = 0 }
 local function Clock(sec)
-    local sign = sec < 0 and "-" or ""
-    local a = abs(sec)
-    local m = floor(a / 60)
-    return format("%s%d:%02d", sign, m, floor(a - m * 60))
+    return ns.Clock(sec, true)
 end
 local function Width()
     return host:GetWidth()
@@ -364,7 +358,7 @@ local function OnUpdate(self)
     end
 end
 local function SetButton()
-    if btn then btn.text:SetText(T(TV.IsShown() and "tl.btn.thr.back" or "tl.btn.thr")) end
+    if btn then btn:SetLabel(T(TV.IsShown() and "tl.btn.thr.back" or "tl.btn.thr")) end
 end
 function TV.Attach(frame, clip, margin, headH)
     host = CreateFrame("Frame", nil, frame)
@@ -427,11 +421,8 @@ function TV.Attach(frame, clip, margin, headH)
     host:SetScript("OnSizeChanged", function() Draw() end)
     host:Hide()
 end
-function TV.Head(parent, anchor)
-    btn = ns.Kit.Button(parent, "HTP_FailWatchThreatToggle")
-    btn:SetWidth(BTNW)
-    btn:SetHeight(BTNH)
-    btn:SetPoint("LEFT", anchor, "RIGHT", BTNGAP, 0)
+function TV.Head(parent)
+    btn = ns.Kit.ToolButton(parent, "HTP_FailWatchThreatToggle")
     btn.tipTitle = T("tl.btn.thr")
     btn.tip = T("tl.btn.thr.tip")
     btn.onClick = function() TV.Toggle() end

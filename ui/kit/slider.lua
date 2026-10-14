@@ -164,6 +164,3 @@ function Kit.Slider(parent, spec)
     Enable(s)
     return s
 end
-function Kit.SliderSnap(s, v)
-    return Snap(s, v)
-end

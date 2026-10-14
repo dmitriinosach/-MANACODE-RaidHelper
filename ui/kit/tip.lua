@@ -39,17 +39,40 @@ function Kit.TipShow(f)
     local title = f.tipTitle
     if title == nil then title = OwnText(f) end
     if title == false or title == "" then title = nil end
+    local link = f.tipLink
     if title and body and title == body then body = nil end
-    if not title and not body and not f.tipDim then return end
+    if not title and not link and not body and not f.tipDim then return end
     GameTooltip:SetOwner(f, f.tipAnchor or "ANCHOR_RIGHT")
     first = true
-    if title then Line(title, f.tipColor or Kit.GameColor("tip.title")) end
-    if body then Line(body, f.tipBodyColor or Kit.GameColor("tip.body")) end
+    if link then
+        GameTooltip:SetHyperlink(link)
+        GameTooltip:AddLine(" ")
+        first = false
+    elseif title then
+        Line(title, f.tipColor or Kit.GameColor("tip.title"))
+    end
+    if body then Line(body, f.tipBodyColor or Kit.GameColor(f.tipTone or "tip.body")) end
     if f.tipDim then Line(f.tipDim, Kit.GameColor("tip.dim")) end
+    local more = f.tipLines
+    if more then
+        local d = Kit.GameColor("tip.dim")
+        for i = 1, #more do GameTooltip:AddLine(more[i], d[1], d[2], d[3]) end
+    end
     GameTooltip:Show()
 end
 function Kit.TipHide()
     GameTooltip:Hide()
+end
+function Kit.ShowLines(self)
+    if self.lines then ns.Tip.Dock(self, self.lines, self.tipIcon) end
+end
+function Kit.HideLines()
+    if ns.Tip then ns.Tip.Hide() end
+end
+function Kit.HoverLines(f)
+    f:EnableMouse(true)
+    f:SetScript("OnEnter", Kit.ShowLines)
+    f:SetScript("OnLeave", Kit.HideLines)
 end
 local TIP_INDENT = 10
 local TIP_COL = 20

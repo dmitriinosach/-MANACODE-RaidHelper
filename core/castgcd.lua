@@ -84,8 +84,7 @@ local function Listed(it)
     if id and ns.defensives and ns.defensives[id] then return true end
     if not kicks then
         kicks = {}
-        local list = ns.actions and ns.actions.kicks or {}
-        for i = 1, #list do kicks[ns.SpellKey(list[i])] = true end
+        ns.SpellSet(ns.actions and ns.actions.kicks, kicks)
         for k in pairs(D().offGcd) do kicks[ns.SpellKey(k)] = true end
     end
     local key = id and ns.SpellKey(id)

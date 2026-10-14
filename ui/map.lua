@@ -39,14 +39,11 @@ local function GetDot(index)
     return dot
 end
 local function MarkTip(mark)
-    GameTooltip:SetOwner(mark, "ANCHOR_RIGHT")
-    GameTooltip:AddLine(format(ns.T(mark.isBoss and "map.tip.boss" or "map.tip.npc"),
-        mark.who or ""))
-    ns.Kit.TipAdd(format(ns.T("map.tip.derived"), mark.witnesses or 0), "text.secondary")
-    if (mark.witnesses or 0) < 2 then
-        ns.Kit.TipAdd(ns.T("map.tip.rough"), "text.secondary")
-    end
-    GameTooltip:Show()
+    local body = format(ns.T("map.tip.derived"), mark.witnesses or 0)
+    if (mark.witnesses or 0) < 2 then body = body .. "\n" .. ns.T("map.tip.rough") end
+    mark.tipTitle = format(ns.T(mark.isBoss and "map.tip.boss" or "map.tip.npc"), mark.who or "")
+    mark.tip, mark.tipTone = body, "text.secondary"
+    ns.Kit.TipShow(mark)
 end
 local function GetMark(index)
     local mark = marks[index]
@@ -64,7 +61,7 @@ local function GetMark(index)
         ns.Kit.Tint(mark.skull, "sem.map.skull")
         mark.skull:SetPoint("CENTER")
         mark:SetScript("OnEnter", MarkTip)
-        mark:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        mark:SetScript("OnLeave", ns.Kit.TipHide)
         marks[index] = mark
     end
     return mark
@@ -263,9 +260,8 @@ local function Build()
     titleText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     titleText:SetPoint("TOPLEFT", 10, -8)
     ns.Kit.Title(titleText)
-    local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", 2, 2)
-    close:SetScript("OnClick", function() Map.Hide() end)
+    local close = ns.Kit.CloseButton(frame, function() Map.Hide() end)
+    close:SetPoint("TOPRIGHT", -5, -5)
     canvas = CreateFrame("Frame", nil, frame)
     canvas:SetPoint("TOPLEFT", PAD, -HEAD)
     local bg = canvas:CreateTexture(nil, "BACKGROUND")

@@ -17,6 +17,8 @@ Kit.Space = {
     row = 6,
     cap = 26,
     ctl = 22,
+    tool = 20,
+    toolGap = 6,
 }
 local C = {}
 Kit.C = C
@@ -130,6 +132,23 @@ function Kit.Text(fs, token)
 end
 function Kit.Title(fs)
     Kit.Text(fs, "text.title")
+end
+function Kit.OneLine(fs)
+    fs:SetJustifyH("LEFT")
+    fs:SetWordWrap(false)
+end
+function Kit.Fit(fs, text, room)
+    fs:SetWidth(0)
+    fs:SetText(text)
+    local need = fs:GetStringWidth() or 0
+    if text == "" or room < 1 then
+        fs:Hide()
+        return 0, text ~= ""
+    end
+    local w = math.min(math.ceil(need) + 2, room)
+    fs:SetWidth(w)
+    fs:Show()
+    return w, need > room
 end
 function Kit.Tone(fs, token)
     textKey[fs] = nil

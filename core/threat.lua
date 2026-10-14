@@ -16,7 +16,6 @@ local gsub = string.gsub
 local sub = string.sub
 local SUB = "FW_THR"
 local PACK = 1000
-local MAX_RAID = 40
 local ERR_LEN = 200
 local LATE = 0.5
 local CAST = "SPELL_CAST_SUCCESS"
@@ -25,11 +24,7 @@ local Threat = {}
 ns.Threat = Threat
 Threat.SUB = SUB
 Threat.PACK = PACK
-local RAID, RAID_PET = {}, {}
-for i = 1, MAX_RAID do
-    RAID[i] = "raid" .. i
-    RAID_PET[i] = "raidpet" .. i
-end
+local RAID, RAID_PET = ns.Units.raid, ns.Units.raidPet
 local session = nil
 local halt = { seg = nil, why = nil, err = nil }
 local said = { seg = nil }
@@ -49,9 +44,6 @@ function Threat.Enabled()
 end
 function Threat.Status()
     return { on = Threat.Enabled(), session = session, halt = halt.why, err = halt.err, stat = stat }
-end
-function Threat.Session()
-    return session
 end
 local function Attempt()
     local R = ns.Ranging
@@ -454,8 +446,7 @@ local function ReadMarks(fight, idx, b)
     local list = idx.common
     for i = 1, #list do
         ns.Jobs.Step()
-        local seg, s, at = ns.Index.Line(idx, list[i])
-        local ts, what, srcGUID, _, _, _, _, _, a1, a2 = ns.Store.Decode(seg, s, at, 2)
+        local ts, what, srcGUID, _, _, _, _, _, a1, a2 = ns.Index.Read(idx, list, i, 2)
         if ts and ts >= idx.from and ts <= idx.to then
             if what == "FW_MARK" and ns.DevMarks then
                 b.marks[#b.marks + 1] = { t = ts, label = ns.DevMarks.Line(a1, a2) }
@@ -490,8 +481,7 @@ local function ReadTaunts(idx, b)
         local list = idx.who[who]
         for i = 1, list and #list or 0 do
             ns.Jobs.Step()
-            local seg, s, at = ns.Index.Line(idx, list[i])
-            local ts, what, _, srcName, _, _, _, _, a1 = ns.Store.Decode(seg, s, at, 2)
+            local ts, what, _, srcName, _, _, _, _, a1 = ns.Index.Read(idx, list, i, 2)
             local sk = ns.SpellOf(what, a1)
             if what == CAST and srcName == who and sk and taunts[sk] then Threat.Taunt(b, who, ts) end
         end
@@ -503,9 +493,8 @@ local function Build(fight, idx)
     local list = idx.thr or {}
     for i = 1, #list do
         ns.Jobs.Step()
-        local seg, s, at = ns.Index.Line(idx, list[i])
         local ts, _, guid, mobName, _, _, who, _, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10
-            = ns.Store.Decode(seg, s, at, 10)
+            = ns.Index.Read(idx, list, i, 10)
         if ts then Threat.Feed(b, ts, guid, mobName, who, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) end
     end
     if b.mobs[1] then
@@ -513,9 +502,6 @@ local function Build(fight, idx)
         ReadMarks(fight, idx, b)
     end
     return Threat.Finish(b, idx.from, idx.to, ns.Index.BossKeys(fight), fight.players)
-end
-function Threat.Peek(fight)
-    return fight and models[fight] or nil
 end
 function Threat.Load(fight, onDone)
     local ready = models[fight]
@@ -543,8 +529,7 @@ local function BuildPlayer(idx, model, who)
     local list = idx.who[who]
     for i = 1, list and #list or 0 do
         ns.Jobs.Step()
-        local seg, s, at = ns.Index.Line(idx, list[i])
-        local ts, what, _, srcName, _, dstGUID = ns.Store.Decode(seg, s, at, 0)
+        local ts, what, _, srcName, _, dstGUID = ns.Index.Read(idx, list, i, 0)
         if srcName == who and dstGUID and model.by[dstGUID] and what
             and (what == "SWING_DAMAGE" or what:find("_DAMAGE", 1, true)) then
             hitT[#hitT + 1], hitG[#hitG + 1] = ts, dstGUID

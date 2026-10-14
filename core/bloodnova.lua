@@ -4,9 +4,6 @@ local sqrt = math.sqrt
 local tsort = table.sort
 local MAP_UNITS = 10000
 local HIT = { SPELL_DAMAGE = true, SPELL_MISSED = true, DAMAGE_SHIELD_MISSED = true }
-local MELEE_CLASS = { WARRIOR = true, ROGUE = true, DEATHKNIGHT = true, PALADIN = true }
-local RANGED_CLASS = { HUNTER = true, MAGE = true, WARLOCK = true, PRIEST = true }
-local MELEE_SHARE = 0.15
 local BN = {}
 ns.BloodNova = BN
 function BN.Begin(s, fight)
@@ -34,18 +31,14 @@ end
 local function Free(p)
     if p.role == "tank" then return false end
     if p.role == "heal" then return true end
-    if p.class and MELEE_CLASS[p.class] then return false end
-    if p.class and RANGED_CLASS[p.class] then return true end
-    return not ((p.dmg or 0) > 0 and (p.swingDmg or 0) / p.dmg >= MELEE_SHARE)
+    return not ns.IsMelee(p)
 end
 local function Marks(fight)
     local out = {}
     local segs = ns.Encounters.Segs(fight)
     for i = 1, #segs do
-        if ns.Store.IsNew(segs[i]) then
-            local m = ns.Decode.Maps(segs[i])
-            for k = 1, #m do out[#out + 1] = m[k] end
-        end
+        local m = ns.Decode.Maps(segs[i])
+        for k = 1, #m do out[#out + 1] = m[k] end
     end
     tsort(out, function(a, b) return a.t < b.t end)
     return out
@@ -67,14 +60,12 @@ local function PosAt(st, name, t)
     local segs = ns.Encounters.Segs(fight)
     local bx, by, ax, ay
     for i = 1, #segs do
-        if ns.Store.IsNew(segs[i]) then
-            for ts, x, y in ns.Decode.Pos(segs[i], name, fight.from - 5, t + st.ahead) do
-                if x > 0 or y > 0 then
-                    if ts <= t then
-                        bx, by = x, y
-                    elseif not ax then
-                        ax, ay = x, y
-                    end
+        for ts, x, y in ns.Decode.Pos(segs[i], name, fight.from - 5, t + st.ahead) do
+            if x > 0 or y > 0 then
+                if ts <= t then
+                    bx, by = x, y
+                elseif not ax then
+                    ax, ay = x, y
                 end
             end
         end

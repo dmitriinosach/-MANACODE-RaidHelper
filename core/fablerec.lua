@@ -17,7 +17,6 @@ local POS_BACK = 0.2
 local BYTES = 1300
 local SEP = " ; "
 local ITEM = " / "
-local BIG_RAID = 12
 local LIMITS = { { 10, 8, 6 }, { 6, 5, 4 }, { 4, 3, 3 }, { 3, 2, 2 }, { 3, 0, 2 }, { 1, 0, 1 } }
 local FIRST_DEATHS = 3
 local ONE_PHASE = "fight"
@@ -43,10 +42,7 @@ end
 local function Plain(s)
     return (tostring(s or ""):gsub("[%c|]", " "):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", ""))
 end
-local function Clock(sec)
-    sec = max(0, floor(sec))
-    return format("%d:%02d", floor(sec / 60), sec % 60)
-end
+local Clock = ns.Clock
 local function Rel(dt)
     local s = format("%.2f", dt)
     if s == "-0.00" then s = "0.00" end
@@ -65,12 +61,7 @@ function R.Cut(text, limit)
 end
 local function Mode(fight)
     local raid = (ns.Expect and ns.Expect.RaidOf and ns.Expect.RaidOf(fight)) or fight.raid
-    local size = raid and raid.size
-    if not size then
-        local n = 0
-        for _ in pairs(fight.players or {}) do n = n + 1 end
-        size = n > BIG_RAID and 25 or 10
-    end
+    local size = ns.RaidSize(fight, raid)
     if not raid then return tostring(size), W().diff end
     local d = ns.Raid and ns.Raid.Wanted and ns.Raid.Wanted(raid) or raid.diff or 1
     return tostring(size), (raid.heroic or d >= 3) and W().hard or W().norm
@@ -133,9 +124,8 @@ local function Scan(idx, who, at, death)
     local i = ns.Index.Seek(idx, mine, from - 1)
     while mine[i] do
         ns.Jobs.Step()
-        local seg, s, pos = ns.Index.Line(idx, mine[i])
+        local ts, sub, _, srcName, _, _, dstName, _, a1, a2, a3, a4, a5 = ns.Index.Read(idx, mine, i, 5)
         i = i + 1
-        local ts, sub, _, srcName, _, _, dstName, _, a1, a2, a3, a4, a5 = ns.Store.Decode(seg, s, pos, 5)
         if ts and ts > to then break end
         if ts and sub and ts >= from and dstName == who then
             if find(sub, "_DAMAGE", 1, true) then
@@ -278,8 +268,7 @@ local function Berserk(fight, idx)
     local common = idx.common
     for i = 1, #common do
         ns.Jobs.Step()
-        local seg, s, pos = ns.Index.Line(idx, common[i])
-        local ts, _, _, _, _, _, _, _, a1, a2 = ns.Store.Decode(seg, s, pos, 2)
+        local ts, _, _, _, _, _, _, _, a1, a2 = ns.Index.Read(idx, common, i, 2)
         local id = tonumber(a1)
         if ts and ((id and BERSERK_SET[id]) or (name and a2 == name)) then return ts end
     end
@@ -437,9 +426,8 @@ local function ZoneClues(idx, who, at, rule)
     local n, first, last, sum = 0, nil, nil, 0
     while mine[i] do
         ns.Jobs.Step()
-        local seg, s, pos = ns.Index.Line(idx, mine[i])
+        local ts, sub, _, _, _, _, dstName, _, a1, _, _, a4, _, _, _, _, a9 = ns.Index.Read(idx, mine, i, 9)
         i = i + 1
-        local ts, sub, _, _, _, _, dstName, _, a1, _, _, a4, _, _, _, _, a9 = ns.Store.Decode(seg, s, pos, 9)
         if ts and (ts > at + ZONE_MAX or (last and ts - last > gap)) then break end
         if ts and ts >= at - 0.5 and dstName == who and sub and want[ns.SpellKey(tonumber(a1) or a1) or 0]
             and (find(sub, "_DAMAGE", 1, true) or find(sub, "_MISSED", 1, true)) then
@@ -460,14 +448,13 @@ local function FlaskClues(fight, idx, who)
     local i = ns.Index.Seek(idx, mine, fight.from - FLASK_BACK)
     while mine[i] and #out < FLASK_MAX do
         ns.Jobs.Step()
-        local seg, s, pos = ns.Index.Line(idx, mine[i])
+        local ts, sub, _, srcName, _, _, dstName, _, a1 = ns.Index.Read(idx, mine, i, 1)
         i = i + 1
-        local ts, sub, _, srcName, _, _, dstName, _, a1 = ns.Store.Decode(seg, s, pos, 1)
         if ts and ts > fight.to then break end
         local c = ts and cast[tonumber(a1) or 0]
         if c and FLASK_CAT[c.cat] then
             local when = ts - fight.from
-            local clock = (when < 0 and "-" or "") .. Clock(math.abs(when))
+            local clock = Clock(when, true)
             if sub == "SPELL_CAST_SUCCESS" and srcName == who then
                 out[#out + 1] = format(w.drank, Plain(c.item), clock)
             elseif sub == "SPELL_AURA_REMOVED" and dstName == who then
