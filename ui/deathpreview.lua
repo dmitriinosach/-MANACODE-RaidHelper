@@ -228,6 +228,18 @@ end
 local function XOf(t)
     return xLeft + (t - xFrom) * xScale
 end
+local boxL, boxR, boxTop, boxBot = {}, {}, {}, {}
+local boxN = 0
+local function Reserve(l, top, size)
+    boxN = boxN + 1
+    boxL[boxN], boxR[boxN], boxTop[boxN], boxBot[boxN] = l, l + size, top, top - size
+end
+local function OnIcon(l, r, top)
+    for k = 1, boxN do
+        if l < boxR[k] and r > boxL[k] and top > boxBot[k] and top - LABELH < boxTop[k] then return true end
+    end
+    return false
+end
 local function DrawBoss(pv, y)
     if #pv.castT == 0 then return y end
     local lastIcon = -ICON
@@ -295,6 +307,11 @@ end
 local function FlowNumbers(pv, mid, scale)
     local least = pv.hpMax > 0 and pv.hpMax * NUM_SHARE or scale * NUM_FALLBACK
     local floorY = mid - FLOWDN - GAP + LABELH
+    for b = 1, pv.n do
+        if pv.dmg[b] >= least and BigIn(pv, b) then
+            Reserve(floor(XOf(pv.from + (b - 0.5) * pv.bin) - ICON / 2), mid - 1, ICON)
+        end
+    end
     for pass = 1, 2 do
         for b = 1, pv.n do picked[b] = nil end
         if pass == 1 and pv.kbT then picked[DP.BinOf(pv, pv.kbT)] = true end
@@ -313,7 +330,10 @@ local function FlowNumbers(pv, mid, scale)
                 local icon = BigIn(pv, b)
                 local top = max(mid - 2 - dh, floorY)
                 if icon then top = min(top, mid - ICON - 2) end
-                if Tag(ROW_DN, text, cx, top, "text.bad", "CENTER") then
+                local w = Measure(text)
+                local l = max(PAD, min(cx - w / 2, xRight + PAD - w))
+                if OnIcon(l, l + w, top) then top = mid - ICON - 2 end
+                if not OnIcon(l, l + w, top) and Tag(ROW_DN, text, cx, top, "text.bad", "CENTER") then
                     shown = shown + 1
                     if icon then Icon(icon, floor(cx - ICON / 2), mid - 1, ICON) end
                 end
@@ -345,6 +365,7 @@ local function DrawFlow(pv, y)
         if ah >= 1 then Tex(x, floor(mid - 1 - dh), barW, floor(ah), "sem.lane.taken", 0.3) end
         if KillBin(pv, b) then
             Icon(pv.kbId, x + floor((barW - ICON) / 2), mid - 1, ICON)
+            Reserve(x + floor((barW - ICON) / 2), mid - 1, ICON)
         end
     end
     if pv.kbT then KillTag(pv, mid) end
@@ -566,7 +587,7 @@ local function DrawMap(pv, x0, y0)
     if ns.Prof.on then ns.Prof.Add("prev.map", ms, usedMap + usedStrips) end
     return shown
 end
-local function SumLine(pv)
+local function SumLine(pv, caption)
     local lines = {}
     if pv.death then
         local kill
@@ -581,15 +602,15 @@ local function SumLine(pv)
         elseif #pv.defT == 0 then
             kill = kill .. " " .. ns.T("prev.nodef")
         end
-        lines[#lines + 1] = kill
+        lines[#lines + 1] = caption and (caption .. " - " .. kill) or kill
     end
     lines[#lines + 1] = format(ns.T("prev.sum"), Short(pv.dmgSum), pv.sumSpan, Short(pv.healSum))
     local note = MapNote(pv.map)
     if note ~= "" then lines[#lines + 1] = note end
     return table.concat(lines, "\n"), #lines
 end
-local function Draw(pv)
-    usedTex, usedIcon, usedFont, spanN, usedTag = 0, 0, 0, 0, 0
+local function Draw(pv, caption)
+    usedTex, usedIcon, usedFont, spanN, usedTag, boxN = 0, 0, 0, 0, 0, 0
     xLeft = PAD + GUTTER
     xRight = TLW - PAD
     xFrom = pv.from
@@ -607,7 +628,7 @@ local function Draw(pv)
     local r, g, b, a = Rgba(pv.death and "sem.death" or "sem.cursor")
     anchorLine:SetTexture(r, g, b, a)
     local room = TLW - PAD * 2
-    local text, rows = SumLine(pv)
+    local text, rows = SumLine(pv, caption)
     sumText:SetWidth(0)
     sumText:SetText(text)
     local sw, one = sumText:GetStringWidth() or 0, sumText:GetHeight() or 0
@@ -640,7 +661,7 @@ local function Place(owner)
 end
 local function Present(w)
     local p0 = debugprofilestop()
-    Draw(w.pv)
+    Draw(w.pv, w.caption)
     Place(w.owner)
     frame:Show()
     w.drawn = true
@@ -671,6 +692,7 @@ function View.Enter(mark)
     end
     local anchor, death = DP.Anchor(fight, who, at)
     local w = { owner = mark, who = who, at = anchor, showAt = GetTime() + DELAY }
+    if death and (fight.players[who] or 0) > 1 then w.caption = ns.Clock(max(0, anchor - fight.from)) end
     want = w
     frame:Hide()
     pump:Show()

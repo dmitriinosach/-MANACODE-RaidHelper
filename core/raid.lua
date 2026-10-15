@@ -18,13 +18,13 @@ function Raid.Wanted(raid)
     if raid.heroic and d <= 2 then d = d + 2 end
     return d
 end
-function Raid.Locks()
+function Raid.Locks(all)
     local out = {}
     local total = GetNumSavedInstances and GetNumSavedInstances() or 0
     local now = time()
     for i = 1, total do
         local name, id, reset, diff, locked, extended, _, isRaid, players = GetSavedInstanceInfo(i)
-        if isRaid and locked and name and id and id > 0 then
+        if (isRaid or all) and locked and name and id and id > 0 then
             local span = extended and 2 * WEEK or WEEK
             out[#out + 1] = {
                 name = name,
@@ -34,6 +34,7 @@ function Raid.Locks()
                 from = now + (reset or 0) - span,
                 to = now + (reset or 0),
                 extended = extended and true or nil,
+                raid = isRaid and true or nil,
             }
         end
     end

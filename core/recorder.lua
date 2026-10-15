@@ -693,6 +693,7 @@ local function Snapshot()
     end
     local p0 = ns.Prof.on and debugprofilestop()
     local count = CollectUnits(keyframe, withPos, moved)
+    ns.RecMap.Restore()
     if p0 then ns.Prof.Add("rec.snap", debugprofilestop() - p0, count) end
 end
 frame:SetScript("OnEvent", ns.Prof.Wrap("hot.log", function(_, event, ...)

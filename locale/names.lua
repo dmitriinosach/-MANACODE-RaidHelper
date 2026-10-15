@@ -49,10 +49,19 @@ local NAMES = {
     ["zone.TheObsidianSanctum"] = { "Обсидиановое святилище", "The Obsidian Sanctum" },
     ["zone.OnyxiasLair"] = { "Логово Ониксии", "Onyxia's Lair" },
     ["zone.VaultofArchavon"] = { "Склеп Аркавона", "Vault of Archavon" },
+    ["zone.TrialoftheGrandCrusader"] = { "Испытание великого крестоносца", "Trial of the Grand Crusader" },
 }
 local L = ns.L
 local LEN = ns.LEN
 for key, pair in pairs(NAMES) do
     L[key] = pair[1]
     if LEN then LEN[key] = pair[2] end
+end
+ns.zoneByName = {}
+for key, pair in pairs(NAMES) do
+    local map = key:match("^zone%.(.+)$")
+    if map then
+        ns.zoneByName[pair[1]] = map
+        ns.zoneByName[pair[2]] = map
+    end
 end

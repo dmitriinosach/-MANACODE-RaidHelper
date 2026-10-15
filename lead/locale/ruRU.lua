@@ -213,6 +213,7 @@ ns.locales.ruRU = {
     grpBox        = "Группа %d",
     grpBoxReserve = "Группа %d — запас",
     tipRaidCell   = "Щелчок — меню, тащить — в другую группу",
+    glSaved       = "КД на %s до %s",
     raidSoon      = "Группы появятся после первого приглашения",
     grpHidden     = "+%d",
     btnSortGroups = "По группам шаблона",

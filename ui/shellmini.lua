@@ -88,6 +88,10 @@ end
 local function Key(f)
     return tostring(f.boss) .. "|" .. floor(f.from or 0)
 end
+local function TopStamp(f)
+    local state = f.killed and "killed" or (f.wipe and "wipe" or "open")
+    return Key(f) .. "|" .. state
+end
 local function Find(fights, key)
     for i = 1, #fights do
         if Key(fights[i]) == key then return fights[i] end
@@ -434,7 +438,7 @@ local function Watch()
     local E = ns.Encounters
     local top = E and E.Ready() and E.Fights()[1]
     if not top then return end
-    local k = Key(top)
+    local k = TopStamp(top)
     if seenTop == nil then seenTop = k end
     if combat or k == seenTop then return end
     if not ns.Summary.Get(top) then

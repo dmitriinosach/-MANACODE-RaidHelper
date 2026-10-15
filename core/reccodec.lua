@@ -86,7 +86,8 @@ local function State(seg)
 end
 function Codec.Open(ts, raid)
     local seg = {
-        v = VERSION, raid = raid, t0 = ts, t1 = ts, n = 0, bytes = 0,
+        v = VERSION, av = ns.AddonVersion and ns.AddonVersion() or nil,
+        raid = raid, t0 = ts, t1 = ts, n = 0, bytes = 0,
         actors = {}, spells = {}, strs = {}, chunks = {}, buf = {},
         hp = {}, pos = {}, mana = {}, maps = {}, bosses = {},
     }

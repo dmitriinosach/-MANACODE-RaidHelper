@@ -47,6 +47,7 @@ local ICONS = {
     { key = "raid", label = "panel.raid", tip = "panel.tip.raid" },
     { key = "spam", label = "panel.spam", tip = "panel.tip.spam" },
     { key = "timer", label = "panel.timer" },
+    { key = "cd", label = "panel.cd", tip = "panel.tip.cd" },
     { key = "settings", label = "panel.settings", tip = "panel.settings.tip", tool = true },
     { key = "lock", label = "panel.lock", tool = true },
 }

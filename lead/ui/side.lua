@@ -87,23 +87,33 @@ local function fillUn(r, m)
     local p = ns.Session.Player(m.name)
     ns.Icon.Who(r.spec, p.spec, m.class)
     r.name:SetText(m.name)
-    ns.ClassText(r.name, m.class)
+    local lock = ns.RaidPane.LockText(m.name)
+    if lock then ns.Tone(r.name, "text.bad") else ns.ClassText(r.name, m.class) end
     local grp = m.work and ns.T("grpN", m.sub) or (ns.Hex("text.muted") .. ns.T("grpReserve", m.sub) .. "|r")
     local parse = ns.Bober.ParseText(m.name, m.unit)
     r.info:SetText(grp .. "  " .. ns.RaidPane.GsText(m.name) .. (parse and ("  " .. parse) or ""))
     ns.RaidPane.SpecTip(r, m)
     r.tip = ns.Bober.Tip(r.tip, m.name, m.unit)
+    if lock then r.tip = ns.Hex("text.bad") .. lock .. "|r\n" .. (r.tip or "") end
     ns.RaidPane.FillSlotButtons(r.btns, m)
 end
 local function fillWait(r, w)
     local sp = w.spec and ns.SPEC[w.spec]
     ns.Icon.Spec(r.spec, w.spec)
     r.name:SetText(w.name)
-    if sp then ns.ClassText(r.name, sp.class) else ns.Tone(r.name, "text.primary") end
+    local lock = ns.RaidPane.LockText(w.name)
+    if lock then
+        ns.Tone(r.name, "text.bad")
+    elseif sp then
+        ns.ClassText(r.name, sp.class)
+    else
+        ns.Tone(r.name, "text.primary")
+    end
     local parse = ns.Bober.ParseText(w.name, nil, w.spec)
     r.text:SetText((parse and (parse .. "  ") or "") .. (w.text or ""))
     r.tipTitle = w.name
     r.tip = ns.Bober.Tip((sp and ns.T("specFull_" .. w.spec) or "") .. "\n" .. (w.text or ""), w.name, nil, w.spec)
+    if lock then r.tip = ns.Hex("text.bad") .. lock .. "|r\n" .. (r.tip or "") end
     r.invite.tipTitle = ns.T("btnInvite")
     r.invite.tip = w.name
     r.invite.onClick = function() ns.Whisper.Invite(w.name) end
@@ -114,6 +124,7 @@ local function layout()
     local un = S.Unassigned()
     local wait = ns.Whisper.Waiting()
     local y = 4
+    ns.RaidPane.LockTarget()
     unPool:Reset()
     waitPool:Reset()
     unHead:ClearAllPoints()

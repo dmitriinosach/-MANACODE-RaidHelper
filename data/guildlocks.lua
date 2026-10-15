@@ -1,0 +1,30 @@
+local _, ns = ...
+ns.guildLocks = {
+    gsMin = { ["10"] = 5000, ["10h"] = 5800, ["25"] = 5300, ["25h"] = 6200 },
+    level = 80,
+    resetWday = 4,
+    sharedDiff = { IcecrownCitadel = true, TheRubySanctum = true },
+    roleGroup = { tank = "tank", heal = "heal", melee = "dd", ranged = "dd", dd = "dd", hybrid = "dd" },
+    raids = {
+        { key = "icc25h", short = "icc", map = "IcecrownCitadel", size = 25, heroic = true },
+        { key = "icc25", short = "icc", map = "IcecrownCitadel", size = 25 },
+        { key = "icc10h", short = "icc", map = "IcecrownCitadel", size = 10, heroic = true },
+        { key = "icc10", short = "icc", map = "IcecrownCitadel", size = 10 },
+        { key = "rs25h", short = "rs", map = "TheRubySanctum", size = 25, heroic = true },
+        { key = "rs25", short = "rs", map = "TheRubySanctum", size = 25 },
+        { key = "rs10h", short = "rs", map = "TheRubySanctum", size = 10, heroic = true },
+        { key = "rs10", short = "rs", map = "TheRubySanctum", size = 10 },
+        { key = "toc25h", short = "toc", map = "TrialoftheGrandCrusader", size = 25, heroic = true },
+        { key = "toc25", short = "toc", map = "TheArgentColiseum", size = 25 },
+        { key = "toc10h", short = "toc", map = "TrialoftheGrandCrusader", size = 10, heroic = true },
+        { key = "toc10", short = "toc", map = "TheArgentColiseum", size = 10 },
+        { key = "voa25", short = "voa", map = "VaultofArchavon", size = 25 },
+        { key = "voa10", short = "voa", map = "VaultofArchavon", size = 10 },
+    },
+    tplRaid = {
+        icc25h = { short = "icc", heroic = true },
+        rs25h = { short = "rs", heroic = true },
+        voa10 = { short = "voa" },
+    },
+    defaultRaid = "icc25h",
+}

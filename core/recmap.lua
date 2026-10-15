@@ -5,6 +5,7 @@ local mapArea, mapLevel, mapName = nil, nil, nil
 local goodArea, goodLevel = nil, nil
 local levelOk = true
 local levelProbes, levelFixes = 0, 0
+local viewArea, viewLevel, viewCont, viewZone, viewHere = nil, 0, 0, 0, nil
 function RecMap.Level()
     return goodLevel, levelProbes, levelFixes
 end
@@ -80,15 +81,39 @@ local function ReadMap()
     mapArea, mapLevel, mapName = area, level, name
     return ns.Store.Map(ns.Recorder.Now(), area, level, name)
 end
+local function SetLevel(level)
+    if level ~= 0 then SetDungeonMapLevel(level) else pcall(SetDungeonMapLevel, 0) end
+end
+local function Borrow(refresh)
+    local area, level = GetCurrentMapAreaID(), GetCurrentMapDungeonLevel() or 0
+    if area == goodArea and level == goodLevel and CountOnMap() > 0 then return end
+    viewArea, viewLevel = area, level
+    viewCont, viewZone = GetCurrentMapContinent() or 0, GetCurrentMapZone() or 0
+    SetMapToCurrentZone()
+    viewHere = GetCurrentMapAreaID()
+    if refresh or levelOk then
+        levelOk = PickLevel()
+    elseif goodLevel and viewHere == goodArea and goodLevel ~= GetCurrentMapDungeonLevel() then
+        SetLevel(goodLevel)
+    end
+end
+function RecMap.Restore()
+    local area = viewArea
+    if not area then return end
+    viewArea = nil
+    if area ~= viewHere then
+        if viewZone > 0 then SetMapZoom(viewCont, viewZone) else SetMapZoom(viewCont) end
+    end
+    if GetCurrentMapAreaID() == area and (GetCurrentMapDungeonLevel() or 0) ~= viewLevel then SetLevel(viewLevel) end
+end
 function RecMap.Read(withPos, refresh)
     if withPos then
-        local busy = WorldMapFrame:IsShown()
-        local fresh = false
-        if refresh and not busy then
-            SetMapToCurrentZone()
-            fresh = true
+        if WorldMapFrame:IsShown() then
+            Borrow(refresh)
+            return ReadMap()
         end
-        if not busy and (fresh or (levelOk and CountOnMap() == 0)) then
+        if refresh then SetMapToCurrentZone() end
+        if refresh or (levelOk and CountOnMap() == 0) then
             levelOk = PickLevel()
         end
         return ReadMap()

@@ -3,8 +3,8 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 1.3.1
-## X-Date: 2026-10-14
+## Version: 1.4.0
+## X-Date: 2026-10-15
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
 ## OptionalDeps: Auctionator
@@ -89,6 +89,8 @@ data\servercmd.lua
 data\ranging.lua
 data\threat.lua
 data\ids.lua
+data\guildnotes.lua
+data\guildlocks.lua
 core\raid.lua
 core\bober.lua
 core\expect.lua
@@ -123,6 +125,10 @@ core\pulltimer.lua
 core\devmarks.lua
 core\gpguild.lua
 core\ledger.lua
+core\guildnotes.lua
+core\guildlocks.lua
+core\guildsync.lua
+core\guildraid.lua
 core\proof.lua
 core\chatreport.lua
 core\mindctl.lua
@@ -196,6 +202,7 @@ core\flaskready.lua
 core\autoinvite.lua
 core\memguard.lua
 core\cpumeter.lua
+core\lockouts.lua
 ui\kit\themes.lua
 ui\kit\theme.lua
 ui\kit\anim.lua
@@ -250,6 +257,8 @@ ui\timelinegcd.lua
 ui\timelinethreat.lua
 ui\timelinebrief.lua
 ui\pages.lua
+ui\guildlocks.lua
+ui\lockouts.lua
 ui\settings.lua
 ui\raidcost.lua
 ui\ahscan.lua

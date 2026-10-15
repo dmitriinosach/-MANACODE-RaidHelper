@@ -53,6 +53,18 @@ local function gsText(name)
     if not gs and not il then return dash end
     return (gs or dash) .. " " .. ns.Hex("text.secondary") .. (il and math.floor(il) or "") .. "|r"
 end
+local lockQ, lockLabel
+local function lockTarget()
+    lockQ, lockLabel = nil, nil
+    local GR, GL = root.GuildRaid, root.GuildLocks
+    if GR and GL then lockQ, lockLabel = GR.Target(ns.Session.Template()) end
+end
+local function lockText(name)
+    if not lockQ or not name then return nil end
+    local saved, save = root.GuildLocks.Saved(name, lockQ)
+    if saved ~= true or not save then return nil end
+    return ns.T("glSaved", lockLabel, root.Date(save.ends))
+end
 local function coloredName(m)
     local r, g, b = ns.ClassColor(m.class)
     return string.format("|cff%02x%02x%02x", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255)) .. m.name .. "|r"
@@ -85,7 +97,7 @@ local function addRows(out, rows)
     if #out > 0 then out[#out + 1] = { kind = "sep" } end
     for _, l in ipairs(rows) do out[#out + 1] = l end
 end
-local function cardLines(m, p, slot, ver)
+local function cardLines(m, p, slot, ver, lock)
     local out = {}
     local spec = p.spec and (specIcon(p.spec) .. ns.Hex("text.primary") .. specShort(p.spec) .. "|r")
     out[1] = { kind = "head", left = m.name, class = m.class, right = spec or ns.T("cardSpecNone") }
@@ -93,6 +105,7 @@ local function cardLines(m, p, slot, ver)
         out[2] = { kind = "note", left = p.off and ns.T("cardOff", specShort(p.off)) or "",
             right = p.spec and ns.T("srcShort_" .. (p.specSrc or "hand")) or nil }
     end
+    if lock then out[#out + 1] = { kind = "row", left = lock, tone = "bad" } end
     if p.note then out[#out + 1] = { kind = "note", left = ns.T("tipNoteLine", p.note) } end
     if (p.offRolls or 0) > 0 then out[#out + 1] = { kind = "row", left = ns.T("cardDice"), right = tostring(p.offRolls) } end
     local rh = { { kind = "head", left = ns.T("cardRh") },
@@ -709,7 +722,14 @@ local function fillCell(c, m, tok)
     local slotI = S.SlotOf(m.name)
     local noSlot = m.work and not slotI
     c.name:SetText(m.name .. (noSlot and (" " .. ns.Hex("sem.notReady") .. "!|r") or ""))
-    if m.online then ns.ClassText(c.name, m.class) else ns.Tone(c.name, "sem.offline") end
+    local lock = lockText(m.name)
+    if lock then
+        ns.Tone(c.name, "text.bad")
+    elseif m.online then
+        ns.ClassText(c.name, m.class)
+    else
+        ns.Tone(c.name, "sem.offline")
+    end
     if noSlot then c.warn:Show() end
     local exp = ns.Bober.ExpText(m.name, m.unit)
     c.gs:SetText(gsText(m.name) .. (exp and ("  " .. exp) or ""))
@@ -751,7 +771,7 @@ local function fillCell(c, m, tok)
         c.mark:Show()
     end
     if m.dead then c.dead:Show() end
-    c.lines = cardLines(m, p, slotI and S.Template().slots[slotI], ver)
+    c.lines = cardLines(m, p, slotI and S.Template().slots[slotI], ver, lock)
     ns.ReadyUI.FillCell(c, m)
 end
 local function newBox(g)
@@ -924,6 +944,7 @@ local function refresh()
     local S = ns.Session
     local tpl = S.Template()
     local raid = inRaid()
+    lockTarget()
     local top = fillStrip(raid)
     placeBoxes(top + ns.ReadyUI.FillStrip(pane, top))
     local groups = membersByGroup()
@@ -967,6 +988,11 @@ ns.RaidPane = {
     GsText = gsText,
     SpecTip = specTip,
     ColoredName = coloredName,
+    LockText = lockText,
+    LockTarget = function()
+        lockTarget()
+        return lockQ, lockLabel
+    end,
     FillSlotButtons = fillSlotButtons,
     SortLeft = function() return #Lay.Sort(sortList()) end,
     Menu = function() return menu end,

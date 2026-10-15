@@ -213,6 +213,7 @@ ns.locales.enUS = {
     grpBox        = "Group %d",
     grpBoxReserve = "Group %d — reserve",
     tipRaidCell   = "Click: menu, drag: to another group",
+    glSaved       = "Saved to %s until %s",
     raidSoon      = "Groups appear after the first invite",
     grpHidden     = "+%d",
     btnSortGroups = "Sort by template",
