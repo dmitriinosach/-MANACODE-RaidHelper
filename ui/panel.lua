@@ -31,6 +31,8 @@ local NUM_GAP = 3
 local MUTE = 0.55
 local SCALE_MIN, SCALE_MAX, SCALE_STEP = 0.60, 1.50, 0.05
 local WHEN = { always = true, group = true, raid = true }
+local ROWS = { "count", "graphs", "flasks", "cpu", "win" }
+local ROW_ON = { count = true, graphs = true, flasks = true, cpu = false, win = false }
 local REFRESH = 0.1
 local GLOW = "Interface\\Buttons\\CheckButtonHilight"
 local PLUS = "Interface\\Buttons\\UI-PlusButton-Up"
@@ -67,6 +69,8 @@ local flask = { key = -2 }
 local cpuOwn, cpuSkada, cpuMode = -1, -1, -1
 local winRate, winWorst, winMode = -1, -1, -1
 local baseSeen, eqElapsed = 0, 0
+local layoutKey = ""
+local ApplySize
 local writing = false
 local lowR, lowG, lowB, midR, midG, midB, highR, highG, highB = 0, 1, 0, 1, 1, 0, 1, 0, 0
 local idleR, idleG, idleB, idleA = 1, 1, 1, 0.1
@@ -347,18 +351,91 @@ local function NumWidth()
     end
     return w
 end
+function Panel.Row(key)
+    local v = Saved().rows and Saved().rows[key]
+    if v == nil then return ROW_ON[key] == true end
+    return v and true or false
+end
+function Panel.SetRow(key, on)
+    if ROW_ON[key] == nil then return end
+    local s = Saved()
+    on = on and true or false
+    if on == ROW_ON[key] then
+        if s.rows then s.rows[key] = nil end
+    else
+        if type(s.rows) ~= "table" then s.rows = {} end
+        s.rows[key] = on
+    end
+    if frame then ApplySize() end
+end
+local function GraphsEmpty()
+    local M = ns.Meter
+    if not M then return true end
+    return not (M.Fighting() or M.Active() or (M.Rates()) > 0)
+end
+local function Shown(key)
+    if key == "count" then return Panel.Row("count") end
+    if not Saved().open then return false end
+    if key == "graphs" then return Panel.Row("graphs") and not GraphsEmpty() end
+    if key == "flasks" then return Panel.Row("flasks") and (GetNumRaidMembers() > 0 or GetNumPartyMembers() > 0) end
+    local prof = ns.CpuMeter and ns.CpuMeter.Profiled()
+    return (Panel.Row(key) or prof) and true or false
+end
+local function LayoutKey()
+    local k = ""
+    for i = 1, #ROWS do k = k .. (Shown(ROWS[i]) and "1" or "0") end
+    return k
+end
 local function Width()
     local w = baseW
-    if Saved().open then
+    if Shown("graphs") then
         local n = #blocks
         w = max(w, PAD * 2 + (GRAPH_BARS * GRAPH_SLOT - 1 + NUM_GAP + NumWidth()) * n + GRAPH_GAP * (n - 1))
     end
-    w = max(w, countText:GetStringWidth() + PAD * 2 + 4)
-    if Saved().open and cpuText then
-        w = max(w, cpuText:GetStringWidth() + PAD * 2 + 4, winText:GetStringWidth() + PAD * 2 + 4,
-            flask.row:GetWidth() + PAD * 2 + 4)
+    if Shown("count") then w = max(w, countText:GetStringWidth() + PAD * 2 + 4) end
+    if cpuText then
+        if Shown("cpu") then w = max(w, cpuText:GetStringWidth() + PAD * 2 + 4) end
+        if Shown("win") then w = max(w, winText:GetStringWidth() + PAD * 2 + 4) end
+        if Shown("flasks") then w = max(w, flask.row:GetWidth() + PAD * 2 + 4) end
     end
     return w
+end
+local function Stack(r, on, y)
+    if r.hover then
+        if on then r.hover:Show() else r.hover:Hide() end
+    end
+    if not on then
+        r:Hide()
+        return y
+    end
+    r:ClearAllPoints()
+    r:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y)
+    r:Show()
+    return y + TEXTH
+end
+local function Layout()
+    local y = PAD + ICON + ROWGAP + EQ_H + 2
+    if Shown("count") then
+        countText:ClearAllPoints()
+        countText:SetPoint("TOP", 0, -y)
+        countText:Show()
+        y = y + TEXTH
+    else
+        countText:Hide()
+    end
+    if Shown("graphs") then
+        graphs:ClearAllPoints()
+        graphs:SetPoint("TOPLEFT", PAD, -(y + ROWGAP))
+        graphs:Show()
+        y = y + ROWGAP + EQ_H + 2
+    else
+        graphs:Hide()
+    end
+    y = Stack(flask.row, Shown("flasks"), y)
+    y = Stack(cpuText, Shown("cpu"), y)
+    y = Stack(winText, Shown("win"), y)
+    layoutKey = LayoutKey()
+    return y + PAD
 end
 local function RefreshWin(C)
     local rate, worst, live = C.WinLive()
@@ -410,25 +487,21 @@ local function RefreshFlasks()
     end
     flask.row:SetWidth(FLASK_ICON + NUM_GAP + flask.text:GetStringWidth())
 end
-local function ApplySize()
+function ApplySize()
     RefreshCounts()
     RefreshCpu()
     RefreshFlasks()
     local w = Width()
-    local h = PAD * 2 + ICON + ROWGAP + EQ_H + 2 + TEXTH
     local eqW = w - PAD * 2 - (EQ_BTN + EQ_GAP) * 2
     local eqSlot = max(2, floor(eqW / EQ_BARS))
     eq:SetWidth(eqSlot * EQ_BARS - 1)
     LayBars(eqBars, eqSlot)
-    if Saved().open then
+    if Shown("graphs") then
         local nw = NumWidth()
         for i = 1, #blocks do blocks[i].text:SetWidth(nw) end
         graphs:SetWidth(w - PAD * 2)
-        graphs:Show()
-        h = h + ROWGAP + EQ_H + 2 + TEXTH * 3
-    else
-        graphs:Hide()
     end
+    local h = Layout()
     frame:SetWidth(w)
     frame:SetHeight(h)
     DressTools()
@@ -578,7 +651,7 @@ local function OnUpdate(self, elapsed)
         RefreshCpu()
         RefreshFlasks()
         local w = Width()
-        if abs(frame:GetWidth() - w) > 0.5 then ApplySize() end
+        if abs(frame:GetWidth() - w) > 0.5 or layoutKey ~= LayoutKey() then ApplySize() end
         if pauseBtn.recKey ~= RecStateKey() then
             pauseBtn.recKey = RecStateKey()
             DressPause()
@@ -638,7 +711,6 @@ local function BuildStrip()
     ns.Kit.Paint(eqBg, "progress.track")
     MakeBars(eqBars, EQ_BARS, eq, "ARTWORK", nil)
     countText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    countText:SetPoint("TOP", 0, -(PAD + ICON + ROWGAP + EQ_H + 2))
     countText:SetJustifyH("CENTER")
     ns.Kit.Text(countText, "text.secondary")
 end
@@ -723,12 +795,13 @@ local function WinEnter(self)
     ns.Tip.Show(self, rows)
 end
 local function Hoverable(fs, enter)
-    local h = CreateFrame("Frame", nil, graphs)
+    local h = CreateFrame("Frame", nil, frame)
     h:SetPoint("TOPLEFT", fs, "TOPLEFT", 0, 0)
     h:SetPoint("BOTTOMRIGHT", fs, "BOTTOMRIGHT", 0, 0)
     h:EnableMouse(true)
     h:SetScript("OnEnter", enter)
     h:SetScript("OnLeave", ns.Tip.Hide)
+    fs.hover = h
 end
 local function FlaskEnter(self)
     local R = ns.FlaskReady
@@ -737,8 +810,7 @@ local function FlaskEnter(self)
     ns.Tip.Show(self, R.TipRows())
 end
 local function BuildFlasks()
-    local row = CreateFrame("Frame", nil, graphs)
-    row:SetPoint("TOPLEFT", graphs, "BOTTOMLEFT", 0, -2)
+    local row = CreateFrame("Frame", nil, frame)
     row:SetHeight(TEXTH)
     row:SetWidth(FLASK_ICON)
     local icon = row:CreateTexture(nil, "ARTWORK")
@@ -748,7 +820,7 @@ local function BuildFlasks()
     icon:SetTexture(FLASK_TEX)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    fs:SetPoint("LEFT", icon, "RIGHT", NUM_GAP, 0)
+    fs:SetPoint("LEFT", row, "LEFT", FLASK_ICON + NUM_GAP, 0)
     fs:SetHeight(TEXTH)
     fs:SetJustifyH("LEFT")
     ns.Kit.Text(fs, "text.secondary")
@@ -760,15 +832,13 @@ local function BuildFlasks()
 end
 local function BuildCpu()
     BuildFlasks()
-    cpuText = graphs:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    cpuText:SetPoint("TOPLEFT", flask.row, "BOTTOMLEFT", 0, 0)
+    cpuText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     cpuText:SetHeight(TEXTH)
     cpuText:SetJustifyH("LEFT")
     ns.Kit.Text(cpuText, "text.secondary")
     Hoverable(cpuText, CpuEnter)
     cpuText:SetText(ns.T("panel.cpu.none"))
-    winText = graphs:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    winText:SetPoint("TOPLEFT", cpuText, "BOTTOMLEFT", 0, 0)
+    winText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     winText:SetHeight(TEXTH)
     winText:SetJustifyH("LEFT")
     ns.Kit.Text(winText, "text.secondary")
@@ -792,7 +862,6 @@ local BLOCKS = {
 local function BuildGraphs()
     graphs = CreateFrame("Frame", nil, frame)
     graphs:SetHeight(EQ_H)
-    graphs:SetPoint("TOPLEFT", PAD, -(PAD + ICON + ROWGAP + EQ_H + 2 + TEXTH + ROWGAP))
     local prev
     for i = 1, #BLOCKS do
         local b = { kind = BLOCKS[i].kind, bars = {} }

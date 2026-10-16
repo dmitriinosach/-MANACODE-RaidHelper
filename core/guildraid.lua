@@ -56,6 +56,17 @@ function GuildRaid.SetOnlineOnly(on)
     local s = Settings()
     if s then s.glOnline = on and true or nil end
 end
+function GuildRaid.RoleOn(group)
+    local s = Settings()
+    return s and type(s.glRoles) == "table" and s.glRoles[group] == true or false
+end
+function GuildRaid.SetRole(group, on)
+    local s = Settings()
+    if not s then return end
+    if type(s.glRoles) ~= "table" then s.glRoles = {} end
+    s.glRoles[group] = on and true or nil
+    if next(s.glRoles) == nil then s.glRoles = nil end
+end
 local function OwnId(q)
     local GL = ns.GuildLocks
     local locks = ns.Raid.Locks()

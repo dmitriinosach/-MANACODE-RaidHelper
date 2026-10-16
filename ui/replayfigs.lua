@@ -34,8 +34,11 @@ local TUCK = 1
 local DISC = 22
 local BOSS_K = 1.5
 local CHIP_H = 11
-local BOSS_BASE = 1
-local BOSS_TALL = 2
+local BOSS_BASE = 2
+local BOSS_TALL = 2.5
+local ADD_BASE = 1.2
+local VOL_BOSS_UP = 14
+local VOL_ADD_UP = 7
 local DROP_K = 1.08
 local CHIP_DROP_K = 1.2
 local CHIP_DROP_X = 0.12
@@ -415,7 +418,7 @@ local function DrawVol(fig, dead, scale, flat, lift, hp)
         if fig.dotWant then Put(fig.dot, fig, DOT, DOT, ic / 2 + DOT_X, -ic * VOL_DEAD_K / 2 + DOT_Y) end
         return
     end
-    local y0 = (VOL_LIFT + lift) * scale
+    local y0 = (VOL_LIFT + lift + (fig.isBoss and VOL_BOSS_UP or fig.isAdd and VOL_ADD_UP or 0)) * scale
     local cy = y0 + ic / 2
     Put(fig.icon, fig, ic, ic, 0, cy)
     Alive(fig)
@@ -458,7 +461,11 @@ local function Draw(fig, dead, scale, flat, lift, hp)
     local tall, base = 0, 0
     if chip and not dead then
         tall = CHIP_H * scale * sqrt(max(0, 1 - flat * flat))
-        if fig.isBoss then tall, base = tall * BOSS_TALL, tall * BOSS_BASE end
+        if fig.isBoss then
+            tall, base = tall * BOSS_TALL, tall * BOSS_BASE
+        elseif fig.isAdd then
+            base = tall * ADD_BASE
+        end
         if st.hp then tall = tall * max(base > 0 and 0 or CHIP_MIN, hp) end
     end
     fig.tall = tall + base

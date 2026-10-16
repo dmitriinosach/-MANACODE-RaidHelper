@@ -137,7 +137,8 @@ function Follow.Place(elapsed)
     if fig.ringOn then ns.ReplayFigs.Pulse(fig, RING_SWING * wave) end
     st.label:SetText(fig.name)
     st.label:ClearAllPoints()
-    st.label:SetPoint("BOTTOM", ui.view, "CENTER", fig.sx, -fig.sy + (fig.top or ICON_LIFT * fig.scale) + LABEL_GAP * fig.scale)
+    local up = (fig.top or ICON_LIFT * fig.scale) + ns.ReplayLayersView.BadgesUp(fig) + LABEL_GAP * fig.scale
+    st.label:SetPoint("BOTTOM", ui.view, "CENTER", fig.sx, -fig.sy + up)
     st.label:Show()
     if run.hover == st.k then ui.hoverText:Hide() end
 end

@@ -85,6 +85,12 @@ S.Section("look", "window", {
           set = function(v) ns.Shell.SetScale(v / 100) end },
     },
 })
+local function PanelRow(key, on)
+    return { kind = "check", key = "row." .. key, label = "set.panel.row." .. key, tip = "set.panel.rows.tip",
+             default = on,
+             get = function() return ns.Panel.Row(key) end,
+             set = function(v) ns.Panel.SetRow(key, v) end }
+end
 S.Section("panel", "panel", {
     label = "set.panel",
     order = 10,
@@ -100,6 +106,8 @@ S.Section("panel", "panel", {
           min = 60, max = 150, step = 5, fmt = Pct, default = 100,
           get = function() return Percent((ns.Panel.Scale())) end,
           set = function(v) ns.Panel.SetScale(v / 100) end },
+        PanelRow("count", true), PanelRow("graphs", true), PanelRow("flasks", true),
+        PanelRow("cpu", false), PanelRow("win", false),
     },
 })
 local function RecState()

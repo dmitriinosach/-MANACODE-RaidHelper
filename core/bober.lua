@@ -134,9 +134,13 @@ local function Stat(s)
     return st
 end
 local function Season(id, sn, raw)
-    local gs, last, spec, raids, _, _, _, _, stat = strsplit(";", raw)
+    local gs, last, spec, raids, _, _, _, roles, stat = strsplit(";", raw)
     local s = { id = id, season = sn, gs = tonumber(gs), last = last, spec = spec ~= "" and spec or nil, raids = {},
-        stat = Stat(stat), modes = {} }
+        stat = Stat(stat), modes = {}, specs = {} }
+    for entry in gmatch(roles or "", "[^/]+") do
+        local role, tree, n = strmatch(entry, "^(%a)%.([^%.]+)%.(%d+)$")
+        if role then s.specs[#s.specs + 1] = { role = role, tree = tree, n = tonumber(n) } end
+    end
     for entry in gmatch(raids or "", "[^,]+") do
         local mode, n = strmatch(entry, "^(%w+)%.(%d+)")
         if mode then s.raids[mode] = tonumber(n) end
@@ -154,10 +158,19 @@ local function Block(id, sn)
     blocks[key] = hit
     return hit or nil
 end
-local function RaidDate(info, rid)
+local function RaidHead(info, raid)
     local t = info.file.raids
-    local raw = type(t) == "table" and rid and t[rid]
-    return type(raw) == "string" and strmatch(raw, "^(%d*)") or ""
+    local raw = type(t) == "table" and raid.rid and t[raid.rid]
+    if type(raw) ~= "string" then
+        raid.date = ""
+        return
+    end
+    local date, _, lead, guild, bosses = strsplit("|", raw)
+    local killed, total = strmatch(bosses or "", "^(%d+)/(%d+)$")
+    raid.date = date or ""
+    raid.lead = lead ~= "" and lead or nil
+    raid.guild = guild ~= "" and guild or nil
+    raid.killed, raid.total = tonumber(killed), tonumber(total)
 end
 local function Raids(s, mode)
     local hit = s.modes[mode]
@@ -171,7 +184,9 @@ local function Raids(s, mode)
         local rid, il = tonumber(parts[1]), tonumber(parts[2])
         local cells = {}
         for b = 3, #parts do cells[b - 2] = Cell(parts[b], il) end
-        out[#out + 1] = { rid = rid, ilvl = il, cells = cells, index = info.index, date = RaidDate(info, rid) }
+        local raid = { rid = rid, ilvl = il, cells = cells, index = info.index, mode = mode }
+        RaidHead(info, raid)
+        out[#out + 1] = raid
     end
     s.modes[mode] = out
     return out
@@ -409,6 +424,52 @@ function Bober.WhenIndexed(fn)
 end
 function Bober.Indexed()
     return byName ~= nil
+end
+function Bober.Specs(rec)
+    if not rec then return {} end
+    local sum, out = {}, {}
+    local list = Blocks(rec)
+    for i = 1, #list do
+        for _, sp in ipairs(list[i].specs or {}) do
+            local key = sp.role .. "." .. sp.tree
+            local e = sum[key]
+            if not e then
+                e = { role = sp.role, tree = sp.tree, n = 0 }
+                sum[key] = e
+                out[#out + 1] = e
+            end
+            e.n = e.n + sp.n
+        end
+    end
+    tsort(out, function(a, b)
+        if a.n ~= b.n then return a.n > b.n end
+        return a.role .. a.tree < b.role .. b.tree
+    end)
+    return out
+end
+function Bober.RaidsIn(rec, modes)
+    local out = {}
+    if not rec then return out end
+    local list = Blocks(rec)
+    for i = 1, #list do
+        for j = 1, #modes do
+            if (list[i].raids[modes[j]] or 0) > 0 then
+                local raids = Raids(list[i], modes[j])
+                for k = 1, #raids do out[#out + 1] = raids[k] end
+            end
+        end
+    end
+    tsort(out, function(a, b)
+        if a.date ~= b.date then return a.date > b.date end
+        return (a.rid or 0) > (b.rid or 0)
+    end)
+    return out
+end
+function Bober.Open(name)
+    local fn = SlashCmdList and SlashCmdList.PLAYERRAIDS
+    if type(fn) ~= "function" or type(name) ~= "string" or name == "" then return false end
+    fn(name)
+    return true
 end
 function Bober.Reset()
     recs, blocks, files, benchCache, byName = {}, {}, {}, {}, nil

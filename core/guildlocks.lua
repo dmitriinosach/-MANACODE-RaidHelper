@@ -249,6 +249,10 @@ function GuildLocks.Saved(name, raid)
     end
     if same then return false, same end
     if Full(name) then return false, nil end
+    local GB = ns.GuildBober
+    local bs, mine = nil, false
+    if GB then bs, mine = GB.Save(name, raid) end
+    if bs then return not mine, bs end
     return nil, nil
 end
 local function AddonGs(name)
@@ -270,15 +274,6 @@ function GuildLocks.MyGs()
     local me = Me()
     return me and AddonGs(me) or nil
 end
-local function BoberGs(name)
-    local b = ns.Bober
-    if not b or not b.Indexed or not b.Indexed() then return nil end
-    local id = b.FindId(name)
-    local rec = id and b.Get(id)
-    local gs = rec and rec.cur and tonumber(rec.cur.gs)
-    if gs and gs > 0 then return gs end
-    return nil
-end
 function GuildLocks.GsOf(name)
     local m = ns.GuildNotes.Member(name)
     if m and m.gs then return m.gs, m.gsSrc end
@@ -286,9 +281,7 @@ function GuildLocks.GsOf(name)
     if ch and ch.gs then return ch.gs, "sync" end
     local acc = AccountChar(name)
     if acc and tonumber(acc.gs) then return tonumber(acc.gs), "own" end
-    local gs = BoberGs(name)
-    if gs then return gs, "bober" end
-    gs = AddonGs(name)
+    local gs = AddonGs(name)
     if gs then return gs, "gsaddon" end
     return nil, nil
 end
@@ -394,9 +387,16 @@ local function Char(name, m, link, raid, gsMin)
     local gsOk = nil
     if gs then gsOk = gs >= gsMin end
     local usable = m.level >= D.level and saved ~= true and gsOk ~= false
-    return { name = name, class = m.class, level = m.level, online = m.online, link = link, saved = saved,
+    local GB = ns.GuildBober
+    local c = { name = name, class = m.class, level = m.level, online = m.online, link = link, saved = saved,
         save = save, gs = gs, gsSrc = gsSrc, gsOk = gsOk, role = role, spec = spec, roleSrc = roleSrc,
-        usable = usable }
+        usable = usable, specs = GB and GB.Specs(name, m.class) or {}, rat = false }
+    c.roles = GB and GB.Roles(c) or {}
+    local bs, mine = nil, false
+    if GB then bs, mine = GB.Save(name, raid) end
+    c.cur = bs and bs.raid or nil
+    c.rat = c.cur ~= nil and not mine and GB.Outside(c.cur)
+    return c
 end
 function GuildLocks.Available(raid, gsMin, all)
     gsMin = gsMin or GuildLocks.GsMin(raid)

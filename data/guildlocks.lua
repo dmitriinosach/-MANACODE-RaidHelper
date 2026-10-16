@@ -27,4 +27,18 @@ ns.guildLocks = {
         voa10 = { short = "voa" },
     },
     defaultRaid = "icc25h",
+    boberTrees = {
+        DEATHKNIGHT = { "Blood", "Frost", "Unholy" },
+        DRUID = { "Balance", "Feral", "Restoration" },
+        HUNTER = { "Beast Mastery", "Marksmanship", "Survival" },
+        MAGE = { "Arcane", "Fire", "Frost" },
+        PALADIN = { "Holy", "Protection", "Retribution" },
+        PRIEST = { "Discipline", "Holy", "Shadow" },
+        ROGUE = { "Assassination", "Combat", "Subtlety" },
+        SHAMAN = { "Elemental", "Enhancement", "Restoration" },
+        WARLOCK = { "Affliction", "Demonology", "Destruction" },
+        WARRIOR = { "Arms", "Fury", "Protection" },
+    },
+    boberAlias = { Guardian = "Feral" },
+    boberRole = { t = "tank", h = "heal", d = "dd" },
 }

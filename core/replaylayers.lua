@@ -19,6 +19,7 @@ local BOSS_STEP = 0.5
 local BOSS_MIN_SWINGS = 5
 local WITNESS_HOLD = 3
 local BOSS_HOLD = 20
+local BOSS_STILL = 2.5
 local SMOOTH_WINDOW = 4
 local SWITCH_MARGIN = 2
 local SWITCH_HOLD = 2
@@ -959,6 +960,29 @@ function Layers.Fixed(c, t, ax, ay)
     end
     return nil, 0, 0, 0
 end
+local function Steady(scene)
+    local tr = scene.boss
+    if not tr then return end
+    local R = BOSS_STILL * scene.ppy
+    local xs, ys, src, gl = tr.x, tr.y, tr.src, tr.gl or {}
+    local ax, ay
+    for i = 1, tr.n do
+        local x, y = xs[i], ys[i]
+        if x < 0 then
+            ax = nil
+        elseif not ax or (src and (src[i] == "pin" or gl[i])) then
+            ax, ay = x, y
+        else
+            local dx, dy = x - ax, y - ay
+            local d = sqrt(dx * dx + dy * dy)
+            if d > R then
+                local q = (d - R) / d
+                ax, ay = ax + dx * q, ay + dy * q
+            end
+            xs[i], ys[i] = ax, ay
+        end
+    end
+end
 local function PlaceBoss(scene, c)
     local L = c.L
     if L.targets < BOSS_MIN_SWINGS then return end
@@ -966,7 +990,7 @@ local function PlaceBoss(scene, c)
     local R = L.hitbox * scene.ppy
     local stepMax = BOSS_SPEED * scene.ppy * BOSS_STEP
     local tr = ns.Replay.NewTrack(scene.bossName or scene.fight.boss)
-    tr.fx, tr.fy = {}, {}
+    tr.fx, tr.fy, tr.hk = {}, {}, {}
     local lo = 0
     local t = c.from
     local lastX, lastY, lastT = nil, 0, 0
@@ -1022,7 +1046,7 @@ local function PlaceBoss(scene, c)
                 if d > 0.01 then fx, fy = dx / d, dy / d end
             end
             ns.Replay.Push(tr, t, cx, cy, 1, 0)
-            tr.fx[tr.n], tr.fy[tr.n] = fx, fy
+            tr.fx[tr.n], tr.fy[tr.n], tr.hk[tr.n] = fx, fy, tx >= 0 and k or 0
         elseif tr.n > 0 and tr.x[tr.n] >= 0 then
             ns.Replay.Push(tr, t, -1, -1, 1, 0)
             tr.fx[tr.n], tr.fy[tr.n] = 0, 1
@@ -1249,6 +1273,7 @@ function Layers.Build(scene)
     c.L.feedMs = debugprofilestop() - f0
     PickTargets(c)
     if not (np and ns.NpcPos.Place(np, Layers.HolderAt)) then PlaceBoss(scene, c) end
+    Steady(scene)
     if rm then RM.Flasks(rm, c.L, scene) end
     if oz then OZ.Done(oz, c.L, scene, PosAt, c.ppy) end
     FinishBossHp(c, segs, fight.to, np and np.stats.guid, rr)

@@ -25,12 +25,17 @@ local CONE_DRAW = 8
 local BLAST_DRAW = 16
 local ADD_DRAW = 48
 local LINE_DRAW = 12
+local AGGRO_W = 7
+local AGGRO_RING = 0.8
+local THR_DRAW = 6
+local THR_WARN = 80
+local THR_HOT = 90
 local HIT_DRAW = 32
 local HIT_SHOW = 6
 local HIT_YD = 3
 local BLAST_SHOW = 1
 local FADE = 1
-local ADD_HOLD = 4
+local ADD_HOLD = math.huge
 local BADGE = 12
 local BADGES = 3
 local FX_SHOW = 6
@@ -93,7 +98,9 @@ local fxList = {}
 local focusName
 local fxRow = { tex = {}, more = nil, owner = nil, key = nil }
 local pactK, pactFrom = {}, {}
-local stats = { badges = 0, pools = 0, aims = 0, cones = 0, blasts = 0, adds = 0, counts = 0, countTop = nil, chases = 0,
+local aggro, aggroRing
+local thrRings = {}
+local stats = { aggro = 0, thr = 0, badges = 0, pools = 0, aims = 0, cones = 0, blasts = 0, adds = 0, counts = 0, countTop = nil, chases = 0,
                 chaseLines = 0, waves = 0, edge = 0, waveR = 0, collects = 0, addRings = 0, fx = 0, vortex = 0,
                 vortexWave = 0, drops = 0, booms = 0 }
 V.stats = stats
@@ -252,6 +259,9 @@ function V.Build(v, m)
     end
     for i = 1, HIT_DRAW do hits[i] = Tex(marks, CIRCLE, "BORDER", "sem.rep.hit") end
     for i = 1, LINE_DRAW do lines[i] = Tex(marks, LINE, "BORDER", "sem.rep.pact") end
+    aggro = Tex(marks, LINE, "BORDER", "sem.rep.aggro")
+    aggroRing = Tex(marks, RING, "BORDER", "sem.rep.aggro")
+    for i = 1, THR_DRAW do thrRings[i] = Tex(marks, RING, "BORDER") end
     for i = 1, CONE_DRAW do cones[i] = Tex(marks, CONE, "ARTWORK", "sem.rep.cone") end
     for i = 1, BLAST_DRAW do blasts[i] = Tex(marks, RIM, "ARTWORK", "sem.rep.blast") end
     for i = 1, CHASE_DRAW do
@@ -332,6 +342,11 @@ function V.AddDebuff(fig, id)
     end
     tex:Show()
 end
+function V.BadgesUp(fig)
+    if fxRow.owner == fig and not fxRow.off and fxRow.tex[1] and fxRow.tex[1]:IsShown() then return 2 * BADGE + 4 end
+    if fig.bd and fig.bd[1]:IsShown() then return BADGE + 2 end
+    return 0
+end
 function V.Attach(fig)
     fig.bd = {}
     for i = 1, BADGES do
@@ -388,6 +403,9 @@ function V.Use(scene)
     for i = 1, #cones do cones[i]:Hide() end
     for i = 1, #blasts do blasts[i]:Hide() end
     for i = 1, #lines do lines[i]:Hide() end
+    aggro:Hide()
+    aggroRing:Hide()
+    for i = 1, #thrRings do thrRings[i]:Hide() end
     for i = 1, #hits do hits[i]:Hide() end
     for i = 1, #counts do counts[i]:Hide() end
     for i = 1, #chaseLines do chaseLines[i]:Hide() end
@@ -897,6 +915,63 @@ local function PlacePacts(figs, np)
     for i = n + 1, used.line do lines[i]:Hide() end
     used.line = n
 end
+local function RingUnder(tex, fig)
+    local rw = (fig.w or 0) * AGGRO_RING
+    return rw >= 2 and PutEllipse(tex, fig.sx, fig.sy, rw, max(1, rw * (fig.flat or 1)))
+end
+local function ThreatRow(scene, t)
+    local m = scene.thr
+    if not ns.Threat then return nil end
+    if m == nil then
+        scene.thr = false
+        ns.Threat.Load(scene.fight, function(model) scene.thr = model or false end)
+        return nil
+    end
+    if not m then return nil end
+    for i = 1, #m.mobs do
+        local mob = m.mobs[i]
+        if mob.boss then
+            local r = ns.Threat.RowAt(mob, t)
+            if r then return r end
+        end
+    end
+    return nil
+end
+local function PlaceAggro(scene, t, figs)
+    local b = scene.bossState
+    local hk = b.vis and b.hk or 0
+    local fig = hk > 0 and figs[hk]
+    local bf = figs[#scene.tracks + 1]
+    stats.aggro = 0
+    local drawn = false
+    if fig and fig.shown and bf and bf.shown then
+        local dx, dy = fig.sx - bf.sx, fig.sy - bf.sy
+        local d = sqrt(dx * dx + dy * dy)
+        if d >= 2 then
+            local nx, ny = -dy / d * AGGRO_W, dx / d * AGGRO_W
+            drawn = PutAffine(aggro, bf.sx - nx / 2, bf.sy - ny / 2, dx, dy, nx, ny)
+        end
+    end
+    if drawn then stats.aggro = hk else aggro:Hide() end
+    if not (fig and fig.shown and RingUnder(aggroRing, fig)) then aggroRing:Hide() end
+    local n = 0
+    local r = b.vis and ThreatRow(scene, t)
+    local top = r and r.top
+    if top then
+        local byK = Replay.ByK(scene)
+        for i = 1, #top do
+            local e = top[i]
+            local k = e.scaled >= THR_WARN and e.name ~= r.who and byK[e.name]
+            local f = k and k ~= hk and figs[k]
+            if f and f.shown and n < THR_DRAW and RingUnder(thrRings[n + 1], f) then
+                n = n + 1
+                thrRings[n]:SetVertexColor(Kit.Color(e.scaled >= THR_HOT and "sem.rep.thrHot" or "sem.rep.thrWarn"))
+            end
+        end
+    end
+    for i = n + 1, THR_DRAW do thrRings[i]:Hide() end
+    stats.thr = n
+end
 local function PlaceWinter(scene, cam, t)
     local M = scene.layers.mech
     local W = M and M.winter
@@ -1100,6 +1175,7 @@ function V.Place(scene, cam, t, figs)
         DecorateFx(owner, memo.nfx)
     end
     PlacePacts(figs, memo.np)
+    PlaceAggro(scene, t, figs)
     PlaceSpin(t)
 end
 function V.Focus(name)

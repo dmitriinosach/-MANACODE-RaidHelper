@@ -1,4 +1,4 @@
-local _, ns = ...
+local ADDON, ns = ...
 local format = string.format
 local max = math.max
 local concat = table.concat
@@ -6,6 +6,7 @@ local tsort = table.sort
 local Kit = ns.Kit
 local GL = ns.GuildLocks
 local GR = ns.GuildRaid
+local GB = ns.GuildBober
 local GN = ns.GuildNotes
 local N = ns.guildNotes
 local D = ns.guildLocks
@@ -28,13 +29,22 @@ local ALTS_W = 40
 local STATE_W = 150
 local SEL_W = 150
 local CHECK_W = 130
+local ROLECHK_W = 86
+local ROLE_SZ = 14
+local ROLE_GAP = 3
+local RI_SZ = 12
+local RAT_SZ = 18
 local REBUILD_GAP = 5
+local ROLES = { "tank", "heal", "dd" }
+local RI_TEX = "Interface\\Icons\\INV_Misc_Book_09"
+local RAT_TEX = "Interface\\AddOns\\" .. ADDON .. "\\art\\kit\\rat"
 local PLUS = "Interface\\Buttons\\UI-PlusButton-Up"
 local MINUS = "Interface\\Buttons\\UI-MinusButton-Up"
 local View = {}
 ns.GuildLockView = View
 local content
 local caption, sel, gsFs, check, ticker
+local roleChecks = {}
 local rerender
 local pools = { slot = {}, main = {}, alt = {}, note = {} }
 local used = { slot = 0, main = 0, alt = 0, note = 0 }
@@ -54,6 +64,30 @@ local function Make(kind)
         row.cols[i] = fs
     end
     row.text:Hide()
+    if kind == "main" or kind == "alt" then
+        row.roles = {}
+        for i = 1, #ROLES do
+            local t = row:CreateTexture(nil, "ARTWORK")
+            t:SetWidth(ROLE_SZ)
+            t:SetHeight(ROLE_SZ)
+            Kit.Icon.Role(t, ROLES[i])
+            row.roles[ROLES[i]] = t
+        end
+        local ri = Kit.IconButton(row, RI_TEX, RI_SZ)
+        ri.tipTitle = ns.T("gl.ri")
+        ri.tip = ns.T("gl.ri.tip")
+        ri.onClick = function(b) if b.char then ns.Bober.Open(b.char) end end
+        row.ri = ri
+        row.rat = row:CreateTexture(nil, "ARTWORK")
+        row.rat:SetWidth(RAT_SZ)
+        row.rat:SetHeight(RAT_SZ)
+        row.rat:SetTexture(RAT_TEX)
+        row.rat:Hide()
+        row.info = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.info:SetJustifyH("LEFT")
+        row.info:SetHeight(14)
+        Kit.Text(row.info, "text.secondary")
+    end
     if kind == "main" then
         row.fold = row:CreateTexture(nil, "ARTWORK")
         row.fold:SetWidth(FOLD)
@@ -67,6 +101,7 @@ local function Make(kind)
             end
         end
     end
+    row.tipAnchor = "ANCHOR_CURSOR"
     row:SetHeight((kind == "main" and MAIN_H) or (kind == "alt" and ALT_H) or (kind == "slot" and SLOT_H) or NOTE_H)
     return row
 end
@@ -147,10 +182,21 @@ local function Rebuild()
     local r = GR.Get(GR.Pick())
     local q = GR.Query(r)
     local gsMin = GL.GsMin(q)
-    local people = GL.Available(q, gsMin, true)
+    local all = GL.Available(q, gsMin, true)
+    local people = {}
+    for i = 1, #all do
+        local p, chars = all[i], {}
+        for j = 1, #p.chars do
+            if (p.chars[j].level or 0) >= D.level then chars[#chars + 1] = p.chars[j] end
+        end
+        if #chars > 0 then
+            p.chars = chars
+            people[#people + 1] = p
+        end
+    end
     local onl = {}
-    for i = 1, #people do
-        if people[i].online then onl[#onl + 1] = people[i] end
+    for i = 1, #all do
+        if all[i].online then onl[#onl + 1] = all[i] end
     end
     tsort(people, Order)
     local tpl = GR.Template(r)
@@ -193,7 +239,11 @@ local function CharLines(c, main)
     end
     local label = cache and GR.Label(cache.raid) or ""
     local v = c.save
-    if c.saved == true and v then
+    if v and v.src == "bober" and v.raid then
+        local r = v.raid
+        lines[#lines + 1] = format(ns.T(c.saved and "gl.tip.save.bober" or "gl.tip.same.bober"), label,
+            ns.Date(GB.Time(r.date)), r.killed or 0, r.total or 0)
+    elseif c.saved == true and v then
         lines[#lines + 1] = format(ns.T("gl.tip.save"), label, v.id, ns.Date(v.ends, "dayTime"), Src(v.src))
     elseif c.saved == false and v then
         lines[#lines + 1] = format(ns.T("gl.tip.same"), label, v.id)
@@ -204,6 +254,11 @@ local function CharLines(c, main)
     end
     return lines
 end
+local function InfoText(r)
+    local lg = GB.LeadGuild(r)
+    local lead = (r.lead or "?") .. ((lg and lg ~= r.guild) and format(" (%s)", lg) or "")
+    return format(ns.T("gl.info"), ns.Date(GB.Time(r.date)), lead, r.guild or ns.T("gl.info.pug"))
+end
 local function FillChar(row, c, x, w)
     local cols = row.cols
     Put(cols[1], x, NAME_W - (x - NAME_X), c.name)
@@ -213,6 +268,52 @@ local function FillChar(row, c, x, w)
     Put(cols[4], NAME_X + NAME_W + ON_W + GS_W, SPEC_W, SpecText(c), "text.secondary")
     local state, token = State(c)
     Put(cols[5], w - STATE_W - 6, STATE_W, state, token, true)
+    row.rat:Hide()
+    local x0 = NAME_X + NAME_W + ON_W + GS_W + SPEC_W + ALTS_W + 6
+    local roles = c.roles or {}
+    for i = 1, #ROLES do
+        local t = row.roles[ROLES[i]]
+        t:ClearAllPoints()
+        t:SetPoint("LEFT", row, "LEFT", x0 + (i - 1) * (ROLE_SZ + ROLE_GAP), 0)
+        t:SetAlpha(roles[ROLES[i]] and 1 or 0.15)
+        t:Show()
+    end
+    local ri = row.ri
+    ri.char = c.name
+    ri:ClearAllPoints()
+    ri:SetPoint("LEFT", row, "LEFT", x0 + #ROLES * (ROLE_SZ + ROLE_GAP) + 4, 0)
+    if GB.Rec(c.name) then ri:Show() else ri:Hide() end
+    local ix = x0 + #ROLES * (ROLE_SZ + ROLE_GAP) + RI_SZ + 18
+    local r = c.cur
+    Put(row.info, ix, max(10, w - STATE_W - 14 - ix), r and InfoText(r) or "", r and c.rat and "text.warn" or "text.secondary")
+end
+local function Rat(row, p)
+    local who = nil
+    for i = 1, #p.chars do
+        local c = p.chars[i]
+        if c.rat then
+            who = who or {}
+            who[#who + 1] = format(ns.T("gl.tip.rat"), c.name, c.cur.guild or ns.T("gl.info.pug"), c.cur.lead or "?")
+        end
+    end
+    if not who then return nil end
+    local name = row.cols[1]
+    row.rat:ClearAllPoints()
+    row.rat:SetPoint("LEFT", row, "LEFT", NAME_X + math.min(NAME_W - RAT_SZ, name:GetStringWidth() + 4), 0)
+    row.rat:Show()
+    return who
+end
+local function RolesPass(p)
+    local any = false
+    for i = 1, #ROLES do
+        if GR.RoleOn(ROLES[i]) then
+            any = true
+            for j = 1, #p.chars do
+                if p.chars[j].roles and p.chars[j].roles[ROLES[i]] then return true end
+            end
+        end
+    end
+    return not any
 end
 local function Split(p)
     local main, alts = nil, {}
@@ -233,8 +334,14 @@ local function DrawPerson(p, y, w)
     else
         Put(cols[1], NAME_X, NAME_W, p.name, "text.primary")
         for i = 3, 5 do cols[i]:SetText("") end
+        for i = 1, #ROLES do row.roles[ROLES[i]]:Hide() end
+        row.ri:Hide()
+        row.rat:Hide()
+        row.info:SetText("")
         row.tipLines = {}
     end
+    local rat = Rat(row, p)
+    for i = 1, rat and #rat or 0 do row.tipLines[#row.tipLines + 1] = rat[i] end
     local on, token = ns.T("gl.off"), "text.off"
     if p.online == p.name then
         on, token = ns.T("gl.on"), "text.good"
@@ -319,6 +426,12 @@ function View.Draw(y, w)
     check:ClearAllPoints()
     check:SetPoint("TOPRIGHT", content, "TOPLEFT", MARGIN + w - CHECK_W, -y + 2)
     check:SetChecked(GR.OnlineOnly())
+    for i = 1, #ROLES do
+        local rc = roleChecks[ROLES[i]]
+        rc:ClearAllPoints()
+        rc:SetPoint("TOPRIGHT", content, "TOPLEFT", MARGIN + w - CHECK_W - (#ROLES - i + 1) * ROLECHK_W, -y + 2)
+        rc:SetChecked(GR.RoleOn(ROLES[i]))
+    end
     gsFs:ClearAllPoints()
     gsFs:SetPoint("LEFT", sel, "RIGHT", 10, 0)
     y = y + CTRL_H
@@ -342,7 +455,7 @@ function View.Draw(y, w)
     local shown = 0
     for i = 1, #cache.people do
         local p = cache.people[i]
-        if p.online or not only then
+        if (p.online or not only) and RolesPass(p) then
             y = DrawPerson(p, y, w)
             shown = shown + 1
         end
@@ -353,6 +466,7 @@ end
 function View.Opened()
     dirty = true
     GN.Ask()
+    GB.Warm(GL.Invalidate)
 end
 function View.Build(parent, redraw)
     content, rerender = parent, redraw
@@ -376,6 +490,18 @@ function View.Build(parent, redraw)
         GR.SetOnlineOnly(on)
         redraw()
     end
+    for i = 1, #ROLES do
+        local group = ROLES[i]
+        local rc = Kit.Check(content)
+        rc.label:SetText(ns.T("gl.role." .. group))
+        rc.tipTitle = ns.T("gl.filter.role")
+        rc.tip = ns.T("gl.filter.role.tip")
+        rc.onToggle = function(on)
+            GR.SetRole(group, on)
+            redraw()
+        end
+        roleChecks[group] = rc
+    end
     ticker = CreateFrame("Frame", nil, content)
     ticker:Hide()
     ticker:SetScript("OnUpdate", function(self)
@@ -385,7 +511,8 @@ function View.Build(parent, redraw)
     end)
 end
 function View.Probe()
-    return { pools = pools, used = used, open = open, sel = sel, check = check, gsFs = gsFs, caption = caption,
+    return { pools = pools, used = used, open = open, sel = sel, check = check, roleChecks = roleChecks, gsFs = gsFs,
+        caption = caption,
         cache = function() return cache end, ticker = ticker }
 end
 GL.OnChange(function()

@@ -722,6 +722,7 @@ local function SampleBoss(scene, t)
     st.x, st.y = x, y
     local fx = tr.fx and i > 0 and tr.fx[i]
     if fx and (fx ~= 0 or tr.fy[i] ~= 0) then st.hx, st.hy = fx, tr.fy[i] end
+    st.hk = st.vis and tr.hk and i > 0 and tr.hk[i] or 0
 end
 function Replay.Sample(scene, t)
     SampleBoss(scene, t)
