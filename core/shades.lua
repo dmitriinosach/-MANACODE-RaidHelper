@@ -25,7 +25,7 @@ function Shades.Begin(s, fight)
             st = New(st, s, fight, b.def)
             st.block = b
             b.summoned, b.caught, b.hit = 0, 0, 0
-            b.hits, b.at, b.vic, b.cnt, b.dmg = {}, {}, {}, {}, {}
+            b.hits, b.at, b.vic, b.cnt, b.dmg, b.hw, b.ha = {}, {}, {}, {}, {}, {}, {}
         end
     end
     if not st then return nil end
@@ -125,6 +125,16 @@ local function Grade(st)
         end
     end
 end
+local function ByDamage(who, amt)
+    for i = 2, #amt do
+        local w, a, j = who[i], amt[i], i - 1
+        while j >= 1 and amt[j] < a do
+            who[j + 1], amt[j + 1] = who[j], amt[j]
+            j = j - 1
+        end
+        who[j + 1], amt[j + 1] = w, a
+    end
+end
 function Shades.Finish(st)
     local chase = st.s.dd and st.s.dd.chase
     local b = st.block
@@ -133,26 +143,29 @@ function Shades.Finish(st)
         local g = st.order[k]
         local vic = st.vic[g] or false
         local t = st.at[g] - st.from
-        local cnt, dmg, hurt = 0, 0, {}
+        local cnt, dmg, others, hurt, amts = 0, 0, 0, {}, {}
         for h = 1, #st.hitG do
             if st.hitG[h] == g then
                 if chase then chase[#chase + 1] = { t = st.hitT[h], who = st.hitW[h], by = vic } end
                 dmg = dmg + st.hitA[h]
                 if st.hitW[h] ~= vic then
                     cnt = cnt + 1
+                    others = others + st.hitA[h]
                     hurt[#hurt + 1] = st.hitW[h]
+                    amts[#amts + 1] = st.hitA[h]
                     if st.blast then Blasted(st, st.hitW[h], t, vic, st.hitA[h]) end
                 end
             end
         end
         if vic and st.chased then Caught(st, vic, t, cnt, dmg, hurt, Why(st, vic, st.at[g])) end
         if b then
-            b.at[k], b.vic[k], b.cnt[k], b.dmg[k] = t, vic, cnt, dmg
-            b.total = b.total + dmg
+            ByDamage(hurt, amts)
+            b.at[k], b.vic[k], b.cnt[k], b.dmg[k], b.hw[k], b.ha[k] = t, vic, cnt, others, hurt, amts
+            b.total = b.total + others
             b.hit = b.hit + cnt
             if vic then
                 b.caught = b.caught + 1
-                b.by[vic] = (b.by[vic] or 0) + dmg
+                b.by[vic] = (b.by[vic] or 0) + others
                 b.hits[vic] = (b.hits[vic] or 0) + 1
             end
         end

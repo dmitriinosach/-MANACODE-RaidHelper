@@ -322,25 +322,34 @@ function Tips.Shades(b, who, class)
     local out = {}
     if who then
         out[1] = { kind = "head", left = who, right = format(T("sum.tt.shadecaught"), b.hits[who] or 0), class = class }
+        Put(out, "row", T("sum.tt.shadedmg"), ns.Short(b.by[who] or 0))
     else
         Head(out, T(b.def.label))
         Put(out, "row", T("sum.tt.summoned"), tostring(b.summoned))
         Put(out, "row", T("sum.tt.caught"), tostring(b.caught))
         Put(out, "row", T("sum.tt.shadehits"), tostring(b.hit))
-        Put(out, "row", T("sum.tt.dmg"), ns.Short(b.total))
+        Put(out, "row", T("sum.tt.shadedmg"), ns.Short(b.total))
     end
-    local shown = 0
+    local lines, rest = 0, 0
     for k = 1, #b.at do
         if not who or b.vic[k] == who then
-            shown = shown + 1
-            if shown <= KICK_TIMES then
-                Put(out, "sub", Clock(b.at[k]), b.vic[k] or "?",
-                    format(T("sum.tt.shadehit"), b.cnt[k]) .. ", " .. ns.Short(b.dmg[k]))
+            if lines >= KICK_TIMES then
+                rest = rest + 1
+            else
+                lines = lines + 1
+                Put(out, "sub", Clock(b.at[k]), ns.Short(b.dmg[k]),
+                    (who and "" or (b.vic[k] or "?") .. ", ") .. format(T("sum.tt.shadehit"), b.cnt[k]))
+                local hw, ha = who and b.hw and b.hw[k], b.ha and b.ha[k]
+                for h = 1, hw and #hw or 0 do
+                    lines = lines + 1
+                    out[#out + 1] = { kind = "sub", left = "    " .. hw[h], right = ns.Short(ha[h] or 0),
+                        class = ns.Encounters.ClassOf(hw[h]) }
+                end
             end
         end
     end
-    if shown > KICK_TIMES then
-        Put(out, "sub", (format(T("sum.tip.more"), shown - KICK_TIMES):gsub("^%s+", "")))
+    if rest > 0 then
+        Put(out, "sub", (format(T("sum.tip.more"), rest):gsub("^%s+", "")))
     end
     return out
 end
