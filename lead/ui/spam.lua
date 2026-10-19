@@ -7,12 +7,19 @@ local CHECK_H = 17
 local ICON = 14
 local CLS_COLS = 5
 local CHAN_COLS = 4
+local SPECS_TOP = 158
+local ROW_B = 26
+local BASE = "GameFontHighlightSmall"
+local STEP_BTN = 18
+local NEED_W = 22
 local styleSel
 local pane, textSel, delBtn, body, progE, reqSel, reqE, lootSel, timeE
-local defBtn, preview, counter, chanPool, chanBox
+local defBtn, tplBtn, preview, counter, chanPool, chanBox
+local specsPanel, specsCap, previewPanel, chCap
 local checks = {}
 local classChecks = {}
 local classCells = {}
+local needVals = {}
 local built = false
 local function textOptions()
     local out = {}
@@ -36,7 +43,7 @@ local function panel(y, h)
     return p
 end
 local function label(parent, key)
-    local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local fs = ns.Str(parent, "GameFontNormalSmall")
     fs:SetText(ns.T(key))
     ns.PaintTitle(fs)
     return fs
@@ -175,21 +182,105 @@ local function makeCheck(parent, sp)
     c.label:SetText(ns.T("spec_" .. sp.key))
     ns.PaintText(c.label, "text.primary")
     c.tipTitle = ns.T("specFull_" .. sp.key)
-    c.tip = ns.T("grpTitle_" .. ns.ROLE_GROUP[sp.role])
+    c.tip = ns.T("needFull_" .. sp.role)
     c.onToggle = function(on) ns.Session.SetChecked(sp.key, on) end
     checks[sp.key] = c
     return c
 end
-local function buildSpecs()
-    local top = 158
-    local p = panel(top, 196)
-    local cap = label(p, "specsTitle")
+local function rowHeights()
+    local out = {}
+    for i, cls in ipairs(ns.CLASSES) do
+        local r = math.floor((i - 1) / CLS_COLS) + 1
+        local n = cls.classOnly and 0 or #cls.specs
+        out[r] = math.max(out[r] or 0, 14 + n * CHECK_H)
+    end
+    return out
+end
+local function rowB()
+    return ns.Fit(BASE, ROW_B, 8)
+end
+local function gridTop()
+    return 30 + rowB()
+end
+local function specsHeight()
+    local h = gridTop()
+    for _, rh in ipairs(rowHeights()) do h = h + rh end
+    return h + 6
+end
+local function stepButton(parent, text, role, delta)
+    local b = ns.MakeKitButton(parent)
+    b:SetSize(STEP_BTN, STEP_BTN)
+    b:SetText(text)
+    b.tipTitle = ns.T("needFull_" .. role)
+    b.onClick = function() ns.Spam.AddNeed(role, delta) end
+    return b
+end
+local function buildNeeds(p)
+    local cap = label(p, "needsTitle")
     cap:SetPoint("TOPLEFT", p, "TOPLEFT", PAD, -PAD)
+    local prev = cap
+    for _, role in ipairs(ns.Spam.ROLES) do
+        local name = ns.Str(p, "GameFontNormalSmall")
+        name:SetText(ns.T("needShort_" .. role))
+        ns.PaintText(name, "text.secondary")
+        name:SetPoint("LEFT", prev, "RIGHT", prev == cap and 8 or 10, 0)
+        local minus = stepButton(p, "-", role, -1)
+        minus:SetPoint("LEFT", name, "RIGHT", 4, 0)
+        local val = ns.Str(p, BASE)
+        val:SetWidth(ns.Wide(BASE, NEED_W))
+        val:SetJustifyH("CENTER")
+        val:SetPoint("LEFT", minus, "RIGHT", 0, 0)
+        local plus = stepButton(p, "+", role, 1)
+        plus:SetPoint("LEFT", val, "RIGHT", 0, 0)
+        needVals[role] = val
+        prev = plus
+    end
+    tplBtn = ns.MakeKitButton(p)
+    tplBtn:SetText(ns.T("btnNeedsTpl"))
+    tplBtn:SetWidth(tplBtn.text:GetStringWidth() + 20)
+    tplBtn:SetHeight(20)
+    tplBtn:SetPoint("TOPRIGHT", p, "TOPRIGHT", -PAD, -6)
+    tplBtn.tipTitle = ns.T("btnNeedsTpl")
+    tplBtn.onClick = function() ns.Spam.NeedsFromTemplate() end
+end
+local function needsTip(t)
+    local parts = {}
+    for _, role in ipairs(ns.Spam.ROLES) do
+        parts[#parts + 1] = ns.T("needShort_" .. role) .. " " .. t[role]
+    end
+    return ns.Tpl.Name(ns.Session.Template()) .. ": " .. table.concat(parts, ", ")
+end
+local function refreshNeeds()
+    local P = ns.Spam
+    local cur = P.Needs()
+    for role, fs in pairs(needVals) do
+        fs:SetText(tostring(cur[role]))
+        ns.PaintText(fs, cur[role] > 0 and "text.primary" or "text.muted")
+    end
+    local t = P.TemplateNeeds(ns.Session.Template())
+    local same = true
+    for _, role in ipairs(P.ROLES) do
+        if t[role] ~= cur[role] then same = false end
+    end
+    tplBtn.tip = needsTip(t)
+    if same then tplBtn:Disable() else tplBtn:Enable() end
+end
+local function placeSpecsHead()
+    specsCap:ClearAllPoints()
+    specsCap:SetPoint("TOPLEFT", specsPanel, "TOPLEFT", PAD, -(PAD + rowB()))
+    defBtn:ClearAllPoints()
+    defBtn:SetPoint("TOPRIGHT", specsPanel, "TOPRIGHT", -PAD, -(6 + rowB()))
+end
+local function buildSpecs()
+    local p = panel(SPECS_TOP, specsHeight())
+    specsPanel = p
+    buildNeeds(p)
+    specsCap = label(p, "specsTitle")
     defBtn = ns.MakeKitButton(p)
     defBtn:SetText(ns.T("btnDefault"))
     defBtn:SetWidth(110)
     defBtn:SetHeight(20)
-    defBtn:SetPoint("TOPRIGHT", p, "TOPRIGHT", -PAD, -6)
+    placeSpecsHead()
     defBtn.onClick = function() ns.Session.ResetChecks() end
     for i, cls in ipairs(ns.CLASSES) do
         local cell = { specs = {} }
@@ -216,11 +307,16 @@ local function placeSpecs()
     local p = classCells[1] and classCells[1].check:GetParent()
     if not p then return end
     local colW = (ns.window.PANE_W - PAD * 2) / CLS_COLS
+    local tops, y0 = {}, gridTop()
+    for r, h in ipairs(rowHeights()) do
+        tops[r] = y0
+        y0 = y0 + h
+    end
     for i, cell in ipairs(classCells) do
         local col = (i - 1) % CLS_COLS
         local rowN = math.floor((i - 1) / CLS_COLS)
         local x = PAD + col * colW
-        local y = 30 + rowN * 82
+        local y = tops[rowN + 1]
         cell.check:ClearAllPoints()
         cell.check:SetPoint("TOPLEFT", p, "TOPLEFT", x - 3, -(y - 3))
         for k, c in ipairs(cell.specs) do
@@ -242,19 +338,37 @@ local function chanRow()
     r.every:SetNumeric(true)
     r.every:SetMaxLetters(4)
     r.every:SetPoint("RIGHT", r, "RIGHT", -16, 0)
-    r.sec = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.sec = ns.Str(r, BASE)
     r.sec:SetPoint("LEFT", r.every, "RIGHT", 3, 0)
     r.sec:SetText(ns.T("sec"))
     ns.PaintText(r.sec, "text.secondary")
     return r
 end
+local function placePreview()
+    local top = SPECS_TOP + specsHeight() + 8
+    local line = ns.Fit(BASE, 16, 2)
+    local pv = ns.Fit(BASE, 40, 0, 3)
+    local capY = PAD + line + pv + 4
+    local boxY = capY + ns.Fit("GameFontNormalSmall", 14, 2)
+    previewPanel:ClearAllPoints()
+    previewPanel:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -top)
+    previewPanel:SetPoint("BOTTOMRIGHT", pane, "BOTTOMRIGHT", 0, 0)
+    preview:ClearAllPoints()
+    preview:SetPoint("TOPLEFT", previewPanel, "TOPLEFT", PAD, -(PAD + line))
+    preview:SetPoint("TOPRIGHT", previewPanel, "TOPRIGHT", -PAD, -(PAD + line))
+    preview:SetHeight(pv)
+    chCap:ClearAllPoints()
+    chCap:SetPoint("TOPLEFT", previewPanel, "TOPLEFT", PAD, -capY)
+    chanBox:ClearAllPoints()
+    chanBox:SetPoint("TOPLEFT", previewPanel, "TOPLEFT", PAD, -boxY)
+    chanBox:SetPoint("BOTTOMRIGHT", previewPanel, "BOTTOMRIGHT", -PAD, 4)
+end
 local function buildPreview()
-    local top = 362
-    local p = panel(top, ns.window.PANE_H - top)
-    p:SetPoint("BOTTOMRIGHT", pane, "BOTTOMRIGHT", 0, 0)
+    local p = ns.MakePanel(pane)
+    previewPanel = p
     local cap = label(p, "previewTitle")
     cap:SetPoint("TOPLEFT", p, "TOPLEFT", PAD, -PAD)
-    counter = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    counter = ns.Str(p, BASE)
     counter:SetPoint("TOPRIGHT", p, "TOPRIGHT", -PAD, -PAD)
     local cf = ns.NewFrame("Frame", nil, p)
     cf:SetPoint("TOPRIGHT", counter, "TOPRIGHT", 2, 2)
@@ -263,19 +377,14 @@ local function buildPreview()
     cf.tip = ns.T("tipBytes")
     cf:SetScript("OnEnter", function(self) ns.TipShow(self) end)
     cf:SetScript("OnLeave", ns.TipHide)
-    preview = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    preview:SetPoint("TOPLEFT", p, "TOPLEFT", PAD, -(PAD + 16))
-    preview:SetPoint("TOPRIGHT", p, "TOPRIGHT", -PAD, -(PAD + 16))
+    preview = ns.Str(p, BASE)
     preview:SetJustifyH("LEFT")
     preview:SetJustifyV("TOP")
-    preview:SetHeight(40)
     ns.PaintText(preview, "text.primary")
-    local chCap = label(p, "chanTitle")
-    chCap:SetPoint("TOPLEFT", p, "TOPLEFT", PAD, -(PAD + 60))
+    chCap = label(p, "chanTitle")
     chanBox = ns.NewFrame("Frame", nil, p)
-    chanBox:SetPoint("TOPLEFT", p, "TOPLEFT", PAD, -(PAD + 74))
-    chanBox:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -PAD, 4)
     chanPool = ns.NewPool(chanRow)
+    placePreview()
 end
 local function refreshChannels()
     chanPool:Reset()
@@ -338,11 +447,21 @@ local function refresh()
         defBtn:Enable()
         defBtn.tip = nil
     end
+    refreshNeeds()
     local msg, len, fits, short = P.Build()
     preview:SetText(msg)
     local color = fits and (short and "text.title" or "text.primary") or "sem.notReady"
     counter:SetText(ns.Hex(color) .. len .. "/" .. P.Limit() .. "|r")
     refreshChannels()
+end
+local function onFont()
+    if not built then return end
+    for _, fs in pairs(needVals) do fs:SetWidth(ns.Wide(BASE, NEED_W)) end
+    specsPanel:SetHeight(specsHeight())
+    placeSpecsHead()
+    placeSpecs()
+    placePreview()
+    refresh()
 end
 local function build()
     pane = ns.window:Pane("spam")
@@ -361,6 +480,7 @@ local function resize()
     refresh()
 end
 ns.Session.OnChange(refresh)
+ns.OnFont(onFont)
 ns.window:OnSize(resize)
 ns.SpamPane = { Build = build, Refresh = refresh }
 ns.window:OnBuild(build)

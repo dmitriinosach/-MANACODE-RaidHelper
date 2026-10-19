@@ -440,32 +440,18 @@ local function KeyOf(fight)
     return k
 end
 local function ReadMarks(fight, idx, b)
-    local wanted = ns.phases and ns.phases[fight.boss]
-    local bosses = ns.Index.BossKeys(fight)
-    local seen, taken = {}, {}
+    local res = ns.Phases and (ns.Phases.Get(fight) or ns.Phases.Scan(fight))
+    local phase = res and ns.Phases.Marks(fight, res) or {}
+    for i = 1, #phase do b.marks[#b.marks + 1] = phase[i] end
     local list = idx.common
     for i = 1, #list do
         ns.Jobs.Step()
-        local ts, what, srcGUID, _, _, _, _, _, a1, a2 = ns.Index.Read(idx, list, i, 2)
-        if ts and ts >= idx.from and ts <= idx.to then
-            if what == "FW_MARK" and ns.DevMarks then
-                b.marks[#b.marks + 1] = { t = ts, label = ns.DevMarks.Line(a1, a2) }
-            elseif wanted and srcGUID and bosses[ns.NpcKey(srcGUID) or 0] and ns.Encounters.BOSS_SUBS[what] then
-                local label = tostring(a2 or a1)
-                local sk = ns.SpellOf(what, a1)
-                if not seen[label] or ts - seen[label] > 3 then
-                    seen[label] = ts
-                    for k = 1, #wanted do
-                        local w = wanted[k]
-                        if sk and ns.SpellKey(w.spell) == sk and (w.every or not taken[k]) then
-                            taken[k] = true
-                            b.marks[#b.marks + 1] = { t = ts, label = ns.T(w.label), dim = true }
-                        end
-                    end
-                end
-            end
+        local ts, what, _, _, _, _, _, _, a1, a2 = ns.Index.Read(idx, list, i, 2)
+        if what == "FW_MARK" and ns.DevMarks and ts and ts >= idx.from and ts <= idx.to then
+            b.marks[#b.marks + 1] = { t = ts, label = ns.DevMarks.Line(a1, a2) }
         end
     end
+    table.sort(b.marks, function(x, y) return x.t < y.t end)
 end
 local function ReadTaunts(idx, b)
     local taunts = ns.taunts or {}

@@ -18,6 +18,10 @@ function Raid.Wanted(raid)
     if raid.heroic and d <= 2 then d = d + 2 end
     return d
 end
+function Raid.Alike(a, b)
+    if a.name ~= b.name or a.size ~= b.size or Raid.Wanted(a) ~= Raid.Wanted(b) then return false end
+    return not a.who or not b.who or a.who == b.who
+end
 function Raid.Locks(all)
     local out = {}
     local total = GetNumSavedInstances and GetNumSavedInstances() or 0
@@ -95,6 +99,24 @@ function Raid.Current()
     raid.id = Raid.LockoutId(raid)
     return raid
 end
+function Raid.Party()
+    local name, kind, diff, _, players = GetInstanceInfo()
+    if not name or name == "" or kind ~= "party" then return nil end
+    diff = diff or 1
+    return {
+        name = name,
+        diff = diff,
+        size = players and players > 0 and players or 5,
+        heroic = diff == 2 or nil,
+        party = true,
+        who = UnitName("player"),
+        day = date("%Y-%m-%d"),
+        map = Raid.MapNow(),
+    }
+end
+function Raid.Bound()
+    return Raid.Current() or Raid.Party()
+end
 function Raid.IsFinal(map, boss)
     local final = map and boss and ns.raidFinal and ns.raidFinal[map]
     if type(final) == "table" then
@@ -112,6 +134,7 @@ function Raid.IsLead()
 end
 function Raid.Key(raid)
     if not raid then return "solo" end
+    if raid.party then return "party|" .. Raid.DayKey(raid) end
     if raid.id then return tostring(raid.id) end
     return Raid.DayKey(raid)
 end
@@ -128,7 +151,7 @@ function Raid.Label(raid)
 end
 local function FillSeg(seg, me, locks)
     local raid = seg.raid
-    if not raid then return false end
+    if not raid or raid.party then return false end
     if raid.who then
         if raid.who ~= me then return false end
     elseif not raid.info then
@@ -157,8 +180,8 @@ end
 function Raid.Touch(seg)
     if not seg then return end
     if not seg.raid then
-        seg.raid = Raid.Current()
-    elseif not seg.raid.id then
+        seg.raid = Raid.Bound()
+    elseif not seg.raid.id and not seg.raid.party then
         local cur = Raid.Current()
         if cur and cur.id and cur.size == seg.raid.size and Plain(cur.name) == Plain(seg.raid.name) then
             seg.raid.id = cur.id

@@ -17,11 +17,12 @@ local LOCK_SLACK = 0.5
 local ENRAGE_HOLD = 3
 local WAVE_SHARE = 0.6
 local TRANQ_CD = 8
+local RISE = 5
 local HUNTER = "HUNTER"
 local SATED = { 57723, 57724 }
 local RANK = { red = 3, yellow = 2, green = 1 }
 local SCRAP = { "healIn", "hurtT", "burstT", "burstGap", "burstHeal", "lockId", "lockOn", "lockOff",
-                "linkOn", "linkOff", "sated", "tranq" }
+                "linkOn", "linkOff", "sated", "tranq", "rezAt" }
 local DG = {}
 ns.DeathGrade = DG
 function DG.Watch(def)
@@ -319,7 +320,9 @@ local function RuleHit(ctx, p, d)
     end
     for i = 1, #ctx.marked do
         local m = ctx.marked[i]
-        if ns.Summary.DeathFits(ctx.s, m.bd, p, d, m.spells, m.srcs) then return true end
+        if not (m.bd.tank and p.role == "tank") and ns.Summary.DeathFits(ctx.s, m.bd, p, d, m.spells, m.srcs) then
+            return true
+        end
     end
     return nil
 end
@@ -400,6 +403,10 @@ local function Judge(ctx, p, d)
     end
     local fast = react < ns.Tune("react")
     local rule = RuleHit(ctx, p, d)
+    if rule and d.rose and d.rose <= RISE then
+        d.rose = floor(d.rose * 10) / 10
+        return Set(d, "green", "rose")
+    end
     if type(rule) == "table" and rule.sure then
         d.ruleN = RuleTicks(rule, d)
         Set(d, "red", rule.sure)
@@ -446,6 +453,7 @@ local function Clean(s)
             d.burstT = nil
             if d.why ~= "noheal" then d.gap, d.gapHeal = nil, nil end
             if d.why ~= "oneshot" then d.oneHp, d.oneMax = nil, nil end
+            if d.why ~= "rose" then d.rose = nil end
         end
     end
 end

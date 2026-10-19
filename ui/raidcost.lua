@@ -13,7 +13,17 @@ local EDITW = 70
 local COL_AH = ICON + 6 + NAMEW + 10
 local COL_EDIT = COL_AH + AHW + 10
 local COL_DATE = COL_EDIT + EDITW + 12
-local sec = { rows = {}, offset = 0 }
+local function Fit()
+    local m = ns.Kit.Grow()
+    local g, k = m.g, m.k
+    ROWH, INFOH, HEADH = 20 + g, 18 + g, 18 + g
+    ICON = 16 + floor(g / 2)
+    NAMEW, AHW, EDITW = floor(230 * k + 0.5), floor(90 * k + 0.5), floor(70 * k + 0.5)
+    COL_AH = ICON + 6 + NAMEW + 10
+    COL_EDIT = COL_AH + AHW + 10
+    COL_DATE = COL_EDIT + EDITW + 12
+end
+local sec = { rows = {}, heads = {}, offset = 0 }
 local function GoldText(copper)
     if not copper then return ns.T("cost.none") end
     return ns.RaidCost.Gold(copper)
@@ -39,43 +49,52 @@ local function Commit(row, text)
     if ns.RaidSummaryView and ns.RaidSummaryView.Refresh then ns.RaidSummaryView.Refresh() end
     Refresh()
 end
-local function NewRow(body, i)
-    local r = CreateFrame("Frame", nil, body)
+local function RowGeom(r)
     r:SetHeight(ROWH)
-    r.icon = r:CreateTexture(nil, "ARTWORK")
     r.icon:SetWidth(ICON)
     r.icon:SetHeight(ICON)
-    r.icon:SetPoint("LEFT", 0, 0)
-    r.name = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    ns.Kit.Text(r.name, "text.bright")
+    r.name:ClearAllPoints()
     r.name:SetPoint("LEFT", ICON + 6, 0)
     r.name:SetWidth(NAMEW)
-    r.name:SetJustifyH("LEFT")
-    r.ah = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.ah:ClearAllPoints()
     r.ah:SetPoint("LEFT", COL_AH, 0)
     r.ah:SetWidth(AHW)
-    r.ah:SetJustifyH("LEFT")
-    r.ahHit = CreateFrame("Frame", nil, r)
     r.ahHit:SetWidth(AHW)
     r.ahHit:SetHeight(ROWH)
+    r.ahHit:ClearAllPoints()
     r.ahHit:SetPoint("LEFT", COL_AH, 0)
+    r.edit:SetWidth(EDITW)
+    r.edit:SetHeight(ROWH - 2)
+    r.edit:ClearAllPoints()
+    r.edit:SetPoint("LEFT", COL_EDIT, 0)
+    r.when:ClearAllPoints()
+    r.when:SetPoint("LEFT", COL_DATE, 0)
+end
+local function NewRow(body, i)
+    local r = CreateFrame("Frame", nil, body)
+    r.icon = r:CreateTexture(nil, "ARTWORK")
+    r.icon:SetPoint("LEFT", 0, 0)
+    r.name = ns.Kit.Str(r, "GameFontHighlightSmall")
+    ns.Kit.Text(r.name, "text.bright")
+    r.name:SetJustifyH("LEFT")
+    r.ah = ns.Kit.Str(r, "GameFontHighlightSmall")
+    r.ah:SetJustifyH("LEFT")
+    r.ahHit = CreateFrame("Frame", nil, r)
     r.ahHit:EnableMouse(true)
     r.ahHit.tipTitle = false
     r.ahHit:SetScript("OnEnter", ns.Kit.TipShow)
     r.ahHit:SetScript("OnLeave", ns.Kit.TipHide)
-    r.edit =ns.Kit.Edit(r, false, "HTP_FailWatchCostEdit" .. i)
-    r.edit:SetWidth(EDITW)
-    r.edit:SetHeight(ROWH - 2)
-    r.edit:SetPoint("LEFT", COL_EDIT, 0)
+    r.edit = ns.Kit.Edit(r, false, "HTP_FailWatchCostEdit" .. i)
+    r.edit:SetFontObject(ns.Kit.FontFor("GameFontHighlightSmall", true))
     r.edit:SetMaxLetters(9)
     r.edit.tipTitle = false
     r.edit.tip = ns.T("set.cost.tip")
     r.edit.onCommit = function(text) Commit(r, text) end
-    r.when = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    r.when:SetPoint("LEFT", COL_DATE, 0)
+    r.when = ns.Kit.Str(r, "GameFontHighlightSmall")
     r.when:SetJustifyH("LEFT")
     ns.Kit.Text(r.ah, "text.secondary")
     ns.Kit.Text(r.when, "text.muted")
+    RowGeom(r)
     return r
 end
 local function PaintAH(r, it)
@@ -98,6 +117,13 @@ end
 Refresh = function()
     local body = sec.body
     if not body then return end
+    Fit()
+    for i = 1, #sec.heads do
+        local h = sec.heads[i]
+        h.fs:ClearAllPoints()
+        h.fs:SetPoint("TOPLEFT", h.x(), -INFOH)
+    end
+    for i = 1, #sec.rows do RowGeom(sec.rows[i]) end
     local items = ns.RaidCost.Items()
     local ah = ns.RaidCost.HasAH()
     local stamp = _G.AUCTIONATOR_LAST_SCAN_TIME
@@ -136,23 +162,25 @@ Refresh = function()
     end
 end
 local function Head(body, x, key)
-    local fs = body:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local fs = ns.Kit.Str(body, "GameFontNormalSmall")
     ns.Kit.Text(fs, "text.title")
-    fs:SetPoint("TOPLEFT", x, -INFOH)
+    fs:SetPoint("TOPLEFT", x(), -INFOH)
     fs:SetText(ns.T(key))
+    sec.heads[#sec.heads + 1] = { fs = fs, x = x }
 end
 local function Build(body)
     sec.body = body
-    sec.info = body:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    Fit()
+    sec.info = ns.Kit.Str(body, "GameFontHighlightSmall")
     sec.info:SetPoint("TOPLEFT", 0, 0)
     sec.info:SetPoint("RIGHT", body, "RIGHT", 0, 0)
     sec.info:SetJustifyH("LEFT")
     ns.Kit.Text(sec.info, "text.secondary")
-    Head(body, ICON + 6, "set.cost.item")
-    Head(body, COL_AH, "set.cost.auc")
-    Head(body, COL_EDIT, "set.cost.own")
-    Head(body, COL_DATE, "set.cost.date")
-    sec.more = body:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    Head(body, function() return ICON + 6 end, "set.cost.item")
+    Head(body, function() return COL_AH end, "set.cost.auc")
+    Head(body, function() return COL_EDIT end, "set.cost.own")
+    Head(body, function() return COL_DATE end, "set.cost.date")
+    sec.more = ns.Kit.Str(body, "GameFontDisableSmall")
     ns.Kit.Text(sec.more, "text.off")
     local items = ns.RaidCost.Items()
     for i = 1, #items do sec.rows[i] = NewRow(body, i) end
@@ -163,7 +191,11 @@ ns.RaidCostView = { Refresh = function() Refresh() end }
 ns.Shell.Section("cost", {
     cat = "cost",
     order = 10,
-    height = function() return INFOH + HEADH + #ns.RaidCost.Items() * ROWH + INFOH end,
+    height = function()
+        Fit()
+        return INFOH + HEADH + #ns.RaidCost.Items() * ROWH + INFOH
+    end,
     build = Build,
     OnShow = Refresh,
 })
+ns.Kit.OnFont(function() Refresh() end)

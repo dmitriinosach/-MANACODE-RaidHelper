@@ -564,7 +564,8 @@ local function TrackOrder(a, b)
     return a.name < b.name
 end
 local function NewState()
-    return { vis = false, stale = false, x = 0, y = 0, hx = 0, hy = 1, speed = 0, dead = false, deadFor = 0, hp = 1 }
+    return { vis = false, stale = false, x = 0, y = 0, hx = 0, hy = 1, speed = 0, dead = false, deadFor = 0, hp = 1, realm = 1,
+             ghost = false }
 end
 local function FillAlt(fight, frames, scene)
     local room

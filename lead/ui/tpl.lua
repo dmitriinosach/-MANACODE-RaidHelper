@@ -7,6 +7,7 @@ local GAP = 10
 local ROW_H = 24
 local CHECK_H = 18
 local DEL_WINDOW = 4
+local BASE = "GameFontHighlightSmall"
 local pane, listPool, rowPool, checkPool
 local left, mid, right, scroll, child
 local nameE, sizeSel, copyBtn, delBtn, resetBtn, addBtn
@@ -47,6 +48,9 @@ local function newListBtn()
     b.text:SetJustifyH("LEFT")
     return b
 end
+local function rowH()
+    return ns.Fit(BASE, ROW_H, 8)
+end
 local function newRow()
     local r = ns.NewFrame("Button", nil, child)
     r:SetSize(MID_W - 16, ROW_H - 2)
@@ -62,7 +66,7 @@ local function newRow()
     r.mark = r:CreateTexture(nil, "ARTWORK")
     r.mark:SetSize(12, 12)
     r.mark:SetPoint("LEFT", r.role, "RIGHT", 3, 0)
-    r.text = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.text = ns.Str(r, BASE)
     r.text:SetPoint("LEFT", r.role, "RIGHT", 5, 0)
     ns.PaintText(r.text, "text.primary")
     r.sps = {}
@@ -172,11 +176,13 @@ local function refresh()
         end
     end
     rowPool:Reset()
+    local step = rowH()
     local groups = ns.Layout.Groups(tpl)
     for i, s in ipairs(tpl.slots) do
         local r = rowPool:Acquire()
         r:ClearAllPoints()
-        r:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -(i - 1) * ROW_H)
+        r:SetHeight(step - 2)
+        r:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -(i - 1) * step)
         ns.Icon.Role(r.role, ns.ROLE_GROUP[s.role])
         r.text:SetText(i .. ". " .. (ns.Tpl.Cap(s) or ns.T("slot_" .. s.role)) .. "  " .. ns.Hex("text.muted") .. ns.T("slotGrpShort", groups[i]) .. "|r")
         r.text:ClearAllPoints()
@@ -189,6 +195,8 @@ local function refresh()
             r.text:SetPoint("LEFT", r.role, "RIGHT", 5, 0)
         end
         local sps = s.specs or {}
+        r.text:SetPoint("RIGHT", r, "RIGHT", -(6 + #sps * 14), 0)
+        r.text:SetHeight(ns.LineH(BASE))
         for k, t in ipairs(r.sps) do
             local key = sps[#sps - k + 1]
             if key and k <= #sps then
@@ -206,7 +214,7 @@ local function refresh()
         end)
     end
     rowPool:HideExtras()
-    child:SetHeight(math.max(1, #tpl.slots * ROW_H))
+    child:SetHeight(math.max(1, #tpl.slots * step))
     addBtn.tipTitle = ns.T("btnAddSlot")
     checkPool:Reset()
     local slot = curSlot and tpl.slots[curSlot]
@@ -239,7 +247,7 @@ local function refresh()
                     local col = (n - 1) % 2
                     local rowN = math.floor((n - 1) / 2)
                     c:ClearAllPoints()
-                    c:SetPoint("TOPLEFT", right, "TOPLEFT", 8 + col * 110, -(96 + rowN * CHECK_H))
+                    c:SetPoint("TOPLEFT", right, "TOPLEFT", 8 + col * 110, -(78 + ns.Fit("GameFontNormalSmall", 18, 0) + rowN * CHECK_H))
                     ns.Icon.Spec(c.icon, sp.key)
                     c.label:SetText(ns.T("spec_" .. sp.key))
                     ns.ClassText(c.label, sp.class)
@@ -322,7 +330,7 @@ local function build()
     scroll:EnableMouseWheel(true)
     scroll:SetScript("OnMouseWheel", function(self, delta)
         local maxScroll = math.max(0, child:GetHeight() - (ns.window.PANE_H - 50))
-        local v = self:GetVerticalScroll() - delta * ROW_H * 2
+        local v = self:GetVerticalScroll() - delta * rowH() * 2
         if v < 0 then v = 0 end
         if v > maxScroll then v = maxScroll end
         self:SetVerticalScroll(v)
@@ -361,7 +369,7 @@ local function build()
     capE.tip = ns.T("tipSlotCap")
     capE:SetMaxLetters(24)
     capE.onCommit = function(v) ns.Tpl.SetCap(curKey, curSlot, v) end
-    local specCap = right:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local specCap = ns.Str(right, "GameFontNormalSmall")
     specCap:SetPoint("TOPLEFT", right, "TOPLEFT", 10, -78)
     specCap:SetText(ns.T("slotSpecs"))
     ns.PaintTitle(specCap)
@@ -376,7 +384,7 @@ local function build()
         curSlot = nil
         refresh()
     end
-    markCap = right:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    markCap = ns.Str(right, "GameFontNormalSmall")
     markCap:SetPoint("BOTTOMLEFT", right, "BOTTOMLEFT", 10, 66)
     markCap:SetText(ns.T("slotMark"))
     ns.PaintTitle(markCap)
@@ -413,7 +421,7 @@ local function build()
         markBtns[k] = b
     end
     checkPool = ns.NewPool(newCheck)
-    emptyFs = right:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    emptyFs = ns.Str(right, "GameFontDisableSmall")
     emptyFs:SetPoint("TOP", right, "TOP", 0, -40)
     emptyFs:SetText(ns.T("tplPickSlot"))
     ns.PaintText(emptyFs, "text.muted")
@@ -422,5 +430,6 @@ local function build()
     refresh()
 end
 ns.Session.OnChange(refresh)
+ns.OnFont(refresh)
 ns.TplPane = { Build = build, Refresh = refresh }
 ns.window:OnBuild(build)

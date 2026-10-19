@@ -28,7 +28,7 @@ function TC.Build(canvas, overlay, n)
     cursorBg = overlay:CreateTexture(nil, "OVERLAY")
     ns.Kit.Paint(cursorBg, "surface.shade")
     cursorBg:Hide()
-    cursorLabel = overlay:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    cursorLabel = ns.Kit.Str(overlay, "GameFontHighlightSmall")
     ns.Kit.Text(cursorLabel, "sem.cursorText")
     cursorLabel:Hide()
     hpDot = overlay:CreateTexture(nil, "OVERLAY")
@@ -40,7 +40,7 @@ function TC.Build(canvas, overlay, n)
     ns.Kit.Paint(rowGlow, "surface.line")
     rowGlow:Hide()
     for i = 1, n do
-        local fs = overlay:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        local fs = ns.Kit.Str(overlay, "GameFontHighlightSmall")
         ns.Kit.Text(fs, "sem.readout")
         fs:Hide()
         readouts[i] = fs
@@ -66,7 +66,7 @@ local function ShowReadouts(c, t)
     local bounds = c.Bounds()
     local overlay = c.overlay
     local x = c.XOf(t)
-    local flip = (c.canvas:GetWidth() - x) < READOUTW
+    local flip = (c.canvas:GetWidth() - x) < READOUTW * ns.Kit.Grow().k
     local text = {}
     local b = LastBefore(data.boss, t)
     text[1] = b and b.label or nil

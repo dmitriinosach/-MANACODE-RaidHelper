@@ -10,6 +10,20 @@ local BAR_W = 6
 local NUM_H = 10
 local GAP = 8
 local HILITE = "Interface\\Buttons\\ButtonHilight-Square"
+local BASE = "GameFontHighlightSmall"
+local CAPF = "GameFontNormalSmall"
+local function lineH()
+    return ns.Fit(BASE, LINE, 4)
+end
+local function capW()
+    return ns.Wide(CAPF, CAP_W)
+end
+local function wideW()
+    return ns.Wide(BASE, WIDE)
+end
+local function numH()
+    return ns.Fit(BASE, NUM_H, -2)
+end
 local area, bar
 local cells, caps = {}, {}
 local lines = {}
@@ -89,12 +103,11 @@ local function newCell(i)
     c.icon:SetPoint("LEFT", c, "LEFT", 1, 0)
     c.box = ns.Fill(c, "OVERLAY")
     ns.PaintToken(c.box, "surface.shade")
-    c.box:SetHeight(NUM_H)
     c.box:SetPoint("BOTTOMRIGHT", c.icon, "BOTTOMRIGHT", 0, 0)
-    c.num = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    c.num = ns.Str(c, BASE)
     c.num:SetPoint("BOTTOMRIGHT", c.icon, "BOTTOMRIGHT", 0, 0)
     c.num:SetJustifyH("RIGHT")
-    c.side = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    c.side = ns.Str(c, BASE)
     c.side:SetPoint("LEFT", c.icon, "RIGHT", 3, 0)
     c.side:SetJustifyH("LEFT")
     c:SetHighlightTexture(HILITE, "ADD")
@@ -104,8 +117,7 @@ local function newCell(i)
     return c
 end
 local function newCap(i)
-    local fs = area:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetWidth(CAP_W - 4)
+    local fs = ns.Str(area, CAPF)
     fs:SetJustifyH("LEFT")
     ns.PaintText(fs, "text.secondary")
     caps[i] = fs
@@ -122,6 +134,7 @@ local function setCount(c, text, token)
     ns.PaintText(c.num, token)
     c.num:Show()
     c.box:SetWidth((c.num:GetStringWidth() or 6) + 2)
+    c.box:SetHeight(numH())
     c.box:Show()
 end
 local function setSide(c, text, token)
@@ -185,7 +198,7 @@ local function clusterOf(v)
     return v.def.grp
 end
 local function addRow(cap, list, w, fill, cluster)
-    local room = width - CAP_W - BAR_W - 4
+    local room = width - capW() - BAR_W - 4
     local line = { cap = cap, items = {} }
     lines[#lines + 1] = line
     local x, last = 0, nil
@@ -211,14 +224,15 @@ local function collect()
         addRow(ns.T("effRow_" .. row.key), row.items, CELL, fillBuff, clusterOf)
     end
     local comp = ns.Buffs.Comp(list)
-    addRow(ns.T("effRowTpl"), comp.reqs, WIDE, fillReq)
-    local last = addRow(ns.T("effRowSpecs"), comp.specs, WIDE, fillSpec)
+    addRow(ns.T("effRowTpl"), comp.reqs, wideW(), fillReq)
+    local last = addRow(ns.T("effRowSpecs"), comp.specs, wideW(), fillSpec)
     if #comp.unknown > 0 then
         last = lines[#lines]
-        last.items[#last.items + 1] = { v = comp.unknown, w = WIDE, fill = fillUnknown }
+        last.items[#last.items + 1] = { v = comp.unknown, w = wideW(), fill = fillUnknown }
     end
 end
 local function draw()
+    local LINE = lineH()
     visible = math.max(1, math.floor(height / LINE))
     local maxOff = math.max(0, #lines - visible)
     if offset > maxOff then offset = maxOff end
@@ -232,11 +246,12 @@ local function draw()
             capUsed = capUsed + 1
             local fs = caps[capUsed] or newCap(capUsed)
             fs:SetText(line.cap)
+            fs:SetWidth(capW() - 4)
             fs:ClearAllPoints()
-            fs:SetPoint("TOPLEFT", area, "TOPLEFT", 0, y - 6)
+            fs:SetPoint("TOPLEFT", area, "TOPLEFT", 0, y - math.max(0, math.floor((LINE - ns.LineH(CAPF)) / 2)))
             fs:Show()
         end
-        local x = CAP_W
+        local x = capW()
         for _, e in ipairs(line.items) do
             x = x + (e.gap or 0)
             used = used + 1
@@ -270,14 +285,14 @@ local function build(pane)
     area = ns.NewFrame("Frame", nil, pane)
     area:EnableMouseWheel(true)
     area:SetScript("OnMouseWheel", onWheel)
-    bar = ns.Kit.ScrollBar(area, LINE)
+    bar = ns.Kit.ScrollBar(area, lineH())
     bar:SetPoint("TOPRIGHT", area, "TOPRIGHT", 0, 0)
     bar.onScroll = scrollTo
     built = true
 end
 local function place(pane, top, w, h)
     if not built then build(pane) end
-    width, height = w, math.max(LINE, h)
+    width, height = w, math.max(lineH(), h)
     area:ClearAllPoints()
     area:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -top)
     area:SetSize(w, height)

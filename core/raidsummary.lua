@@ -34,23 +34,41 @@ local function Tag(raid, seg)
     local r = seg.raid
     if not r then return nil end
     if ns.Raid.Key(r) == raid.key then return true end
-    if not r.id and r.name == raid.name and r.size == raid.size then return nil end
+    if not r.id and raid.tag and ns.Raid.Alike(r, raid.tag) then return nil end
     return false
+end
+local function Inside(raid, seg)
+    if seg.raid then return true end
+    if not raid.map then return false end
+    local marks = ns.Decode.Maps(seg)
+    for k = 1, #marks do
+        if marks[k].name == raid.map then return true end
+    end
+    return false
+end
+local function Between(spans, seg)
+    local t0, t1 = seg.t0, seg.t1 or seg.t0
+    local before, after = false, false
+    for k = 1, #spans, 2 do
+        local a, b = spans[k], spans[k + 1]
+        if b <= t0 and t0 - b <= SESSION_GAP then before = true end
+        if a >= t1 and a - t1 <= SESSION_GAP then after = true end
+    end
+    return before and after
 end
 function RaidSum.Segments(raid)
     local mine = FightSegs(raid)
-    local lo, hi
+    local spans = {}
     for i, seg in ns.Store.Segments() do
         if mine[i] or Tag(raid, seg) == true then
             mine[i] = true
-            if not lo or seg.t0 < lo then lo = seg.t0 end
-            local t1 = seg.t1 or seg.t0
-            if not hi or t1 > hi then hi = t1 end
+            spans[#spans + 1] = seg.t0
+            spans[#spans + 1] = seg.t1 or seg.t0
         end
     end
     local out = {}
     for i, seg in ns.Store.Segments() do
-        local own = mine[i] or (lo ~= nil and Tag(raid, seg) == nil and seg.t0 >= lo and (seg.t1 or seg.t0) <= hi)
+        local own = mine[i] or (Tag(raid, seg) == nil and Inside(raid, seg) and Between(spans, seg))
         if own then out[#out + 1] = { i = i, seg = seg } end
     end
     return out
@@ -535,9 +553,16 @@ local function LockGone(raid)
     return true
 end
 function RaidSum.Finished(raid)
-    if not raid then return false, nil end
+    if not raid or raid.party then return false, nil end
     local raids = ns.FightTree.Get()
-    if raids[1] and raids[1].key ~= raid.key then return true, "newer" end
+    local top
+    for i = 1, #raids do
+        if not raids[i].party then
+            top = raids[i]
+            break
+        end
+    end
+    if top and top.key ~= raid.key then return true, "newer" end
     for k = 1, #raid.encs do
         local enc = raid.encs[k]
         if enc.passed and ns.Raid.IsFinal(raid.map, enc.boss) then return true, "final" end

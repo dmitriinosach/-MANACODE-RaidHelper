@@ -6,10 +6,16 @@ local PERIOD = 5
 local SOON = 600
 local AURAS = 40
 local LIST = 10
+local GROW = 60
+local LONG = 3000
+local CAST_SLACK = 10
+local SEEN_MAX = 200
+local SUB = "FW_FLASK"
 local Ready = {}
 ns.FlaskReady = Ready
 Ready.PERIOD = PERIOD
 Ready.SOON = SOON
+Ready.SUB = SUB
 local members = {}
 local count = 0
 local scanAt
@@ -20,6 +26,35 @@ local function Cat(id)
     if not id then return nil end
     local c = (ns.consumeCast and ns.consumeCast[id]) or (ns.consumeGen and ns.consumeGen[id])
     return c and c.cat or nil
+end
+local seenEnd = {}
+local seenId = {}
+local castAt = {}
+local seenN = 0
+function Ready.Cast(name)
+    if name then castAt[name] = GetTime() end
+end
+local function Observe(name, id, ends, dur)
+    if not (ends and ends > 0 and dur and dur >= LONG) then return end
+    local was, wasId = seenEnd[name], seenId[name]
+    if not was then
+        seenN = seenN + 1
+        if seenN > SEEN_MAX then
+            wipe(seenEnd)
+            wipe(seenId)
+            wipe(castAt)
+            seenN = 1
+        end
+    end
+    seenEnd[name], seenId[name] = ends, id
+    if not was or (id == wasId and ends <= was + GROW) then return end
+    local R = ns.Recorder
+    local since = R and R.HearSince()
+    local drank = ends - dur
+    if not since or drank < since then return end
+    local cast = castAt[name]
+    if cast and cast >= drank - CAST_SLACK then return end
+    R.Mark(SUB, nil, name, 0, nil, nil, 0, id)
 end
 local function Slot(i)
     local m = members[i]
@@ -37,12 +72,13 @@ local function Earlier(a, b)
 end
 local function ReadAuras(m, unit)
     for i = 1, AURAS do
-        local aura, _, _, _, _, _, expires, _, _, _, id = UnitAura(unit, i, "HELPFUL")
+        local aura, _, _, _, _, dur, expires, _, _, _, id = UnitAura(unit, i, "HELPFUL")
         if not aura then break end
         local ends = (expires and expires > 0) and expires or huge
         local cat = Cat(id)
         if cat == "flask" then
             m.flask = Earlier(m.flask, ends)
+            Observe(m.name, id, expires, dur)
         elseif cat == "elixir" then
             m.elix = m.elix + 1
             m.elixEnd = Earlier(m.elixEnd, ends)
@@ -66,6 +102,43 @@ local function Add(unit)
     else
         ReadAuras(m, unit)
     end
+end
+local auraName = {}
+local function Look(unit)
+    local name = UnitName(unit)
+    if not name or not UnitIsVisible(unit) then return end
+    local had = seenId[name]
+    if had then
+        local an = auraName[had]
+        if an == nil then
+            an = GetSpellInfo(had) or false
+            auraName[had] = an
+        end
+        if an then
+            local aura, _, _, _, _, dur, expires, _, _, _, id = UnitAura(unit, an)
+            if aura and Cat(id) == "flask" then
+                Observe(name, id, expires, dur)
+                return
+            end
+        end
+    end
+    for i = 1, AURAS do
+        local aura, _, _, _, _, dur, expires, _, _, _, id = UnitAura(unit, i, "HELPFUL")
+        if not aura then return end
+        if Cat(id) == "flask" then
+            Observe(name, id, expires, dur)
+            return
+        end
+    end
+end
+function Ready.Pull()
+    local n = GetNumRaidMembers() or 0
+    if n > 0 then
+        for i = 1, n do Look(RAID[i]) end
+        return
+    end
+    Look("player")
+    for i = 1, GetNumPartyMembers() or 0 do Look(PARTY[i]) end
 end
 local function Scan()
     count = 0

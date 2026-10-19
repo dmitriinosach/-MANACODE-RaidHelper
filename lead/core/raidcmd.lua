@@ -44,7 +44,9 @@ local function timerItem(t)
     local d = ns.Timers.Duration(t.sec)
     local pull = t.kind == "pull"
     return {
+        id = t.kind .. ":" .. t.sec,
         label = d,
+        short = ns.Timers.Short(t.sec),
         title = ns.T(pull and "tipPull" or "tipBreak", d),
         tip = ns.T(pull and "actPullTip" or "actBreakTip"),
         state = timerState,
@@ -53,7 +55,9 @@ local function timerItem(t)
 end
 local function diffItem(n)
     return {
+        id = "diff:" .. n,
         label = ns.T("actDiff" .. n),
+        short = ns.T("actDiffShort" .. n),
         title = ns.T("actDiffTitle" .. n),
         tip = ns.T("actDiffTip"),
         state = function()
@@ -73,6 +77,7 @@ local markItems
 local function marksRow()
     if not markItems then
         markItems = { {
+            id = "keep",
             check = true,
             label = "", title = "", tip = "",
             state = function() return true, nil, ns.Marks.Enabled() end,
@@ -80,6 +85,7 @@ local function marksRow()
         } }
         for i = 1, ns.Marks.COUNT do
             markItems[#markItems + 1] = {
+                id = "mark:" .. i,
                 label = "", title = "",
                 icon = function(tex) ns.Icon.Mark(tex, i) end,
                 tip = function() return ns.Marks.Describe(i) end,
@@ -100,7 +106,7 @@ local function marksRow()
         local it = markItems[i + 1]
         it.title, it.hint = ns.T("mark" .. i), ns.T("marksTipHow")
     end
-    return { title = ns.T("actMarksRow"), items = markItems, status = ns.Marks.Status }
+    return { id = "marks", title = ns.T("actMarksRow"), items = markItems, status = ns.Marks.Status }
 end
 function R.Rows()
     local breaks, pulls = {}, {}
@@ -109,7 +115,9 @@ function R.Rows()
         list[#list + 1] = timerItem(t)
     end
     pulls[#pulls + 1] = {
+        id = "cancel",
         label = ns.T("actCancel"),
+        short = ns.T("actCancelShort"),
         title = ns.T("actCancelTitle"),
         tip = ns.T("actCancelTip"),
         state = timerState,
@@ -118,18 +126,22 @@ function R.Rows()
     local diffs = {}
     for _, n in ipairs(DIFFS) do diffs[#diffs + 1] = diffItem(n) end
     return {
-        { title = ns.T("timerKindBreak"), items = breaks },
-        { title = ns.T("timerKindPull"), items = pulls },
-        { title = ns.T("pultRaid"), items = {
+        { id = "break", title = ns.T("timerKindBreak"), items = breaks },
+        { id = "pull", title = ns.T("timerKindPull"), items = pulls },
+        { id = "raid", title = ns.T("pultRaid"), items = {
             {
+                id = "ready",
                 label = ns.T("btnReady"),
+                short = ns.T("actReadyShort"),
                 title = ns.T("btnReady"),
                 tip = ns.T("actReadyTip"),
                 state = officerState,
                 run = R.ReadyAndOpen,
             },
             {
+                id = "wipe",
                 label = ns.T("btnMarksWipe"),
+                short = ns.T("actMarksWipeShort"),
                 title = ns.T("btnMarksWipe"),
                 tip = ns.T("actMarksTip"),
                 state = marksState,
@@ -137,7 +149,7 @@ function R.Rows()
             },
         } },
         marksRow(),
-        { title = ns.T("actDiffRow"), items = diffs },
+        { id = "diff", title = ns.T("actDiffRow"), items = diffs },
     }
 end
 if root.Shell and root.Shell.Actions then root.Shell.Actions(R.Rows) end

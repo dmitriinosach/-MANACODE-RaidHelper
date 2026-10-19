@@ -73,9 +73,20 @@ local function refresh()
             runBtn.tip = nil
         else
             runBtn:Disable()
-            runBtn.tip = ns.T(ns.Test.Active() and "tipTestSpam" or "tipNoChannels")
+            runBtn.tip = ns.T(P.Blocker() or "tipNoChannels")
         end
     end
+end
+local function fitRows()
+    for _, grp in ipairs(ns.GROUP_ORDER) do
+        roles[grp].label:SetHeight(ns.Fit("GameFontNormalSmall", ROW_H - 4, 0))
+    end
+    nextFs:SetHeight(ns.Fit("GameFontHighlightSmall", 14, 0))
+end
+local function onFont()
+    if not built then return end
+    fitRows()
+    refresh()
 end
 local function build()
     pult = ns.window:Pult()
@@ -84,10 +95,10 @@ local function build()
     sel:SetPoint("TOPLEFT", pult, "TOPLEFT", PAD, -32)
     sel:SetWidth(w)
     sel.onPick = function(key) ns.Session.SetTemplate(key) end
-    count = pult:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+    count = ns.Str(pult, "GameFontHighlightLarge")
     count:SetPoint("TOPLEFT", sel, "BOTTOMLEFT", 0, -12)
     ns.PaintText(count, "text.primary")
-    testFs = pult:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    testFs = ns.Str(pult, "GameFontNormalSmall")
     testFs:SetPoint("LEFT", count, "RIGHT", 8, 0)
     testFs:SetText(ns.T("testTag"))
     ns.PaintText(testFs, "text.tag")
@@ -96,24 +107,22 @@ local function build()
     local prev = count
     for _, grp in ipairs(ns.GROUP_ORDER) do
         local r = {}
-        r.label = pult:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        r.label = ns.Str(pult, "GameFontNormalSmall")
         r.label:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, prev == count and -8 or -4)
         r.label:SetText(ns.T("grpTitle_" .. grp))
         ns.PaintText(r.label, "text.secondary")
-        r.val = pult:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        r.val = ns.Str(pult, "GameFontHighlightSmall")
         r.val:SetPoint("RIGHT", pult, "RIGHT", -PAD, 0)
         r.val:SetPoint("TOP", r.label, "TOP", 0, 0)
-        r.label:SetHeight(ROW_H - 4)
         roles[grp] = r
         prev = r.label
     end
     spamCap = ns.Caption(pult, ns.T("pultSpam"), w)
     spamCap:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -20)
-    nextFs = pult:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    nextFs = ns.Str(pult, "GameFontHighlightSmall")
     nextFs:SetPoint("TOPLEFT", spamCap, "BOTTOMLEFT", 0, -8)
     nextFs:SetWidth(w)
     nextFs:SetJustifyH("LEFT")
-    nextFs:SetHeight(14)
     ns.PaintText(nextFs, "text.primary")
     runBtn = ns.MakeKitButton(pult)
     runBtn:SetPoint("TOPLEFT", nextFs, "BOTTOMLEFT", 0, -6)
@@ -136,6 +145,7 @@ local function build()
     buffBtn.tipTitle = ns.T("btnBuffCheck")
     buffBtn.tip = ns.T("tipBuffCheck")
     buffBtn.onClick = function() ns.ReadyUI.Check() end
+    fitRows()
     timerW = w
     timerPool = ns.NewPool(function() return ns.MakeKitButton(pult) end)
     if ns.PultMarks then ns.PultMarks.Build(pult, w) end
@@ -150,6 +160,7 @@ local function build()
     end)
 end
 ns.Session.OnChange(refresh)
+ns.OnFont(onFont)
 local function tagged()
     return built and testFs:IsShown() and true or false
 end

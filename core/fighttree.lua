@@ -21,7 +21,9 @@ local function NewRaid(key, f)
         map = r and r.map or nil,
         size = r and r.size or nil,
         heroic = false,
+        party = r and r.party or nil,
         id = r and r.id or nil,
+        tag = r,
         from = f.from,
         to = f.to,
         last = f.from,
@@ -55,25 +57,24 @@ end
 function Tree.Lend(fights)
     local tagged, locked = {}, {}
     for i = 1, #fights do
-        local r = fights[i].raid
-        if r then
-            tagged[#tagged + 1] = fights[i]
-            if r.id then locked[#locked + 1] = fights[i] end
+        local f = fights[i]
+        if f.raid and not f.raid.party and f.mates ~= false then
+            tagged[#tagged + 1] = f
+            if f.raid.id then locked[#locked + 1] = f end
         end
     end
+    local Alike = ns.Raid.Alike
     for i = 1, #tagged do
         local f = tagged[i]
         local r = f.raid
         if not r.id and #locked > 0 then
-            local t = Nearest(locked, f, function(c)
-                return c.raid.name == r.name and c.raid.size == r.size
-            end)
+            local t = Nearest(locked, f, function(c) return Alike(c.raid, r) end)
             if t then f.raid = t.raid end
         end
     end
     for i = 1, #fights do
         local f = fights[i]
-        if not f.raid then
+        if not f.raid and f.mates ~= false then
             local t = Nearest(tagged, f, nil)
             if t then f.raid = t.raid end
         end

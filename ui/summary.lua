@@ -49,6 +49,31 @@ local gpModel
 local Tips = ns.BadgeTips
 local Short = ns.Short
 local Rate = Tips.Rate
+local Kit = ns.Kit
+local function Pt(base)
+    return Kit.FontSize(base, true)
+end
+local function MinW(w)
+    return floor(w * max(1, Kit.FontScale("GameFontHighlightSmall", true)) + 0.5)
+end
+local function FitW(list, base, w)
+    local m = MinW(base)
+    if Kit.FontDelta() <= 0 then return m end
+    for i = 1, #list do
+        local f = list[i]
+        local need = f.Need and f:Need()
+        if type(need) == "number" then m = max(m, need) end
+    end
+    return math.min(m, w)
+end
+local function FailMetrics()
+    local n, s = Pt("GameFontNormal"), Pt("GameFontHighlightSmall")
+    local preset = max(GPPRESET, GPTITLE + n + 4)
+    local hover = max(GPHOVER, preset + s + 4)
+    local btns = max(GPBTNS, hover + 4)
+    return { line = max(GPLINE, math.ceil(n * 1.15) + 8), preset = preset, hover = hover, btns = btns,
+             head = max(GPHEAD, btns + BTNH + 6) }
+end
 local function Good(x)
     return x.goodDmg or x.dmg
 end
@@ -66,17 +91,17 @@ local function PageWheel(delta)
     return pane ~= nil and pane:Wheel(delta)
 end
 local function Stat(i)
-    stats[i] = stats[i] or Badges.Total(content)
+    stats[i] = stats[i] or Badges.Total(content, true)
     return stats[i]
 end
 local function Panel(i)
-    panels[i] = panels[i] or Badges.Detail(content)
+    panels[i] = panels[i] or Badges.Detail(content, nil, true)
     return panels[i]
 end
 local function Head(i)
     local fs = heads[i]
     if fs then return fs end
-    fs = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    fs = Kit.Str(content, "GameFontNormal")
     ns.Kit.Text(fs, "text.title")
     fs:SetJustifyH("LEFT")
     heads[i] = fs
@@ -90,7 +115,7 @@ local function OpenManual(name)
     if fight and ns.GPList then ns.GPList.ManualMenu(fight, name) end
 end
 local function Tile(i)
-    tiles[i] = tiles[i] or Badges.Personal(content)
+    tiles[i] = tiles[i] or Badges.Personal(content, true)
     return tiles[i]
 end
 local function Verdict(bad)
@@ -178,14 +203,6 @@ local function Entries(p, s)
         local skull = Replay({ icon = SKULL_ICON, count = counted > 0 and tostring(counted) or "—",
             verdict = worst, pair = pair, lines = Tips.Death(p, fight),
             proof = P and Proof(p, P.IsDeath, true) }, First(p.deathInfo, "t"), "skull")
-        if skull.at and ns.FableView and ns.Fable.On() then
-            local asks = {}
-            for k = 1, #p.deathInfo do
-                asks[k] = ns.Fable.DeathAsk(fight, p.name, p.deathInfo[k].t, pens[p.name])
-            end
-            skull.fable = asks
-            ns.FableView.Put(skull.lines, asks)
-        end
         list[#list + 1] = skull
         for k = 1, #ready do
             local r = ready[k]
@@ -271,7 +288,7 @@ local function Entries(p, s)
                     if st.hangs[k].off == "shed" then shed = shed + 1 end
                 end
                 text = format("%d/%d", shed, #st.hangs)
-                grade = shed > 0 and "yellow" or nil
+                grade = shed > 0 and (bd.want == "shed" and "green" or "yellow") or nil
             end
             local first = First(st.times)
             local linked = bd.kind == "killer" or bd.kind == "given" or bd.kind == "got"
@@ -429,7 +446,7 @@ local function DrawStats(s, w)
         if c[1] == "sum.s.dps" then ChatButton(f) end
         list[i] = f
     end
-    return Grid.Place(list, MARGIN, MARGIN, w, TOTALMIN, GAP, true)
+    return Grid.Place(list, MARGIN, MARGIN, w, FitW(list, TOTALMIN, w), GAP, true)
 end
 local function OpenPage()
     if ns.FaultsPage then ns.FaultsPage.Open("give", fight) else ns.Print(ns.T("slash.diag.restart")) end
@@ -446,7 +463,8 @@ local function FailHeadEnter(self)
 end
 local function FailLayout(self, width)
     local model = self.model
-    local top = self.inside and GPLINE or GPHEAD
+    local fm = FailMetrics()
+    local top = self.inside and fm.line or fm.head
     local h = top
     if model and #model.items > 0 then
         self.list:Show()
@@ -463,7 +481,7 @@ local function Inside()
 end
 local SideWheel = ns.SumSide and ns.SumSide.PageWheel(PageWheel) or PageWheel
 local function HeadLine(f, font)
-    local fs = f.head:CreateFontString(nil, "OVERLAY", font)
+    local fs = Kit.Str(f.head, font)
     fs:SetJustifyH("LEFT")
     fs:SetWordWrap(false)
     return fs
@@ -473,35 +491,37 @@ local function TopLine(fs, head, top)
     fs:SetPoint("TOPRIGHT", head, "TOPRIGHT", -6, -top)
 end
 local function FailMode(f, inside)
+    local fm = FailMetrics()
     f.inside = inside
     f:SetParent(inside and content or ns.SumSide.Content())
     f.all:ClearAllPoints()
-    f.all:SetPoint("TOPRIGHT", -6, -(inside and 4 or GPBTNS))
+    f.all:SetPoint("TOPRIGHT", -6, -(inside and 4 or fm.btns))
     f.head:ClearAllPoints()
     f.head:SetPoint("TOPLEFT", 0, 0)
     f.title:ClearAllPoints()
     f.preset:ClearAllPoints()
     if inside then
         f.head:SetPoint("RIGHT", f.cfg, "LEFT", -8, 0)
-        f.head:SetHeight(GPLINE)
+        f.head:SetHeight(fm.line)
         f.title:SetPoint("LEFT", f.head, "LEFT", 10, 0)
         f.preset:SetPoint("LEFT", f.title, "RIGHT", GPGAP, 0)
         f.preset:SetPoint("RIGHT", f.head, "RIGHT", 0, 0)
     else
         f.head:SetPoint("TOPRIGHT", 0, 0)
-        f.head:SetHeight(GPHOVER)
+        f.head:SetHeight(fm.hover)
         TopLine(f.title, f.head, GPTITLE)
-        TopLine(f.preset, f.head, GPPRESET)
+        TopLine(f.preset, f.head, fm.preset)
     end
     local other = inside and f.narrow or f.wide
     other:Hide()
     f.list = inside and f.wide or f.narrow
     f.list:ClearAllPoints()
-    f.list:SetPoint("TOPLEFT", 0, -((inside and GPLINE or GPHEAD) + 2))
+    f.list:SetPoint("TOPLEFT", 0, -((inside and fm.line or fm.head) + 2))
 end
 local function FailPanel()
     if failPanel then return failPanel end
     local f = CreateFrame("Frame", nil, content)
+    f.sized = true
     f.all = ns.MakeButton(f, "HTP_FailWatchGPAll", "main")
     f.all:SetHeight(BTNH)
     f.all.onClick = function()
@@ -525,9 +545,9 @@ local function FailPanel()
     ns.Kit.Text(f.title, "text.title")
     f.preset = HeadLine(f, "GameFontHighlightSmall")
     ns.Kit.Text(f.preset, "text.secondary")
-    f.narrow = ns.GPList.New(f, "HTP_FailWatchGPRow", ns.GPList.COMPACT)
+    f.narrow = ns.GPList.New(f, "HTP_FailWatchGPRow", ns.GPList.COMPACT, true)
     f.narrow.onWheel = SideWheel
-    f.wide = ns.GPList.New(f, "HTP_FailWatchGPWide")
+    f.wide = ns.GPList.New(f, "HTP_FailWatchGPWide", nil, true)
     f.wide.onWheel = SideWheel
     f.Layout = FailLayout
     failPanel = f
@@ -603,7 +623,7 @@ local function ClassOf(who)
     return ns.Encounters.ClassOf(who) or (known and known.class)
 end
 local function WidePanel(v, slot)
-    local f = wides[slot] or Badges.Wide(content)
+    local f = wides[slot] or Badges.Wide(content, nil, true)
     wides[slot] = f
     local rows = {}
     for i = 1, #v.rows do
@@ -648,7 +668,7 @@ local function DrawBlocks(s, y, w)
     end
     for i = np + 1, #panels do panels[i]:Hide() end
     for i = nw + 1, #wides do wides[i]:Hide() end
-    return Grid.Place(list, MARGIN, y, w, DETAILMIN, GAP, true)
+    return Grid.Place(list, MARGIN, y, w, FitW(list, DETAILMIN, w), GAP, true)
 end
 local function DrawFails(y, w)
     local gp = FailItem(gpModel)
@@ -680,7 +700,7 @@ local function DrawTiles(s, y, w)
             h:SetText(ns.T("sum.head." .. role))
             ns.Kit.Text(h, "text.title")
             h:Show()
-            y = Grid.Place(list, MARGIN, y + HEADH, w, TILEMIN, GAP)
+            y = Grid.Place(list, MARGIN, y + max(HEADH, Pt("GameFontNormal") + 8), w, MinW(TILEMIN), GAP)
         else
             h:Hide()
         end
@@ -739,7 +759,8 @@ function View.Attach(frame)
     pane = ns.Kit.ScrollPage(host, { fill = true, bar = "deck", inset = MARGIN,
         relayout = function() Render() end, prof = "ui.sum" })
     content = pane.content
-    hint = content:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    host.sized = true
+    hint = Kit.Str(content, "GameFontHighlight")
     ns.Kit.Text(hint, "text.bright")
     hint:SetPoint("TOPLEFT", MARGIN * 2, -MARGIN * 2)
     hint:SetPoint("RIGHT", host, "RIGHT", -MARGIN * 2, 0)
@@ -786,6 +807,7 @@ function View.Fight()
     return fight
 end
 if ns.GPList then ns.GPList.OnChange(function() Render() end) end
+Kit.OnFont(function() Render() end)
 function View.Relayout()
     if not host or not host:IsShown() then return end
     ns.Kit.RaidArtFit(art, host)
@@ -793,6 +815,9 @@ function View.Relayout()
 end
 function View.IsShown()
     return host ~= nil and host:IsShown() and true or false
+end
+function View.Probe()
+    return { host = host, content = content }
 end
 ns.Jobs.OnChange(function()
     if not summary and fight and View.IsShown() and ns.Summary.Failed(fight) then Render() end

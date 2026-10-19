@@ -14,9 +14,72 @@ local SPECIAL = {
     { key = "YELL",  label = "chanYell" },
     { key = "GUILD", label = "chanGuild" },
 }
+local ROLES = { "tank", "heal", "melee", "ranged" }
+P.ROLES = ROLES
+local MAX_NEED = 40
 local running = false
 local nextAt = {}
 local lastFits = true
+local function slotRole(slot)
+    if slot.role ~= "dd" and slot.role ~= "hybrid" then return slot.role end
+    local one
+    for _, k in ipairs(slot.specs or {}) do
+        local sp = ns.SPEC[k]
+        local r = sp and sp.role
+        if one and r ~= one then return nil end
+        one = r
+    end
+    return one
+end
+function P.TemplateNeeds(tpl)
+    local out = {}
+    for _, r in ipairs(ROLES) do out[r] = 0 end
+    local loose = 0
+    for _, slot in ipairs(tpl and tpl.slots or {}) do
+        local r = slotRole(slot)
+        if out[r] then out[r] = out[r] + 1 else loose = loose + 1 end
+    end
+    for _ = 1, loose do
+        if out.melee < out.ranged then out.melee = out.melee + 1 else out.ranged = out.ranged + 1 end
+    end
+    return out
+end
+local function needs()
+    local g = ns.Session.State()
+    if type(g.spamNeeds) ~= "table" then
+        g.spamNeeds = P.TemplateNeeds(ns.Session.Template())
+    end
+    return g.spamNeeds
+end
+function P.Needs()
+    local src, out = needs(), {}
+    for _, r in ipairs(ROLES) do out[r] = tonumber(src[r]) or 0 end
+    return out
+end
+function P.Need(role)
+    return tonumber(needs()[role]) or 0
+end
+function P.NeedTotal()
+    local n = 0
+    for _, v in pairs(P.Needs()) do n = n + v end
+    return n
+end
+function P.SetNeed(role, n)
+    local t = needs()
+    n = math.floor(tonumber(n) or 0)
+    if n < 0 then n = 0 end
+    if n > MAX_NEED then n = MAX_NEED end
+    if t[role] == n then return end
+    t[role] = n
+    ns.Session.Changed()
+end
+function P.AddNeed(role, delta)
+    P.SetNeed(role, P.Need(role) + delta)
+end
+function P.NeedsFromTemplate()
+    ns.Session.State().spamNeeds = P.TemplateNeeds(ns.Session.Template())
+    ns.Session.Changed()
+end
 local function texts()
     local db = ns.Store.DB()
     db.texts = db.texts or {}
@@ -78,7 +141,7 @@ local function groupNames(grp)
         local inGroup, anyChecked, picked = false, false, {}
         for _, sp in ipairs(cls.specs) do
             if S.Checked(sp.key) then anyChecked = true end
-            if ns.ROLE_GROUP[sp.role] == grp then
+            if sp.role == grp then
                 inGroup = true
                 if S.Checked(sp.key) then picked[#picked + 1] = sp.key end
             end
@@ -91,7 +154,7 @@ local function groupNames(grp)
             else
                 local total = 0
                 for _, sp in ipairs(cls.specs) do
-                    if ns.ROLE_GROUP[sp.role] == grp then total = total + 1 end
+                    if sp.role == grp then total = total + 1 end
                 end
                 if #picked < total then all = false end
                 for _, k in ipairs(picked) do names[#names + 1] = ns.T("spec_" .. k) end
@@ -101,9 +164,9 @@ local function groupNames(grp)
     return names, all
 end
 local function needParts()
-    local need = ns.Session.Needs()
+    local need = P.Needs()
     local parts = {}
-    for _, grp in ipairs(ns.GROUP_ORDER) do
+    for _, grp in ipairs(ROLES) do
         local n = need[grp]
         if n > 0 then
             local names, all = groupNames(grp)
@@ -282,7 +345,12 @@ function P.Fits()
     return lastFits
 end
 function P.CanStart()
-    return not ns.Test.Active() and #activeChannels() > 0
+    return not ns.Test.Active() and #activeChannels() > 0 and P.NeedTotal() > 0
+end
+function P.Blocker()
+    if ns.Test.Active() then return "tipTestSpam" end
+    if #activeChannels() == 0 then return "tipNoChannels" end
+    if P.NeedTotal() == 0 then return "tipNoNeeds" end
 end
 function P.Start()
     if running or not P.CanStart() then return end
@@ -321,7 +389,7 @@ ticker:SetScript("OnUpdate", function(self, dt)
     acc = acc + dt
     if acc < 0.25 then return end
     acc = 0
-    if ns.Session.NeedTotal() == 0 then
+    if P.NeedTotal() == 0 then
         P.Stop()
         return
     end

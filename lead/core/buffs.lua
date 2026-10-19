@@ -58,18 +58,7 @@ local function fits(src, m)
     return m.tree == src.tree
 end
 function B.Needs(class, tree)
-    local t = ns.READY_NEED[class]
-    if not t then return {} end
-    if tree and t[tree] then return t[tree] end
-    local out = {}
-    for flag in pairs(t[1]) do
-        local all = true
-        for i = 2, #t do
-            if not t[i][flag] then all = false end
-        end
-        if all then out[flag] = true end
-    end
-    return out
+    return root.RaidBuffs.Needs(class, tree)
 end
 function B.Item(def, list)
     local it = { def = def, have = 0, src = {}, unsure = {}, party = true }

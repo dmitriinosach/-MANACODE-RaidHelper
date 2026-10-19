@@ -3,9 +3,13 @@ root.Lead = root.Lead or {}
 local ns = root.Lead
 local PAD = 12
 local ROW_H = 26
+local BASE = "GameFontHighlightSmall"
 local PANEL_W = 300
 local pane, panel, rowPool, addBreak, addPull, resetBtn, noDbm
 local built = false
+local function rowH()
+    return ns.Fit(BASE, ROW_H, 8)
+end
 local function newRow()
     local r = ns.NewFrame("Frame", nil, panel)
     r:SetSize(PANEL_W - PAD * 2, ROW_H - 2)
@@ -17,11 +21,11 @@ local function newRow()
     r.sec:SetNumeric(true)
     r.sec:SetMaxLetters(4)
     r.sec:SetPoint("LEFT", r.kind, "RIGHT", 8, 0)
-    r.unit = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.unit = ns.Str(r, BASE)
     r.unit:SetPoint("LEFT", r.sec, "RIGHT", 4, 0)
     r.unit:SetText(ns.T("sec"))
     ns.PaintText(r.unit, "text.secondary")
-    r.show = r:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    r.show = ns.Str(r, "GameFontDisableSmall")
     r.show:SetPoint("LEFT", r.unit, "RIGHT", 10, 0)
     ns.PaintText(r.show, "text.muted")
     r.del = ns.MakeKitButton(r)
@@ -35,10 +39,12 @@ local function refresh()
     if not built or not pane:IsVisible() then return end
     local list = ns.Timers.List()
     rowPool:Reset()
+    local step = rowH()
     for i, t in ipairs(list) do
         local r = rowPool:Acquire()
+        r:SetHeight(step - 2)
         r:ClearAllPoints()
-        r:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -(36 + (i - 1) * ROW_H))
+        r:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -(36 + (i - 1) * step))
         r.kind:SetOptions({ { key = "break", label = ns.T("timerKindBreak") },
             { key = "pull", label = ns.T("timerKindPull") } }, t.kind)
         r.kind.onPick = function(k) ns.Timers.Set(i, k, nil) end
@@ -52,7 +58,7 @@ local function refresh()
         end
     end
     rowPool:HideExtras()
-    local y = 36 + #list * ROW_H + 8
+    local y = 36 + #list * step + 8
     addBreak:ClearAllPoints()
     addBreak:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -y)
     addPull:ClearAllPoints()
@@ -93,7 +99,7 @@ local function build()
     resetBtn:SetSize(PANEL_W - PAD * 2, 22)
     resetBtn:SetText(ns.T("btnDefault"))
     resetBtn.onClick = function() ns.Timers.Reset() end
-    noDbm = pane:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    noDbm = ns.Str(pane, "GameFontNormalSmall")
     noDbm:SetPoint("TOPLEFT", panel, "TOPRIGHT", 12, -10)
     noDbm:SetPoint("RIGHT", pane, "RIGHT", -8, 0)
     noDbm:SetJustifyH("LEFT")
@@ -104,5 +110,6 @@ local function build()
     refresh()
 end
 ns.Session.OnChange(refresh)
+ns.OnFont(refresh)
 ns.PrefsPane = { Build = build, Refresh = refresh, Height = height }
 ns.window:OnBuild(build)

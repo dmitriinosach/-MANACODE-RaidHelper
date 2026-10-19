@@ -69,6 +69,8 @@ function Slash.Diag()
         { "ui/settings.lua", ns.Settings },
         { "ui/settingsitems.lua", ns.Settings and ns.Settings.itemsLoaded },
         { "ui/panel.lua", ns.Panel },
+        { "ui/panelwidgets.lua", ns.Panel and ns.Panel.Get and ns.Panel.Get("count") },
+        { "ui/panelrows.lua", ns.PanelRows },
         { "ui/prof.lua", ns.ProfView },
         { "core/cpumeter.lua", ns.CpuMeter },
         { "core/summary.lua", ns.Summary },
@@ -203,8 +205,6 @@ local function Handler(msg)
             ns.AutoRec.DevLich(false)
         elseif arg == "movie" then
             ns.AutoRec.DevLich(true)
-        elseif arg == "state" then
-            ns.AutoRec.DevState()
         elseif arg == "lock" then
             ns.Raid.DevLock()
         else

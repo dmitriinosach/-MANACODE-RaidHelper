@@ -1,6 +1,8 @@
 local ADDON, ns = ...
 local format = string.format
 local max = math.max
+local min = math.min
+local ceil = math.ceil
 local concat = table.concat
 local tsort = table.sort
 local Kit = ns.Kit
@@ -38,6 +40,11 @@ local REBUILD_GAP = 5
 local ROLES = { "tank", "heal", "dd" }
 local RI_TEX = "Interface\\Icons\\INV_Misc_Book_09"
 local RAT_TEX = "Interface\\AddOns\\" .. ADDON .. "\\art\\kit\\rat"
+local BASE = { CAP_H = CAP_H, CTRL_H = CTRL_H, SLOT_H = SLOT_H, MAIN_H = MAIN_H, ALT_H = ALT_H, NOTE_H = NOTE_H,
+    TEXT_X = TEXT_X, FOLD = FOLD, NAME_X = NAME_X, INDENT = INDENT, NAME_W = NAME_W, ON_W = ON_W, GS_W = GS_W,
+    SPEC_W = SPEC_W, ALTS_W = ALTS_W, STATE_W = STATE_W, SEL_W = SEL_W, CHECK_W = CHECK_W, ROLECHK_W = ROLECHK_W,
+    ROLE_SZ = ROLE_SZ, ROLE_GAP = ROLE_GAP, RI_SZ = RI_SZ, RAT_SZ = RAT_SZ }
+local LINE_H = 14
 local PLUS = "Interface\\Buttons\\UI-PlusButton-Up"
 local MINUS = "Interface\\Buttons\\UI-MinusButton-Up"
 local View = {}
@@ -52,14 +59,50 @@ local open = {}
 local cache = nil
 local builtAt = -1e9
 local dirty = true
+local function Dims(w)
+    local k = max(1, Kit.FontScale("GameFontHighlightSmall", true))
+    local B = BASE
+    local fixed = B.NAME_X + B.NAME_W + B.ON_W + B.GS_W + B.SPEC_W + B.ALTS_W + 3 * (B.ROLE_SZ + B.ROLE_GAP) + B.RI_SZ + 22
+        + 90 + B.STATE_W
+    local kc = max(1, min(k, w / fixed))
+    CAP_H, CTRL_H, SLOT_H = ceil(B.CAP_H * k), ceil(B.CTRL_H * k), ceil(B.SLOT_H * k)
+    MAIN_H, ALT_H, NOTE_H = ceil(B.MAIN_H * k), ceil(B.ALT_H * k), ceil(B.NOTE_H * k)
+    LINE_H = ceil(14 * k)
+    TEXT_X, FOLD, INDENT = ceil(B.TEXT_X * kc), ceil(B.FOLD * k), ceil(B.INDENT * kc)
+    NAME_X, NAME_W, ON_W, GS_W = ceil(B.NAME_X * kc), ceil(B.NAME_W * kc), ceil(B.ON_W * kc), ceil(B.GS_W * kc)
+    SPEC_W, ALTS_W, STATE_W = ceil(B.SPEC_W * kc), ceil(B.ALTS_W * kc), ceil(B.STATE_W * kc)
+    SEL_W, CHECK_W, ROLECHK_W = ceil(B.SEL_W * kc), ceil(B.CHECK_W * kc), ceil(B.ROLECHK_W * kc)
+    ROLE_SZ, ROLE_GAP, RI_SZ, RAT_SZ = ceil(B.ROLE_SZ * k), B.ROLE_GAP, ceil(B.RI_SZ * k), ceil(B.RAT_SZ * k)
+end
+local function Seat(row, kind)
+    row:SetHeight((kind == "main" and MAIN_H) or (kind == "alt" and ALT_H) or (kind == "slot" and SLOT_H) or NOTE_H)
+    for i = 1, #row.cols do row.cols[i]:SetHeight(LINE_H) end
+    if row.info then row.info:SetHeight(LINE_H) end
+    if row.roles then
+        for i = 1, #ROLES do
+            row.roles[ROLES[i]]:SetWidth(ROLE_SZ)
+            row.roles[ROLES[i]]:SetHeight(ROLE_SZ)
+        end
+        row.rat:SetWidth(RAT_SZ)
+        row.rat:SetHeight(RAT_SZ)
+        row.ri:SetWidth(RI_SZ + 6)
+        row.ri:SetHeight(RI_SZ + 6)
+        row.ri.icon:SetWidth(RI_SZ)
+        row.ri.icon:SetHeight(RI_SZ)
+    end
+    if row.fold then
+        row.fold:SetWidth(FOLD)
+        row.fold:SetHeight(FOLD)
+    end
+end
 local function Make(kind)
     local row = Kit.Row(content, 100)
     local n = (kind == "main" and 6) or (kind == "alt" and 5) or 1
     row.cols = {}
     for i = 1, n do
-        local fs = row:CreateFontString(nil, "OVERLAY", kind == "main" and "GameFontNormal" or "GameFontHighlightSmall")
+        local fs = Kit.Str(row, kind == "main" and "GameFontNormal" or "GameFontHighlightSmall")
         fs:SetJustifyH("LEFT")
-        fs:SetHeight(14)
+        fs:SetWordWrap(false)
         Kit.Text(fs, "text.primary")
         row.cols[i] = fs
     end
@@ -68,8 +111,6 @@ local function Make(kind)
         row.roles = {}
         for i = 1, #ROLES do
             local t = row:CreateTexture(nil, "ARTWORK")
-            t:SetWidth(ROLE_SZ)
-            t:SetHeight(ROLE_SZ)
             Kit.Icon.Role(t, ROLES[i])
             row.roles[ROLES[i]] = t
         end
@@ -79,19 +120,15 @@ local function Make(kind)
         ri.onClick = function(b) if b.char then ns.Bober.Open(b.char) end end
         row.ri = ri
         row.rat = row:CreateTexture(nil, "ARTWORK")
-        row.rat:SetWidth(RAT_SZ)
-        row.rat:SetHeight(RAT_SZ)
         row.rat:SetTexture(RAT_TEX)
         row.rat:Hide()
-        row.info = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.info = Kit.Str(row, "GameFontHighlightSmall")
         row.info:SetJustifyH("LEFT")
-        row.info:SetHeight(14)
+        row.info:SetWordWrap(false)
         Kit.Text(row.info, "text.secondary")
     end
     if kind == "main" then
         row.fold = row:CreateTexture(nil, "ARTWORK")
-        row.fold:SetWidth(FOLD)
-        row.fold:SetHeight(FOLD)
         row.fold:SetPoint("LEFT", row, "LEFT", 4, 0)
         row.onClick = function(r)
             local p = r.person
@@ -102,7 +139,7 @@ local function Make(kind)
         end
     end
     row.tipAnchor = "ANCHOR_CURSOR"
-    row:SetHeight((kind == "main" and MAIN_H) or (kind == "alt" and ALT_H) or (kind == "slot" and SLOT_H) or NOTE_H)
+    Seat(row, kind)
     return row
 end
 local function Take(kind, y, w)
@@ -113,6 +150,7 @@ local function Take(kind, y, w)
         row = Make(kind)
         pool[used[kind]] = row
     end
+    Seat(row, kind)
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", content, "TOPLEFT", MARGIN, -y)
     row:SetWidth(w)
@@ -416,6 +454,10 @@ end
 function View.Draw(y, w)
     HideAll()
     if not content then return y end
+    Dims(w)
+    sel:SetWidth(SEL_W)
+    sel:SetHeight(Kit.FontGrow(20))
+    caption:SetHeight(CAP_H - 4)
     caption:ClearAllPoints()
     caption:SetPoint("TOPLEFT", content, "TOPLEFT", MARGIN, -y)
     caption.rule:SetWidth(max(1, w - caption:GetStringWidth() - 6))
@@ -472,18 +514,19 @@ function View.Build(parent, redraw)
     content, rerender = parent, redraw
     caption = Kit.Caption(content, ns.T("gl.title"), 200)
     sel = Kit.Select(content)
-    sel:SetWidth(SEL_W)
-    sel:SetHeight(20)
+    Kit.Bind(sel.text, "GameFontNormalSmall")
+    Kit.Bind(caption, "GameFontNormal")
     sel.tipTitle = ns.T("gl.raid")
     sel.onPick = function(key)
         GR.SetPick(key)
         Rebuild()
         redraw()
     end
-    gsFs = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    gsFs = Kit.Str(content, "GameFontHighlightSmall")
     gsFs:SetJustifyH("LEFT")
     Kit.Text(gsFs, "text.muted")
     check = Kit.Check(content)
+    Kit.Bind(check.label, "GameFontNormalSmall")
     check.label:SetText(ns.T("gl.online"))
     check.tipTitle = ns.T("gl.online")
     check.onToggle = function(on)
@@ -493,6 +536,7 @@ function View.Build(parent, redraw)
     for i = 1, #ROLES do
         local group = ROLES[i]
         local rc = Kit.Check(content)
+        Kit.Bind(rc.label, "GameFontNormalSmall")
         rc.label:SetText(ns.T("gl.role." .. group))
         rc.tipTitle = ns.T("gl.filter.role")
         rc.tip = ns.T("gl.filter.role.tip")

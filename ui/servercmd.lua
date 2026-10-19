@@ -1,4 +1,5 @@
 local _, ns = ...
+local floor = math.floor
 local format = string.format
 local gsub = string.gsub
 local sub = string.sub
@@ -35,7 +36,15 @@ end
 local function Clean(text, limit)
     local s = gsub(gsub(tostring(text or ""), "|", ""), "%c", "")
     s = s:match("^%s*(.-)%s*$") or ""
-    return sub(s, 1, limit)
+    if #s <= limit then return s end
+    s = sub(s, 1, limit)
+    local i = #s
+    while i > 0 and s:byte(i) >= 0x80 and s:byte(i) < 0xC0 do i = i - 1 end
+    if i > 0 and s:byte(i) >= 0xC0 then
+        local need = s:byte(i) >= 0xF0 and 4 or s:byte(i) >= 0xE0 and 3 or 2
+        if #s - i + 1 < need then s = sub(s, 1, i - 1) end
+    end
+    return s
 end
 local function Store(key, field, v)
     local o = Opt()
@@ -102,7 +111,7 @@ local actions = {}
 local function Action(key)
     local a = actions[key]
     if a then return a end
-    a = { key = key, label = "", title = "", tip = "" }
+    a = { key = key, id = key, label = "", title = "", tip = "" }
     a.state = function() return Cmd.State(key) end
     a.run = function() Cmd.Send(key) end
     actions[key] = a
@@ -121,15 +130,35 @@ local function Rows()
         end
     end
     if #items == 0 then return {} end
-    return { { title = T("scmd.row"), items = items } }
+    return { { id = "server", title = T("scmd.row"), items = items } }
 end
 if ns.Shell and ns.Shell.Actions then ns.Shell.Actions(Rows, 110) end
+local SMALL = "GameFontHighlightSmall"
+local function K(n)
+    return floor(n * Kit.FontScale(SMALL, true) + 0.5)
+end
+local function Column(r, obj, x, w)
+    local list = r.cols
+    if not list then
+        list = {}
+        r.cols = list
+        r.Place = function()
+            for i = 1, #list do
+                local c = list[i]
+                c.obj:ClearAllPoints()
+                c.obj:SetPoint("LEFT", r, "LEFT", K(c.x), 0)
+                c.obj:SetWidth(K(c.w))
+            end
+        end
+    end
+    list[#list + 1] = { obj = obj, x = x, w = w }
+    r.Place()
+end
 local function Caption(r, token, x, w)
-    local fs = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    fs:SetPoint("LEFT", r, "LEFT", x, 0)
-    fs:SetWidth(w)
+    local fs = Kit.Str(r, SMALL)
     fs:SetJustifyH("LEFT")
     Kit.Text(fs, token)
+    Column(r, fs, x, w)
     return fs
 end
 local function BuildHead(r)
@@ -139,9 +168,8 @@ local function BuildHead(r)
 end
 local function Edit(r, x, w, limit, tip, commit)
     local e = Kit.Edit(r, false)
-    e:SetWidth(w)
     e:SetMaxLetters(limit)
-    e:SetPoint("LEFT", r, "LEFT", x, 0)
+    Column(r, e, x, w)
     e.tip = tip
     e:SetScript("OnEscapePressed", function(self)
         self.revert = true
@@ -177,11 +205,11 @@ end
 if S and S.Section then
     local items = {
         { kind = "text", key = "hint", text = "scmd.set.hint", token = "text.secondary", order = 1 },
-        { kind = "custom", key = "head", height = HEAD_H, build = BuildHead, order = 2 },
+        { kind = "custom", key = "head", height = function() return Kit.GrowH(HEAD_H, SMALL) end, build = BuildHead, order = 2 },
     }
     for i = 1, #ns.serverCmds do
         items[#items + 1] = { kind = "custom", key = ns.serverCmds[i].key, cmdKey = ns.serverCmds[i].key,
-            height = ROW_H, build = BuildRow, refresh = RefreshRow, order = 10 + i }
+            height = function() return Kit.GrowH(ROW_H, SMALL) end, build = BuildRow, refresh = RefreshRow, order = 10 + i }
     end
     items[#items + 1] = { kind = "button", key = "reset", text = "scmd.set.reset", tip = "scmd.set.reset.tip",
         order = 100, run = Cmd.Reset, enabled = function() return not Cmd.IsDefault() end }

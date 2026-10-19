@@ -2,6 +2,7 @@ local _, ns = ...
 local Kit = ns.Kit
 local max = math.max
 local ceil = math.ceil
+local floor = math.floor
 local tsort = table.sort
 local NAV_W = 184
 local NAV_PAD = 6
@@ -34,6 +35,7 @@ local SEG_MIN = 72
 local SEG_GAP = 4
 local ARM = 10
 local TICK = 1
+local SMALL, NORMAL, LARGE = "GameFontHighlightSmall", "GameFontNormal", "GameFontNormalLarge"
 local DEFAULT_CAT = "rec"
 local GROUPS = { "general", "parse", "lead", "other" }
 local RESETTABLE = { check = true, choice = true, slider = true, field = true }
@@ -48,6 +50,28 @@ local tickAcc = 0
 local counter = 0
 local navRows = {}
 local Layout
+local BASE = { NAV_W = NAV_W, NAV_ROW = NAV_ROW, NAV_GROUP = NAV_GROUP, TITLE_H = TITLE_H, CAP = CAP, ROW = ROW,
+               ADV_H = ADV_H, ADV_BTN = ADV_BTN, LABEL_W = LABEL_W, CHOICE_W = CHOICE_W, FIELD_W = FIELD_W,
+               BTN_MIN = BTN_MIN, SEG_MIN = SEG_MIN }
+local function Sizes()
+    local k = Kit.FontScale(SMALL, true)
+    NAV_W = floor(BASE.NAV_W * k + 0.5)
+    NAV_ROW = Kit.GrowH(BASE.NAV_ROW, SMALL)
+    NAV_GROUP = Kit.GrowH(BASE.NAV_GROUP, SMALL)
+    TITLE_H = Kit.GrowH(BASE.TITLE_H, LARGE)
+    CAP = Kit.GrowH(BASE.CAP, NORMAL)
+    ROW = Kit.GrowH(BASE.ROW, SMALL)
+    ADV_H = Kit.GrowH(BASE.ADV_H, SMALL)
+    ADV_BTN = Kit.GrowH(BASE.ADV_BTN, SMALL)
+    LABEL_W = floor(BASE.LABEL_W * k + 0.5)
+    CHOICE_W = floor(BASE.CHOICE_W * k + 0.5)
+    FIELD_W = floor(BASE.FIELD_W * k + 0.5)
+    BTN_MIN = floor(BASE.BTN_MIN * k + 0.5)
+    SEG_MIN = floor(BASE.SEG_MIN * k + 0.5)
+end
+local function Wide(w)
+    return floor(w * Kit.FontScale(SMALL, true) + 0.5)
+end
 local function Next()
     counter = counter + 1
     return counter
@@ -179,12 +203,15 @@ local function Height(n, v)
     return max(0, n)
 end
 local function Label(r, token)
-    local fs = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    fs:SetPoint("LEFT", r, "TOPLEFT", 0, -ROW / 2)
-    fs:SetWidth(LABEL_W - 8)
+    local fs = Kit.Str(r, SMALL)
     fs:SetJustifyH("LEFT")
     Kit.Text(fs, token)
     return fs
+end
+local function PlaceLabel(r, fs)
+    fs:ClearAllPoints()
+    fs:SetPoint("LEFT", r, "TOPLEFT", 0, -ROW / 2)
+    fs:SetWidth(LABEL_W - 8)
 end
 local function Tip(f, it, title)
     if title then f.tipTitle = Maybe(it.label) or false end
@@ -207,7 +234,10 @@ local function BuildCheck(r, it)
     local c = Kit.Check(r)
     c:SetWidth(CHECK)
     c:SetHeight(CHECK)
-    c:SetPoint("LEFT", r, "TOPLEFT", -2, -ROW / 2)
+    r.Place = function()
+        c:ClearAllPoints()
+        c:SetPoint("LEFT", r, "TOPLEFT", -2, -ROW / 2)
+    end
     c.onToggle = function(on) Apply(it, on) end
     r.check = c
     r.Refresh = function()
@@ -238,21 +268,27 @@ end
 local function BuildButtons(r, it)
     local segs = {}
     local opts = Options(it)
-    local x = LABEL_W
     for i = 1, #opts do
         local o = opts[i]
         local b = Kit.Button(r)
         b:SetText(o.label)
         b.tipTitle = false
         b.tip = o.tip
-        b:SetWidth(max(SEG_MIN, b.text:GetStringWidth() + BTN_PAD))
-        b:SetPoint("LEFT", r, "TOPLEFT", x, -ROW / 2)
-        x = x + b:GetWidth() + SEG_GAP
         b.onClick = function() Apply(it, o.key) end
         b.key = o.key
         segs[i] = b
     end
     r.segs = segs
+    r.PlaceSegs = function()
+        local x = LABEL_W
+        for i = 1, #segs do
+            local b = segs[i]
+            b:SetWidth(max(SEG_MIN, b.text:GetStringWidth() + BTN_PAD))
+            b:ClearAllPoints()
+            b:SetPoint("LEFT", r, "TOPLEFT", x, -ROW / 2)
+            x = x + b:GetWidth() + SEG_GAP
+        end
+    end
 end
 local function BuildChoice(r, it)
     local label = Label(r, "text.primary")
@@ -261,10 +297,17 @@ local function BuildChoice(r, it)
         BuildButtons(r, it)
     else
         sel = Kit.Select(r)
-        sel:SetWidth(it.width or CHOICE_W)
-        sel:SetPoint("LEFT", r, "TOPLEFT", LABEL_W, -ROW / 2)
         sel.onPick = function(k) Apply(it, k) end
         r.sel = sel
+    end
+    r.Place = function()
+        PlaceLabel(r, label)
+        if r.PlaceSegs then r.PlaceSegs() end
+        if sel then
+            sel:SetWidth(it.width and Wide(it.width) or CHOICE_W)
+            sel:ClearAllPoints()
+            sel:SetPoint("LEFT", r, "TOPLEFT", LABEL_W, -ROW / 2)
+        end
     end
     r.Refresh = function()
         label:SetText(Text(it.label))
@@ -280,13 +323,17 @@ local function BuildChoice(r, it)
             b:SetActive(b.key == cur)
             if on then b:Enable() else b:Disable() end
         end
+        if r.PlaceSegs then r.PlaceSegs() end
         Kit.Text(label, on and "text.primary" or "text.off")
     end
 end
 local function BuildSlider(r, it)
-    local s = Kit.Slider(r, { min = it.min or 0, max = it.max or 1, step = it.step, fmt = it.fmt, labelW = LABEL_W })
-    s:SetPoint("LEFT", r, "TOPLEFT", 0, -ROW / 2)
-    s:SetPoint("RIGHT", r, "TOPRIGHT", 0, -ROW / 2)
+    local s = Kit.Slider(r, { min = it.min or 0, max = it.max or 1, step = it.step, fmt = it.fmt, labelW = BASE.LABEL_W })
+    r.Place = function()
+        s:ClearAllPoints()
+        s:SetPoint("LEFT", r, "TOPLEFT", 0, -ROW / 2)
+        s:SetPoint("RIGHT", r, "TOPRIGHT", 0, -ROW / 2)
+    end
     if it.live then
         s.onChange = function(v) if it.set then it.set(v) end end
     else
@@ -303,8 +350,12 @@ end
 local function BuildField(r, it)
     local label = Label(r, "text.primary")
     local e = Kit.Edit(r, false)
-    e:SetWidth(it.width or FIELD_W)
-    e:SetPoint("LEFT", r, "TOPLEFT", LABEL_W, -ROW / 2)
+    r.Place = function()
+        PlaceLabel(r, label)
+        e:SetWidth(it.width and Wide(it.width) or FIELD_W)
+        e:ClearAllPoints()
+        e:SetPoint("LEFT", r, "TOPLEFT", LABEL_W, -ROW / 2)
+    end
     if it.numeric then e:SetNumeric(true) end
     if it.maxLetters then e:SetMaxLetters(it.maxLetters) end
     e:SetScript("OnEscapePressed", function(self)
@@ -335,7 +386,12 @@ end
 local function BuildButton(r, it)
     local label = it.text and it.label and Label(r, "text.primary") or nil
     local b = Kit.Button(r)
-    b:SetPoint("LEFT", r, "TOPLEFT", label and LABEL_W or 0, -ROW / 2)
+    r.Place = function()
+        if label then PlaceLabel(r, label) end
+        b:ClearAllPoints()
+        b:SetPoint("LEFT", r, "TOPLEFT", label and LABEL_W or 0, -ROW / 2)
+        b:SetWidth(max(it.width and Wide(it.width) or BTN_MIN, b.text:GetStringWidth() + BTN_PAD))
+    end
     b.onClick = function()
         if it.confirm and not Armed(b) then
             b.armedAt = GetTime()
@@ -351,14 +407,14 @@ local function BuildButton(r, it)
         if label then label:SetText(Text(it.label)) end
         if b.armedAt and not Armed(b) then b.armedAt = nil end
         b:SetText(Text(Armed(b) and it.confirm or (it.text or it.label)))
-        b:SetWidth(max(it.width or BTN_MIN, b.text:GetStringWidth() + BTN_PAD))
+        b:SetWidth(max(it.width and Wide(it.width) or BTN_MIN, b.text:GetStringWidth() + BTN_PAD))
         Tip(b, it, false)
         b.tint = it.danger and Kit.C["text.bad"] or nil
         if Enabled(it) then b:Enable() else b:Disable() end
     end
 end
 local function BuildText(r, it)
-    local fs = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local fs = Kit.Str(r, SMALL)
     fs:SetPoint("TOPLEFT", r, "TOPLEFT", 0, -TEXT_PAD / 2)
     fs:SetJustifyH("LEFT")
     r.text = fs
@@ -391,7 +447,7 @@ local function BuildItem(parent, it)
     local make = BUILD[it.kind] or BuildText
     make(r, it)
     if it.hint then
-        local fs = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        local fs = Kit.Str(r, SMALL)
         fs:SetJustifyH("LEFT")
         Kit.Text(fs, "text.muted")
         r.hint = fs
@@ -426,7 +482,7 @@ end
 local function PlaceCustom(sec, holder, y, w)
     local d = sec.def
     if not sec.body then
-        sec.head = holder:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        sec.head = Kit.Str(holder, NORMAL)
         sec.head:SetJustifyH("LEFT")
         Kit.Title(sec.head)
         sec.body = CreateFrame("Frame", nil, holder)
@@ -460,7 +516,7 @@ local function PlaceSection(sec, holder, y, w)
     if not sec.frame then
         sec.frame = CreateFrame("Frame", nil, holder)
         Kit.Skin(sec.frame, "panel")
-        sec.head = sec.frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        sec.head = Kit.Str(sec.frame, NORMAL)
         sec.head:SetPoint("TOPLEFT", sec.frame, "TOPLEFT", INSET, -INSET)
         sec.head:SetJustifyH("LEFT")
         Kit.Title(sec.head)
@@ -487,6 +543,7 @@ local function PlaceSection(sec, holder, y, w)
             r:ClearAllPoints()
             r:SetPoint("TOPLEFT", f, "TOPLEFT", INSET, -iy)
             r:SetWidth(inner)
+            if r.Place then r.Place() end
             local h = ItemHeight(it, inner)
             r:SetHeight(max(1, h))
             r:Show()
@@ -519,12 +576,12 @@ local function BuildAdv(c)
     end)
     a.toggle = Kit.Button(a)
     a.toggle:SetWidth(ADV_BTN)
-    a.toggle:SetHeight(ADV_BTN)
+    a.toggle:SetHeight(BASE.ADV_BTN)
     a.toggle:SetPoint("LEFT", a, "LEFT", INSET - 2, 0)
     a.toggle.tipTitle = false
     a.toggle.tip = ns.T("set.adv.open.tip")
     a.toggle.onClick = function() a:GetScript("OnClick")(a) end
-    a.label = a:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    a.label = Kit.Str(a, NORMAL)
     a.label:SetPoint("LEFT", a.toggle, "RIGHT", 8, 0)
     a.label:SetText(ns.T("set.adv"))
     Kit.Text(a.label, "text.secondary")
@@ -541,11 +598,11 @@ local function BuildCat(c)
     local h = CreateFrame("Frame", nil, content)
     h:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
     c.holder = h
-    c.title = h:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    c.title = Kit.Str(h, LARGE)
     c.title:SetPoint("TOPLEFT", h, "TOPLEFT", 0, 0)
     c.title:SetJustifyH("LEFT")
     Kit.Title(c.title)
-    c.subFs = h:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    c.subFs = Kit.Str(h, SMALL)
     c.subFs:SetPoint("TOPLEFT", h, "TOPLEFT", 0, -TITLE_H)
     c.subFs:SetJustifyH("LEFT")
     Kit.Text(c.subFs, "text.secondary")
@@ -574,6 +631,9 @@ local function LayoutCat(c, w)
         c.adv:ClearAllPoints()
         c.adv:SetPoint("TOPLEFT", h, "TOPLEFT", 0, -y)
         c.adv:SetWidth(w)
+        c.adv:SetHeight(ADV_H)
+        c.adv.toggle:SetWidth(ADV_BTN)
+        c.adv.reset:SetWidth(max(BTN_MIN, c.adv.reset.text:GetStringWidth() + BTN_PAD))
         c.adv:Show()
         RefreshAdv(c)
         y = y + ADV_H + SEC_GAP
@@ -592,6 +652,7 @@ local function LayoutCat(c, w)
 end
 Layout = function()
     if not page or not current then return end
+    Sizes()
     local c = cats[current]
     if not c or not c.holder then return end
     local w = max(1, scroll:GetWidth())
@@ -666,8 +727,29 @@ local function NavClick(row)
     Kit.Sound("tab")
     Settings.Select(row.catKey)
 end
-local function BuildNav()
+local navItems = {}
+local function PlaceNav()
+    if not nav then return end
+    nav:SetWidth(NAV_W)
     local y = NAV_PAD
+    local grouped = false
+    for i = 1, #navItems do
+        local it = navItems[i]
+        if it.fs then
+            if grouped then y = y + 4 end
+            grouped = true
+            it.fs:ClearAllPoints()
+            it.fs:SetPoint("TOPLEFT", nav, "TOPLEFT", NAV_PAD + NAV_TEXT, -(y + 6))
+            y = y + NAV_GROUP
+        else
+            it.row:SetWidth(NAV_W - NAV_PAD * 2)
+            it.row:ClearAllPoints()
+            it.row:SetPoint("TOPLEFT", nav, "TOPLEFT", NAV_PAD, -y)
+            y = y + NAV_ROW
+        end
+    end
+end
+local function BuildNav()
     local list = Settings.Categories()
     for g = 1, #GROUPS do
         local grp = GROUPS[g]
@@ -676,17 +758,16 @@ local function BuildNav()
             if list[i].group == grp then any = true end
         end
         if any then
-            local fs = nav:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-            fs:SetPoint("TOPLEFT", nav, "TOPLEFT", NAV_PAD + NAV_TEXT, -(y + 6))
+            local fs = Kit.Str(nav, "GameFontDisableSmall")
             fs:SetText(ns.T("set.group." .. grp))
             Kit.Text(fs, "nav.group")
-            y = y + NAV_GROUP
+            navItems[#navItems + 1] = { fs = fs }
             for i = 1, #list do
                 local c = list[i]
                 if c.group == grp then
                     local r = Kit.Row(nav, NAV_W - NAV_PAD * 2)
-                    r:SetHeight(NAV_ROW)
-                    r:SetPoint("TOPLEFT", nav, "TOPLEFT", NAV_PAD, -y)
+                    r:SetHeight(BASE.NAV_ROW)
+                    navItems[#navItems + 1] = { row = r }
                     r.text:ClearAllPoints()
                     r.text:SetPoint("LEFT", r, "LEFT", NAV_TEXT, 0)
                     r.text:SetText(Text(c.label))
@@ -698,12 +779,11 @@ local function BuildNav()
                     r.catKey = c.key
                     r.onClick = NavClick
                     navRows[#navRows + 1] = r
-                    y = y + NAV_ROW
                 end
             end
-            y = y + 4
         end
     end
+    PlaceNav()
 end
 local function Tick(_, elapsed)
     tickAcc = tickAcc + elapsed
@@ -721,6 +801,7 @@ local function Tick(_, elapsed)
 end
 local function Build(host)
     page = host
+    Sizes()
     nav = CreateFrame("Frame", nil, page)
     Kit.Skin(nav, "panel")
     nav:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
@@ -797,6 +878,12 @@ Settings.Category("lead", { label = "set.cat.lead", sub = "set.cat.lead.sub", or
 Settings.Category("guild", { label = "set.cat.guild", sub = "set.cat.guild.sub", order = 80, group = "other" })
 Settings.Category("svc", { label = "set.cat.svc", sub = "set.cat.svc.sub", order = 90, group = "other" })
 Kit.OnTheme(PaintNav)
+Kit.OnFont(function()
+    if not page then return end
+    Sizes()
+    PlaceNav()
+    Layout()
+end)
 ns.Shell.Register("settings", {
     label = "shell.tab.settings",
     order = 100,

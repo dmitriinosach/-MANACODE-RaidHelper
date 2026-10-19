@@ -281,7 +281,8 @@ local function OnApplied(fc, ts, srcGUID, src, srcFlags, dst, a1, a2, sk)
     local who = Actor(fc, srcGUID, src, srcFlags)
     if not who then return end
     local cast = fc.helpIds[sk]
-    if fc.help[sk] == true and who ~= dst and (not cast or cast == tonumber(a1)) then
+    local procs = ns.replayFeed.procs
+    if fc.help[sk] == true and who ~= dst and (not cast or cast == tonumber(a1)) and not (procs and procs[tonumber(a1) or 0]) then
         Help(fc, ts, who, dst, a2, a1)
     elseif fc.defs[sk] and who == dst then
         Defensive(fc, ts, who, nil, a2, a1)

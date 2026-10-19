@@ -9,7 +9,7 @@ local BOTTOM = 8
 local MIN_PANE_W, MIN_PANE_H = 602, 514
 local TABS = {
     { key = "spam",  label = "tabSpam",  order = 20 },
-    { key = "tpl",   label = "tabTpl",   order = 30 },
+    { key = "tpl",   label = "tabTpl",   order = 30, tabless = true },
     { key = "raid",  label = "tabRaid",  order = 40 },
 }
 local host, prefsBack, prefsPane
@@ -128,6 +128,7 @@ if root.Shell then
         root.Shell.Register(key, {
             label = function() return ns.T(label) end,
             order = def.order,
+            tabless = def.tabless,
             build = function() end,
             OnShow = function(page) attach(page, key) end,
             OnHide = function() if host then host:Hide() end end,
@@ -135,6 +136,13 @@ if root.Shell then
             OnTheme = repaint,
         })
     end
+    root.Shell.Register("tplcfg", {
+        label = function() return ns.T("tabTplRaid") end,
+        order = 120,
+        right = true,
+        lit = "tpl",
+        go = function() root.Shell.Open("tpl") end,
+    })
     if root.Shell.Section then
         root.Shell.Section("lead", {
             cat = "lead",

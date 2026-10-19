@@ -13,4 +13,6 @@ ns.castGcd = {
     castMax = 10,
     cutShow = 1.5,
     fly = 1.5,
+    match = 0.5,
+    late = 0.2,
 }

@@ -1,6 +1,8 @@
 local _, ns = ...
 local format = string.format
 local max = math.max
+local min = math.min
+local ceil = math.ceil
 local concat = table.concat
 local Kit = ns.Kit
 local LO = ns.Lockouts
@@ -25,6 +27,10 @@ local STATE_W = 200
 local SUM_LABEL_W = 70
 local SUM_COL_W = 110
 local CLOSE_GAP = 4
+local BASE = { CAP_H = CAP_H, HINT_H = HINT_H, SUM_H = SUM_H, CHAR_H = CHAR_H, SAVE_H = SAVE_H, NOTE_H = NOTE_H,
+    ICON = ICON, INDENT = INDENT, TEXT_X = TEXT_X, SIZE_W = SIZE_W, KILLS_W = KILLS_W, LEFT_W = LEFT_W, LVL_W = LVL_W,
+    STATE_W = STATE_W, SUM_LABEL_W = SUM_LABEL_W, SUM_COL_W = SUM_COL_W }
+local LINE_H = 14
 local ICC = "IcecrownCitadel"
 local SIZES = { 10, 25 }
 local LockView = {}
@@ -35,12 +41,22 @@ local content
 local caption, hint
 local pools = { sum = {}, char = {}, save = {}, note = {} }
 local used = { sum = 0, char = 0, save = 0, note = 0 }
+local function Dims(w)
+    local k = max(1, Kit.FontScale("GameFontHighlightSmall", true))
+    local B = BASE
+    local kc = max(1, min(k, w / (B.INDENT + B.ICON + 6 + 150 + B.SIZE_W + B.KILLS_W + B.LEFT_W + 8)))
+    CAP_H, HINT_H, SUM_H, CHAR_H = ceil(B.CAP_H * k), ceil(B.HINT_H * k), ceil(B.SUM_H * k), ceil(B.CHAR_H * k)
+    SAVE_H, NOTE_H, LINE_H = ceil(B.SAVE_H * k), ceil(B.NOTE_H * k), ceil(14 * k)
+    ICON, INDENT, TEXT_X = ceil(B.ICON * k), ceil(B.INDENT * kc), ceil(B.TEXT_X * kc)
+    SIZE_W, KILLS_W, LEFT_W, LVL_W = ceil(B.SIZE_W * kc), ceil(B.KILLS_W * kc), ceil(B.LEFT_W * kc), ceil(B.LVL_W * kc)
+    STATE_W, SUM_LABEL_W, SUM_COL_W = ceil(B.STATE_W * kc), ceil(B.SUM_LABEL_W * kc), ceil(B.SUM_COL_W * kc)
+end
 local function Cols(row, n, font)
     row.cols = {}
     for i = 1, n do
-        local fs = row:CreateFontString(nil, "OVERLAY", font or "GameFontHighlightSmall")
+        local fs = Kit.Str(row, font or "GameFontHighlightSmall")
         fs:SetJustifyH("LEFT")
-        fs:SetHeight(14)
+        fs:SetWordWrap(false)
         Kit.Text(fs, "text.primary")
         row.cols[i] = fs
     end
@@ -55,10 +71,8 @@ local function Make(kind)
     local row = Kit.Row(content, 100)
     if kind == "sum" then
         Cols(row, 4)
-        row:SetHeight(SUM_H)
     elseif kind == "char" then
         Cols(row, 3, "GameFontNormal")
-        row:SetHeight(CHAR_H)
         local close = Kit.GlyphButton(row, "close")
         close.tipTitle = ns.T("cd.remove")
         close:SetPoint("RIGHT", row, "RIGHT", -CLOSE_GAP, 0)
@@ -66,14 +80,9 @@ local function Make(kind)
         row.close = close
     elseif kind == "save" then
         Cols(row, 4)
-        row:SetHeight(SAVE_H)
         row.icon = row:CreateTexture(nil, "ARTWORK")
-        row.icon:SetWidth(ICON)
-        row.icon:SetHeight(ICON)
-        row.icon:SetPoint("LEFT", row, "LEFT", INDENT, 0)
     else
         Cols(row, 1)
-        row:SetHeight(NOTE_H)
     end
     return row
 end
@@ -84,6 +93,14 @@ local function Take(kind, y, w)
     if not row then
         row = Make(kind)
         pool[used[kind]] = row
+    end
+    row:SetHeight((kind == "sum" and SUM_H) or (kind == "char" and CHAR_H) or (kind == "save" and SAVE_H) or NOTE_H)
+    for i = 1, #row.cols do row.cols[i]:SetHeight(LINE_H) end
+    if row.icon then
+        row.icon:SetWidth(ICON)
+        row.icon:SetHeight(ICON)
+        row.icon:ClearAllPoints()
+        row.icon:SetPoint("LEFT", row, "LEFT", INDENT, 0)
     end
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", content, "TOPLEFT", MARGIN, -y)
@@ -203,6 +220,8 @@ local function Render()
     local full = max(300, host:GetWidth())
     content:SetWidth(full)
     local w = max(280, full - MARGIN * 2 - BAR_ROOM)
+    Dims(w)
+    hint:SetHeight(LINE_H)
     local y = MARGIN
     caption:ClearAllPoints()
     caption:SetPoint("TOPLEFT", content, "TOPLEFT", MARGIN, -y)
@@ -236,12 +255,13 @@ local function Render()
 end
 local function Build(page)
     host = page
+    host.sized = true
     pane = Kit.ScrollPage(page, { fill = true, bar = "deck", inset = MARGIN, relayout = Render, prof = "ui.cd" })
     content = pane.content
     caption = Kit.Caption(content, ns.T("cd.mine"), 200)
-    hint = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    Kit.Bind(caption, "GameFontNormal")
+    hint = Kit.Str(content, "GameFontHighlightSmall")
     hint:SetJustifyH("LEFT")
-    hint:SetHeight(14)
     hint:SetText(ns.T("cd.hint"))
     Kit.Text(hint, "text.muted")
     ns.GuildLockView.Build(content, Render)
@@ -251,6 +271,7 @@ function LockView.Probe()
 end
 LockView.Render = Render
 LO.OnChange(Render)
+Kit.OnFont(Render)
 ns.Shell.Register("cd", {
     label = "shell.tab.cd",
     order = 50,

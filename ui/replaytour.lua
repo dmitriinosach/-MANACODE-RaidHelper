@@ -32,6 +32,16 @@ local LEVEL = 8
 local Tour = {}
 ns.ReplayTour = Tour
 local Kit = ns.Kit
+local ceil = math.ceil
+local m = { W = W, line = LINE_H, btnW = BTN_W, btnH = BTN_H }
+local function Metrics()
+    local k = max(1, Kit.FontScale("GameFontNormalSmall", true), Kit.FontScale("GameFontHighlight", true))
+    local pt = max(Kit.FontSize("GameFontNormalSmall", true), Kit.FontSize("GameFontHighlight", true))
+    m.W = ceil(W * k)
+    m.line = max(LINE_H, ceil(pt * 1.15))
+    m.btnW = ceil(BTN_W * k)
+    m.btnH = max(BTN_H, ceil(pt * 1.15) + 6)
+end
 local st = { step = 0, up = false, down = false, retarget = 0, phase = 0 }
 local box, text, count, ok, skip, nextBtn, glow
 local function Glow(f, inner)
@@ -60,6 +70,18 @@ local function Retarget()
     end
     st.retarget = 0
 end
+local function Fit()
+    Metrics()
+    box:SetWidth(m.W)
+    text:ClearAllPoints()
+    text:SetPoint("TOPLEFT", box, "TOPLEFT", PAD, -(PAD + m.line + GAP / 2))
+    text:SetWidth(m.W - PAD * 2)
+    for _, b in ipairs({ skip, nextBtn }) do
+        b:SetWidth(m.btnW)
+        b:SetHeight(m.btnH)
+    end
+    box:SetHeight(PAD + m.line + GAP / 2 + max(m.line, text:GetStringHeight() or m.line) + GAP + m.btnH + PAD)
+end
 local function ShowStep()
     local n = #STEPS
     st.doneT, st.up, st.down = nil, false, false
@@ -67,7 +89,7 @@ local function ShowStep()
     text:SetText(ns.T("iso.tour." .. st.step))
     ok:Hide()
     nextBtn.text:SetText(ns.T(st.step >= n and "iso.tour.finish" or "iso.tour.next"))
-    box:SetHeight(PAD + LINE_H + GAP / 2 + max(LINE_H, text:GetStringHeight() or LINE_H) + GAP + BTN_H + PAD)
+    Fit()
     box:Show()
     Retarget()
 end
@@ -104,6 +126,7 @@ local function Btn(parent, key)
     local b = Kit.Button(parent)
     b:SetWidth(BTN_W)
     b:SetHeight(BTN_H)
+    Kit.Bind(b.text, "GameFontNormalSmall")
     b.text:SetText(ns.T(key))
     return b
 end
@@ -139,15 +162,15 @@ function Tour.Bind(ui, api)
     line:SetPoint("TOPRIGHT", box, "TOPRIGHT", 0, 0)
     line:SetHeight(EDGE)
     Kit.Paint(line, "sem.pick")
-    count = box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    count = Kit.Str(box, "GameFontNormalSmall")
     count:SetPoint("TOPLEFT", box, "TOPLEFT", PAD, -PAD)
     Kit.Text(count, "text.title")
-    ok = box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    ok = Kit.Str(box, "GameFontNormalSmall")
     ok:SetPoint("TOPRIGHT", box, "TOPRIGHT", -PAD, -PAD)
     ok:SetText(ns.T("iso.tour.ok"))
     Kit.Text(ok, "text.good")
     ok:Hide()
-    text = box:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    text = Kit.Str(box, "GameFontHighlight")
     text:SetPoint("TOPLEFT", box, "TOPLEFT", PAD, -(PAD + LINE_H + GAP / 2))
     text:SetWidth(W - PAD * 2)
     text:SetJustifyH("LEFT")
@@ -162,6 +185,9 @@ function Tour.Bind(ui, api)
     box:Hide()
     BuildGlow(ui)
 end
+Kit.OnFont(function()
+    if st.step > 0 and box and box:IsShown() then Fit() end
+end)
 function Tour.Start()
     if not box then return end
     st.step = 1
@@ -189,5 +215,5 @@ end
 function Tour.Probe()
     return { step = st.step, steps = #STEPS, shown = box ~= nil and box:IsShown(), done = st.doneT ~= nil,
              key = STEPS[st.step] and STEPS[st.step].key, target = st.target,
-             glow = glow ~= nil and glow:IsShown(), skip = skip, next = nextBtn, box = box, w = W }
+             glow = glow ~= nil and glow:IsShown(), skip = skip, next = nextBtn, box = box, w = m.W }
 end

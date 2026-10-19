@@ -7,6 +7,7 @@ local function Tip()
     return format(T("ainv.act.tip"), A.WordsText())
 end
 local toggle = {
+    id = "toggle",
     label = "",
     title = "",
     tip = "",
@@ -17,7 +18,7 @@ local function Rows()
     toggle.label = T("ainv.act.toggle")
     toggle.title = T("ainv.act.toggle")
     toggle.tip = Tip()
-    return { { title = T("ainv.act.row"), items = { toggle } } }
+    return { { id = "ainv", title = T("ainv.act.row"), items = { toggle } } }
 end
 if ns.Shell and ns.Shell.Actions then ns.Shell.Actions(Rows, 105) end
 A.OnChange(function()

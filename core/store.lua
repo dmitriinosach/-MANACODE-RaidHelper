@@ -21,7 +21,7 @@ local rotFrame = CreateFrame("Frame")
 rotFrame:Hide()
 function Store.Open(ts)
     local db = ns.GetDB()
-    db.live = ns.RecCodec.Open(ts, ns.Raid and ns.Raid.Current() or nil)
+    db.live = ns.RecCodec.Open(ts, ns.Raid and ns.Raid.Bound() or nil)
     if ns.Encounters and ns.Encounters.Dummy() then db.live.dummy = true end
 end
 function Store.MarkBoss(name)

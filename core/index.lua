@@ -6,6 +6,7 @@ local SPAN_CHUNK = 65536.0
 local KEEP = 2
 local F_BY_PLAYER = ns.F.BY_PLAYER
 local PROGRESS_EVERY = 256
+local AURA = { SPELL_AURA_APPLIED = true, SPELL_AURA_REFRESH = true, SPELL_AURA_REMOVED = true }
 local Index = {}
 ns.Index = Index
 local cache = {}
@@ -42,11 +43,11 @@ end
 local function Build(fight)
     local segs = ns.Encounters.Segs(fight)
     local from, to = ns.Encounters.Lead(fight), ns.Encounters.Tail(fight)
-    local common, swings, who, thr = {}, {}, {}, {}
-    local commonT, swingsT, whoT, thrT = {}, {}, {}, {}
-    local times = { [common] = commonT, [swings] = swingsT, [thr] = thrT }
+    local common, swings, who, thr, aur = {}, {}, {}, {}, {}
+    local commonT, swingsT, whoT, thrT, aurT = {}, {}, {}, {}, {}
+    local times = { [common] = commonT, [swings] = swingsT, [thr] = thrT, [aur] = aurT }
     local idx = { fight = fight, segs = segs, from = from, to = to,
-                  common = common, swings = swings, who = who, thr = thr, ts = times }
+                  common = common, swings = swings, who = who, thr = thr, aur = aur, ts = times }
     local bosses = Index.BossKeys(fight)
     local fixates = ns.fixates or {}
     local NpcKey = ns.NpcKey
@@ -94,6 +95,10 @@ local function Build(fight)
                         local T = whoT[dst]
                         T[#T + 1] = ts
                     end
+                end
+                if AURA[sub] and dst and who[dst] then
+                    aur[#aur + 1] = key
+                    aurT[#aurT + 1] = ts
                 end
                 if src and sub and isSwing[sub] then
                     swings[#swings + 1] = key

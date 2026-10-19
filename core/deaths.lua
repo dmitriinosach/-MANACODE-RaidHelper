@@ -9,8 +9,9 @@ local Deaths = {}
 ns.Deaths = Deaths
 Deaths.KILL_WINDOW = 3
 Deaths.WIPE_SPAN = 30
-function Deaths.Wiped(times, players, at)
+function Deaths.Wiped(times, players, at, down)
     local need = max(MASS_MIN, ceil(players * MASS_SHARE))
+    if down and down >= need then return true end
     local n = 0
     for k = #times, 1, -1 do
         if at - times[k] > Deaths.WIPE_SPAN then break end

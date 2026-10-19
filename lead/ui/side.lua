@@ -9,6 +9,8 @@ local HEAD_H = 24
 local PAD = 8
 local WHEEL = 36
 local ROW_W = W - EDGE * 2 - PAD * 2 - 4
+local NAME = "GameFontNormalSmall"
+local INFO = "GameFontHighlightSmall"
 local side, toggle, scroll, child, unHead, waitHead, emptyFs
 local unPool, waitPool
 local built = false
@@ -16,8 +18,19 @@ ns.Side = {}
 function ns.Side.Open()
     return ns.Store.DB().sideOpen ~= false
 end
+local function rowH()
+    return ns.Fit(INFO, ROW_H, 31)
+end
+local function headH()
+    return ns.Fit("GameFontNormal", HEAD_H, 6)
+end
+local function fitRow(r, line)
+    r:SetHeight(rowH() - 2)
+    r.name:SetHeight(ns.LineH(NAME))
+    line:SetHeight(ns.LineH(INFO))
+end
 local function header(text)
-    local fs = child:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local fs = ns.Str(child, "GameFontNormal")
     ns.PaintTitle(fs)
     fs.base = text
     return fs
@@ -32,11 +45,11 @@ local function newUnRow()
     r.spec = r:CreateTexture(nil, "ARTWORK")
     r.spec:SetSize(18, 18)
     r.spec:SetPoint("TOPLEFT", r, "TOPLEFT", 7, -6)
-    r.name = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    r.name = ns.Str(r, NAME)
     r.name:SetPoint("LEFT", r.spec, "RIGHT", 5, 0)
     r.name:SetWidth(ROW_W - 118)
     r.name:SetJustifyH("LEFT")
-    r.info = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.info = ns.Str(r, INFO)
     r.info:SetPoint("TOPLEFT", r.spec, "BOTTOMLEFT", 0, -3)
     r.info:SetWidth(ROW_W - 92)
     r.info:SetJustifyH("LEFT")
@@ -63,11 +76,11 @@ local function newWaitRow()
     r.spec = r:CreateTexture(nil, "ARTWORK")
     r.spec:SetSize(18, 18)
     r.spec:SetPoint("TOPLEFT", r, "TOPLEFT", 7, -6)
-    r.name = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    r.name = ns.Str(r, NAME)
     r.name:SetPoint("LEFT", r.spec, "RIGHT", 5, 0)
     r.name:SetWidth(110)
     r.name:SetJustifyH("LEFT")
-    r.text = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.text = ns.Str(r, INFO)
     r.text:SetPoint("TOPLEFT", r.spec, "BOTTOMLEFT", 0, -3)
     r.text:SetWidth(ROW_W - 100)
     r.text:SetJustifyH("LEFT")
@@ -84,6 +97,7 @@ local function newWaitRow()
     return r
 end
 local function fillUn(r, m)
+    fitRow(r, r.info)
     local p = ns.Session.Player(m.name)
     ns.Icon.Who(r.spec, p.spec, m.class)
     r.name:SetText(m.name)
@@ -98,6 +112,7 @@ local function fillUn(r, m)
     ns.RaidPane.FillSlotButtons(r.btns, m)
 end
 local function fillWait(r, w)
+    fitRow(r, r.text)
     local sp = w.spec and ns.SPEC[w.spec]
     ns.Icon.Spec(r.spec, w.spec)
     r.name:SetText(w.name)
@@ -124,26 +139,27 @@ local function layout()
     local un = S.Unassigned()
     local wait = ns.Whisper.Waiting()
     local y = 4
+    local step, head = rowH(), headH()
     ns.RaidPane.LockTarget()
     unPool:Reset()
     waitPool:Reset()
     unHead:ClearAllPoints()
     unHead:SetPoint("TOPLEFT", child, "TOPLEFT", 2, -y)
     unHead:SetText(ns.T("unTitle") .. "  " .. #un)
-    y = y + HEAD_H
+    y = y + head
     for _, m in ipairs(un) do
         local r = unPool:Acquire()
         r:ClearAllPoints()
         r:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -y)
         fillUn(r, m)
-        y = y + ROW_H
+        y = y + step
     end
     if #un == 0 then
         emptyFs:ClearAllPoints()
         emptyFs:SetPoint("TOPLEFT", child, "TOPLEFT", 4, -y)
         emptyFs:SetText(ns.T(S.InGroup() and "sideAllPlaced" or "sideNoGroup"))
         emptyFs:Show()
-        y = y + 20
+        y = y + ns.Fit("GameFontDisableSmall", 20, 4)
     else
         emptyFs:Hide()
     end
@@ -153,13 +169,13 @@ local function layout()
         waitHead:SetPoint("TOPLEFT", child, "TOPLEFT", 2, -y)
         waitHead:SetText(ns.T("waitTitle") .. "  " .. #wait)
         waitHead:Show()
-        y = y + HEAD_H
+        y = y + head
         for _, w in ipairs(wait) do
             local r = waitPool:Acquire()
             r:ClearAllPoints()
             r:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -y)
             fillWait(r, w)
-            y = y + ROW_H
+            y = y + step
         end
     else
         waitHead:Hide()
@@ -222,7 +238,7 @@ local function build()
     end)
     unHead = header()
     waitHead = header()
-    emptyFs = child:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    emptyFs = ns.Str(child, "GameFontDisableSmall")
     ns.PaintText(emptyFs, "text.muted")
     unPool = ns.NewPool(newUnRow)
     waitPool = ns.NewPool(newWaitRow)
@@ -242,6 +258,7 @@ local function build()
     refresh()
 end
 ns.Session.OnChange(refresh)
+ns.OnFont(refresh)
 ns.Side.Build = build
 ns.Side.Refresh = refresh
 ns.window:OnBuild(build)

@@ -311,6 +311,11 @@ local function Cure(out, h, at)
             or format(T("sum.tt.cure.cd"), names[k], left), nil, nil, "dim")
     end
 end
+local SHED_TONE = {
+    hit = { shed = "warn", full = "bad" },
+    shed = { shed = "good", full = "warn" },
+    full = { shed = "bad", full = "good" },
+}
 local function Shed(st, def)
     local out = {}
     Head(out, T(def.tip))
@@ -318,8 +323,10 @@ local function Shed(st, def)
     for k = 1, min(TIMES, #st.hangs) do
         local h = st.hangs[k]
         local how = T("sum.tt.shed." .. tostring(h.off))
-        if h.off == "shed" and h.by then how = how .. ": " .. ns.Penalties.ShedName(h.by) end
-        local tone = h.off == "shed" and "warn" or (h.off == "full" and "bad" or "dim")
+        if h.off == "shed" and h.by then
+            how = how .. ": " .. ns.Penalties.ShedName(h.by) .. (h.who and format(" (%s)", h.who) or "")
+        end
+        local tone = SHED_TONE[def.want or "hit"][h.off] or "dim"
         Put(out, "sub", Clock(max(0, h.t)), format(T("sum.tt.shed.sec"), floor(h.dur + 0.5), h.full), how, tone)
         Cure(out, h)
     end
@@ -517,6 +524,8 @@ function Tips.Verdict(d)
         text = format(T(key), Dec(d.gap or 0, 1), Short(d.gapHeal or 0))
     elseif why == "oneshot" then
         text = format(T(key), Short(d.oneHp or 0), Short(d.oneMax or 0))
+    elseif why == "rose" then
+        text = format(T(key), Dec(d.rose or 0, 1))
     elseif why == "used" then
         text = format(T(key), GuardName(d.used) or "?")
     elseif why == "ready" then

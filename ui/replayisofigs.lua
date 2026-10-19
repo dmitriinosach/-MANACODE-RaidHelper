@@ -61,7 +61,7 @@ local function ConfigFigure(fig, tr, scene)
     fig.sQ, fig.mQ, fig.rank, fig.sDead = nil, nil, nil, nil
     if tr then
         fig.name = tr.name
-        fig.cr, fig.cg, fig.cb = Kit.ClassColor(tr.class, true)
+        fig.cr, fig.cg, fig.cb = Kit.ClassColor(tr.class)
         LayersView.Role(fig, tr.class, run.roles[tr.name])
         Figs.Config(fig, tr.class, run.roles[tr.name])
     else
@@ -75,7 +75,7 @@ local Parts = Figs.Parts
 local function DrawFigure(fig, s, sx, sy, scale, flat, elapsed, k)
     scale = scale * Figs.Grow(fig, elapsed)
     Figs.Sprite(fig, s, scale, flat, elapsed)
-    fig.baseA = (s.stale and STALE_ALPHA or 1) * (run.focusA[k] or 1)
+    fig.baseA = ((s.stale or s.ghost) and STALE_ALPHA or 1) * (run.focusA[k] or 1)
     fig:SetPoint("CENTER", ui.view, "CENTER", sx, -sy)
     fig.sx, fig.sy, fig.scale = sx, sy, scale
     if not fig.shown then
@@ -308,6 +308,7 @@ local function BuildPools()
     ns.ReplayClassView.Build(view, ui.marks)
     ns.ReplaySpreadView.Build(view, ui.marks)
     ns.ReplayCueView.Build(view, ui.marks)
+    ns.ReplayArrowsView.Build(view, ui.marks)
     Soul.Build(view, ui.top)
     for i = 1, DEATH_POOL do
         local tex = ui.marks:CreateTexture(nil, "ARTWORK")

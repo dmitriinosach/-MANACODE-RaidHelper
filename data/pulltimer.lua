@@ -18,6 +18,8 @@ ns.pullTimer = {
         "pull in (%d+)",
     },
     minutes = { "мин", "min" },
+    breaks = { ["Перерыв!"] = true, ["Перерыв"] = true, ["Break time!"] = true, ["Break"] = true },
+    clockMax = 3600,
 }
 ns.pullSniff = {
     hit = 4,

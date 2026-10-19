@@ -7,7 +7,6 @@ local TRACKMAX = 600
 local TT = {}
 ns.TimelineTracks = TT
 local canvas, tracks, folded
-local rowH, headH = 18, 14
 local heads, handles = {}, {}
 local resize
 function TT.FoldMark(label, fold)
@@ -50,7 +49,7 @@ local function PlaceHandle(index, bound)
         handles[index] = h
     end
     h.key = track.key
-    h.min = track.min or rowH
+    h.min = track.min or (18 + ns.Kit.Grow().g)
     h.h0 = bound.h
     if not resize or resize.key ~= track.key then
         ns.Kit.Shade(h.tex, "surface.clear")
@@ -91,18 +90,17 @@ function TT.Drag(self)
     end
     return true
 end
-function TT.Build(host, list, isFolded, onFold, row, head)
+function TT.Build(host, list, isFolded, onFold)
     canvas, tracks, folded = host, list, isFolded
-    rowH, headH = row, head
     for i = 1, #tracks do
         local h = CreateFrame("Button", nil, canvas)
-        h:SetHeight(headH - 1)
+        h:SetHeight(14 + ns.Kit.Grow().g - 1)
         h:SetFrameLevel(canvas:GetFrameLevel() + 10)
         h.key = tracks[i].key
         h.bg = h:CreateTexture(nil, "BACKGROUND")
         h.bg:SetAllPoints()
         ns.Kit.Paint(h.bg, "surface.laneHead")
-        h.text = h:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        h.text = ns.Kit.Str(h, "GameFontHighlightSmall")
         h.text:SetJustifyH("LEFT")
         ns.Kit.Text(h.text, "surface.laneText")
         h:SetScript("OnEnter", function(self)
@@ -141,7 +139,7 @@ function TT.PlaceHeads(bounds, gutter, targets)
             head:ClearAllPoints()
             head:SetPoint("TOPLEFT", canvas, "TOPLEFT", 1, -(top + 1))
             head:SetWidth(max(24, gutter - 2))
-            head:SetHeight(min(room, headH - 1))
+            head:SetHeight(min(room, 14 + ns.Kit.Grow().g - 1))
             head.text:ClearAllPoints()
             head.text:SetPoint("LEFT", 3, 0)
             head.text:SetWidth(max(10, gutter - 7))

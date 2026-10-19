@@ -116,10 +116,54 @@ function PullTimer.EarlyOf(s, name)
     if not v or not v.early or PullTimer.Puller(pull) ~= name then return nil end
     return v
 end
+local clock = { kind = "pull", ends = 0, sec = 0 }
+local hooked = false
+local function PizzaKind(text)
+    if type(text) ~= "string" then return nil end
+    local d = ns.pullTimer
+    if d.pizza[text] or text == DBM_CORE_TIMER_PULL then return "pull" end
+    if d.breaks[text] or text == DBM_CORE_TIMER_BREAK then return "break" end
+    return nil
+end
+local function SetClock(kind, sec, who)
+    if not kind or not sec or sec > ns.pullTimer.clockMax then return end
+    local now = GetTime()
+    if sec <= 0 then
+        if clock.kind == kind then clock.ends = now end
+        return
+    end
+    clock.kind, clock.ends, clock.sec, clock.who = kind, now + sec, sec, Who(who)
+end
+function PullTimer.ClockFromAddon(prefix, body)
+    local kind = ns.pullTimer.addon[prefix]
+    if type(body) ~= "string" then return nil, nil end
+    if kind == "pt" then return "pull", tonumber(body:match("^(%d+)")) end
+    if kind ~= "pizza" then return nil, nil end
+    local sec, text = body:match("^(%d+)%s*(.-)$")
+    local k = PizzaKind(text)
+    if not k then return nil, nil end
+    return k, tonumber(sec)
+end
+function PullTimer.Clock()
+    local left = clock.ends - GetTime()
+    if left <= 0 then return nil, nil, nil, nil end
+    return clock.kind, left, clock.who, clock.sec
+end
+local function OnPizza(_, sec, text, _broadcast, sender)
+    SetClock(PizzaKind(text), tonumber(sec), sender or UnitName("player"))
+end
+function PullTimer.HookDbm()
+    if hooked or type(DBM) ~= "table" or type(DBM.CreatePizzaTimer) ~= "function" then return end
+    hooked = true
+    hooksecurefunc(DBM, "CreatePizzaTimer", OnPizza)
+end
 local function OnAddon(prefix, body, sender, chan)
     if not GROUP_CHAN[chan] then return end
+    local kind, sec = PullTimer.ClockFromAddon(prefix, body)
+    SetClock(kind, sec, sender)
     PullTimer.Note(sender, PullTimer.FromAddon(prefix, body))
 end
+if ns.OnReady then ns.OnReady(PullTimer.HookDbm) end
 if ns.Comm and ns.Comm.On then
     for prefix in pairs(ns.pullTimer.addon) do
         ns.Comm.On(prefix, function(body, sender, chan) OnAddon(prefix, body, sender, chan) end)
@@ -128,6 +172,8 @@ end
 local frame = CreateFrame("Frame")
 for i = 1, #CHAT_EVENTS do frame:RegisterEvent(CHAT_EVENTS[i]) end
 frame:SetScript("OnEvent", ns.Prof.Wrap("bg.pulltimer", function(_, _, msg, sender)
+    local sec = PullTimer.FromChat(msg)
+    SetClock(sec and "pull" or nil, sec, sender)
     if not ns.Recorder or not ns.Recorder.IsOn() then return end
-    PullTimer.Note(sender, PullTimer.FromChat(msg))
+    PullTimer.Note(sender, sec)
 end))

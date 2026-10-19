@@ -4,6 +4,7 @@ ns.immunities = {
     [31224] = "ROGUE",
     [45438] = "MAGE",
     [10278] = true,
+    [59752] = true,
 }
 ns.taunts = {
     [56222] = true,
@@ -197,6 +198,7 @@ ns.buffsGiven = {
     { kind = "given", spells = { 10278 }, id = 10278, tip = "sum.b.given" },
     { kind = "given", spells = { 1044 }, id = 1044, self = true, tip = "sum.b.given" },
     { kind = "given", spells = { 6940 }, id = 6940, tip = "sum.b.given" },
+    { kind = "given", spells = { 33206 }, id = 33206, tip = "sum.b.given" },
     { kind = "given", spells = { 1038 }, id = 1038, self = true, tip = "sum.b.given" },
     { kind = "given", spells = { 29166 }, id = 29166, self = true, tip = "sum.b.given" },
 }

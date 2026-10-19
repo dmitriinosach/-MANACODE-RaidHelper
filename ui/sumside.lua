@@ -18,6 +18,13 @@ local pane
 local owner
 local redraws = {}
 local items = {}
+local function Width()
+    local k = 1
+    for i = 1, #items do
+        if items[i].sized then k = max(k, Kit.FontScale("GameFontHighlightSmall", true)) end
+    end
+    return floor(W * k + 0.5)
+end
 local hosts = {}
 local placed = {}
 local dock = "right"
@@ -54,8 +61,8 @@ end
 local function PickDock()
     local left, right = nil, nil
     if ns.Shell and ns.Shell.Room then left, right = ns.Shell.Room() end
-    if not right or right >= W - OVERLAP then return "right" end
-    if left and left >= W - OVERLAP then return "left" end
+    if not right or right >= Width() - OVERLAP then return "right" end
+    if left and left >= Width() - OVERLAP then return "left" end
     return "inside"
 end
 local function PaintToggle()
@@ -89,7 +96,7 @@ local function Dock()
             toggle:SetPoint("CENTER", shell, "RIGHT", -p, 0)
         end
     end
-    side:SetWidth(W)
+    side:SetWidth(Width())
     PaintToggle()
 end
 local function Stack()
@@ -100,7 +107,7 @@ local function Stack()
     scroll:ClearAllPoints()
     scroll:SetPoint("TOPLEFT", side, "TOPLEFT", p + PAD, -(p + PAD))
     scroll:SetPoint("BOTTOMRIGHT", side, "BOTTOMRIGHT", -(p + PAD), p + PAD)
-    local width = floor(W - (p + PAD) * 2)
+    local width = floor(Width() - (p + PAD) * 2)
     content:SetWidth(width)
     for i = 1, #placed do
         local keep = false

@@ -16,6 +16,7 @@ local TICK = 2
 local LABEL_GAP = 3
 local LABEL_PAD = 3
 local LABEL_MIN = 8
+local CUT_SHORT = { kick = "tl.cast.s.kicked", cut = "tl.cast.s.early", stop = "tl.cast.s.cut" }
 local TG = {}
 ns.TimelineGcd = TG
 local plan = nil
@@ -36,6 +37,14 @@ local function PlanOf(data, who)
     widthPps, widthMin = nil, nil
     return plan
 end
+function TG.CutWhy(it)
+    if it.cut == "kick" then return format(ns.T("tl.cast.cut.kick"), it.by or "?") end
+    if it.cut == "cut" then
+        return it.left and format(ns.T("tl.cast.cut.early"), Sec(it.left)) or ns.T("tl.cast.cut.cut")
+    end
+    if it.cut then return ns.T("tl.cast.cut.stop") end
+    return nil
+end
 local function Fits(fs, text, width)
     if not text then return false end
     fs:SetText(text)
@@ -46,7 +55,7 @@ local function Caption(b, it, left, room)
     if width < LABEL_MIN then return end
     local text, tone
     if it.cut then
-        text, tone = ns.T(it.cut == "kick" and "tl.cast.s.kicked" or "tl.cast.s.cut"), "text.bad"
+        text, tone = ns.T(CUT_SHORT[it.cut] or "tl.cast.s.cut"), "text.bad"
     elseif ns.TimelineCast then
         text, tone = ns.TimelineCast.Short(it)
     end
@@ -64,25 +73,20 @@ local function Fill(b, slot, from)
     b.tip, b.at = it.label, it.t
     b.jumpTo = nil
     b.spellId = tonumber(it.id)
-    b.cast = (not it.cut) and it or nil
+    b.cast = (it.chan or not it.cut) and it or nil
     if slot.dur > 0 then
-        b.tip2 = format(ns.T("tl.cast.span"), Clock(it.start - from), Clock(it.t - from), Sec(slot.dur))
+        b.tip2 = format(ns.T(it.chan and "tl.cast.span.chan" or "tl.cast.span"), Clock(slot.at - from),
+            Clock(slot.at + slot.dur - from), Sec(slot.dur))
     else
         b.tip2 = Clock(it.t - from)
     end
-    if it.cut == "kick" then
-        b.tip3 = format(ns.T("tl.cast.cut.kick"), it.by or "?")
-    elseif it.cut then
-        b.tip3 = ns.T("tl.cast.cut.stop")
-    elseif slot.off then
-        b.tip3 = ns.T("tl.cast.offgcd")
-    end
+    b.tip3 = TG.CutWhy(it) or (slot.off and ns.T("tl.cast.offgcd") or nil)
 end
 local function Main(slot, x, g, GetBlock, GetBar, XOf, stop)
     local it = slot.it
     local bar
     if slot.dur > 0 then
-        local x0, x1 = max(x, g.left), min(XOf(it.t), g.right, stop)
+        local x0, x1 = max(x, g.left), min(XOf(slot.at + slot.dur), g.right, stop)
         if x1 > x0 then
             bar = GetBar()
             ns.Kit.Shade(bar, it.cut and "sem.castCut" or "sem.castBar")

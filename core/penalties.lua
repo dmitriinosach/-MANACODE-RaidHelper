@@ -33,6 +33,12 @@ local function Store()
     return ns.GetDB().gp
 end
 local NONE = {}
+local WEAK = { __mode = "k" }
+local cache = setmetatable({}, WEAK)
+local gen, cacheGen, cacheStore, cacheMine, cacheOver = 0, nil, nil, nil, nil
+local function Touch()
+    gen = gen + 1
+end
 local function Mine()
     local f = ns.GetDB().faults
     return f and f.rules or NONE
@@ -139,6 +145,7 @@ function Penalties.Set(key, field, value)
     if value ~= nil and value == Was(base, field, over) then value = nil end
     over[field] = value
     mine[key] = next(over) and over or nil
+    Touch()
     return true
 end
 function Penalties.IsChanged(key)
@@ -156,11 +163,13 @@ function Penalties.Reset(key)
     local mine = Mine()
     if not mine[key] then return false end
     mine[key] = nil
+    Touch()
     return true
 end
 function Penalties.ResetAll()
     local mine = Mine()
     for key in pairs(mine) do mine[key] = nil end
+    Touch()
 end
 function Penalties.Prune()
     local rules = BaseRules()
@@ -174,6 +183,7 @@ function Penalties.Prune()
         end
         if not base or not next(over) then mine[key] = nil end
     end
+    Touch()
 end
 local function ForBoss(rule, boss)
     return rule.boss == boss or rule.boss == ns.penaltyAny
@@ -361,7 +371,9 @@ local function BadgeEvents(s, p, rule, out, from)
         if b and g ~= "green" then
             for k = 1, b.n do
                 local ticks = b.ticks and b.ticks[k]
-                local yellow = bd.part == "carry" or (ticks and ticks <= 1) or (not ticks and g == "yellow")
+                local eg = b.grades and b.grades[k]
+                local yellow = bd.part == "carry" or (ticks and ticks <= 1) or (eg and eg == "yellow")
+                    or (not ticks and not eg and g == "yellow")
                 out[#out + 1] = { t = from + (b.times[k] or 0), grade = yellow and "yellow" or nil,
                                   hurt = b.cnt and b.cnt[k], grow = b.grow and b.grow[k],
                                   names = b.cnt and b.notes[k] or nil, ticks = ticks }
@@ -520,8 +532,7 @@ local function OnceOf(found)
     end
     return found[1]
 end
-function Penalties.Evaluate(s, fight, sys)
-    sys = sys or (ns.Ledger and ns.Ledger.Key()) or "gp"
+local function Compute(s, fight, sys)
     local rules = Penalties.Rules(fight.boss)
     local fk = Penalties.FightKey(fight)
     local bump = Store().bump
@@ -586,6 +597,31 @@ function Penalties.Evaluate(s, fight, sys)
     end
     return out, totals
 end
+function Penalties.Evaluate(s, fight, sys)
+    sys = sys or (ns.Ledger and ns.Ledger.Key()) or "gp"
+    local store, mine, over = Store(), Mine(), ns.GPGuild and ns.GPGuild.Overlay() or false
+    if cacheGen ~= gen or cacheStore ~= store or cacheMine ~= mine or cacheOver ~= over then
+        cache = setmetatable({}, WEAK)
+        cacheGen, cacheStore, cacheMine, cacheOver = gen, store, mine, over
+    end
+    local byFight = cache[s]
+    if not byFight then
+        byFight = setmetatable({}, WEAK)
+        cache[s] = byFight
+    end
+    local bySys = byFight[fight]
+    if not bySys then
+        bySys = {}
+        byFight[fight] = bySys
+    end
+    local hit = bySys[sys]
+    if not hit then
+        local out, totals = Compute(s, fight, sys)
+        hit = { out, totals }
+        bySys[sys] = hit
+    end
+    return hit[1], hit[2]
+end
 function Penalties.Choices(boss)
     return Penalties.Rules(boss)
 end
@@ -596,6 +632,7 @@ function Penalties.AddManual(fight, name, key)
     byFight[name] = byFight[name] or {}
     local list = byFight[name]
     list[#list + 1] = key
+    Touch()
 end
 function Penalties.RemoveManual(fight, name, key, eventKey)
     local fk = Penalties.FightKey(fight)
@@ -607,6 +644,7 @@ function Penalties.RemoveManual(fight, name, key, eventKey)
             if eventKey then Store().bump[eventKey] = nil end
             if #list == 0 then Store().manual[fk][name] = nil end
             if not next(Store().manual[fk]) then Store().manual[fk] = nil end
+            Touch()
             return true
         end
     end
@@ -614,7 +652,9 @@ function Penalties.RemoveManual(fight, name, key, eventKey)
 end
 function Penalties.Bump(key)
     Store().bump[key] = true
+    Touch()
 end
 function Penalties.Unbump(key)
     Store().bump[key] = nil
+    Touch()
 end

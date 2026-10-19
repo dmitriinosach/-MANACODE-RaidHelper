@@ -1,48 +1,55 @@
 local ADDON, ns = ...
-local format = string.format
 local floor = math.floor
-local ceil = math.ceil
 local abs = math.abs
 local sin = math.sin
 local max = math.max
 local min = math.min
+local sort = table.sort
+local tremove = table.remove
+local format = string.format
 local ICON = 30
+local ORB = 32
 local GAP = 4
-local PAD = 5
-local ROWGAP = 3
-local TEXTH = 14
-local DOT = 8
-local TRI = 10
 local TOOLGAP = 8
-local COUNT_PERIOD = 1
-local STRIP_H = 3
-local STRIP_IN = 2
+local PAD = 5
+local Kit = ns.Kit
+local SMALL = "GameFontHighlightSmall"
+local ROW_BASE = 16
+local ROW_H = ROW_BASE
+local ROWGAP = 2
+local CTRL = 16
+local CTRL_GAP = 4
+local CTRL_CUT = 2
+local ARROW_PIC = 12
+local LINE_ICON = 14
+local LINE_GAP = 4
+local STRIP_H = 14
+local CORNER = 18
+local CORNER_GAP = 3
+local CORNER_LIFT = 2
+local DOT = 8
+local ORB_DOT = 8
+local TRI = 10
+local ORB_TRI = 10
+local JOB_H = 3
+local JOB_IN = 2
 local LONG_JOB = 1
-local EQ_H = 16
-local EQ_BTN = 14
-local EQ_GAP = 3
-local EQ_BARS = 30
-local GRAPH_BARS = 16
-local GRAPH_SLOT = 2
-local GRAPH_GAP = 5
-local NUM_W = 40
-local NUM_PROBE = 999.9
-local NUM_GAP = 3
-local MUTE = 0.55
+local VIS_PERIOD = 1
 local SCALE_MIN, SCALE_MAX, SCALE_STEP = 0.60, 1.50, 0.05
 local WHEN = { always = true, group = true, raid = true }
-local ROWS = { "count", "graphs", "flasks", "cpu", "win" }
-local ROW_ON = { count = true, graphs = true, flasks = true, cpu = false, win = false }
-local REFRESH = 0.1
+local DEFAULT_LIST = { "count", "graphs" }
 local GLOW = "Interface\\Buttons\\CheckButtonHilight"
-local PLUS = "Interface\\Buttons\\UI-PlusButton-Up"
-local MINUS = "Interface\\Buttons\\UI-MinusButton-Up"
-local PAUSE = "Interface\\TimeManager\\PauseButton"
 local WHITE8 = "Interface\\Buttons\\WHITE8X8"
 local TRI_TEX = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_4"
-local FLASK_TEX = "Interface\\Icons\\INV_Alchemy_EndlessFlask_06"
-local FLASK_ICON = 12
 local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\"
+local ARROWS = { prev = "Interface\\MoneyFrame\\Arrow-Left-Up", next = "Interface\\MoneyFrame\\Arrow-Right-Up" }
+local LINE_TONES = { normal = "text.primary", muted = "text.note", warn = "text.warn", bad = "text.bad", good = "text.good" }
+local GLYPHS = {
+    del = { { x = 0, y = 0, w = 9, h = 1 } },
+    add = { { x = 0, y = 0, w = 9, h = 1 }, { x = 0, y = 0, w = 1, h = 9 } },
+    prev = {},
+    next = {},
+}
 local ICONS = {
     { key = "log", label = "panel.log", tip = "panel.tip.log" },
     { key = "gp", label = "panel.gp", tip = "panel.tip.gp" },
@@ -51,31 +58,45 @@ local ICONS = {
     { key = "timer", label = "panel.timer" },
     { key = "cd", label = "panel.cd", tip = "panel.tip.cd" },
     { key = "settings", label = "panel.settings", tip = "panel.settings.tip", tool = true },
-    { key = "lock", label = "panel.lock", tool = true },
 }
+local ROW_W = PAD * 2 + #ICONS * ICON + (#ICONS - 2) * GAP + TOOLGAP
+local ROOM_BASE = ROW_W - PAD * 2
+local OUT = PAD + CTRL_GAP
+local REACH = OUT + CTRL * 3 + CTRL_GAP * 2
 local Panel = {}
 ns.Panel = Panel
-local frame, lockBtn, dot, tri, countText, strip, stripFill
-local pauseBtn, sizeBtn, eq, eqBg, graphs
+Panel.ROW_H = ROW_H
+Panel.ROW_ROOM = ROOM_BASE
+function Panel.RowH()
+    return ROW_H
+end
+function Panel.RowRoom()
+    return max(ROOM_BASE, floor(ROOM_BASE * Kit.FontScale(SMALL, true) + 0.5))
+end
+local function Sizes()
+    ROW_H = Kit.GrowH(ROW_BASE, SMALL)
+    Panel.ROW_H = ROW_H
+    Panel.ROW_ROOM = Panel.RowRoom()
+end
+Panel.WHENS = { "always", "group", "raid", "never" }
+Panel.ICONS = ICONS
+local widgets = {}
+local ordered = {}
+local views = {}
+local live = {}
+local acc = {}
+local rows = {}
 local buttons = {}
-local eqBars = {}
-local blocks = {}
-local vals = {}
-local buckets = {}
 local alerts = {}
-local countAcc, drawAcc = COUNT_PERIOD, 0
-local cpuText, winText
-local flask = { key = -2 }
-local cpuOwn, cpuSkada, cpuMode = -1, -1, -1
-local winRate, winWorst, winMode = -1, -1, -1
-local baseSeen, eqElapsed = 0, 0
-local layoutKey = ""
-local ApplySize
-local writing = false
-local lowR, lowG, lowB, midR, midG, midB, highR, highG, highB = 0, 1, 0, 1, 1, 0, 1, 0, 0
-local idleR, idleG, idleB, idleA = 1, 1, 1, 0.1
-local baseW = PAD * 2 + #ICONS * ICON + (#ICONS - 2) * GAP + TOOLGAP
-for i = 1, EQ_BARS do buckets[i] = 0 end
+local ctx = { group = false, raid = false }
+local frame, logBtn, strip, dot, tri, job, jobFill, lockGlyph, compactGlyph
+local hoverRow
+local ctrlHot
+local ctrlSide = "RIGHT"
+local visAcc = 0
+local ctxKey = ""
+local dirty, compactNow, panelHot = false, false, false
+local Relayout
 local function Saved()
     local s = ns.GetDB().settings
     if type(s.panel) ~= "table" then s.panel = {} end
@@ -87,11 +108,13 @@ end
 function Panel.IsEnabled()
     return not Saved().hidden
 end
-Panel.WHENS = { "always", "group", "raid", "never" }
 function Panel.When()
     local s = Saved()
     if s.hidden then return "never" end
     return WHEN[s.when or ""] and s.when or "always"
+end
+function Panel.Compact()
+    return Saved().compact and true or false
 end
 local function Wanted()
     local w = Panel.When()
@@ -105,8 +128,212 @@ function Panel.Scale()
     local v = tonumber(Saved().scale) or 1
     return min(SCALE_MAX, max(SCALE_MIN, v)), SCALE_MIN, SCALE_MAX, SCALE_STEP
 end
-local function Short(n)
-    return ns.Short(n, 1, 1e5, 1e7)
+local function List()
+    local s = Saved()
+    if type(s.list) ~= "table" then
+        s.list = {}
+        for i = 1, #DEFAULT_LIST do s.list[i] = DEFAULT_LIST[i] end
+    end
+    if next(widgets) then
+        local l = s.list
+        for i = #l, 1, -1 do
+            if not widgets[l[i]] then tremove(l, i) end
+        end
+    end
+    return s.list
+end
+function Panel.Rows()
+    local out, l = {}, List()
+    for i = 1, #l do out[i] = l[i] end
+    return out
+end
+local function InList(key)
+    local l = List()
+    for i = 1, #l do
+        if l[i] == key then return true end
+    end
+    return false
+end
+local function ByOrder(a, b)
+    local x, y = a.order or 0, b.order or 0
+    if x ~= y then return x < y end
+    return a.key < b.key
+end
+function Panel.Widget(def)
+    assert(type(def) == "table" and type(def.key) == "string" and def.Build and def.Update,
+        "Panel.Widget: key, Build and Update are required")
+    if widgets[def.key] then return end
+    widgets[def.key] = def
+    ordered[#ordered + 1] = def
+    sort(ordered, ByOrder)
+    dirty = true
+end
+function Panel.Get(key)
+    return widgets[key]
+end
+local function FitLine(row)
+    local lw = row.label:GetStringWidth() or 0
+    if lw > row.lw then row.lw = lw end
+    row.need = row.lx + row.lw + LINE_GAP * 2 + row.vw + row.extra
+end
+function Panel.Line(row, lead, label)
+    if type(lead) == "string" then
+        local t = row:CreateTexture(nil, "ARTWORK")
+        t:SetWidth(LINE_ICON)
+        t:SetHeight(LINE_ICON)
+        t:SetTexture(lead)
+        t:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        lead = t
+    end
+    local x = 0
+    if lead then
+        lead:ClearAllPoints()
+        lead:SetPoint("LEFT", row, "LEFT", 0, 0)
+        x = (lead:GetWidth() or 0) + LINE_GAP
+    end
+    local l = Kit.Str(row, SMALL)
+    l:SetJustifyH("LEFT")
+    l:SetPoint("LEFT", row, "LEFT", x, 0)
+    ns.Kit.Text(l, "text.secondary")
+    l:SetText(label or "")
+    local v = Kit.Str(row, SMALL)
+    v:SetJustifyH("RIGHT")
+    v:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    ns.Kit.Text(v, LINE_TONES.normal)
+    row.icon, row.label, row.value = lead, l, v
+    row.lx, row.lw, row.vw, row.extra, row.tone, row.shown = x, 0, 0, 0, "normal", nil
+    FitLine(row)
+    row:SetWidth(row.need)
+end
+function Panel.Value(row, text, tone)
+    tone = LINE_TONES[tone or ""] and tone or "normal"
+    if tone ~= row.tone then
+        row.tone = tone
+        ns.Kit.Text(row.value, LINE_TONES[tone])
+    end
+    if text == row.shown then return false end
+    row.shown = text
+    row.value:SetText(text)
+    local w = row.value:GetStringWidth() or 0
+    if w > row.vw then
+        row.vw = w
+        FitLine(row)
+    end
+    return true
+end
+function Panel.Refit(row)
+    if not row.value then return end
+    row.lw, row.vw = 0, 0
+    local was = row.value:GetText()
+    if row.probe then
+        row.value:SetText(row.probe)
+        row.vw = row.value:GetStringWidth() or 0
+    end
+    if row.shown then
+        row.value:SetText(row.shown)
+        row.vw = max(row.vw, row.value:GetStringWidth() or 0)
+    end
+    row.value:SetText(was or "")
+    FitLine(row)
+    row:SetWidth(row.need)
+end
+function Panel.Label(row, text, class)
+    if class ~= row.lclass then
+        row.lclass = class
+        if class then
+            ns.Kit.ClassText(row.label, class)
+        else
+            ns.Kit.Text(row.label, "text.secondary")
+        end
+    end
+    if row.label:GetText() == text then return end
+    row.label:SetText(text)
+    FitLine(row)
+end
+function Panel.Reserve(row, probe, extra)
+    if probe then
+        row.probe = probe
+        local was = row.value:GetText()
+        row.value:SetText(probe)
+        row.vw = math.max(row.vw, row.value:GetStringWidth() or 0)
+        row.value:SetText(was or "")
+    end
+    if extra then
+        row.extra = extra
+        row.value:ClearAllPoints()
+        row.value:SetPoint("RIGHT", row, "RIGHT", -extra, 0)
+    end
+    FitLine(row)
+end
+local function Ctx()
+    local raid = (GetNumRaidMembers() or 0) > 0
+    ctx.raid = raid
+    ctx.group = raid or (GetNumPartyMembers() or 0) > 0
+end
+function Panel.Ctx()
+    Ctx()
+    return ctx
+end
+local function Visible(def)
+    if not def.Shown then return true end
+    return def.Shown(ctx) and true or false
+end
+local function Spare()
+    local any
+    for i = 1, #ordered do
+        local d = ordered[i]
+        if not InList(d.key) then
+            if Visible(d) then return d end
+            any = any or d
+        end
+    end
+    return any
+end
+local function Neighbour(key, dir)
+    local n, at = #ordered, nil
+    for i = 1, n do
+        if ordered[i].key == key then at = i end
+    end
+    if not at then return nil end
+    for k = 1, n - 1 do
+        local d = ordered[(at - 1 + dir * k) % n + 1]
+        if not InList(d.key) and Visible(d) then return d end
+    end
+    return nil
+end
+local function ApplyLive()
+    local on = frame ~= nil and frame:IsShown() and not Panel.Compact()
+    for i = 1, #ordered do
+        local d = ordered[i]
+        local want = on and InList(d.key)
+        if (live[d.key] or false) ~= want then
+            live[d.key] = want
+            if d.Live then d.Live(want) end
+        end
+    end
+end
+local function Changed()
+    if frame then Relayout() else ApplyLive() end
+end
+function Panel.Add(key)
+    local d = key and widgets[key] or Spare()
+    if not d or InList(d.key) then return end
+    local l = List()
+    l[#l + 1] = d.key
+    Changed()
+end
+function Panel.Remove(at)
+    local l = List()
+    if not l[at] then return end
+    tremove(l, at)
+    Changed()
+end
+function Panel.Step(at, dir)
+    local l = List()
+    local d = l[at] and Neighbour(l[at], dir)
+    if not d then return end
+    l[at] = d.key
+    Changed()
 end
 local function SavePlace()
     local s = Saved()
@@ -125,7 +352,12 @@ local function DragStop(self)
     SavePlace()
     if self then self.dragAt = GetTime() end
 end
-local function RecStateKey()
+local function Draggable(f)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", DragStart)
+    f:SetScript("OnDragStop", DragStop)
+end
+function Panel.RecStateKey()
     local R = ns.Recorder
     if not R or not R.IsOn() then return "panel.rec.off" end
     if R.IsPaused and R.IsPaused() then return "panel.rec.paused" end
@@ -135,54 +367,45 @@ local function TintIcon(b, hot)
     b.hot = hot
     ns.Kit.Tint(b.plate, hot and "button.bgHover" or "button.bg")
     ns.Kit.Tint(b.ring, hot and "button.borderHover" or "button.border")
-    ns.Kit.Tint(b.icon, hot and "button.textHover" or b.glyph or "text.primary")
-end
-local function DressLock()
-    local locked = Panel.IsLocked()
-    lockBtn.icon:SetTexture(ART .. (locked and "lock" or "unlock") .. ".tga")
-    lockBtn.glyph = locked and "text.title" or "text.muted"
-    TintIcon(lockBtn, lockBtn.hot)
-end
-local function IconLeave(b)
-    TintIcon(b, false)
-    GameTooltip:Hide()
-end
-local function ShowActs(b)
-    return ns.PanelActs ~= nil and ns.PanelActs.Show(b, frame, ns.T(b.def.label))
+    ns.Kit.Tint(b.icon, hot and "button.textHover" or "text.primary")
 end
 local function FaultsShown()
     return ns.Shell.IsFolded() and ns.ShellMini.View() == "faults"
 end
-local function IconEnter(b)
-    TintIcon(b, true)
-    if b.def.key == "timer" then
-        GameTooltip:Hide()
-        ShowActs(b)
+function Panel.Open(key)
+    if key == "gp" and ns.ShellMini then
+        if FaultsShown() then ns.Shell.Hide() else ns.Shell.FoldTo("faults") end
         return
     end
-    GameTooltip:SetOwner(b, "ANCHOR_TOP")
-    if b.def.key == "lock" then
-        local locked = Panel.IsLocked()
-        ns.Kit.TipAdd(ns.T(locked and "panel.unlock" or "panel.lock"), "tip.title")
-        ns.Kit.TipAdd(ns.T(locked and "panel.unlock.tip" or "panel.lock.tip"), "tip.body", true)
-        GameTooltip:Show()
-        return
-    end
-    ns.Kit.TipAdd(ns.T(b.def.label), "tip.title")
-    ns.Kit.TipAdd(ns.T(b.def.tip), "tip.body", true)
+    ns.Shell.Toggle(key)
+end
+function Panel.ShowActs(anchor, host, side)
+    return ns.PanelActs ~= nil and ns.PanelActs.Show(anchor, host, ns.T("panel.timer"), side) or false
+end
+local function HideMenu()
+    if ns.PanelMenu then ns.PanelMenu.Hide() end
+end
+local tipOn
+local function TipLine(text, token)
+    return { kind = "text", left = text, rgb = ns.Kit.GameColor(token) }
+end
+local function IconTip(b)
+    tipOn = b
+    local lines = { { kind = "title", left = ns.T(b.def.label), rgb = ns.Kit.GameColor("tip.title") } }
+    if b.def.tip then lines[#lines + 1] = TipLine(ns.T(b.def.tip), "tip.body") end
     if b.def.key == "log" then
-        ns.Kit.TipAdd(ns.T(RecStateKey()), "text.secondary", true)
+        lines[#lines + 1] = TipLine(ns.T(Panel.RecStateKey()), "text.secondary")
         local rng = ns.Ranging and ns.Ranging.Working and ns.Ranging.Working()
-        if rng then ns.Kit.TipAdd(format(ns.T("panel.rng"), rng, ns.Plural(rng, ns.T("panel.rng.n"))), "badge.yellow", true) end
+        if rng then
+            lines[#lines + 1] = TipLine(string.format(ns.T("panel.rng"), rng, ns.Plural(rng, ns.T("panel.rng.n"))), "badge.yellow")
+        end
         local _, frac, text = ns.Jobs.State()
         if frac and text then
-            local c = ns.Kit.GameColor("progress.fill")
-            local r, g, bl = c[1], c[2], c[3]
-            GameTooltip:AddLine(format(ns.T("job.tip"), text, floor(frac * 100)), r, g, bl, true)
+            lines[#lines + 1] = TipLine(string.format(ns.T("job.tip"), text, floor(frac * 100)), "progress.fill")
         end
     end
     if alerts[b.def.key] then
-        ns.Kit.TipAdd(ns.T("panel.tip." .. b.def.key .. ".alert"), "badge.alert", true)
+        lines[#lines + 1] = TipLine(ns.T("panel.tip." .. b.def.key .. ".alert"), "badge.alert")
     end
     local open = ns.Shell.IsOpen(b.def.key)
     local hide, show = "panel.tip.hide", "panel.tip.open"
@@ -190,38 +413,47 @@ local function IconEnter(b)
         open = FaultsShown()
         hide, show = "panel.tip.gp.hide", "panel.tip.gp.open"
     end
-    ns.Kit.TipAdd(ns.T(open and hide or show), "text.secondary", true)
-    GameTooltip:Show()
+    lines[#lines + 1] = TipLine(ns.T(open and hide or show), "text.secondary")
+    ns.Tip.Dock(b, lines)
 end
-local function IconClick(b)
+local function IconTipHide()
+    tipOn = nil
+    ns.Tip.Hide()
+end
+local function IconEnter(b)
+    TintIcon(b, true)
+    local key = b.def.key
+    if key == "timer" then
+        IconTipHide()
+        Panel.ShowActs(b, frame)
+        return
+    end
+    if key == "log" and compactNow and ns.PanelMenu then
+        IconTipHide()
+        ns.PanelMenu.Show(b)
+        return
+    end
+    IconTip(b)
+end
+local function IconLeave(b)
+    TintIcon(b, false)
+    IconTipHide()
+end
+local function IconClick(b, button)
     if b.dragAt == GetTime() then return end
-    GameTooltip:Hide()
+    IconTipHide()
+    if button == "RightButton" then
+        if compactNow and ns.PanelMenu then ns.PanelMenu.Show(b) end
+        return
+    end
+    HideMenu()
     if b.def.key == "timer" then
-        ShowActs(b)
+        Panel.ShowActs(b, frame)
         return
     end
-    if b.def.key == "gp" and ns.ShellMini then
-        if FaultsShown() then ns.Shell.Hide() else ns.Shell.FoldTo("faults") end
-        return
-    end
-    if b.def.key == "lock" then
-        Panel.SetLocked(not Panel.IsLocked())
-        IconEnter(b)
-        return
-    end
-    ns.Shell.Toggle(b.def.key)
+    Panel.Open(b.def.key)
 end
-local function MakeIcon(i)
-    local def = ICONS[i]
-    local b = CreateFrame("Button", nil, frame)
-    b:SetWidth(ICON)
-    b:SetHeight(ICON)
-    if def.tool then
-        b:SetPoint("TOPRIGHT", -(PAD + (#ICONS - i) * (ICON + GAP)), -PAD)
-    else
-        b:SetPoint("TOPLEFT", PAD + (i - 1) * (ICON + GAP), -PAD)
-    end
-    b.def = def
+local function RoundIcon(b, file)
     b.plate = b:CreateTexture(nil, "BACKGROUND")
     b.plate:SetAllPoints()
     b.plate:SetTexture(ART .. "plate.tga")
@@ -230,383 +462,451 @@ local function MakeIcon(i)
     b.ring:SetTexture(ART .. "ring.tga")
     b.icon = b:CreateTexture(nil, "ARTWORK")
     b.icon:SetAllPoints()
-    b.icon:SetTexture(ART .. def.key .. ".tga")
+    b.icon:SetTexture(ART .. file .. ".tga")
     TintIcon(b, false)
+end
+local function MakeIcon(def)
+    local b = CreateFrame("Button", nil, frame)
+    b:SetWidth(ICON)
+    b:SetHeight(ICON)
+    b.def = def
+    RoundIcon(b, def.key)
     b.glow = b:CreateTexture(nil, "OVERLAY")
     b.glow:SetAllPoints()
     b.glow:SetTexture(GLOW)
     b.glow:SetBlendMode("ADD")
     b.glow:Hide()
-    b:RegisterForClicks("LeftButtonUp")
-    b:RegisterForDrag("LeftButton")
-    b:SetScript("OnDragStart", DragStart)
-    b:SetScript("OnDragStop", DragStop)
+    if def.key == "log" then
+        b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    else
+        b:RegisterForClicks("LeftButtonUp")
+    end
+    Draggable(b)
     b:SetScript("OnEnter", IconEnter)
     b:SetScript("OnLeave", IconLeave)
     b:SetScript("OnClick", IconClick)
     return b
 end
-local function PaintTool(b)
-    ns.Kit.Paint(b.bg, b.hovered and "float.toolHover" or "float.tool")
+local function Bars(b, list)
+    b.bars = {}
+    for i = 1, #list do
+        local g = list[i]
+        local t = b:CreateTexture(nil, "ARTWORK")
+        t:SetTexture(WHITE8)
+        t:SetWidth(g.w)
+        t:SetHeight(g.h)
+        t:SetPoint("CENTER", b, "CENTER", g.x, g.y)
+        b.bars[i] = t
+    end
 end
-local function ToolEnter(b)
+local function CutPlate(b, inset, layer)
+    local cut = CTRL_CUT + inset
+    local mid = b:CreateTexture(nil, layer)
+    mid:SetPoint("TOPLEFT", b, "TOPLEFT", cut, -inset)
+    mid:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -cut, inset)
+    local l = b:CreateTexture(nil, layer)
+    l:SetPoint("TOPLEFT", b, "TOPLEFT", inset, -cut)
+    l:SetPoint("BOTTOMRIGHT", b, "BOTTOMLEFT", cut, cut)
+    local r = b:CreateTexture(nil, layer)
+    r:SetPoint("TOPRIGHT", b, "TOPRIGHT", -inset, -cut)
+    r:SetPoint("BOTTOMLEFT", b, "BOTTOMRIGHT", -cut, cut)
+    return { mid, l, r }
+end
+local function PaintGlyph(b)
+    local hot = b.hovered
+    if b.plate then
+        TintIcon(b, hot)
+        return
+    end
+    local tok = hot and "text.title" or "text.muted"
+    if b.pic then ns.Kit.Tint(b.pic, tok) end
+    for i = 1, #b.bars do ns.Kit.Paint(b.bars[i], tok) end
+    if b.bg then ns.Kit.Paint(b.bg, hot and "float.toolHover" or "float.tool") end
+    if b.rim then
+        for i = 1, #b.rim do
+            ns.Kit.Paint(b.rim[i], hot and "button.borderHover" or "button.border")
+            ns.Kit.Paint(b.plates[i], hot and "button.bgHover" or "button.bg")
+        end
+    end
+end
+local function CtrlTip(b)
+    local k = b.kind
+    b.tipTitle, b.tip = nil, nil
+    if k == "add" then
+        local d = Spare()
+        b.tipTitle = ns.T("panel.row.add")
+        b.tip = d and ns.T(d.label) or nil
+    elseif k == "del" then
+        b.tipTitle = ns.T("panel.row.del")
+    elseif k == "lock" then
+        local locked = Panel.IsLocked()
+        b.tipTitle = ns.T(locked and "panel.unlock" or "panel.lock")
+        b.tip = ns.T(locked and "panel.unlock.tip" or "panel.lock.tip")
+    elseif k == "compact" then
+        b.tipTitle = ns.T("panel.compact")
+        b.tip = ns.T("panel.compact.tip")
+    else
+        local key = b.row and b.row.key
+        local d = key and Neighbour(key, k == "next" and 1 or -1)
+        b.tipTitle = ns.T(k == "next" and "panel.row.next" or "panel.row.prev")
+        b.tip = d and format(ns.T("panel.row.pick"), ns.T(d.label)) or nil
+    end
+end
+local function CtrlEnter(b)
     b.hovered = true
-    PaintTool(b)
+    ctrlHot = b
+    PaintGlyph(b)
+    CtrlTip(b)
     ns.Kit.TipShow(b)
 end
-local function ToolLeave(b)
+local function CtrlLeave(b)
     b.hovered = false
-    PaintTool(b)
+    ctrlHot = nil
+    PaintGlyph(b)
     ns.Kit.TipHide()
 end
-local function MakeTool(parent, size, texture)
-    local b = CreateFrame("Button", nil, parent)
-    b:SetWidth(size)
-    b:SetHeight(size)
-    b.bg = b:CreateTexture(nil, "BACKGROUND")
-    b.bg:SetAllPoints()
-    b.tex = b:CreateTexture(nil, "ARTWORK")
-    b.tex:SetPoint("TOPLEFT", 2, -2)
-    b.tex:SetPoint("BOTTOMRIGHT", -2, 2)
-    b.tex:SetTexture(texture)
-    b.tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+local function CtrlClick(b)
+    ns.Kit.TipHide()
+    local k, r = b.kind, b.row
+    if k == "add" then
+        Panel.Add()
+    elseif k == "del" then
+        Panel.Remove(r.at)
+    elseif k == "lock" then
+        Panel.SetLocked(not Panel.IsLocked())
+    elseif k == "compact" then
+        b.hovered, ctrlHot = false, nil
+        PaintGlyph(b)
+        Panel.SetCompact(true)
+        return
+    else
+        Panel.Step(r.at, k == "next" and 1 or -1)
+    end
+    if b.hovered and b:IsShown() then CtrlEnter(b) end
+end
+local function CtrlScripts(b)
     b.tipAnchor = "ANCHOR_TOP"
-    b:SetScript("OnEnter", ToolEnter)
-    b:SetScript("OnLeave", ToolLeave)
-    PaintTool(b)
+    b:RegisterForClicks("LeftButtonUp")
+    b:SetScript("OnEnter", CtrlEnter)
+    b:SetScript("OnLeave", CtrlLeave)
+    b:SetScript("OnClick", CtrlClick)
+end
+local function Ctrl(parent, kind, w, h, strip)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetWidth(w)
+    b:SetHeight(h)
+    b.kind = kind
+    if strip then
+        b.bg = b:CreateTexture(nil, "BACKGROUND")
+        b.bg:SetAllPoints()
+    else
+        b.rim = CutPlate(b, 0, "BACKGROUND")
+        b.plates = CutPlate(b, 1, "BORDER")
+    end
+    if ARROWS[kind] then
+        b.pic = b:CreateTexture(nil, "ARTWORK")
+        b.pic:SetWidth(ARROW_PIC)
+        b.pic:SetHeight(ARROW_PIC)
+        b.pic:SetPoint("CENTER", 0, 0)
+        b.pic:SetTexture(ARROWS[kind])
+        b.pic:SetDesaturated(true)
+    end
+    Bars(b, GLYPHS[kind] or GLYPHS.add)
+    CtrlScripts(b)
+    PaintGlyph(b)
     return b
 end
-local function DressPause()
-    local R = ns.Recorder
-    local on = R and R.IsOn()
-    local paused = on and R.IsPaused and R.IsPaused()
-    ns.Kit.Hue(pauseBtn.tex, "sem.rep.icon")
-    if not on then
-        pauseBtn.tex:SetAlpha(0.35)
-        pauseBtn.tipTitle = ns.T("panel.pause.off")
-        pauseBtn.tip = ns.T("panel.pause.off.tip")
-    elseif paused then
-        pauseBtn.tex:SetAlpha(1)
-        local r, g, b = ns.Kit.Color("text.warn")
-        pauseBtn.tex:SetVertexColor(r, g, b, 1)
-        pauseBtn.tipTitle = ns.T("panel.resume")
-        pauseBtn.tip = ns.T("panel.resume.tip")
+local function MakeCorner(kind, file)
+    local b = CreateFrame("Button", nil, frame)
+    b:SetWidth(CORNER)
+    b:SetHeight(CORNER)
+    b.kind = kind
+    b.bars = {}
+    RoundIcon(b, file)
+    CtrlScripts(b)
+    return b
+end
+local function Row(i)
+    local r = rows[i]
+    if r then return r end
+    r = CreateFrame("Frame", nil, frame)
+    r:SetHeight(ROW_H)
+    r.prev = Ctrl(r, "prev", CTRL, ROW_H)
+    r.next = Ctrl(r, "next", CTRL, ROW_H)
+    r.del = Ctrl(r, "del", CTRL, ROW_H)
+    r.prev.row, r.next.row, r.del.row = r, r, r
+    rows[i] = r
+    return r
+end
+local function Vis(f, on)
+    if on then f:Show() else f:Hide() end
+end
+local function Slot(b, on, slot)
+    Vis(b, on)
+    if not on then return end
+    b:ClearAllPoints()
+    local off = OUT + slot * (CTRL + CTRL_GAP)
+    if ctrlSide == "LEFT" then
+        b:SetPoint("RIGHT", b.row, "LEFT", -off, 0)
     else
-        pauseBtn.tex:SetAlpha(1)
-        pauseBtn.tipTitle = ns.T("panel.pause")
-        pauseBtn.tip = ns.T("panel.pause.tip")
+        b:SetPoint("LEFT", b.row, "RIGHT", off, 0)
     end
 end
-local function DressTools()
-    DressLock()
-    local open = Saved().open
-    sizeBtn.tex:SetTexture(open and MINUS or PLUS)
-    sizeBtn.tex:SetTexCoord(0, 1, 0, 1)
-    sizeBtn.tipTitle = ns.T(open and "panel.collapse" or "panel.expand")
-    sizeBtn.tip = ns.T(open and "panel.collapse.tip" or "panel.expand.tip")
-    DressPause()
+local function ShowCtrls(r, on)
+    local key = r.key
+    local can = on and key ~= nil and Neighbour(key, 1) ~= nil
+    local left = ctrlSide == "LEFT"
+    Slot(r.prev, can, left and 2 or 0)
+    Slot(r.next, can, 1)
+    Slot(r.del, on and key ~= nil, left and 0 or 2)
 end
-local function Writing()
-    local R = ns.Recorder
-    return R ~= nil and R.IsOn() and not (R.IsPaused and R.IsPaused()) or false
+local function SideOf()
+    local r, edge = frame:GetRight(), UIParent:GetRight()
+    if not (r and edge) then return "RIGHT" end
+    local k = (frame:GetEffectiveScale() or 1) / (UIParent:GetEffectiveScale() or 1)
+    return (r + REACH) * k > edge and "LEFT" or "RIGHT"
 end
-local function RefreshCounts()
-    if Writing() then
-        local seen, kept = ns.Recorder.Counts()
-        countText:SetText(format(ns.T("panel.counts"), ns.Num(seen), ns.Num(kept)))
-    else
-        local seen = ns.Meter and ns.Meter.Seen() or 0
-        countText:SetText(format(ns.T("panel.counts.seen"), ns.Num(seen)))
+function Panel.CtrlSide()
+    return ctrlSide
+end
+local function OverSide(f, top, span)
+    if ctrlSide == "LEFT" then return f:IsMouseOver(top, 0, -span, 0) and true or false end
+    return f:IsMouseOver(top, 0, 0, span) and true or false
+end
+local shownCtrls = {}
+local CTRL_KEYS = { "prev", "next", "del" }
+local function CtrlsShown()
+    for i = #shownCtrls, 1, -1 do shownCtrls[i] = nil end
+    local r = hoverRow
+    if r then
+        for i = 1, #CTRL_KEYS do
+            local b = r[CTRL_KEYS[i]]
+            if b:IsShown() then shownCtrls[#shownCtrls + 1] = b end
+        end
+    end
+    if ctrlHot and ctrlHot:IsShown() and frame then shownCtrls[#shownCtrls + 1] = frame end
+    return shownCtrls
+end
+Kit.Tip.SetAvoid(CtrlsShown)
+function Panel.Tip(owner, lines)
+    local span = REACH - PAD
+    if ctrlSide == "LEFT" then
+        local l, o = frame:GetLeft(), owner:GetLeft()
+        ns.Tip.Show(owner, lines, nil, nil, (l and o) and (o - l + span) or span)
+        return
+    end
+    local r, o = frame:GetRight(), owner:GetRight()
+    ns.Tip.Show(owner, lines, nil, (r and o) and (r - o + span) or span)
+end
+local function ViewEnter(v)
+    local d = v.def
+    if not d.Tip then return end
+    local lines = d.Tip(v, ns.Tip)
+    if type(lines) == "table" then Panel.Tip(v, lines) end
+end
+local function ViewLeave(v)
+    ns.Tip.Hide()
+end
+local function ViewClick(v, button)
+    if v.dragAt == GetTime() or not v.def.Click then return end
+    v.def.Click(v, button)
+end
+local function View(d)
+    local v = views[d.key]
+    if v then return v end
+    v = CreateFrame("Frame", nil, frame)
+    v:SetHeight(ROW_H)
+    v:SetWidth(1)
+    v.def = d
+    if d.Tip or d.Click then
+        v:EnableMouse(true)
+        Draggable(v)
+        v:SetScript("OnEnter", ViewEnter)
+        v:SetScript("OnLeave", ViewLeave)
+        v:SetScript("OnMouseUp", ViewClick)
+    end
+    d.Build(v)
+    v.w = v.need or v:GetWidth()
+    v:Hide()
+    views[d.key] = v
+    return v
+end
+local function Feed(d, v)
+    d.Update(v, GetTime())
+    local w = v.need or v:GetWidth() or 0
+    if abs(w - (v.w or 0)) > 0.5 then
+        v.w = w
+        dirty = true
     end
 end
-local function MakeBars(bars, n, parent, layer, token)
+local function LayTop(compact)
+    for i = 1, #buttons do
+        local b = buttons[i]
+        local on = not compact or b == logBtn
+        Vis(b, on)
+        if on then
+            local size = compact and ORB or ICON
+            b:SetWidth(size)
+            b:SetHeight(size)
+            b:ClearAllPoints()
+            if compact then
+                b:SetPoint("TOPLEFT", 0, 0)
+            elseif b.def.tool then
+                b:SetPoint("TOPRIGHT", -PAD, -PAD)
+            else
+                b:SetPoint("TOPLEFT", PAD + (i - 1) * (ICON + GAP), -PAD)
+            end
+        end
+    end
+    local d, t = compact and ORB_DOT or DOT, compact and ORB_TRI or TRI
+    dot:SetWidth(d)
+    dot:SetHeight(d)
+    tri:SetWidth(t)
+    tri:SetHeight(t)
+end
+local function Bare(bare)
+    if frame.bare == bare then return end
+    frame.bare = bare
+    if bare then
+        ns.Kit.Skin(frame, "bare")
+        frame:SetBackdrop(nil)
+        frame.kitBd = nil
+    else
+        ns.Kit.Skin(frame, "float")
+    end
+end
+local function FillRows()
+    for _, v in pairs(views) do v.on = false end
+    local l = List()
+    local n, cw = 0, 0
+    for i = 1, #l do
+        local d = widgets[l[i]]
+        if d and Visible(d) then
+            n = n + 1
+            local r = Row(n)
+            r.at, r.key = i, d.key
+            local v = View(d)
+            v.on = true
+            if not v:IsShown() then
+                acc[d.key] = 0
+                Feed(d, v)
+            end
+            cw = max(cw, v.need or v:GetWidth() or 0)
+        end
+    end
+    return n, cw
+end
+local function HideRows(from)
+    for i = from, #rows do
+        rows[i].key, rows[i].at = nil, nil
+        rows[i]:Hide()
+    end
+    for _, v in pairs(views) do
+        if not v.on then v:Hide() end
+    end
+end
+local function LayRows(n, w, y)
     for i = 1, n do
-        local t = parent:CreateTexture(nil, layer)
-        t:SetWidth(1)
-        t:SetHeight(1)
-        t:SetTexture(WHITE8)
-        if token then ns.Kit.Paint(t, token) end
-        bars[i] = t
+        local r = rows[i]
+        y = y + ROWGAP
+        r:ClearAllPoints()
+        r:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y)
+        r:SetWidth(w - PAD * 2)
+        r:Show()
+        local v = views[r.key]
+        v:ClearAllPoints()
+        v:SetPoint("LEFT", r, "LEFT", 0, 0)
+        if v.need then v:SetWidth(w - PAD * 2) end
+        v:Show()
+        ShowCtrls(r, r == hoverRow)
+        y = y + ROW_H
     end
-end
-local function LayBars(bars, slot)
-    for i = 1, #bars do
-        local t = bars[i]
-        t:ClearAllPoints()
-        t:SetPoint("BOTTOMLEFT", (i - 1) * slot, 0)
-        t:SetWidth(max(1, slot - 1))
-    end
-end
-local function WatchMeter()
-    if ns.Meter then ns.Meter.Watch(frame:IsShown() and Saved().open and true or false) end
-end
-local function NumWidth()
-    local w = NUM_W
-    local fs = blocks[1] and blocks[1].text
-    if fs then
-        local was = fs:GetText()
-        fs:SetText(ns.Short(NUM_PROBE * 1000, 1, false))
-        w = max(w, fs:GetStringWidth() + 4)
-        fs:SetText(was)
-    end
-    return w
-end
-function Panel.Row(key)
-    local v = Saved().rows and Saved().rows[key]
-    if v == nil then return ROW_ON[key] == true end
-    return v and true or false
-end
-function Panel.SetRow(key, on)
-    if ROW_ON[key] == nil then return end
-    local s = Saved()
-    on = on and true or false
-    if on == ROW_ON[key] then
-        if s.rows then s.rows[key] = nil end
+    HideRows(n + 1)
+    if Spare() then
+        y = y + ROWGAP
+        strip:ClearAllPoints()
+        strip:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y)
+        strip:SetWidth(w - PAD * 2)
+        strip:Show()
+        y = y + STRIP_H
     else
-        if type(s.rows) ~= "table" then s.rows = {} end
-        s.rows[key] = on
+        strip:Hide()
     end
-    if frame then ApplySize() end
+    return y
 end
-local function GraphsEmpty()
-    local M = ns.Meter
-    if not M then return true end
-    return not (M.Fighting() or M.Active() or (M.Rates()) > 0)
+local function DressLock()
+    lockGlyph.icon:SetTexture(ART .. (Panel.IsLocked() and "lock" or "unlock") .. ".tga")
+    PaintGlyph(lockGlyph)
 end
-local function Shown(key)
-    if key == "count" then return Panel.Row("count") end
-    if not Saved().open then return false end
-    if key == "graphs" then return Panel.Row("graphs") and not GraphsEmpty() end
-    if key == "flasks" then return Panel.Row("flasks") and (GetNumRaidMembers() > 0 or GetNumPartyMembers() > 0) end
-    local prof = ns.CpuMeter and ns.CpuMeter.Profiled()
-    return (Panel.Row(key) or prof) and true or false
+local function ShowCorners()
+    local on = panelHot and not compactNow
+    Vis(lockGlyph, on)
+    Vis(compactGlyph, on)
 end
-local function LayoutKey()
-    local k = ""
-    for i = 1, #ROWS do k = k .. (Shown(ROWS[i]) and "1" or "0") end
-    return k
-end
-local function Width()
-    local w = baseW
-    if Shown("graphs") then
-        local n = #blocks
-        w = max(w, PAD * 2 + (GRAPH_BARS * GRAPH_SLOT - 1 + NUM_GAP + NumWidth()) * n + GRAPH_GAP * (n - 1))
+function Relayout()
+    compactNow = Panel.Compact()
+    ApplyLive()
+    Ctx()
+    LayTop(compactNow)
+    Bare(compactNow)
+    if compactNow then
+        for _, v in pairs(views) do v.on = false end
+        HideRows(1)
+        strip:Hide()
+        panelHot = false
+        ShowCorners()
+        frame:SetWidth(ORB)
+        frame:SetHeight(ORB)
+        dirty = false
+        return
     end
-    if Shown("count") then w = max(w, countText:GetStringWidth() + PAD * 2 + 4) end
-    if cpuText then
-        if Shown("cpu") then w = max(w, cpuText:GetStringWidth() + PAD * 2 + 4) end
-        if Shown("win") then w = max(w, winText:GetStringWidth() + PAD * 2 + 4) end
-        if Shown("flasks") then w = max(w, flask.row:GetWidth() + PAD * 2 + 4) end
-    end
-    return w
-end
-local function Stack(r, on, y)
-    if r.hover then
-        if on then r.hover:Show() else r.hover:Hide() end
-    end
-    if not on then
-        r:Hide()
-        return y
-    end
-    r:ClearAllPoints()
-    r:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y)
-    r:Show()
-    return y + TEXTH
-end
-local function Layout()
-    local y = PAD + ICON + ROWGAP + EQ_H + 2
-    if Shown("count") then
-        countText:ClearAllPoints()
-        countText:SetPoint("TOP", 0, -y)
-        countText:Show()
-        y = y + TEXTH
-    else
-        countText:Hide()
-    end
-    if Shown("graphs") then
-        graphs:ClearAllPoints()
-        graphs:SetPoint("TOPLEFT", PAD, -(y + ROWGAP))
-        graphs:Show()
-        y = y + ROWGAP + EQ_H + 2
-    else
-        graphs:Hide()
-    end
-    y = Stack(flask.row, Shown("flasks"), y)
-    y = Stack(cpuText, Shown("cpu"), y)
-    y = Stack(winText, Shown("win"), y)
-    layoutKey = LayoutKey()
-    return y + PAD
-end
-local function RefreshWin(C)
-    local rate, worst, live = C.WinLive()
-    local r = rate and floor(rate * 100 + 0.5) or -1
-    local w = floor(worst * 10 + 0.5)
-    local m = live and 1 or 0
-    if r == winRate and w == winWorst and m == winMode then return end
-    winRate, winWorst, winMode = r, w, m
-    if rate then
-        winText:SetText(format(ns.T("panel.cpu.win"), C.Ms(rate), C.Ms(worst)))
-    else
-        winText:SetText(ns.T("panel.cpu.win.none"))
-    end
-    winText:SetAlpha(live and 1 or 0.7)
-end
-local function RefreshCpu()
-    local C = ns.CpuMeter
-    if not (C and cpuText and Saved().open) then return end
-    RefreshWin(C)
-    local own, skada, live, prof = C.Live()
-    local o = own and floor(own * 100 + 0.5) or -1
-    local s = skada and floor(skada * 100 + 0.5) or -1
-    local mode = (live and 1 or 0) + (prof and 2 or 0)
-    if o == cpuOwn and s == cpuSkada and mode == cpuMode then return end
-    cpuOwn, cpuSkada, cpuMode = o, s, mode
-    if own then
-        cpuText:SetText(format(ns.T("panel.cpu"), C.Ms(own))
-            .. (skada and format(ns.T("panel.cpu.skada"), C.Ms(skada)) or "")
-            .. (prof and "" or ns.T("panel.cpu.own")))
-    else
-        cpuText:SetText(ns.T("panel.cpu.none"))
-    end
-    cpuText:SetAlpha(live and 1 or 0.7)
-end
-local function RefreshFlasks()
-    local R = ns.FlaskReady
-    if not (R and flask.text and Saved().open) then return end
-    R.Tick()
-    local ready, total, known = R.Counts()
-    local key = (known and total > 0) and (ready * 100 + total) or -1
-    if key == flask.key then return end
-    flask.key = key
-    if key >= 0 then
-        flask.text:SetText(format("%d/%d", ready, total))
-        ns.Kit.Text(flask.text, ready >= total and "text.good" or "text.secondary")
-    else
-        flask.text:SetText(ns.T("flaskrow.none.text"))
-        ns.Kit.Text(flask.text, "text.secondary")
-    end
-    flask.row:SetWidth(FLASK_ICON + NUM_GAP + flask.text:GetStringWidth())
-end
-function ApplySize()
-    RefreshCounts()
-    RefreshCpu()
-    RefreshFlasks()
-    local w = Width()
-    local eqW = w - PAD * 2 - (EQ_BTN + EQ_GAP) * 2
-    local eqSlot = max(2, floor(eqW / EQ_BARS))
-    eq:SetWidth(eqSlot * EQ_BARS - 1)
-    LayBars(eqBars, eqSlot)
-    if Shown("graphs") then
-        local nw = NumWidth()
-        for i = 1, #blocks do blocks[i].text:SetWidth(nw) end
-        graphs:SetWidth(w - PAD * 2)
-    end
-    local h = Layout()
+    local n, cw = FillRows()
+    local w = max(ROW_W, PAD * 2 + cw)
+    local y = LayRows(n, w, PAD + ICON)
+    ShowCorners()
     frame:SetWidth(w)
-    frame:SetHeight(h)
-    DressTools()
-    WatchMeter()
+    frame:SetHeight(y + PAD)
+    dirty = false
 end
-local function TintEq(t, ratio)
-    local r, g, b
-    if ratio < 0.5 then
-        local k = ratio * 2
-        r, g, b = lowR + (midR - lowR) * k, lowG + (midG - lowG) * k, lowB + (midB - lowB) * k
-    else
-        local k = (ratio - 0.5) * 2
-        r, g, b = midR + (highR - midR) * k, midG + (highG - midG) * k, midB + (highB - midB) * k
-    end
-    if writing then
-        t:SetVertexColor(r, g, b, 1)
-    else
-        t:SetVertexColor(r * MUTE, g * MUTE, b * MUTE, 0.8)
-    end
-end
-local function FeedEq(elapsed)
-    local now = Writing()
-    local seen = now and ns.Recorder.Counts() or (ns.Meter and ns.Meter.Seen() or 0)
-    if now ~= writing then
-        writing = now
-        baseSeen = seen
-    end
-    if seen < baseSeen then baseSeen = seen end
-    buckets[EQ_BARS] = seen - baseSeen
-    eqElapsed = eqElapsed + elapsed
-    if eqElapsed >= 1 then
-        eqElapsed = eqElapsed - 1
-        if eqElapsed >= 1 then eqElapsed = 0 end
-        baseSeen = seen
-        for i = 1, EQ_BARS - 1 do buckets[i] = buckets[i + 1] end
-        buckets[EQ_BARS] = 0
-    end
-end
-local function DrawEq()
-    local peak = 1
-    for i = 1, EQ_BARS do
-        if buckets[i] > peak then peak = buckets[i] end
-    end
-    for i = 1, EQ_BARS do
-        local v, t = buckets[i], eqBars[i]
-        if v <= 0 then
-            t:SetHeight(1)
-            t:SetVertexColor(idleR, idleG, idleB, idleA)
-        else
-            local ratio = v / peak
-            t:SetHeight(max(1.5, ratio * EQ_H))
-            TintEq(t, ratio)
+local function VisChanged()
+    Ctx()
+    local l = List()
+    for i = 1, #l do
+        local d = widgets[l[i]]
+        if d then
+            local v = views[d.key]
+            if Visible(d) ~= (v ~= nil and v.on == true) then return true end
         end
     end
+    return false
 end
-local function PaintBars(bars, peak)
-    for i = 1, #bars do
-        local v, t = vals[i], bars[i]
-        if v <= 0 then
-            t:SetHeight(1)
-            t:SetAlpha(0.25)
-        else
-            t:SetHeight(max(1.5, v / peak * EQ_H))
-            t:SetAlpha(1)
+local function StepHover()
+    if compactNow then return end
+    if not panelHot then ctrlSide = SideOf() end
+    local over = OverSide(frame, CORNER + CORNER_LIFT, REACH - PAD)
+    if over ~= panelHot then
+        panelHot = over
+        ShowCorners()
+        for i = 1, #rows do
+            local r = rows[i]
+            if r:IsShown() then ShowCtrls(r, r == hoverRow) end
         end
     end
-end
-local function DrawGraph(bars, ring, slot, size)
-    local n, peak = #bars, 1
-    for i = 1, n do
-        local v = ring[(slot - n + i - 1) % size + 1] or 0
-        vals[i] = v
-        if v > peak then peak = v end
-    end
-    PaintBars(bars, peak)
-end
-local function DrawCurve(bars, curve)
-    local n, have, peak = #bars, #curve, 1
-    for i = 1, n do
-        local v = 0
-        if have > n then
-            v = curve[ceil(i * have / n)]
-        elseif i <= have then
-            v = curve[i]
+    if not over and not hoverRow then return end
+    local hit
+    if over then
+        for i = 1, #rows do
+            local r = rows[i]
+            if r:IsShown() and OverSide(r, 0, REACH) then
+                hit = r
+                break
+            end
         end
-        vals[i] = v
-        if v > peak then peak = v end
     end
-    PaintBars(bars, peak)
-end
-local function DrawGraphs()
-    local M = ns.Meter
-    if not M then return end
-    local slot, size = M.Slot(), M.Window()
-    DrawGraph(blocks[1].bars, M.dmg, slot, size)
-    DrawGraph(blocks[2].bars, M.heal, slot, size)
-    DrawCurve(blocks[3].bars, M.curve)
-    local wd, wh = M.WindowRates()
-    local dps = M.Rates()
-    blocks[1].text:SetText(Short(wd))
-    blocks[2].text:SetText(Short(wh))
-    blocks[3].text:SetText(Short(dps))
-    blocks[1].text:SetAlpha(M.Active() and 1 or 0.7)
-    blocks[2].text:SetAlpha(M.Active() and 1 or 0.7)
-    blocks[3].text:SetAlpha(M.Fighting() and 1 or 0.7)
+    if hit == hoverRow then return end
+    if hoverRow then ShowCtrls(hoverRow, false) end
+    hoverRow = hit
+    if hit then ShowCtrls(hit, true) end
 end
 local function StepDot()
     local R = ns.Recorder
@@ -623,286 +923,74 @@ local function StepDot()
         tri:Hide()
     end
 end
+local function Glow(b, on)
+    if on then
+        b.glow:Show()
+        b.glow:SetAlpha(0.4 + 0.6 * abs(sin(GetTime() * 4)))
+    elseif b.glow:IsShown() then
+        b.glow:Hide()
+    end
+end
 local function StepAlerts()
     for i = 1, #buttons do
         local b = buttons[i]
-        if alerts[b.def.key] then
-            b.glow:Show()
-            b.glow:SetAlpha(0.4 + 0.6 * abs(sin(GetTime() * 4)))
-        elseif b.glow:IsShown() then
-            b.glow:Hide()
-        end
+        local on = alerts[b.def.key]
+        if compactNow and b == logBtn then on = alerts.log or alerts.gp end
+        Glow(b, on and b:IsShown() or false)
     end
 end
 local function OnUpdate(self, elapsed)
     StepDot()
     StepAlerts()
-    FeedEq(elapsed)
-    drawAcc = drawAcc + elapsed
-    if drawAcc >= REFRESH then
-        drawAcc = 0
-        DrawEq()
-        if Saved().open then DrawGraphs() end
-    end
-    countAcc = countAcc + elapsed
-    if countAcc >= COUNT_PERIOD then
-        countAcc = 0
-        RefreshCounts()
-        RefreshCpu()
-        RefreshFlasks()
-        local w = Width()
-        if abs(frame:GetWidth() - w) > 0.5 or layoutKey ~= LayoutKey() then ApplySize() end
-        if pauseBtn.recKey ~= RecStateKey() then
-            pauseBtn.recKey = RecStateKey()
-            DressPause()
+    StepHover()
+    visAcc = visAcc + elapsed
+    if visAcc >= VIS_PERIOD then
+        visAcc = 0
+        if not compactNow and VisChanged() then dirty = true end
+        local key = (ctx.group and "g" or "") .. (ctx.raid and "r" or "")
+        if key ~= ctxKey then
+            ctxKey = key
+            for i = 1, #rows do
+                local r = rows[i]
+                if r.key and r:IsShown() then Feed(widgets[r.key], views[r.key]) end
+            end
         end
     end
+    for i = 1, #rows do
+        local r = rows[i]
+        local key = r.key
+        if key and r:IsShown() then
+            local d = widgets[key]
+            local a = (acc[key] or 0) + elapsed
+            if a >= (d.rate or 1) then
+                a = 0
+                Feed(d, views[key])
+            end
+            acc[key] = a
+        end
+    end
+    if dirty then Relayout() end
 end
 local function ShowProgress()
-    if not strip then return end
+    if not job then return end
     local _, frac, _, _, age = ns.Jobs.State()
     if frac and age >= LONG_JOB then
-        stripFill:SetWidth(max(1, (ICON - STRIP_IN * 2) * frac))
-        strip:Show()
-    elseif strip:IsShown() then
-        strip:Hide()
+        jobFill:SetWidth(max(1, ((logBtn:GetWidth() or ICON) - JOB_IN * 2) * frac))
+        job:Show()
+    elseif job:IsShown() then
+        job:Hide()
     end
-    local b = buttons[1]
-    if GameTooltip:GetOwner() == b and GameTooltip:IsShown() then IconEnter(b) end
+    if not compactNow and tipOn == logBtn then IconTip(logBtn) end
 end
-local function OnTheme()
-    lowR, lowG, lowB = ns.Kit.Color("badge.green")
-    midR, midG, midB = ns.Kit.Color("badge.yellow")
-    highR, highG, highB = ns.Kit.Color("badge.red")
-    idleR, idleG, idleB, idleA = ns.Kit.Color("surface.edge")
-    if pauseBtn then DressPause() end
-end
-local function PauseClick()
-    local R = ns.Recorder
-    if not R or not R.IsOn() then return end
-    if R.IsPaused() then
-        R.Resume("hand")
-    else
-        R.Pause()
-        ns.Print(ns.T("rec.paused"))
-    end
-    DressPause()
-    ToolEnter(pauseBtn)
-    if ns.Settings and ns.Settings.RefreshRecord then ns.Settings.RefreshRecord() end
-end
-local function BuildStrip()
-    pauseBtn = MakeTool(frame, EQ_BTN, PAUSE)
-    pauseBtn:SetPoint("TOPLEFT", PAD, -(PAD + ICON + ROWGAP + (EQ_H - EQ_BTN) / 2))
-    pauseBtn.tex:SetTexCoord(0, 1, 0, 1)
-    pauseBtn:SetScript("OnClick", PauseClick)
-    sizeBtn = MakeTool(frame, EQ_BTN, PLUS)
-    sizeBtn:SetPoint("TOPRIGHT", -PAD, -(PAD + ICON + ROWGAP + (EQ_H - EQ_BTN) / 2))
-    sizeBtn:SetScript("OnClick", function(self)
-        Saved().open = not Saved().open
-        countAcc = COUNT_PERIOD
-        ApplySize()
-        ToolEnter(self)
-    end)
-    eq = CreateFrame("Frame", nil, frame)
-    eq:SetHeight(EQ_H)
-    eq:SetPoint("TOPLEFT", PAD + EQ_BTN + EQ_GAP, -(PAD + ICON + ROWGAP))
-    eqBg = eq:CreateTexture(nil, "BACKGROUND")
-    eqBg:SetAllPoints()
-    ns.Kit.Paint(eqBg, "progress.track")
-    MakeBars(eqBars, EQ_BARS, eq, "ARTWORK", nil)
-    countText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    countText:SetJustifyH("CENTER")
-    ns.Kit.Text(countText, "text.secondary")
-end
-local function MakeGraph(parent, bars, token)
-    local g = CreateFrame("Frame", nil, parent)
-    g:SetHeight(EQ_H)
-    g:SetWidth(GRAPH_BARS * GRAPH_SLOT - 1)
-    local bg = g:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    ns.Kit.Paint(bg, "progress.track")
-    MakeBars(bars, GRAPH_BARS, g, "ARTWORK", token)
-    LayBars(bars, GRAPH_SLOT)
-    return g
-end
-local function MakeNumber(g)
-    local fs = graphs:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    fs:SetPoint("LEFT", g, "RIGHT", NUM_GAP, 0)
-    fs:SetWidth(NUM_W)
-    fs:SetHeight(EQ_H)
-    fs:SetJustifyH("LEFT")
-    ns.Kit.Text(fs, "text.primary")
-    return fs
-end
-local function FightTip(M)
-    local dps = M.Rates()
-    local t = M.FightTime()
-    local state = M.Fighting() and "panel.tip.going" or (t > 0 and "panel.tip.last" or "panel.tip.none")
-    return {
-        { kind = "head", left = ns.T(M.InRaid() and "panel.dps.fight.raid" or "panel.dps.fight") },
-        { kind = "row", left = ns.T("panel.tip.fight"), right = Short(dps) },
-        { kind = "row", left = ns.T("panel.tip.time"), right = ns.Clock(t) },
-        { kind = "note", left = ns.T(state) },
-    }
-end
-local function NowTip(M, heal)
-    local dps, hps = M.Rates()
-    local wd, wh = M.WindowRates()
-    local key = (heal and "panel.hps.now" or "panel.dps.now") .. (M.InRaid() and ".raid" or "")
-    return {
-        { kind = "head", left = ns.T(key) },
-        { kind = "row", left = format(ns.T("panel.tip.window"), M.Window()), right = Short(heal and wh or wd) },
-        { kind = "row", left = ns.T("panel.tip.fight"), right = Short(heal and hps or dps) },
-    }
-end
-local function GraphEnter(self)
-    local M = ns.Meter
-    if not M then return end
-    ns.Tip.Show(self, self.kind == "avg" and FightTip(M) or NowTip(M, self.kind == "heal"))
-end
-local function CpuEnter(self)
-    local C = ns.CpuMeter
-    if not C then return end
-    local own, skada, live, prof = C.Live()
-    local rows = { { kind = "head", left = ns.T("panel.cpu.head") } }
-    if own then
-        local worst, dur = C.Stats()
-        rows[2] = { kind = "row", left = ns.T("panel.cpu.mine"), right = C.Ms(own) }
-        if skada then rows[#rows + 1] = { kind = "row", left = ns.T("panel.cpu.skada.row"), right = C.Ms(skada) } end
-        rows[#rows + 1] = { kind = "row", left = ns.T("panel.cpu.worst"), right = C.Ms(worst) }
-        rows[#rows + 1] = { kind = "row", left = ns.T("panel.tip.time"),
-            right = ns.Clock(dur) }
-        rows[#rows + 1] = { kind = "note", left = ns.T(prof and "panel.cpu.src.prof" or "panel.cpu.src.own") }
-    end
-    rows[#rows + 1] = { kind = "note",
-        left = ns.T(live and "panel.cpu.live" or (own and "panel.cpu.last" or "panel.cpu.nofight")) }
-    ns.Tip.Show(self, rows)
-end
-local function WinEnter(self)
-    local C = ns.CpuMeter
-    if not C then return end
-    local rate, worst, live, dur, once = C.WinLive()
-    local rows = { { kind = "head", left = ns.T("panel.cpu.win.head") } }
-    if rate then
-        rows[2] = { kind = "row", left = ns.T("panel.cpu.win.rate"), right = C.Ms(rate) }
-        rows[3] = { kind = "row", left = ns.T("panel.cpu.worst"), right = C.Ms(worst) }
-        rows[4] = { kind = "row", left = ns.T("panel.cpu.win.once"), right = C.Ms(once) }
-        rows[5] = { kind = "row", left = ns.T("panel.tip.time"),
-            right = ns.Clock(dur) }
-    end
-    rows[#rows + 1] = { kind = "note",
-        left = ns.T(live and "panel.cpu.win.open" or (rate and "panel.cpu.win.closed" or "panel.cpu.win.never")) }
-    ns.Tip.Show(self, rows)
-end
-local function Hoverable(fs, enter)
-    local h = CreateFrame("Frame", nil, frame)
-    h:SetPoint("TOPLEFT", fs, "TOPLEFT", 0, 0)
-    h:SetPoint("BOTTOMRIGHT", fs, "BOTTOMRIGHT", 0, 0)
-    h:EnableMouse(true)
-    h:SetScript("OnEnter", enter)
-    h:SetScript("OnLeave", ns.Tip.Hide)
-    fs.hover = h
-end
-local function FlaskEnter(self)
-    local R = ns.FlaskReady
-    if not R then return end
-    RefreshFlasks()
-    ns.Tip.Show(self, R.TipRows())
-end
-local function BuildFlasks()
-    local row = CreateFrame("Frame", nil, frame)
-    row:SetHeight(TEXTH)
-    row:SetWidth(FLASK_ICON)
-    local icon = row:CreateTexture(nil, "ARTWORK")
-    icon:SetWidth(FLASK_ICON)
-    icon:SetHeight(FLASK_ICON)
-    icon:SetPoint("LEFT", 0, 0)
-    icon:SetTexture(FLASK_TEX)
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    fs:SetPoint("LEFT", row, "LEFT", FLASK_ICON + NUM_GAP, 0)
-    fs:SetHeight(TEXTH)
-    fs:SetJustifyH("LEFT")
-    ns.Kit.Text(fs, "text.secondary")
-    fs:SetText(ns.T("flaskrow.none.text"))
-    row:EnableMouse(true)
-    row:SetScript("OnEnter", FlaskEnter)
-    row:SetScript("OnLeave", ns.Tip.Hide)
-    flask.row, flask.text = row, fs
-end
-local function BuildCpu()
-    BuildFlasks()
-    cpuText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    cpuText:SetHeight(TEXTH)
-    cpuText:SetJustifyH("LEFT")
-    ns.Kit.Text(cpuText, "text.secondary")
-    Hoverable(cpuText, CpuEnter)
-    cpuText:SetText(ns.T("panel.cpu.none"))
-    winText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    winText:SetHeight(TEXTH)
-    winText:SetJustifyH("LEFT")
-    ns.Kit.Text(winText, "text.secondary")
-    Hoverable(winText, WinEnter)
-    winText:SetText(ns.T("panel.cpu.win.none"))
-end
-local function Hover(g, num, kind)
-    local h = CreateFrame("Frame", nil, graphs)
-    h:SetPoint("TOPLEFT", g, "TOPLEFT", 0, 0)
-    h:SetPoint("BOTTOMRIGHT", num, "BOTTOMRIGHT", 0, 0)
-    h:EnableMouse(true)
-    h.kind = kind
-    h:SetScript("OnEnter", GraphEnter)
-    h:SetScript("OnLeave", ns.Tip.Hide)
-end
-local BLOCKS = {
-    { kind = "dmg", token = "sem.dmg" },
-    { kind = "heal", token = "sem.heal" },
-    { kind = "avg", token = "sem.stat.dps" },
-}
-local function BuildGraphs()
-    graphs = CreateFrame("Frame", nil, frame)
-    graphs:SetHeight(EQ_H)
-    local prev
-    for i = 1, #BLOCKS do
-        local b = { kind = BLOCKS[i].kind, bars = {} }
-        b.g = MakeGraph(graphs, b.bars, BLOCKS[i].token)
-        if prev then
-            b.g:SetPoint("LEFT", prev, "RIGHT", GRAPH_GAP, 0)
-        else
-            b.g:SetPoint("LEFT", 0, 0)
-        end
-        b.text = MakeNumber(b.g)
-        Hover(b.g, b.text, b.kind)
-        prev = b.text
-        blocks[i] = b
-    end
-    BuildCpu()
-    graphs:Hide()
-end
-local function Build()
-    local s = Saved()
-    frame = CreateFrame("Frame", "HTP_FailWatchPanel", UIParent)
-    frame:SetFrameStrata("MEDIUM")
-    frame:SetClampedToScreen(true)
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", function() DragStart() end)
-    frame:SetScript("OnDragStop", function() DragStop() end)
-    ns.Kit.Skin(frame, "float")
-    frame:SetScale((Panel.Scale()))
-    frame:SetPoint(s.point or "CENTER", UIParent, s.point or "CENTER", s.x or 0, s.y or -200)
-    for i = 1, #ICONS do
-        buttons[i] = MakeIcon(i)
-        if ICONS[i].key == "lock" then lockBtn = buttons[i] end
-    end
-    dot = buttons[1]:CreateTexture(nil, "OVERLAY")
+local function BuildMarks()
+    dot = logBtn:CreateTexture(nil, "OVERLAY")
     dot:SetWidth(DOT)
     dot:SetHeight(DOT)
     dot:SetPoint("TOPRIGHT", 1, 1)
-    ns.Kit.Paint(dot, "sem.rec")
+    dot:SetTexture(ART .. "dot.tga")
+    ns.Kit.Tint(dot, "sem.rec")
     dot:Hide()
-    tri = buttons[1]:CreateTexture(nil, "OVERLAY")
+    tri = logBtn:CreateTexture(nil, "OVERLAY")
     tri:SetWidth(TRI)
     tri:SetHeight(TRI)
     tri:SetPoint("TOPLEFT", -1, 1)
@@ -910,40 +998,76 @@ local function Build()
     tri:SetDesaturated(true)
     ns.Kit.Tint(tri, "badge.yellow")
     tri:Hide()
-    strip = CreateFrame("Frame", nil, buttons[1])
-    strip:SetPoint("BOTTOMLEFT", STRIP_IN, STRIP_IN)
-    strip:SetPoint("BOTTOMRIGHT", -STRIP_IN, STRIP_IN)
-    strip:SetHeight(STRIP_H)
-    local stripBg = strip:CreateTexture(nil, "BACKGROUND")
-    stripBg:SetAllPoints()
-    ns.Kit.Paint(stripBg, "progress.ring")
-    stripFill = strip:CreateTexture(nil, "ARTWORK")
-    stripFill:SetPoint("TOPLEFT", 0, 0)
-    stripFill:SetPoint("BOTTOMLEFT", 0, 0)
-    stripFill:SetWidth(1)
-    ns.Kit.Paint(stripFill, "progress.fill")
+    job = CreateFrame("Frame", nil, logBtn)
+    job:SetPoint("BOTTOMLEFT", JOB_IN, JOB_IN)
+    job:SetPoint("BOTTOMRIGHT", -JOB_IN, JOB_IN)
+    job:SetHeight(JOB_H)
+    local bg = job:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    ns.Kit.Paint(bg, "progress.ring")
+    jobFill = job:CreateTexture(nil, "ARTWORK")
+    jobFill:SetPoint("TOPLEFT", 0, 0)
+    jobFill:SetPoint("BOTTOMLEFT", 0, 0)
+    jobFill:SetWidth(1)
+    ns.Kit.Paint(jobFill, "progress.fill")
+    job:Hide()
+end
+local function BuildCorners()
+    compactGlyph = MakeCorner("compact", "compact")
+    compactGlyph:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -PAD, CORNER_LIFT)
+    lockGlyph = MakeCorner("lock", "unlock")
+    lockGlyph:SetPoint("RIGHT", compactGlyph, "LEFT", -CORNER_GAP, 0)
+    local level = (frame:GetFrameLevel() or 0) + 5
+    compactGlyph:SetFrameLevel(level)
+    lockGlyph:SetFrameLevel(level)
+    DressLock()
+    compactGlyph:Hide()
+    lockGlyph:Hide()
+end
+local function BuildTop()
+    for i = 1, #ICONS do buttons[i] = MakeIcon(ICONS[i]) end
+    logBtn = buttons[1]
+    BuildMarks()
+    strip = Ctrl(frame, "add", 1, STRIP_H, true)
     strip:Hide()
-    BuildStrip()
-    BuildGraphs()
-    OnTheme()
-    ns.Kit.OnTheme(OnTheme)
+    BuildCorners()
+end
+local function Build()
+    local s = Saved()
+    s.open, s.rows = nil, nil
+    frame = CreateFrame("Frame", "HTP_FailWatchPanel", UIParent)
+    frame:SetFrameStrata("MEDIUM")
+    frame.sized = true
+    Sizes()
+    frame:SetClampedToScreen(true)
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", function() DragStart() end)
+    frame:SetScript("OnDragStop", function() DragStop() end)
+    ns.Kit.Skin(frame, "float")
+    frame.bare = false
+    frame:SetScale((Panel.Scale()))
+    frame:SetPoint(s.point or "CENTER", UIParent, s.point or "CENTER", s.x or 0, s.y or -200)
+    BuildTop()
     frame:SetScript("OnUpdate", ns.Prof.Wrap("hot.panel", OnUpdate))
     frame:SetScript("OnHide", function()
+        HideMenu()
         if ns.PanelActs then ns.PanelActs.Hide() end
         DragStop()
-        WatchMeter()
+        ApplyLive()
     end)
-    frame:SetScript("OnShow", WatchMeter)
-    ApplySize()
+    frame:SetScript("OnShow", ApplyLive)
+    Relayout()
 end
 local function Apply()
     if Wanted() then
         if not frame then Build() end
         frame:Show()
-        WatchMeter()
     elseif frame then
         frame:Hide()
     end
+    ApplyLive()
     if ns.Settings then ns.Settings.Refresh() end
 end
 function Panel.SetWhen(key)
@@ -979,9 +1103,23 @@ function Panel.SetScale(v)
         SavePlace()
     end
 end
-function Panel.SetOpen(on)
-    Saved().open = on and true or false
-    if frame then ApplySize() end
+local function Shift(d)
+    local l, t = frame:GetLeft(), frame:GetTop()
+    if not (l and t) then return end
+    frame:ClearAllPoints()
+    frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", l + d, t - d)
+    SavePlace()
+end
+function Panel.SetCompact(on)
+    on = on and true or false
+    local was = Panel.Compact()
+    Saved().compact = on or nil
+    HideMenu()
+    if frame then
+        if was ~= on then Shift(on and PAD or -PAD) end
+        Relayout()
+    end
+    if ns.Settings then ns.Settings.Refresh() end
 end
 function Panel.SetAlert(key, on)
     alerts[key] = on and true or nil
@@ -991,9 +1129,26 @@ function Panel.HasAlert(key)
 end
 function Panel.SetLocked(on)
     Saved().locked = on and true or false
-    if frame then DressTools() end
+    if frame then DressLock() end
+    if ns.PanelMenu then ns.PanelMenu.Refresh() end
     if ns.Settings then ns.Settings.Refresh() end
 end
+Kit.OnFont(function()
+    Sizes()
+    for i = 1, #rows do
+        local r = rows[i]
+        r:SetHeight(ROW_H)
+        r.prev:SetHeight(ROW_H)
+        r.next:SetHeight(ROW_H)
+        r.del:SetHeight(ROW_H)
+    end
+    for _, v in pairs(views) do
+        v:SetHeight(ROW_H)
+        if v.value then Panel.Refit(v) end
+        v.w = v.need or v:GetWidth()
+    end
+    dirty = true
+end)
 ns.OnReady(function()
     Apply()
     local watch = CreateFrame("Frame")
@@ -1003,6 +1158,7 @@ ns.OnReady(function()
     watch:SetScript("OnEvent", function()
         local shown = frame and frame:IsShown() and true or false
         if shown ~= Wanted() then Apply() end
+        if frame and shown then dirty = true end
     end)
 end)
 ns.Jobs.OnChange(ShowProgress)

@@ -18,6 +18,19 @@ local MARK_W = 2
 local F = {}
 ns.ReplayFeed = F
 local Kit = ns.Kit
+local ceil = math.ceil
+local m = { headH = HEAD_H, rowH = ROW_H, icon = ICON, timeW = TIME_W, checkX = 70, k = 1 }
+local function Metrics()
+    local k = max(1, Kit.FontScale("GameFontHighlightSmall", true), Kit.FontScale("GameFontNormalSmall", true))
+    local pt = Kit.FontSize("GameFontHighlightSmall", true)
+    local nt = Kit.FontSize("GameFontNormalSmall", true)
+    m.k = k
+    m.rowH = max(ROW_H, ceil(pt * 1.15) + 4)
+    m.icon = max(ICON, m.rowH - 4)
+    m.timeW = ceil(TIME_W * k)
+    m.headH = max(HEAD_H, ceil(nt * 1.15) + 12)
+    m.checkX = ceil(70 * k)
+end
 local side, title, check
 local rows = {}
 local kinds = {}
@@ -156,7 +169,6 @@ local function KindButton(parent, i, def)
     local b = CreateFrame("Button", nil, parent)
     b:SetWidth(KIND_SIZE + 2)
     b:SetHeight(KIND_SIZE + 2)
-    b:SetPoint("TOPLEFT", parent, "TOPLEFT", PAD + (i - 1) * (KIND_SIZE + 2 + KIND_GAP), -(HEAD_H - 1))
     b.bg = b:CreateTexture(nil, "BACKGROUND")
     b.bg:SetAllPoints()
     b.icon = b:CreateTexture(nil, "ARTWORK")
@@ -172,24 +184,41 @@ local function KindButton(parent, i, def)
     StyleKind(b)
     return b
 end
-local function NewRow(r)
+local function PlaceHead()
+    title:ClearAllPoints()
+    title:SetPoint("LEFT", side, "TOPLEFT", PAD + 2, -floor(m.headH / 2))
+    check:ClearAllPoints()
+    check:SetPoint("TOPRIGHT", side, "TOPRIGHT", -m.checkX, -floor((m.headH - 18) / 2))
+    for i = 1, #kinds do
+        kinds[i]:ClearAllPoints()
+        kinds[i]:SetPoint("TOPLEFT", side, "TOPLEFT", PAD + (i - 1) * (KIND_SIZE + 2 + KIND_GAP), -(m.headH - 1))
+    end
+end
+local function PlaceRow(row, r)
     local width = st.width
-    local row = Kit.Row(side, width - PAD * 2)
-    row:SetHeight(ROW_H)
-    row:SetPoint("TOPLEFT", side, "TOPLEFT", PAD, -(HEAD_H + KIND_H + (r - 1) * ROW_H))
-    row.time = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row:SetWidth(width - PAD * 2)
+    row:SetHeight(m.rowH)
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", side, "TOPLEFT", PAD, -(m.headH + KIND_H + (r - 1) * m.rowH))
+    row.time:SetWidth(m.timeW)
+    row.icon:SetWidth(m.icon)
+    row.icon:SetHeight(m.icon)
+    row.icon:ClearAllPoints()
+    row.icon:SetPoint("LEFT", row, "LEFT", m.timeW + 2, 0)
+    row.text:ClearAllPoints()
+    row.text:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
+    row.text:SetWidth(width - PAD * 2 - m.timeW - m.icon - 10)
+    row.text:SetHeight(m.rowH - 4)
+end
+local function NewRow(r)
+    local row = Kit.Row(side, st.width - PAD * 2)
+    Kit.Bind(row.text, "GameFontHighlightSmall")
+    row.time = Kit.Str(row, "GameFontHighlightSmall")
     row.time:SetPoint("LEFT", row, "LEFT", 2, 0)
-    row.time:SetWidth(TIME_W)
     row.time:SetJustifyH("LEFT")
     Kit.Text(row.time, "text.secondary")
     row.icon = row:CreateTexture(nil, "ARTWORK")
-    row.icon:SetWidth(ICON)
-    row.icon:SetHeight(ICON)
-    row.icon:SetPoint("LEFT", row, "LEFT", TIME_W + 2, 0)
-    row.text:ClearAllPoints()
-    row.text:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
-    row.text:SetWidth(width - PAD * 2 - TIME_W - ICON - 10)
-    row.text:SetHeight(ROW_H - 4)
+    PlaceRow(row, r)
     row.mark = row:CreateTexture(nil, "ARTWORK")
     row.mark:SetWidth(MARK_W)
     row.mark:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
@@ -205,14 +234,14 @@ function F.Build(parent, width, height, onSeek)
     side = parent
     st.onSeek = onSeek
     st.width = width
-    title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    title:SetPoint("TOPLEFT", parent, "TOPLEFT", PAD + 2, -6)
+    Metrics()
+    title = Kit.Str(parent, "GameFontNormalSmall")
     title:SetText(ns.T("rep.feed"))
     Kit.Text(title, "text.primary")
     check = Kit.Check(parent)
     check:SetWidth(18)
     check:SetHeight(18)
-    check:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -70, -3)
+    Kit.Bind(check.label, "GameFontNormalSmall")
     check.label:SetText(ns.T("rep.feed.imp"))
     check.tip = ns.T("rep.feed.imp.tip")
     check.tipTitle = false
@@ -223,19 +252,32 @@ function F.Build(parent, width, height, onSeek)
     end
     local defs = ns.replayFeed.kinds
     for i = 1, #defs do kinds[i] = KindButton(parent, i, defs[i]) end
-    st.rows = max(0, floor((height - HEAD_H - KIND_H) / ROW_H))
+    PlaceHead()
+    st.height = height
+    st.rows = max(0, floor((height - m.headH - KIND_H) / m.rowH))
     for r = 1, st.rows do NewRow(r) end
     parent:EnableMouseWheel(true)
     parent:SetScript("OnMouseWheel", Wheel)
 end
-function F.SetHeight(height)
-    local n = max(0, floor((height - HEAD_H - KIND_H) / ROW_H))
-    if n == st.rows or not side then return end
+function F.Fit(width, height)
+    if not side then return end
+    local was = m.rowH * 1000 + m.timeW * 10 + m.headH * 100000 + m.checkX
+    Metrics()
+    local now = m.rowH * 1000 + m.timeW * 10 + m.headH * 100000 + m.checkX
+    local n = max(0, floor((height - m.headH - KIND_H) / m.rowH))
+    if n == st.rows and now == was and width == st.width and height == st.height then return end
+    st.width, st.height = width, height
+    side:SetWidth(width)
+    PlaceHead()
     for r = #rows + 1, n do NewRow(r) end
+    for r = 1, #rows do PlaceRow(rows[r], r) end
     for r = n + 1, #rows do rows[r]:Hide() end
     st.rows = n
     st.drawnTop, st.drawnCur = -1, -1
     ScrollTo(st.top)
+end
+function F.SetHeight(height)
+    F.Fit(st.width, height)
 end
 function F.Use(L)
     st.L = L

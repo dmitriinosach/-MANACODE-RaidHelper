@@ -34,9 +34,10 @@ local ROW_ICON = 12
 local NOTE_ICON = 10
 local COLGAP = 6
 local NAMEGAP = 4
-local CELL_ICON = 14
-local CELL_GAP = 2
-local CELL_PAD = 8
+local CELL_ICON = 12
+local CELL_GAP = 4
+local CELL_PAD = 14
+local CELL_NAME = 12
 local CLASS_TEX = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
 local ARROW_TEX = "Interface\\TalentFrame\\UI-TalentArrows"
 local ARROW = { out = { 0, 0.5, 0.5, 0 }, ["in"] = { 0, 0.5, 0, 0.5 } }
@@ -60,9 +61,22 @@ local named = {}
 function Badges.Lines()
     return LINES
 end
+local function Str(f, base, layer)
+    if f.sized then return ns.Kit.Str(f, base, layer) end
+    return f:CreateFontString(nil, layer or "OVERLAY", base)
+end
+local function Pt(f, base)
+    return ns.Kit.FontSize(base, f.sized)
+end
+local function LH(f)
+    if not f.sized then return LINEH end
+    local p = Pt(f, "GameFontHighlightSmall")
+    return max(p + 4, ceil(p * 1.15) + 2)
+end
 function Badges.Reach(f, height)
     local head = f.wide and 2 or 1
-    return max(1, floor((height - 14) / LINEH) - head), 8 + head * LINEH, LINEH
+    local lh = LH(f)
+    return max(1, floor((height - 14) / lh) - head), 8 + head * lh, lh
 end
 local lit = {}
 local dimmed = {}
@@ -153,21 +167,34 @@ local function FullLines(m, parts)
     return out
 end
 local OneLine = ns.Kit.OneLine
-function Badges.Total(parent)
+local function TextNeed(fs, text)
+    if not text or text == "" then return 0 end
+    fs:SetWidth(0)
+    fs:SetText(text)
+    return ceil(fs:GetStringWidth() or 0) + 2
+end
+local function TotalH(f)
+    if not f.sized then return TOTALH end
+    local t, v, s = Pt(f, "GameFontNormalSmall"), Pt(f, "GameFontHighlightLarge"), Pt(f, "GameFontDisableSmall")
+    local body = max(v, 2 * s)
+    return max(6 + t + 9 + body + 7, ceil(6 + t * 1.15 + 8 + body * 1.15 + 2))
+end
+function Badges.Total(parent, sized)
     local f = CreateFrame("Frame", nil, parent)
+    f.sized = sized
     Badges.Skin(f, style.edge)
-    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    f.title = Str(f, "GameFontNormalSmall")
     f.title:SetPoint("TOPLEFT", TOTAL_L, -6)
     OneLine(f.title)
-    f.value = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+    f.value = Str(f, "GameFontHighlightLarge")
     ns.Kit.Text(f.value, "text.bright")
     f.value:SetPoint("BOTTOMLEFT", TOTAL_L, 7)
     OneLine(f.value)
-    f.sub = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    f.sub = Str(f, "GameFontDisableSmall")
     ns.Kit.Text(f.sub, "text.off")
     f.sub:SetPoint("BOTTOMLEFT", f.value, "BOTTOMRIGHT", SUBGAP, 1)
     OneLine(f.sub)
-    f.subTop = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    f.subTop = Str(f, "GameFontDisableSmall")
     ns.Kit.Text(f.subTop, "text.off")
     f.subTop:SetPoint("BOTTOMLEFT", f.sub, "TOPLEFT", 0, 0)
     OneLine(f.subTop)
@@ -190,10 +217,11 @@ function Badges.Total(parent)
         self:EnableMouse(m.lines ~= nil)
     end
     function f.Layout(self, width)
+        local th = TotalH(self)
         self:SetWidth(width)
-        self:SetHeight(TOTALH)
+        self:SetHeight(th)
         local m = self.model
-        if not m then return TOTALH end
+        if not m then return th end
         local inner = width - TOTAL_L - TOTAL_R
         local parts = SubParts(m)
         local _, cutTitle = Fit(self.title, m.title, inner - (m.unbuff and UNBUFF + UNBUFF_EDGE or 0))
@@ -207,7 +235,18 @@ function Badges.Total(parent)
         local cut = cutTitle or cutValue or cutTop or cutBottom
         self.lines = cut and FullLines(m, parts) or m.lines
         self:EnableMouse(self.lines ~= nil)
-        return TOTALH
+        return th
+    end
+    function f.Need(self)
+        local m = self.model
+        if not m then return 0 end
+        local parts = SubParts(m)
+        local top, bottom = "", parts[1] or ""
+        if #parts > 1 then top, bottom = parts[1], table.concat(parts, "  ", 2) end
+        local sub = max(TextNeed(self.subTop, top), TextNeed(self.sub, bottom))
+        local body = TextNeed(self.value, m.value) + (sub > 0 and SUBGAP + sub or 0)
+        local head = TextNeed(self.title, m.title) + (m.unbuff and UNBUFF + UNBUFF_EDGE or 0)
+        return TOTAL_L + max(head, body) + TOTAL_R
     end
     return f
 end
@@ -274,7 +313,7 @@ local function Columns(f)
         end
     end
     f.cellW = grid and CELL_ICON + CELL_GAP + ceil(numW) + CELL_PAD or nil
-    f.nameCol = grid and ceil(nameW) + NAMEGAP * 2 or nil
+    f.nameCol = grid and ceil(nameW) + NAMEGAP + CELL_NAME or nil
     f.needW = grid and 6 + (f.rowR or ROW_R) + 4 + f.nameCol + most * f.cellW + 2 or nil
 end
 local function Clip(fs, text, room)
@@ -315,7 +354,8 @@ local function NameRoom(f, row, icon)
 end
 local function NewCell(row, k)
     local c = CreateFrame("Frame", nil, row)
-    c:SetHeight(LINEH)
+    c.sized = row.sized
+    c:SetHeight(LH(row))
     c:EnableMouse(true)
     c:SetScript("OnEnter", ShowLines)
     c:SetScript("OnLeave", HideTip)
@@ -324,7 +364,7 @@ local function NewCell(row, k)
     c.icon:SetHeight(CELL_ICON)
     c.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     c.icon:SetPoint("LEFT", c, "LEFT", 0, 0)
-    c.num = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    c.num = Str(c, "GameFontHighlightSmall")
     ns.Kit.Text(c.num, "text.bright")
     c.num:SetJustifyH("LEFT")
     c.num:SetPoint("LEFT", c.icon, "RIGHT", CELL_GAP, 0)
@@ -342,7 +382,7 @@ local function DrawCells(f, row, e)
             shown = fit - 1
             rest = #list - shown
         end
-        row.name:SetPoint("RIGHT", row, "LEFT", x0 - NAMEGAP, 0)
+        row.name:SetPoint("RIGHT", row, "LEFT", x0 - CELL_NAME, 0)
     end
     for k = 1, max(shown, #row.cells) do
         local c = row.cells[k]
@@ -352,6 +392,7 @@ local function DrawCells(f, row, e)
             c:ClearAllPoints()
             c:SetPoint("LEFT", row, "LEFT", x0 + (k - 1) * f.cellW, 0)
             c:SetWidth(f.cellW - CELL_PAD)
+            c:SetHeight(LH(f))
             c.icon:SetTexture(d.icon)
             c.num:SetText(tostring(d.n))
             c.lines = d.lines
@@ -362,7 +403,7 @@ local function DrawCells(f, row, e)
     end
     if rest > 0 then
         if not row.rest then
-            row.rest = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            row.rest = Str(row, "GameFontHighlightSmall")
             ns.Kit.Text(row.rest, "text.off")
         end
         row.rest:ClearAllPoints()
@@ -543,11 +584,22 @@ end
 local function DetailWheel(self, delta)
     if OwnRows(self, delta) then DrawRows(self) else ToPage(self, delta) end
 end
+local function PlaceRow(f, row, k)
+    local lh = LH(f)
+    row:SetHeight(lh)
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", 6, -(8 + k * lh))
+    row:SetPoint("TOPRIGHT", -(f.rowR or ROW_R), -(8 + k * lh))
+    if row.name then
+        row.name:SetHeight(lh)
+        row.val:SetHeight(lh)
+        row.note:SetHeight(lh)
+    end
+end
 local function NewDetailRow(f, k)
     local row = CreateFrame("Frame", nil, f)
-    row:SetHeight(LINEH)
-    row:SetPoint("TOPLEFT", 6, -(8 + k * LINEH))
-    row:SetPoint("TOPRIGHT", -(f.rowR or ROW_R), -(8 + k * LINEH))
+    row.sized = f.sized
+    PlaceRow(f, row, k)
     row:EnableMouse(true)
     row:SetScript("OnEnter", RowEnter)
     row:SetScript("OnLeave", RowLeave)
@@ -556,20 +608,20 @@ local function NewDetailRow(f, k)
     row.icon:SetHeight(ROW_ICON)
     row.icon:SetPoint("LEFT", 3, 0)
     row.icon:Hide()
-    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.name = Str(row, "GameFontHighlightSmall")
     row.name:SetPoint("LEFT", 4, 0)
-    row.name:SetHeight(LINEH)
+    row.name:SetHeight(LH(f))
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
-    row.val = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.val = Str(row, "GameFontHighlightSmall")
     ns.Kit.Text(row.val, "text.bright")
     row.val:SetPoint("RIGHT", -2, 0)
-    row.val:SetHeight(LINEH)
+    row.val:SetHeight(LH(f))
     row.val:SetJustifyH("RIGHT")
     row.val:SetWordWrap(false)
-    row.note = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.note = Str(row, "GameFontHighlightSmall")
     row.note:SetPoint("RIGHT", -2, 0)
-    row.note:SetHeight(LINEH)
+    row.note:SetHeight(LH(f))
     row.note:SetJustifyH("RIGHT")
     row.note:SetWordWrap(false)
     row.coin = row:CreateTexture(nil, "ARTWORK")
@@ -584,20 +636,28 @@ local function Grow(f, n)
     for k = #f.rows + 1, n do f.rows[k] = NewDetailRow(f, k) end
     f.lineCount = n
 end
-function Badges.Detail(parent, modal)
+local function Relh(f)
+    local lh = LH(f)
+    if f.lh == lh then return end
+    f.lh = lh
+    f.title:SetHeight(lh - 2)
+    f.head:SetHeight(8 + lh)
+    for k = 1, #f.rows do PlaceRow(f, f.rows[k], k) end
+end
+function Badges.Detail(parent, modal, sized)
     local f = CreateFrame("Frame", nil, parent)
-    f.modal, f.rowR = modal, modal and ROW_R + 8 or ROW_R
+    f.modal, f.rowR, f.sized = modal, modal and ROW_R + 8 or ROW_R, sized
     Badges.Skin(f, style.detail)
     f:EnableMouseWheel(true)
     f:SetScript("OnMouseWheel", DetailWheel)
-    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    f.title = Str(f, "GameFontNormalSmall")
     f.title:SetPoint("TOPLEFT", 10, -6)
     f.title:SetPoint("TOPRIGHT", -8, -6)
     f.title:SetHeight(LINEH - 2)
     f.title:SetJustifyH("LEFT")
     f.title:SetJustifyV("TOP")
     f.title:SetWordWrap(false)
-    f.more = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    f.more = Str(f, "GameFontDisableSmall")
     ns.Kit.Text(f.more, "text.off")
     f.more:SetPoint("TOPRIGHT", -8, -6)
     f.head = CreateFrame("Frame", nil, f)
@@ -606,14 +666,16 @@ function Badges.Detail(parent, modal)
     f.head:SetHeight(8 + LINEH)
     f.head:EnableMouse(false)
     Chrome(f)
-    f.probe = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.probe = Str(f, "GameFontHighlightSmall")
     f.probe:Hide()
     f.list = {}
     f.rows = {}
     f.lineCount = 0
+    f.lh = LINEH
     Grow(f, LINES)
     function f.SetModel(self, m)
         Badges.Skin(self, style.detail)
+        Relh(self)
         self.title:SetText(m.title)
         self.model = m
         self.head.lines = m.tip
@@ -633,14 +695,22 @@ function Badges.Detail(parent, modal)
     function f.Redraw(self)
         DrawRows(self)
     end
+    function f.Need(self)
+        local m = self.model
+        if not m then return 0 end
+        local more = self.more:IsShown() and (ceil(self.more:GetStringWidth() or 0) + COLGAP + RESERVE) or 8
+        local w = ceil(self.title:GetStringWidth() or 0) + 2
+        return 10 + w + more
+    end
     function f.Layout(self, width)
+        Relh(self)
         local lines = self.fixed or LINES
         if lines ~= self.lineCount then
             Grow(self, lines)
             Columns(self)
             DrawRows(self)
         end
-        local h = 14 + (max(1, min(lines, #self.list)) + 1) * LINEH
+        local h = 14 + (max(1, min(lines, #self.list)) + 1) * self.lh
         self:SetWidth(width)
         self:SetHeight(h)
         if (self.fit or self.cellW) and self.fitW ~= width then
@@ -671,20 +741,17 @@ end
 local function MarkEnter(self)
     if self.pair then PairOn(self) end
     if self.links then Badges.Highlight(self.links, self.owner or self:GetParent()) end
-    if self.fable and ns.FableView then ns.FableView.Enter(self) end
     if not (ns.ProofView and ns.ProofView.Enter(self)) then ShowLines(self) end
     if ns.DeathPreviewView then ns.DeathPreviewView.Enter(self) end
 end
 local function MarkLeave(self)
     if ns.ProofView then ns.ProofView.Leave(self) end
-    if ns.FableView then ns.FableView.Leave(self) end
     HideTip()
     if ns.DeathPreviewView then ns.DeathPreviewView.Leave() end
     if self.links then Badges.Unhighlight() end
     PairOff()
 end
 local function MarkClick(self, button)
-    if self.fable and ns.FableView and ns.FableView.Click(self, button) then return end
     if ns.ProofView and ns.ProofView.Click(self, button) then return end
     local owner = self.owner or self:GetParent()
     if ns.ReplayLink and ns.ReplayLink.Shift(self.fight, self.at, self.who or (owner and owner.who)) then return end
@@ -696,6 +763,7 @@ local function MarkClick(self, button)
 end
 function Badges.Mark(parent, size)
     local b = CreateFrame("Button", nil, parent)
+    b.sized = parent.sized
     b.size = size
     b:SetHeight(size)
     b:SetWidth(size + 16)
@@ -714,7 +782,7 @@ function Badges.Mark(parent, size)
     b.icon:SetWidth(size)
     b.icon:SetHeight(size)
     b.icon:SetPoint("LEFT", 0, 0)
-    b.count = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    b.count = Str(b, "GameFontHighlightSmall")
     b.count:SetPoint("LEFT", b.icon, "RIGHT", 2, 0)
     b.arrowF = CreateFrame("Frame", nil, b)
     b.arrowF:SetFrameLevel((b:GetFrameLevel() or 0) + 2)
@@ -768,11 +836,19 @@ function Badges.Mark(parent, size)
         self.fight, self.at = m.fight, m.at
         self.preview = m.preview
         self.proof = m.proof
-        self.fable = m.fable
     end
     function b.Layout(self, width)
         self:SetWidth(width)
         return self.size
+    end
+    function b.Resize(self, s)
+        if self.size == s then return end
+        self.size = s
+        self:SetHeight(s)
+        self.ring:SetWidth(s + 4)
+        self.ring:SetHeight(s + 4)
+        self.icon:SetWidth(s)
+        self.icon:SetHeight(s)
     end
     function b.Need(self)
         return self.size + 2 + ceil(self.count:GetStringWidth() or 0)
@@ -811,8 +887,18 @@ end
 local function PersonalWheel(self, delta)
     if self.onWheel then self.onWheel(delta) end
 end
-function Badges.Personal(parent)
+local function PersonalMetrics(t)
+    if not t.sized then return MARK, MARKTOP, MARKROW, PERSONALH, 22 end
+    local v, s = Pt(t, "GameFontNormal"), Pt(t, "GameFontDisableSmall")
+    local n, c = Pt(t, "GameFontHighlight"), Pt(t, "GameFontHighlightSmall")
+    local subTop = max(6 + v + 4, 16 + floor(n * 0.575))
+    local mark = max(MARK, c + 6)
+    local top = max(5 + CLASS_ICON, 16 + ceil(n * 0.6), subTop + s) + 4
+    return mark, top, mark + 10, top + mark + 6, subTop
+end
+function Badges.Personal(parent, sized)
     local t = CreateFrame("Button", nil, parent)
+    t.sized = sized
     Badges.Skin(t, style.edge)
     t:SetHeight(PERSONALH)
     t.glow = t:CreateTexture(nil, "BORDER")
@@ -825,15 +911,15 @@ function Badges.Personal(parent)
     t.cls:SetHeight(CLASS_ICON)
     t.cls:SetPoint("TOPLEFT", PAD, -5)
     t.cls:SetTexture(CLASS_TEX)
-    t.name = t:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    t.name = Str(t, "GameFontHighlight")
     t.name:SetPoint("LEFT", t.cls, "RIGHT", 5, 0)
     OneLine(t.name)
-    t.value = t:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    t.value = Str(t, "GameFontNormal")
     ns.Kit.Text(t.value, "text.title")
     t.value:SetPoint("TOPRIGHT", -PERSONAL_R, -6)
     OneLine(t.value)
     t.value:SetJustifyH("RIGHT")
-    t.sub = t:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    t.sub = Str(t, "GameFontDisableSmall")
     ns.Kit.Text(t.sub, "text.off")
     t.sub:SetPoint("TOPRIGHT", -PERSONAL_R, -22)
     OneLine(t.sub)
@@ -885,6 +971,8 @@ function Badges.Personal(parent)
     end
     function t.Layout(self, width)
         self:SetWidth(width)
+        local size, top, step, base, subTop = PersonalMetrics(self)
+        self.sub:SetPoint("TOPRIGHT", -PERSONAL_R, -subTop)
         local inner = width - PAD - CLASS_ICON - 5 - PERSONAL_R
         local vw = Fit(self.value, self.valueText or "", inner)
         Fit(self.sub, self.subText or "", inner)
@@ -893,14 +981,15 @@ function Badges.Personal(parent)
         local x, row = 0, 0
         for k = 1, self.shown do
             local mk = self.marks[k]
+            mk:Resize(size)
             local w = mk:Need()
             if x > 0 and x + w > room then x, row = 0, row + 1 end
             mk:Layout(w)
             mk:ClearAllPoints()
-            mk:SetPoint("TOPLEFT", PAD + x, -(MARKTOP + row * MARKROW))
+            mk:SetPoint("TOPLEFT", PAD + x, -(top + row * step))
             x = x + w + MARKGAP
         end
-        local h = PERSONALH + row * MARKROW
+        local h = base + row * step
         self:SetHeight(h)
         return h
     end
@@ -967,9 +1056,10 @@ local SortEnter
 local SortLeave
 local SortClick
 local function WideSlots(row, n, m)
+    local lh = LH(row)
     for c = #row.cells + 1, n do
-        local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        fs:SetHeight(LINEH)
+        local fs = Str(row, "GameFontHighlightSmall")
+        fs:SetHeight(lh)
         fs:SetJustifyH("RIGHT")
         fs:SetWordWrap(false)
         row.cells[c] = fs
@@ -998,8 +1088,8 @@ local function WideSlots(row, n, m)
         local tex = row:CreateTexture(nil, "ARTWORK")
         tex:SetWidth(WIDE_ICON)
         tex:SetHeight(WIDE_ICON)
-        local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        fs:SetHeight(LINEH)
+        local fs = Str(row, "GameFontHighlightSmall")
+        fs:SetHeight(lh)
         fs:SetJustifyH("LEFT")
         fs:SetWordWrap(false)
         fs:SetPoint("LEFT", tex, "RIGHT", 2, 0)
@@ -1007,20 +1097,22 @@ local function WideSlots(row, n, m)
     end
 end
 local function WideAnchor(f, row, k)
-    local y = 8 + (k + 1) * LINEH + ((f.fold and k > 0) and LINEH or 0)
+    local lh = LH(f)
+    local y = 8 + (k + 1) * lh + ((f.fold and k > 0) and lh or 0)
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", 6, -y)
     row:SetPoint("TOPRIGHT", -(f.rowR or ROW_R), -y)
 end
 local function NewWideRow(f, k)
     local row = CreateFrame("Frame", nil, f)
-    row:SetHeight(LINEH)
+    row.sized = f.sized
+    row:SetHeight(LH(f))
     WideAnchor(f, row, k)
     row:EnableMouse(k > 0)
     row:SetScript("OnEnter", ShowLines)
     row:SetScript("OnLeave", HideTip)
-    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.name:SetHeight(LINEH)
+    row.name = Str(row, "GameFontHighlightSmall")
+    row.name:SetHeight(LH(f))
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
     row.cells, row.icons, row.counts, row.hits = {}, {}, {}, {}
@@ -1098,16 +1190,29 @@ local function Fold(f, text)
         from = at + 1
     end
 end
+local function WideRowH(row, lh)
+    row:SetHeight(lh)
+    row.name:SetHeight(lh)
+    for c = 1, #row.cells do row.cells[c]:SetHeight(lh) end
+    for k = 1, #row.counts do row.counts[k]:SetHeight(lh) end
+end
 local function WideFold(f)
-    local h, tall = f.header, f.fold and LINEH * 2 or LINEH
+    local lh = LH(f)
+    local h, tall = f.header, f.fold and lh * 2 or lh
+    WideAnchor(f, h, 0)
     h:SetHeight(tall)
+    h.name:SetHeight(lh)
     for c = 1, #h.cells do
         h.cells[c]:SetHeight(tall)
         h.cells[c]:SetWordWrap(f.fold == true)
         h.cells[c]:SetJustifyV(f.fold and "BOTTOM" or "MIDDLE")
     end
-    f.head:SetHeight(8 + tall + LINEH)
-    for k = 1, #f.rows do WideAnchor(f, f.rows[k], k) end
+    f.head:SetHeight(8 + tall + lh)
+    f.title:SetHeight(lh - 2)
+    for k = 1, #f.rows do
+        WideRowH(f.rows[k], lh)
+        WideAnchor(f, f.rows[k], k)
+    end
 end
 local function WideColumns(f, width)
     f.colW, f.slotW, f.headText = {}, {}, {}
@@ -1185,7 +1290,7 @@ local function DrawWide(f)
             ns.Kit.Tone(cell, "text.title")
             local last = text:match("\n(.*)$") or text
             arrow:ClearAllPoints()
-            arrow:SetPoint("BOTTOMRIGHT", cell, "BOTTOMRIGHT", -(ceil(TextW(f, last)) + 2), (LINEH - SORT_ICON) / 2)
+            arrow:SetPoint("BOTTOMRIGHT", cell, "BOTTOMRIGHT", -(ceil(TextW(f, last)) + 2), (LH(f) - SORT_ICON) / 2)
             local tc = SORT_ARROW[o.dir] or SORT_ARROW.desc
             arrow:SetTexCoord(tc[1], tc[2], tc[3], tc[4])
             ns.Kit.Tint(arrow, "text.title")
@@ -1281,20 +1386,20 @@ SortClick = function(self)
     if f.peer then Resort(f.peer) end
     SortTip(self)
 end
-function Badges.Wide(parent, modal)
+function Badges.Wide(parent, modal, sized)
     local f = CreateFrame("Frame", nil, parent)
-    f.wide, f.modal, f.rowR = true, modal, modal and ROW_R + 8 or ROW_R
+    f.wide, f.modal, f.rowR, f.sized = true, modal, modal and ROW_R + 8 or ROW_R, sized
     Badges.Skin(f, style.detail)
     f:EnableMouseWheel(true)
     f:SetScript("OnMouseWheel", WideWheel)
-    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    f.title = Str(f, "GameFontNormalSmall")
     f.title:SetPoint("TOPLEFT", 10, -6)
     f.title:SetPoint("TOPRIGHT", -8, -6)
     f.title:SetHeight(LINEH - 2)
     f.title:SetJustifyH("LEFT")
     f.title:SetJustifyV("TOP")
     f.title:SetWordWrap(false)
-    f.more = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    f.more = Str(f, "GameFontDisableSmall")
     ns.Kit.Text(f.more, "text.off")
     f.more:SetPoint("TOPRIGHT", -8, -6)
     f.head = CreateFrame("Frame", nil, f)
@@ -1303,7 +1408,7 @@ function Badges.Wide(parent, modal)
     f.head:SetHeight(8 + LINEH * 2)
     f.head:EnableMouse(false)
     Chrome(f)
-    f.probe = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.probe = Str(f, "GameFontHighlightSmall")
     f.probe:Hide()
     f.header = NewWideRow(f, 0)
     f.list, f.rows, f.cols, f.heads, f.order = {}, {}, {}, {}, {}
@@ -1330,6 +1435,7 @@ function Badges.Wide(parent, modal)
         end
         WideOrder(self)
         WideGrow(self, LINES)
+        self.lh = LH(self)
         WideColumns(self, self.colFor)
         DrawWide(self)
     end
@@ -1343,13 +1449,14 @@ function Badges.Wide(parent, modal)
     end
     function f.Layout(self, width)
         local lines = self.fixed or LINES
-        if lines ~= self.lineCount or width ~= self.colFor then
-            self.colFor = width
+        local lh = LH(self)
+        if lines ~= self.lineCount or width ~= self.colFor or lh ~= self.lh then
+            self.colFor, self.lh = width, lh
             WideGrow(self, lines)
             WideColumns(self, width)
             DrawWide(self)
         end
-        local h = 14 + (max(1, min(lines, #self.list)) + 2 + (self.fold and 1 or 0)) * LINEH
+        local h = 14 + (max(1, min(lines, #self.list)) + 2 + (self.fold and 1 or 0)) * lh
         self:SetWidth(width)
         self:SetHeight(h)
         return h

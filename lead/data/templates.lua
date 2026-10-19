@@ -1,6 +1,7 @@
 local ADDON, root = ...
 root.Lead = root.Lead or {}
 local ns = root.Lead
+ns.tplBot = "Fableclode"
 local function slots(list)
     local out = {}
     for _, s in ipairs(list) do

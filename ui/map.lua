@@ -179,6 +179,10 @@ local function Render(t, who)
     end
 end
 local function Layout()
+    local g = ns.Kit.Grow().g
+    HEAD, FOOT = 26 + g, 22 + g * 2
+    canvas:ClearAllPoints()
+    canvas:SetPoint("TOPLEFT", PAD, -HEAD)
     canvas:SetWidth(max(1, frame:GetWidth() - PAD * 2))
     canvas:SetHeight(max(1, frame:GetHeight() - HEAD - FOOT))
     footText:SetWidth(max(1, frame:GetWidth() - PAD * 2))
@@ -241,6 +245,7 @@ local function Build()
     frame:SetWidth(max(MIN_W, ui.mapW or (SIZE + PAD * 2)))
     frame:SetHeight(max(MIN_H, ui.mapH or (SIZE + HEAD + FOOT)))
     ns.Kit.Window(frame)
+    frame.sized = true
     frame:SetMovable(true)
     frame:SetResizable(true)
     frame:SetMinResize(MIN_W, MIN_H)
@@ -257,7 +262,7 @@ local function Build()
     end)
     frame:SetPoint(ui.mapPoint or "CENTER", UIParent, ui.mapPoint or "CENTER",
         ui.mapX or 320, ui.mapY or 0)
-    titleText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    titleText = ns.Kit.Str(frame, "GameFontNormalSmall")
     titleText:SetPoint("TOPLEFT", 10, -8)
     ns.Kit.Title(titleText)
     local close = ns.Kit.CloseButton(frame, function() Map.Hide() end)
@@ -273,11 +278,11 @@ local function Build()
         tiles[i] = plate:CreateTexture(nil, "ARTWORK")
         tiles[i]:Hide()
     end
-    hint = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    hint = ns.Kit.Str(frame, "GameFontHighlightSmall")
     ns.Kit.Text(hint, "text.bright")
     hint:SetPoint("CENTER", canvas, "CENTER", 0, 0)
     hint:Hide()
-    footText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    footText = ns.Kit.Str(frame, "GameFontHighlightSmall")
     footText:SetPoint("BOTTOMLEFT", PAD + 2, 6)
     footText:SetJustifyH("LEFT")
     ns.Kit.Text(footText, "text.secondary")
@@ -294,6 +299,9 @@ local function Build()
     end
     Layout()
 end
+ns.Kit.OnFont(function()
+    if frame then Layout() end
+end)
 function Map.Show()
     if not frame then Build() end
     frame:Show()

@@ -16,6 +16,21 @@ local INFO_GAP = 6
 local SORT_W = 150
 local SORT_TIME = 10
 local ICON_STEP = 13
+local NAME = "GameFontNormalSmall"
+local BASE = "GameFontHighlightSmall"
+local fitKey
+local function cellH()
+    return math.max(CELL_H, 6 + math.max(16, ns.LineH(NAME)) + ns.LineH(BASE))
+end
+local function headH()
+    return ns.Fit(NAME, HEAD_H, 8)
+end
+local function stripH()
+    return ns.Fit(BASE, STRIP_H, 8)
+end
+local function barH()
+    return ns.Fit(BASE, BAR_H, 8)
+end
 local pane, strip, bar, barFs, sortBtn
 local boxes = {}
 local ghost, dragFrom
@@ -335,11 +350,44 @@ local function onMarkClick(self)
     if m.fake then ns.Test.Mark(m.name, cur == i and 0 or i) else SetRaidTarget(m.unit, cur == i and 0 or i) end
 end
 local function menuLabel(text, y)
-    local fs = menu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local fs = ns.Str(menu, BASE)
     fs:SetPoint("TOPLEFT", menu, "TOPLEFT", 10, y)
     fs:SetText(text or "")
     ns.PaintText(fs, "text.secondary")
     return fs
+end
+local function menuX()
+    return 10 + ns.Wide(BASE, 66) + 4
+end
+local function placeMenu()
+    local x0 = menuX()
+    local mw = 222 + x0 - 80
+    local extra = mw - 222
+    local lh = ns.LineH(BASE)
+    menu:SetWidth(mw)
+    menu.slotFs:ClearAllPoints()
+    menu.slotFs:SetPoint("TOPLEFT", menu, "TOPLEFT", 10, -(30 + math.max(0, math.floor((20 - lh) / 2))))
+    menu.slotFs:SetHeight(lh)
+    menu.specLbl:ClearAllPoints()
+    menu.specLbl:SetPoint("TOPLEFT", menu, "TOPLEFT", 10, -(56 + math.max(0, math.floor((20 - lh) / 2))))
+    menu.specLbl:SetSize(x0 - 14, lh)
+    menu.offLbl:ClearAllPoints()
+    menu.offLbl:SetPoint("TOPLEFT", menu, "TOPLEFT", 10, -(80 + math.max(0, math.floor((20 - lh) / 2))))
+    menu.offLbl:SetSize(x0 - 14, lh)
+    for k = 1, SPECS do
+        menuSpecs[k]:ClearAllPoints()
+        menuSpecs[k]:SetPoint("TOPLEFT", menu, "TOPLEFT", x0 + (k - 1) * 25, -56)
+        menuOffs[k]:ClearAllPoints()
+        menuOffs[k]:SetPoint("TOPLEFT", menu, "TOPLEFT", x0 + (k - 1) * 25, -80)
+    end
+    menu.offNone:ClearAllPoints()
+    menu.offNone:SetPoint("TOPLEFT", menu, "TOPLEFT", x0 + SPECS * 25, -80)
+    for _, b in ipairs(menuBtns) do b:SetWidth(mw - 20) end
+    local half = math.floor(extra / 2)
+    menu.noteBtn:SetWidth(98 + half)
+    menu.diceBtn:SetWidth(100 + extra - half)
+    menu.diceBtn:ClearAllPoints()
+    menu.diceBtn:SetPoint("TOPLEFT", menu, "TOPLEFT", 112 + half, -228)
 end
 local function buildMenu()
     local win = ns.window:Pane("raid"):GetParent()
@@ -355,7 +403,7 @@ local function buildMenu()
     menu:SetWidth(222)
     menu:SetClampedToScreen(true)
     menu:EnableMouse(true)
-    menu.title = menu:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    menu.title = ns.Str(menu, "GameFontNormal")
     menu.title:SetPoint("TOPLEFT", menu, "TOPLEFT", 10, -9)
     menu.slotFs = menuLabel(nil, -34)
     menu.slotFs:SetWidth(120)
@@ -379,24 +427,21 @@ local function buildMenu()
         b:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -10 - (i - 1) * 26, -30)
         menuSlots[i] = b
     end
-    menuLabel(ns.T("menuSpecRow"), -60)
-    menuLabel(ns.T("menuOffRow"), -84)
+    menu.specLbl = menuLabel(ns.T("menuSpecRow"), -60)
+    menu.offLbl = menuLabel(ns.T("menuOffRow"), -84)
     menuSpecs, menuOffs = {}, {}
     for k = 1, SPECS do
         local s = iconButton(menu, 20)
-        s:SetPoint("TOPLEFT", menu, "TOPLEFT", 80 + (k - 1) * 25, -56)
         s.kind = "spec"
         s:SetScript("OnClick", onSpecClick)
         menuSpecs[k] = s
         local o = iconButton(menu, 20)
-        o:SetPoint("TOPLEFT", menu, "TOPLEFT", 80 + (k - 1) * 25, -80)
         o.kind = "off"
         o:SetScript("OnClick", onSpecClick)
         menuOffs[k] = o
     end
     menu.offNone = ns.MakeKitButton(menu)
     menu.offNone:SetSize(20, 20)
-    menu.offNone:SetPoint("TOPLEFT", menu, "TOPLEFT", 80 + SPECS * 25, -80)
     menu.offNone:SetText("x")
     menu.offNone.tipTitle = ns.T("menuOffNone")
     menu.offNone.onClick = function()
@@ -439,7 +484,6 @@ local function buildMenu()
     end
     menu.diceBtn = ns.MakeKitButton(menu)
     menu.diceBtn:SetSize(100, 20)
-    menu.diceBtn:SetPoint("TOPLEFT", menu, "TOPLEFT", 112, -228)
     menu.diceBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     menu.diceBtn.tip = ns.T("tipDiceHow")
     menu.diceBtn.onClick = function(self, btn)
@@ -453,6 +497,7 @@ local function buildMenu()
         self:SetText(ns.T("menuDice", ns.Session.Player(m.name).offRolls or 0))
     end
     menu:SetHeight(279)
+    placeMenu()
     menu.slots, menu.specs, menu.offs, menu.marks, menu.btns = menuSlots, menuSpecs, menuOffs, menuMarks, menuBtns
 end
 local function fillSpecRow(btns, m, cur)
@@ -553,7 +598,7 @@ local function makeGhost()
     ghost:SetSize(130, 20)
     ghost:SetFrameStrata("TOOLTIP")
     ns.Skin(ghost, "list")
-    ghost.text = ghost:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    ghost.text = ns.Str(ghost, NAME)
     ns.PaintTitle(ghost.text)
     ghost.text:SetPoint("CENTER", ghost, "CENTER", 0, 0)
     ghost:SetScript("OnUpdate", function(self)
@@ -587,14 +632,20 @@ local function drop()
         end
     end
 end
+local function fitCell(c)
+    local top = headH() + 2 + (c.k - 1) * cellH()
+    c:SetHeight(cellH() - 2)
+    c:ClearAllPoints()
+    c:SetPoint("TOPLEFT", c.box, "TOPLEFT", 4, -top)
+    c:SetPoint("TOPRIGHT", c.box, "TOPRIGHT", -4, -top)
+end
 local function newCell(box, k)
     local c = ns.NewFrame("Button", nil, box)
     c.isRaidCell = true
     c.box = box
     c.group = box.group
-    c:SetHeight(CELL_H - 2)
-    c:SetPoint("TOPLEFT", box, "TOPLEFT", 4, -(HEAD_H + 2 + (k - 1) * CELL_H))
-    c:SetPoint("TOPRIGHT", box, "TOPRIGHT", -4, -(HEAD_H + 2 + (k - 1) * CELL_H))
+    c.k = k
+    fitCell(c)
     c.bg = ns.Fill(c, "BACKGROUND")
     ns.PaintToken(c.bg, "card.sticker")
     c.bg:SetAllPoints()
@@ -607,11 +658,11 @@ local function newCell(box, k)
     c.off = c:CreateTexture(nil, "OVERLAY")
     c.off:SetSize(9, 9)
     c.off:SetPoint("BOTTOMRIGHT", c.spec, "BOTTOMRIGHT", 3, -3)
-    c.name = c:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    c.name = ns.Str(c, NAME)
     c.name:SetPoint("LEFT", c.spec, "RIGHT", 4, 0)
     c.name:SetPoint("RIGHT", c, "RIGHT", -34, 0)
     c.name:SetJustifyH("LEFT")
-    c.ver = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    c.ver = ns.Str(c, BASE)
     c.ver:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", -18, 2)
     c.ver:SetJustifyH("RIGHT")
     c.note = c:CreateTexture(nil, "OVERLAY")
@@ -620,7 +671,7 @@ local function newCell(box, k)
     c.dice = c:CreateTexture(nil, "OVERLAY")
     c.dice:SetSize(11, 11)
     c.dice:SetTexture(ns.DICE_TEX)
-    c.gs = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    c.gs = ns.Str(c, BASE)
     c.gs:SetJustifyH("LEFT")
     ns.PaintText(c.gs, "text.secondary")
     c.flags = {}
@@ -642,6 +693,7 @@ local function newCell(box, k)
         if not self.member or not officer() then return end
         dragFrom = self.member
         ghost.text:SetText(self.member.name)
+        ghost:SetSize(ns.Wide(NAME, 130), ns.Fit(NAME, 20, 8))
         ghost:Show()
     end)
     c:SetScript("OnDragStop", drop)
@@ -782,9 +834,9 @@ local function newBox(g)
     b:EnableMouse(true)
     b:SetScript("OnReceiveDrag", drop)
     b:SetScript("OnMouseUp", drop)
-    b.head = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    b.head = ns.Str(b, NAME)
     b.head:SetPoint("TOPLEFT", b, "TOPLEFT", 7, -5)
-    b.sum = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    b.sum = ns.Str(b, BASE)
     b.sum:SetPoint("TOPRIGHT", b, "TOPRIGHT", -7, -5)
     b.sum:SetJustifyH("RIGHT")
     ns.PaintText(b.sum, "text.secondary")
@@ -796,7 +848,7 @@ local function buildStrip()
     strip = ns.MakePanel(pane)
     strip:SetHeight(STRIP_H)
     strip:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, 0)
-    strip.text = strip:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    strip.text = ns.Str(strip, BASE)
     strip.text:SetPoint("LEFT", strip, "LEFT", 10, 0)
     ns.PaintText(strip.text, "text.secondary")
     strip.show = ns.MakeKitButton(strip)
@@ -826,7 +878,7 @@ local function buildBar()
         sortUntil, sortWait = GetTime() + SORT_TIME, false
         sortStep()
     end
-    barFs = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    barFs = ns.Str(bar, BASE)
     barFs:SetJustifyH("LEFT")
     ns.PaintText(barFs, "text.primary")
 end
@@ -840,9 +892,10 @@ local function fillStrip(raid)
         return 0
     end
     strip:SetWidth(ns.window.PANE_W)
+    strip:SetHeight(stripH())
     strip.text:SetText(ns.T("stripLists", un, wait))
     strip:Show()
-    return STRIP_H + STRIP_GAP
+    return stripH() + STRIP_GAP
 end
 local function fillSort(raid)
     if not raid then
@@ -900,7 +953,14 @@ local function placeBoxes(top)
     top = top or 0
     local W = ns.window.PANE_W
     local boxW = math.floor((W - (COLS - 1) * GAP) / COLS)
-    local boxH = HEAD_H + 5 * CELL_H + 6
+    local key = cellH() * 1000 + headH()
+    if key ~= fitKey then
+        fitKey = key
+        for _, b in ipairs(boxes) do
+            for _, c in ipairs(b.cells) do fitCell(c) end
+        end
+    end
+    local boxH = headH() + 5 * cellH() + 6
     for g, b in ipairs(boxes) do
         local col, row = (g - 1) % COLS, math.floor((g - 1) / COLS)
         b:SetSize(boxW, boxH)
@@ -910,7 +970,8 @@ local function placeBoxes(top)
     bar:ClearAllPoints()
     bar:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -(top + 2 * boxH + 2 * GAP))
     bar:SetWidth(W)
-    local infoTop = top + 2 * boxH + 2 * GAP + BAR_H + INFO_GAP
+    bar:SetHeight(barH())
+    local infoTop = top + 2 * boxH + 2 * GAP + barH() + INFO_GAP
     ns.RaidInfo.Place(pane, infoTop, W, ns.window.PANE_H - infoTop)
 end
 local function fillBox(b, list, gl, tpl, work, rs)
@@ -959,6 +1020,10 @@ end
 local function onSize()
     if built then refresh() end
 end
+local function onFont()
+    if menu then placeMenu() end
+    if built then refresh() end
+end
 local function build()
     pane = ns.window:Pane("raid")
     for g = 1, GROUPS do
@@ -977,6 +1042,7 @@ ns.Session.OnChange(refresh)
 ns.ReadyBuffs.OnChange(refresh)
 if root.Version and root.Version.OnChange then root.Version.OnChange(refresh) end
 ns.window:OnSize(onSize)
+ns.OnFont(onFont)
 local function predictText()
     return bar and bar.predict and barFs:GetText() or nil
 end

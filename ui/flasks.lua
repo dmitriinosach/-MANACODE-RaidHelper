@@ -75,43 +75,51 @@ local function WhoText(s)
         p.n, p.norm) .. alch
 end
 local function Layout()
-    local y = -PAD
-    local inner = W - PAD * 2
-    title:SetPoint("TOPLEFT", PAD, y)
+    local U = ns.Kit.FontGrow
+    local w, pad, gap, bh = U(W), U(PAD), U(GAP), U(BTN_H)
+    pop:SetWidth(w)
+    local y = -pad
+    local inner = w - pad * 2
+    title:ClearAllPoints()
+    title:SetPoint("TOPLEFT", pad, y)
     y = y - title:GetStringHeight() - LINE_GAP
     for _, fs in ipairs({ who, line, warn }) do
         fs:SetWidth(inner)
         fs:ClearAllPoints()
-        fs:SetPoint("TOPLEFT", PAD, y)
+        fs:SetPoint("TOPLEFT", pad, y)
         if fs:IsShown() then y = y - floor(fs:GetStringHeight() + 0.5) - LINE_GAP end
     end
-    y = y - GAP
-    local bw = floor((inner - GAP * 2) / 3)
+    y = y - gap
+    local bw = floor((inner - gap * 2) / 3)
     for i, kind in ipairs(ns.flaskKinds) do
         local b = kindBtn[kind]
         b:SetWidth(bw)
+        b:SetHeight(bh)
         b:ClearAllPoints()
-        b:SetPoint("TOPLEFT", PAD + (i - 1) * (bw + GAP), y)
+        b:SetPoint("TOPLEFT", pad + (i - 1) * (bw + gap), y)
     end
-    y = y - BTN_H - GAP
-    local half = floor((inner - GAP) / 2)
+    y = y - bh - gap
+    local half = floor((inner - gap) / 2)
     forceBtn:SetWidth(half)
+    forceBtn:SetHeight(bh)
     forceBtn:ClearAllPoints()
-    forceBtn:SetPoint("TOPLEFT", PAD, y)
+    forceBtn:SetPoint("TOPLEFT", pad, y)
     acceptBtn:SetWidth(half)
+    acceptBtn:SetHeight(bh)
     acceptBtn:ClearAllPoints()
-    acceptBtn:SetPoint("TOPLEFT", PAD + half + GAP, y)
-    y = y - BTN_H - PAD
+    acceptBtn:SetPoint("TOPLEFT", pad + half + gap, y)
+    y = y - bh - pad
     pop:SetHeight(-y)
 end
 local function Label(parent, token)
-    local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local fs = Kit.Str(parent, "GameFontHighlightSmall")
     fs:SetJustifyH("LEFT")
     Kit.Text(fs, token)
     return fs
 end
 local function Btn(text, tip, run)
     local b = Kit.Button(pop)
+    Kit.Bind(b.text, "GameFontNormalSmall")
     b:SetHeight(BTN_H)
     b:SetText(text)
     b.tipTitle = text
@@ -124,9 +132,9 @@ local function Build()
     pop:SetFrameStrata("DIALOG")
     pop:SetClampedToScreen(true)
     pop:EnableMouse(true)
-    pop:SetWidth(W)
+    pop.sized = true
     Kit.Skin(pop, "float")
-    title = pop:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    title = Kit.Str(pop, "GameFontNormalSmall")
     Kit.Title(title)
     title:SetText(T("flask.pop.title"))
     who = Label(pop, "text.primary")
@@ -212,6 +220,9 @@ function View.Glowing()
     return glow ~= nil and glow:IsShown() and true or false
 end
 Trade.OnChange(View.Refresh)
+Kit.OnFont(function()
+    if pop and pop:IsShown() then Layout() end
+end)
 F.OnChange(function()
     View.Refresh()
     if S and S.Refresh then S.Refresh() end
@@ -221,8 +232,9 @@ local function Switch(on)
 end
 local function Rows()
     return {
-        { title = T("flask.act.row"), items = {
+        { id = "flasks", title = T("flask.act.row"), items = {
             {
+                id = "toggle",
                 label = T("flask.act.toggle"),
                 title = T("set.cat.flasks"),
                 tip = T("flask.act.toggle.tip"),
@@ -234,6 +246,7 @@ local function Rows()
                 run = function() Switch(not F.IsOn()) end,
             },
             {
+                id = "log",
                 label = T("flask.act.log"),
                 title = View.Given(),
                 tip = T("flask.act.log.tip"),

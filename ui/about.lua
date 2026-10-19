@@ -27,17 +27,25 @@ About.TOOLS = TOOLS
 About.MIRRORS = MIRRORS
 About.CHARS = CHARS
 About.ADDONS = ns.otherAddons or {}
-local W = 460
 local PAD = 16
-local ROW_H = 22
-local ROW_X = 110
 local ROW_GAP = 6
-local KEY_W = 46
 local ICON = 16
 local TILE_GAP = 8
-local TILE_W = (W - PAD * 2 - TILE_GAP) / 2
-local TILE_H = 76
 local TILE_IN = 8
+local SMALL = "GameFontHighlightSmall"
+local D = { W = 460, ROW_H = 22, ROW_X = 110, KEY_W = 46, TILE_W = 212, TILE_H = 76, NAME_H = 15, DESC_H = 24, FIELD_H = 20 }
+local function Dims()
+    local k = Kit.FontScale(SMALL, true)
+    D.W = math.floor(460 * k + 0.5)
+    D.ROW_X = math.floor(110 * k + 0.5)
+    D.KEY_W = math.floor(46 * k + 0.5)
+    D.ROW_H = Kit.GrowH(22, SMALL)
+    D.NAME_H = Kit.GrowH(15, SMALL)
+    D.DESC_H = Kit.GrowH(24, SMALL)
+    D.FIELD_H = Kit.GrowH(20, SMALL)
+    D.TILE_W = (D.W - PAD * 2 - TILE_GAP) / 2
+    D.TILE_H = 7 + D.NAME_H + D.DESC_H + D.FIELD_H + 6 + 4
+end
 local frame
 function About.Site()
     local page = ABOUT.sitePage[GetLocale and GetLocale() or ""] or ABOUT.sitePage.other
@@ -53,11 +61,10 @@ local function Unselect(self)
     self:HighlightText(0, 0)
     self:SetCursorPosition(0)
 end
-local function LinkField(parent, url, width, height, tipTitle, tipKey)
+local function LinkField(parent, url, height, tipTitle, tipKey)
     local e = Kit.Edit(parent)
-    e:SetFontObject("GameFontHighlightSmall")
-    e:SetTextInsets(6, KEY_W, 3, 3)
-    e:SetWidth(width)
+    Kit.Bind(e, SMALL)
+    Kit.AutoH(e, SMALL)
     e:SetHeight(height)
     e:SetValue(url)
     e:SetCursorPosition(0)
@@ -69,30 +76,50 @@ local function LinkField(parent, url, width, height, tipTitle, tipKey)
     end
     e:HookScript("OnEditFocusGained", Select)
     e:HookScript("OnEditFocusLost", Unselect)
-    local key = e:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local key = Kit.Str(e, "GameFontNormalSmall")
     key:SetPoint("RIGHT", e, "RIGHT", -7, 0)
     key:SetText(ns.T("about.copy"))
     Kit.Text(key, "text.muted")
     return e
 end
-local function CopyRow(label, url, tipKey, y)
-    if not url or url == "" then return y end
-    local fs = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y - 5)
-    fs:SetText(label)
-    Kit.Text(fs, "text.title")
-    local e = LinkField(frame, url, W - ROW_X - PAD, ROW_H, label, tipKey)
-    e:SetPoint("TOPLEFT", frame, "TOPLEFT", ROW_X, -y)
-    frame.rows[#frame.rows + 1] = { label = label, url = url, edit = e }
-    return y + ROW_H + ROW_GAP
+local function Part(id, make)
+    local p = frame.parts[id]
+    if not p then
+        p = make()
+        frame.parts[id] = p
+    end
+    return p
 end
-local function Line(text, token, font, y)
-    local fs = frame:CreateFontString(nil, "OVERLAY", font)
+local function CopyRow(id, label, url, tipKey, y)
+    if not url or url == "" then return y end
+    local p = Part(id, function()
+        local fs = Kit.Str(frame, "GameFontNormalSmall")
+        fs:SetText(label)
+        Kit.Text(fs, "text.title")
+        local e = LinkField(frame, url, 22, label, tipKey)
+        frame.rows[#frame.rows + 1] = { label = label, url = url, edit = e }
+        return { fs = fs, e = e }
+    end)
+    p.fs:ClearAllPoints()
+    p.fs:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y - 5 - (D.ROW_H - 22) / 2)
+    p.e:SetTextInsets(6, D.KEY_W, 3, 3)
+    p.e:SetWidth(D.W - D.ROW_X - PAD)
+    p.e:ClearAllPoints()
+    p.e:SetPoint("TOPLEFT", frame, "TOPLEFT", D.ROW_X, -y)
+    return y + D.ROW_H + ROW_GAP
+end
+local function Line(id, text, token, font, y)
+    local p = Part(id, function()
+        local fs = Kit.Str(frame, font)
+        fs:SetJustifyH("LEFT")
+        fs:SetText(text)
+        Kit.Text(fs, token)
+        return { fs = fs }
+    end)
+    local fs = p.fs
+    fs:ClearAllPoints()
     fs:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y)
-    fs:SetWidth(W - PAD * 2)
-    fs:SetJustifyH("LEFT")
-    fs:SetText(text)
-    Kit.Text(fs, token)
+    fs:SetWidth(D.W - PAD * 2)
     return fs, y + (fs:GetStringHeight() or 12) + ROW_GAP
 end
 local function Loc(t)
@@ -102,72 +129,126 @@ function About.Installed(folder)
     local _, _, _, _, _, reason = GetAddOnInfo(folder)
     return reason ~= "MISSING"
 end
-local function Tile(a, x, y)
+local function MakeTile(a)
     local p = Kit.Plate(frame)
-    p:SetWidth(TILE_W)
-    p:SetHeight(TILE_H)
-    p:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -y)
-    local state = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    state:SetPoint("TOPRIGHT", p, "TOPRIGHT", -TILE_IN, -7)
+    local state = Kit.Str(p, SMALL)
     state:SetJustifyH("RIGHT")
-    local name = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    name:SetPoint("TOPLEFT", p, "TOPLEFT", TILE_IN, -7)
-    name:SetPoint("RIGHT", state, "LEFT", -6, 0)
+    local name = Kit.Str(p, "GameFontNormalSmall")
     name:SetJustifyH("LEFT")
     name:SetText(Loc(a.name))
     Kit.Text(name, "text.title")
-    local desc = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    desc:SetPoint("TOPLEFT", p, "TOPLEFT", TILE_IN, -22)
-    desc:SetWidth(TILE_W - TILE_IN * 2)
-    desc:SetHeight(24)
+    local desc = Kit.Str(p, SMALL)
     desc:SetJustifyH("LEFT")
     desc:SetJustifyV("TOP")
     desc:SetText(Loc(a.desc))
     Kit.Text(desc, "text.secondary")
-    local e = LinkField(p, a.url, TILE_W - 12, 20, Loc(a.name), nil)
-    e:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", 6, 6)
+    local e = LinkField(p, a.url, 20, Loc(a.name), nil)
     return { addon = a, plate = p, name = name, desc = desc, state = state, edit = e }
+end
+local function PlaceTile(t, x, y)
+    local p = t.plate
+    p:SetWidth(D.TILE_W)
+    p:SetHeight(D.TILE_H)
+    p:ClearAllPoints()
+    p:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -y)
+    t.state:ClearAllPoints()
+    t.state:SetPoint("TOPRIGHT", p, "TOPRIGHT", -TILE_IN, -7)
+    t.name:ClearAllPoints()
+    t.name:SetPoint("TOPLEFT", p, "TOPLEFT", TILE_IN, -7)
+    t.name:SetPoint("RIGHT", t.state, "LEFT", -6, 0)
+    t.desc:ClearAllPoints()
+    t.desc:SetPoint("TOPLEFT", p, "TOPLEFT", TILE_IN, -(7 + D.NAME_H))
+    t.desc:SetWidth(D.TILE_W - TILE_IN * 2)
+    t.desc:SetHeight(D.DESC_H)
+    t.edit:SetTextInsets(6, D.KEY_W, 3, 3)
+    t.edit:SetWidth(D.TILE_W - 12)
+    t.edit:ClearAllPoints()
+    t.edit:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", 6, 6)
 end
 local function Addons(y)
     if #About.ADDONS == 0 then return y end
-    frame.addonsHead = Kit.Caption(frame, ns.T("about.others"), W - PAD * 2)
+    if not frame.addonsHead then
+        frame.addonsHead = Kit.Caption(frame, ns.T("about.others"), D.W - PAD * 2)
+    end
+    Kit.CaptionWidth(frame.addonsHead, D.W - PAD * 2)
+    frame.addonsHead:ClearAllPoints()
     frame.addonsHead:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y - ROW_GAP)
-    y = y + ROW_GAP + 20
+    y = y + ROW_GAP + Kit.GrowH(20, "GameFontNormal")
     for i, a in ipairs(About.ADDONS) do
+        if not frame.tiles[i] then frame.tiles[i] = MakeTile(a) end
         local col = (i - 1) % 2
         local row = math.floor((i - 1) / 2)
-        frame.tiles[i] = Tile(a, PAD + col * (TILE_W + TILE_GAP), y + row * (TILE_H + TILE_GAP))
+        PlaceTile(frame.tiles[i], PAD + col * (D.TILE_W + TILE_GAP), y + row * (D.TILE_H + TILE_GAP))
     end
-    return y + math.ceil(#About.ADDONS / 2) * (TILE_H + TILE_GAP) - TILE_GAP + ROW_GAP
+    return y + math.ceil(#About.ADDONS / 2) * (D.TILE_H + TILE_GAP) - TILE_GAP + ROW_GAP
 end
 local function Chars(y)
     local head
-    head, y = Line(ns.T("about.chars"), "text.title", "GameFontNormal", y + ROW_GAP)
+    head, y = Line("chars", ns.T("about.chars"), "text.title", "GameFontNormal", y + ROW_GAP)
     frame.charsHead = head
     local x = PAD
-    for _, c in ipairs(CHARS) do
-        local icon = frame:CreateTexture(nil, "ARTWORK")
-        icon:SetWidth(ICON)
-        icon:SetHeight(ICON)
-        icon:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -y)
-        Kit.Icon.Class(icon, c.class)
-        local fs = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        fs:SetPoint("LEFT", icon, "RIGHT", 4, 0)
-        fs:SetText(c.name)
-        Kit.ClassText(fs, c.class)
-        frame.chars[#frame.chars + 1] = { name = c.name, class = c.class, text = fs, icon = icon }
-        x = x + ICON + 4 + (fs:GetStringWidth() or 0) + 18
+    for i, c in ipairs(CHARS) do
+        local ch = frame.chars[i]
+        if not ch then
+            local icon = frame:CreateTexture(nil, "ARTWORK")
+            icon:SetWidth(ICON)
+            icon:SetHeight(ICON)
+            Kit.Icon.Class(icon, c.class)
+            local fs = Kit.Str(frame, "GameFontHighlight")
+            fs:SetPoint("LEFT", icon, "RIGHT", 4, 0)
+            fs:SetText(c.name)
+            Kit.ClassText(fs, c.class)
+            ch = { name = c.name, class = c.class, text = fs, icon = icon }
+            frame.chars[i] = ch
+        end
+        ch.icon:ClearAllPoints()
+        ch.icon:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -y)
+        x = x + ICON + 4 + (ch.text:GetStringWidth() or 0) + 18
     end
-    y = y + ICON + ROW_GAP
+    y = y + math.max(ICON, Kit.GrowH(ICON, "GameFontHighlight")) + ROW_GAP
     local server = About.Server()
     if server then
-        frame.server, y = Line(server, "text.secondary", "GameFontHighlightSmall", y)
+        frame.server, y = Line("server", server, "text.secondary", SMALL, y)
     end
     return y
 end
+local function Layout()
+    Dims()
+    frame:SetWidth(D.W)
+    local y = 16
+    frame.title:ClearAllPoints()
+    frame.title:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y)
+    y = y + Kit.GrowH(28, "GameFontNormalLarge")
+    for i, key in ipairs(ABOUT.lineKeys) do
+        local _
+        _, y = Line("line" .. i, ns.T(key), "text.primary", SMALL, y)
+    end
+    y = y + 8
+    frame.ver:ClearAllPoints()
+    frame.ver:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y)
+    frame.ver:SetWidth(D.W - PAD * 2)
+    y = y + Kit.GrowH(22, SMALL)
+    y = CopyRow("release", ns.T("about.release"), ABOUT.release, "about.tip.release", y)
+    for i, t in ipairs(TOOLS) do y = CopyRow("tool" .. i, ns.T(t.key), t.url, t.tip, y) end
+    y = CopyRow("discord", "Discord", ABOUT.discord, "about.tip.discord", y)
+    y = CopyRow("site", ns.T("about.site"), About.Site(), "about.tip.others", y)
+    local headed = false
+    for i, m in ipairs(MIRRORS) do
+        if m.url and m.url ~= "" then
+            if not headed then
+                headed = true
+                frame.mirrors, y = Line("mirrors", ns.T("about.mirrors"), "text.title", "GameFontNormal", y + ROW_GAP)
+            end
+            y = CopyRow("mirror" .. i, m.label, m.url, nil, y)
+        end
+    end
+    y = Addons(y)
+    y = Chars(y)
+    frame:SetHeight(y + 14)
+end
 local function Build()
     frame = CreateFrame("Frame", "HTP_FailWatchAbout", UIParent)
-    frame:SetWidth(W)
+    frame:SetWidth(D.W)
     frame:SetFrameStrata("DIALOG")
     frame:SetToplevel(true)
     frame:SetClampedToScreen(true)
@@ -177,45 +258,24 @@ local function Build()
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame.sized = true
     Kit.Window(frame)
     tinsert(UISpecialFrames, "HTP_FailWatchAbout")
-    frame.rows, frame.chars, frame.tiles = {}, {}, {}
+    frame.rows, frame.chars, frame.tiles, frame.parts = {}, {}, {}, {}
     local close = Kit.CloseButton(frame, function() frame:Hide() end)
     close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
-    local y = 16
-    frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    frame.title:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y)
+    frame.title = Kit.Str(frame, "GameFontNormalLarge")
     frame.title:SetText(ns.T(ABOUT.titleKey))
     Kit.Title(frame.title)
-    y = y + 28
-    for _, key in ipairs(ABOUT.lineKeys) do
-        local _
-        _, y = Line(ns.T(key), "text.primary", "GameFontHighlightSmall", y)
-    end
-    y = y + 8
-    frame.ver = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    frame.ver:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y)
-    frame.ver:SetWidth(W - PAD * 2)
+    frame.ver = Kit.Str(frame, SMALL)
     frame.ver:SetJustifyH("LEFT")
     Kit.Text(frame.ver, "text.secondary")
-    y = y + 22
-    y = CopyRow(ns.T("about.release"), ABOUT.release, "about.tip.release", y)
-    for _, t in ipairs(TOOLS) do y = CopyRow(ns.T(t.key), t.url, t.tip, y) end
-    y = CopyRow("Discord", ABOUT.discord, "about.tip.discord", y)
-    y = CopyRow(ns.T("about.site"), About.Site(), "about.tip.others", y)
-    for _, m in ipairs(MIRRORS) do
-        if m.url and m.url ~= "" then
-            if not frame.mirrors then
-                frame.mirrors, y = Line(ns.T("about.mirrors"), "text.title", "GameFontNormal", y + ROW_GAP)
-            end
-            y = CopyRow(m.label, m.url, nil, y)
-        end
-    end
-    y = Addons(y)
-    y = Chars(y)
-    frame:SetHeight(y + 14)
+    Layout()
     frame:Hide()
 end
+Kit.OnFont(function()
+    if frame then Layout() end
+end)
 local function Refresh()
     if not frame then return end
     for _, t in ipairs(frame.tiles) do

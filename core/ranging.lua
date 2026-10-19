@@ -61,7 +61,7 @@ local function Opt()
     return db and db.settings or {}
 end
 function Ranging.Enabled()
-    return Opt().rngOn ~= false
+    return Opt().rngOn == true
 end
 function Ranging.MinClients()
     local v = tonumber(Opt().rngMin) or MIN_DEFAULT

@@ -14,6 +14,7 @@ local MINE = { potion = true, other = true, stone = true }
 local AB_KEEP = 8
 local PET = "p|"
 local OWN = "s|"
+local FLASK_SEEN = "FW_FLASK"
 local RaidPart = {}
 ns.RaidPart = RaidPart
 function RaidPart.New(fight, pets, known)
@@ -93,6 +94,9 @@ local function Which(sub, who, srcName, srcFlags, a1, dstName, dstFlags, a2)
     elseif sub == "ENCHANT_APPLIED" then
         local c = ns.consumeEnchant[tonumber(a2) or 0]
         if c and srcName and IsPlayer(srcFlags) then return srcName, c, nil end
+    elseif sub == FLASK_SEEN then
+        local c = ns.consumeCast[tonumber(a1) or 0]
+        if c and c.cat == "flask" and srcName then return srcName, c, tonumber(a1) end
     end
     return nil, nil, nil
 end
@@ -178,7 +182,7 @@ function RaidPart.Feed(st, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName
     elseif sub == "FW_ACH" then
         RaidPart.Got(st, tonumber(a1), srcName, ts)
     elseif sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CREATE" or sub == "ENCHANT_APPLIED"
-        or sub == "SPELL_AURA_APPLIED" then
+        or sub == "SPELL_AURA_APPLIED" or sub == FLASK_SEEN then
         RaidPart.Consume(st, sub, who, srcName, srcFlags, a1, dstName, dstFlags, a2)
         if sub == "SPELL_CAST_SUCCESS" and tonumber(a1) == FEIGN and srcName and IsPlayer(srcFlags) then
             st.feign[srcName] = ts

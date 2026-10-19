@@ -30,7 +30,9 @@ local caps = {}
 local stats = {}
 local shown = {}
 local used, usedChecks = 0, 0
+local curH, curMin = BTN_H, BTN_MIN
 local away, acc = 0, 0
+local sideways = false
 local function PlaceTip(b)
     if not fly or GameTooltip:GetOwner() ~= b then return end
     GameTooltip:ClearAllPoints()
@@ -41,7 +43,7 @@ local function PlaceTip(b)
         GameTooltip:SetPoint("TOPLEFT", fly, "TOPRIGHT", TIP_GAP, 0)
     end
 end
-local function Dress(b)
+function Acts.Dress(b)
     local it = b.item
     local ok, why, on = it.state()
     if ok then b:Enable() else b:Disable() end
@@ -58,6 +60,18 @@ local function Dress(b)
     if type(it.tip) == "function" then b.tip = it.tip() else b.tip = it.tip end
     b.tipDim = not ok and why or it.hint
     return ok, why, on
+end
+local Dress = Acts.Dress
+function Acts.Fire(b, button)
+    local it = b.item
+    if not it or not it.state() then return false end
+    if button == "RightButton" then
+        if not it.alt then return false end
+        it.alt()
+    else
+        it.run()
+    end
+    return true
 end
 local function Status(r)
     local fs, row = stats[r], shown[r]
@@ -76,15 +90,7 @@ local function Refresh()
     if grown then Layout(shown) end
 end
 local function Click(b, button)
-    local it = b.item
-    if not it or not it.state() then return end
-    if button == "RightButton" then
-        if not it.alt then return end
-        it.alt()
-    else
-        it.run()
-    end
-    Refresh()
+    if Acts.Fire(b, button) then Refresh() end
 end
 local function Button(i)
     local b = pool[i]
@@ -124,8 +130,7 @@ end
 local function Caption(i)
     local fs = caps[i]
     if not fs then
-        fs = fly:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fs:SetHeight(BTN_H)
+        fs = ns.Kit.Str(fly, "GameFontNormalSmall")
         fs:SetJustifyH("LEFT")
         fs:SetJustifyV("MIDDLE")
         ns.Kit.Text(fs, "text.secondary")
@@ -137,8 +142,7 @@ end
 local function StatusText(i)
     local fs = stats[i]
     if not fs then
-        fs = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        fs:SetHeight(BTN_H)
+        fs = ns.Kit.Str(fly, "GameFontHighlightSmall")
         fs:SetJustifyH("LEFT")
         fs:SetJustifyV("MIDDLE")
         ns.Kit.Text(fs, "text.muted")
@@ -155,7 +159,7 @@ local function PlaceItem(it, x, y)
         c.label:SetText(it.label)
         w = CHECK + CHECK_PAD + c.label:GetStringWidth()
         c:ClearAllPoints()
-        c:SetPoint("TOPLEFT", x, y)
+        c:SetPoint("TOPLEFT", x, y - (curH - CHECK) / 2)
         return w
     end
     used = used + 1
@@ -165,11 +169,11 @@ local function PlaceItem(it, x, y)
         b:SetText("")
         it.icon(b.pic)
         b.pic:Show()
-        w = BTN_H
+        w = curH
     else
         b.pic:Hide()
         b:SetText(it.label)
-        w = max(BTN_MIN, b.text:GetStringWidth() + BTN_PAD)
+        w = max(curMin, b.text:GetStringWidth() + BTN_PAD)
     end
     b:SetWidth(w)
     b:ClearAllPoints()
@@ -178,15 +182,22 @@ local function PlaceItem(it, x, y)
 end
 function Layout(rows)
     shown = rows
+    local Kit = ns.Kit
+    curH = Kit.GrowH(BTN_H, "GameFontNormalSmall")
+    curMin = math.floor(BTN_MIN * Kit.FontScale("GameFontNormalSmall", true) + 0.5)
+    local titleH = Kit.GrowH(TITLE_H, "GameFontNormalSmall")
+    title:SetHeight(titleH)
     local capW = 0
     for r = 1, #rows do
         local fs = Caption(r)
         fs:SetText(rows[r].title)
+        fs:SetHeight(curH)
+        StatusText(r):SetHeight(curH)
         capW = max(capW, fs:GetStringWidth())
     end
     for r = #rows + 1, #caps do caps[r]:Hide() end
     used, usedChecks = 0, 0
-    local y = -(PAD + TITLE_H + ROWGAP)
+    local y = -(PAD + titleH + ROWGAP)
     local w = PAD * 2 + title:GetStringWidth()
     for r = 1, #rows do
         local fs = caps[r]
@@ -212,7 +223,7 @@ function Layout(rows)
             st:Hide()
         end
         w = max(w, x - GAP + PAD)
-        y = y - BTN_H - ROWGAP
+        y = y - curH - ROWGAP
     end
     for r = #rows + 1, #stats do stats[r]:Hide() end
     for i = used + 1, #pool do
@@ -226,9 +237,21 @@ function Layout(rows)
     fly:SetWidth(w)
     fly:SetHeight(-y - ROWGAP + PAD)
 end
+local function PlaceSide(k)
+    local right, hostR, hostL, left = anchor:GetRight(), host:GetRight(), host:GetLeft(), anchor:GetLeft()
+    if not hostR or hostR * k + LIFT + fly:GetWidth() <= UIParent:GetRight() then
+        fly:SetPoint("TOPLEFT", anchor, "TOPRIGHT", (hostR or 0) - (right or 0) + LIFT, PAD)
+    else
+        fly:SetPoint("TOPRIGHT", anchor, "TOPLEFT", (hostL or 0) - (left or 0) - LIFT, PAD)
+    end
+end
 local function Place()
     fly:ClearAllPoints()
     local k = anchor:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    if sideways then
+        PlaceSide(k)
+        return
+    end
     local top, bottom, left = host:GetTop(), host:GetBottom(), anchor:GetLeft()
     local lift = (top or 0) - (anchor:GetTop() or 0) + LIFT
     local drop = (anchor:GetBottom() or 0) - (bottom or 0) + LIFT
@@ -268,18 +291,19 @@ local function Build()
     fly:SetClampedToScreen(true)
     fly:EnableMouse(true)
     ns.Kit.Skin(fly, "float")
-    title = fly:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fly.sized = true
+    title = ns.Kit.Str(fly, "GameFontNormalSmall")
     title:SetPoint("TOPLEFT", PAD, -PAD)
     title:SetHeight(TITLE_H)
     ns.Kit.Title(title)
     fly:SetScript("OnUpdate", ns.Prof.Wrap("hot.panel", OnUpdate))
     fly:Hide()
 end
-function Acts.Show(icon, panel, text)
+function Acts.Show(icon, panel, text, side)
     local rows = ns.Shell.ActionRows()
     if #rows == 0 then return false end
     if not fly then Build() end
-    anchor, host = icon, panel
+    anchor, host, sideways = icon, panel, side and true or false
     title:SetText(text)
     Layout(rows)
     Refresh()
@@ -292,10 +316,21 @@ function Acts.Hide()
     if not fly then return end
     local owner = GameTooltip:GetOwner()
     if owner and owner.GetParent and owner:GetParent() == fly then GameTooltip:Hide() end
+    if ns.Tip then ns.Tip.Hide() end
     fly:Hide()
 end
+ns.Kit.OnFont(function()
+    if fly and fly:IsShown() and anchor then
+        Layout(shown)
+        Refresh()
+        Place()
+    end
+end)
 function Acts.IsShown()
     return fly ~= nil and fly:IsShown() and true or false
+end
+function Acts.IsOver()
+    return fly ~= nil and fly:IsShown() and fly:IsMouseOver() and true or false
 end
 function Acts.Buttons()
     return pool, used

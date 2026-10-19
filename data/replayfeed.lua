@@ -19,6 +19,7 @@ ns.replayFeed = {
         [64205] = "raid",
         [31821] = "raid",
         [33206] = true,
+        [53601] = true,
         [47788] = true,
         [64901] = "raid",
         [64843] = "raid",
@@ -27,6 +28,7 @@ ns.replayFeed = {
         [34477] = true,
         [57933] = true,
     },
+    procs = { [58597] = true },
     hero = {
         [32182] = true,
         [54131] = true,

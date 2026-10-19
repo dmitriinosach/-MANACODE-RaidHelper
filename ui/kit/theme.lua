@@ -56,14 +56,8 @@ local function Flatten(t, prefix, into)
         end
     end
 end
-local G
 function Kit.GameColor(token)
-    if not Kit.themes[current].light then return C[token] or WHITE end
-    if not G then
-        G = {}
-        Flatten(Kit.themes[Kit.DEFAULT or "dark"], nil, G)
-    end
-    return G[token] or WHITE
+    return C[token] or WHITE
 end
 function Kit.Theme()
     return Kit.themes[current]
@@ -213,9 +207,7 @@ function Kit.PlainFrame(parent, level)
     f:SetFrameLevel(parent:GetFrameLevel() + (level or 1))
     return f
 end
-function Kit.ClassColor(token, raw)
-    local own = not raw and token and Kit.themes[current].light and C["cls." .. token]
-    if own then return own[1], own[2], own[3] end
+function Kit.ClassColor(token)
     local c = token and RAID_CLASS_COLORS and RAID_CLASS_COLORS[token]
     if c then return c.r, c.g, c.b end
     return 1, 1, 1
@@ -268,10 +260,6 @@ end
 local ART_DIR = "Interface\\Glues\\LoadingScreens\\"
 local ART_FROM = 0.31
 local ART_TO = 0.86
-local arts = setmetatable({}, WEAK)
-local function Sketch(art)
-    art.pic:SetDesaturated(Kit.Theme().light and true or false)
-end
 function Kit.RaidArt(host)
     local art = { pic = host:CreateTexture(nil, "BORDER"), veil = host:CreateTexture(nil, "ARTWORK") }
     art.pic:SetAllPoints()
@@ -280,8 +268,6 @@ function Kit.RaidArt(host)
     art.veil:SetAllPoints()
     Kit.Paint(art.veil, "float.veil")
     art.veil:Hide()
-    arts[art] = true
-    Sketch(art)
     return art
 end
 function Kit.RaidArtFit(art, host)
@@ -309,7 +295,6 @@ function Kit.RaidArtSet(art, host, file)
     if art.file ~= file then
         art.file = file
         art.pic:SetTexture(ART_DIR .. file)
-        Sketch(art)
     end
     Kit.RaidArtFit(art, host)
     art.pic:Show()
@@ -328,7 +313,4 @@ function Kit.Load()
     Kit.Repaint()
 end
 Flatten(Kit.themes[current], nil)
-Kit.OnTheme(function()
-    for art in pairs(arts) do Sketch(art) end
-end)
 if ns.OnReady then ns.OnReady(Kit.Load) end

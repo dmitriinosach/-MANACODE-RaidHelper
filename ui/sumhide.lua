@@ -191,6 +191,7 @@ local function Check(i)
     local c = checks[i]
     if c then return c end
     c = Kit.Check(pop)
+    Kit.Bind(c.label, "GameFontNormalSmall")
     c:SetWidth(CHECK)
     c:SetHeight(CHECK)
     c.tipTitle = false
@@ -203,7 +204,7 @@ end
 local function Cap(i)
     local fs = caps[i]
     if fs then return fs end
-    fs = pop:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs = Kit.Str(pop, "GameFontNormalSmall")
     fs:SetJustifyH("LEFT")
     Kit.Text(fs, "text.secondary")
     caps[i] = fs
@@ -223,7 +224,7 @@ local function BuildPop()
     pop:SetFrameLevel(catcher:GetFrameLevel() + 10)
     pop:EnableMouse(true)
     pop:SetClampedToScreen(true)
-    pop.title = pop:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    pop.title = Kit.Str(pop, "GameFontNormalSmall")
     pop.title:SetPoint("TOPLEFT", pop, "TOPLEFT", PAD + 2, -PAD)
     pop.title:SetJustifyH("LEFT")
     Kit.Text(pop.title, "list.head")
@@ -243,6 +244,8 @@ local function Fill()
     local boss = popBoss
     if not boss or not pop then return end
     local list = Hide.Items(boss)
+    local g = ns.Kit.Grow().g
+    ROW, HEAD, CAP = 22 + g, 20 + g, 18 + g
     pop.title:SetText(format(T("sum.hide.title"), Hide.Name(boss)))
     local w = max(POP_MIN, pop.title:GetStringWidth() + PAD * 2 + 4)
     local y = PAD + HEAD

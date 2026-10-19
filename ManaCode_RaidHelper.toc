@@ -3,12 +3,13 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 1.5.0
-## X-Date: 2026-10-16
+## Version: 1.6.0
+## X-Date: 2026-10-19
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
 ## OptionalDeps: Auctionator
 
+libs\manacode\sizer.lua
 fw.lua
 core\ids.lua
 locale\ruRU.lua
@@ -22,7 +23,6 @@ locale\lang.lua
 locale\enUS.lua
 data\bosses.lua
 data\effect_defaults.lua
-data\phases.lua
 data\maps.lua
 data\summaries.lua
 data\deathdeps.lua
@@ -41,7 +41,6 @@ data\replaysky.lua
 data\defensives.lua
 data\procs.lua
 data\otheraddons.lua
-data\fable.lua
 data\bosses\icc\marrowgar.lua
 data\bosses\icc\deathwhisper.lua
 data\bosses\icc\gunship.lua
@@ -85,6 +84,7 @@ data\raidsummary.lua
 data\achievements\ulduar.lua
 data\achievements\toc.lua
 data\flasks.lua
+data\raidbuffs.lua
 data\servercmd.lua
 data\ranging.lua
 data\threat.lua
@@ -107,6 +107,7 @@ core\reccast.lua
 core\unitscan.lua
 core\recwpn.lua
 core\recmap.lua
+core\posfix.lua
 core\recach.lua
 core\recorder.lua
 core\meter.lua
@@ -117,6 +118,7 @@ core\castresult.lua
 core\castgcd.lua
 core\encounters.lua
 core\index.lua
+core\fxuse.lua
 core\autorec.lua
 core\penalties.lua
 core\comm.lua
@@ -159,6 +161,7 @@ core\raidpart.lua
 core\summaryacc.lua
 core\summarydeaths.lua
 core\summaryshed.lua
+core\summarycover.lua
 core\summaryveh.lua
 core\summary.lua
 core\deathgrade.lua
@@ -188,24 +191,27 @@ core\replayswarm.lua
 core\replayclass.lua
 core\replaycue.lua
 core\replayunits.lua
+core\replayarrows.lua
 core\replaylayers.lua
 core\npcpos.lua
 core\ranging.lua
 core\realmshare.lua
 core\threat.lua
 core\deathpreview.lua
-core\fablerec.lua
-core\fable.lua
 core\flasks.lua
 core\flaskrole.lua
 core\flasktrade.lua
 core\flaskready.lua
+core\raidbuffs.lua
 core\autoinvite.lua
 core\memguard.lua
 core\cpumeter.lua
+core\lagfind.lua
+core\cpulive.lua
 core\lockouts.lua
 ui\kit\themes.lua
 ui\kit\theme.lua
+ui\kit\font.lua
 ui\kit\anim.lua
 ui\kit\window.lua
 ui\kit\tip.lua
@@ -265,6 +271,13 @@ ui\raidcost.lua
 ui\ahscan.lua
 ui\panelacts.lua
 ui\panel.lua
+ui\panelmenu.lua
+ui\panelwidgets.lua
+ui\panelrows.lua
+ui\panelraid.lua
+ui\panelperf.lua
+ui\panelbuffs.lua
+ui\panelfaults.lua
 ui\prof.lua
 ui\about.lua
 ui\replayshield.lua
@@ -277,8 +290,10 @@ ui\replayooze.lua
 ui\replayclass.lua
 ui\replaycue.lua
 ui\replayunits.lua
+ui\replayarrows.lua
 ui\replaysoul.lua
 ui\replayfeed.lua
+ui\replaypos.lua
 ui\replayfollow.lua
 ui\replaybar.lua
 ui\replaysize.lua
@@ -299,8 +314,8 @@ ui\sumhide.lua
 ui\flasks.lua
 ui\autoinvite.lua
 ui\servercmd.lua
-ui\fable.lua
 ui\devtool.lua
+ui\cpulive.lua
 
 lead\compat\wotlk.lua
 lead\rl.lua

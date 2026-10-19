@@ -6,6 +6,8 @@ local ICON = 16
 local ROW = 19
 local EDIT_H = 18
 local STATUS_W = 18
+local BASE = "GameFontHighlightSmall"
+local HINT = "GameFontDisableSmall"
 local ACT_H = 20
 local FLY_PAD = 8
 local FLY_GAP = 6
@@ -19,8 +21,17 @@ local mode = "closed"
 local fly = false
 local built = false
 local refresh
+local function editH()
+    return ns.Fit(HINT, EDIT_H, 6)
+end
+local function rowH()
+    return editH() + ROW - EDIT_H
+end
+local function statusW()
+    return ns.Wide(BASE, STATUS_W)
+end
 local function listH()
-    return ns.Marks.COUNT * ROW + 4 + ACT_H
+    return ns.Marks.COUNT * rowH() + 4 + ACT_H
 end
 local function paintIcon(b)
     local M = ns.Marks
@@ -117,10 +128,8 @@ local function newRow(i)
     local r = { i = i }
     r.btn = newIcon(box, i, ICON, false)
     local e = ns.MakeEdit(box)
-    e:SetHeight(EDIT_H)
     e:SetMaxLetters(120)
     e:SetPoint("LEFT", r.btn, "RIGHT", 4, 0)
-    e:SetWidth(w - ICON - 4 - STATUS_W - 4)
     e.tip = ns.T("tipMarkNames")
     e.onCommit = function(v)
         if (v or "") ~= ns.Marks.PinText(i) then ns.Marks.SetPins(i, v) end
@@ -128,27 +137,30 @@ local function newRow(i)
     end
     e:HookScript("OnEditFocusGained", function() r.hint:Hide() end)
     r.edit = e
-    r.hint = e:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    r.hint = ns.Str(e, HINT)
     r.hint:SetPoint("LEFT", e, "LEFT", 7, 0)
     r.hint:SetPoint("RIGHT", e, "RIGHT", -4, 0)
     r.hint:SetJustifyH("LEFT")
     ns.PaintText(r.hint, "text.muted")
-    r.status = box:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.status = ns.Str(box, BASE)
     r.status:SetPoint("LEFT", e, "RIGHT", 4, 0)
-    r.status:SetWidth(STATUS_W)
     r.status:SetJustifyH("CENTER")
     return r
 end
 local function placeRows(pad)
+    local step = rowH()
     for k, r in ipairs(rows) do
         r.btn:ClearAllPoints()
-        r.btn:SetPoint("TOPLEFT", box, "TOPLEFT", pad, -(pad + (k - 1) * ROW + 1))
+        r.btn:SetPoint("TOPLEFT", box, "TOPLEFT", pad, -(pad + (k - 1) * step + 1))
+        r.edit:SetHeight(editH())
+        r.edit:SetWidth(w - ICON - 4 - statusW() - 4)
+        r.status:SetWidth(statusW())
     end
     local half = math.floor((w - 6) / 2)
     grab:SetSize(half, ACT_H)
     wipeBtn:SetSize(half, ACT_H)
     grab:ClearAllPoints()
-    grab:SetPoint("TOPLEFT", box, "TOPLEFT", pad, -(pad + ns.Marks.COUNT * ROW + 4))
+    grab:SetPoint("TOPLEFT", box, "TOPLEFT", pad, -(pad + ns.Marks.COUNT * step + 4))
     wipeBtn:ClearAllPoints()
     wipeBtn:SetPoint("LEFT", grab, "RIGHT", 6, 0)
     box:SetSize(w + pad * 2, listH() + pad * 2)
@@ -259,7 +271,7 @@ local function build(parent, width)
     keep.tipTitle = ns.T("marksKeepTitle")
     keep.tip = ns.T("tipMarksKeep")
     keep.onToggle = function(on) ns.Marks.SetEnabled(on) end
-    keepFs = pult:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    keepFs = ns.Str(pult, BASE)
     keepFs:SetPoint("TOPRIGHT", cap, "BOTTOMLEFT", w, -10)
     keepFs:SetWidth(w - 90)
     keepFs:SetJustifyH("RIGHT")
@@ -290,6 +302,7 @@ local function build(parent, width)
     built = true
 end
 ns.Session.OnChange(refresh)
+ns.OnFont(function() if built then refresh() end end)
 ns.Marks.OnChange(refresh)
 ns.window:OnSize(layout)
 ns.PultMarks = {

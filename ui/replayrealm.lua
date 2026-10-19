@@ -29,34 +29,27 @@ local COUNT_H = 18
 local SW_GAP = 4
 local SW_KEY = { "phys", "twi" }
 local SW_TEXT = { "iso.world.physN", "iso.world.twiN" }
+local SW_TOKEN = { "sem.rep.realmPhys", "sem.rep.realmTwi" }
+local STRIPE_H = 2
+local STRIPE_PAD = 3
 local V = {}
 ns.ReplayRealmView = V
 local Kit = ns.Kit
 local Replay = ns.Replay
 local Core = ns.ReplayRealm
-local st = { mode = nil, orbs = {}, beams = {}, flashes = {}, pools = {}, booms = {}, byName = {}, used = 0, usedP = 0,
-             usedB = 0, show = { true, true }, inW = { {}, {} }, swText = {}, swTip = {},
+local st = { mode = DEFAULT, orbs = {}, beams = {}, flashes = {}, pools = {}, booms = {}, byName = {}, used = 0, usedP = 0,
+             usedB = 0, show = { true, true }, inW = { {}, {} }, swText = {}, swTip = {}, veilOn = false,
              swPrev = { {}, {}, s1 = nil, s2 = nil, sec = false } }
 local EMPTY = {}
 local view
 local sw = {}
 local hw, hh = 0, 0
-local function Saved()
-    local settings = ns.GetDB().settings
-    if type(settings.iso) ~= "table" then settings.iso = {} end
-    return settings.iso
-end
 function V.Mode()
-    if not st.mode then
-        local m = Saved().world
-        st.mode = MODES[m or ""] and m or DEFAULT
-    end
     return st.mode
 end
 function V.SetMode(mode)
     if not MODES[mode] then return end
     st.mode = mode
-    Saved().world = mode
     if V.onChange then V.onChange() end
 end
 function V.Has(scene)
@@ -69,8 +62,15 @@ local function Tex(parent, path, layer, token)
     tex:Hide()
     return tex
 end
+local function SwHeight()
+    return max(COUNT_H, math.ceil(Kit.FontSize("GameFontNormalSmall", true) * 1.15) + 6)
+end
 function V.Build(v, marks)
     view = v
+    st.veil = marks:CreateTexture(nil, "BACKGROUND")
+    st.veil:SetAllPoints(marks)
+    Kit.Paint(st.veil, "sem.rep.twiVeil")
+    st.veil:Hide()
     for i = 1, POOL_DRAW do st.pools[i] = Tex(marks, CIRCLE, "BACKGROUND", "sem.rep.fire") end
     for i = 1, 4 do st.booms[i] = Tex(marks, RIM, "ARTWORK", "sem.rep.blast") end
     for i = 1, 2 do st.beams[i] = Tex(marks, LINE, "ARTWORK", "sem.rep.cutter") end
@@ -78,18 +78,28 @@ function V.Build(v, marks)
     for i = 1, FLASH_DRAW do st.flashes[i] = Tex(marks, RIM, "ARTWORK", "sem.rep.cutterHit") end
     for w = 1, 2 do
         local b = Kit.Button(v)
-        b:SetHeight(COUNT_H)
+        b:SetHeight(SwHeight())
+        Kit.Bind(b.text, "GameFontNormalSmall")
         b:SetWidth(120)
         b:SetFrameLevel(v:GetFrameLevel() + 8)
         b.tipTitle = false
         b.key = SW_KEY[w]
         b.onClick = function() V.SetMode(SW_KEY[w]) end
+        b.stripe = b:CreateTexture(nil, "OVERLAY")
+        b.stripe:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", STRIPE_PAD, STRIPE_PAD)
+        b.stripe:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -STRIPE_PAD, STRIPE_PAD)
+        b.stripe:SetHeight(STRIPE_H)
+        Kit.Paint(b.stripe, SW_TOKEN[w])
         b:Hide()
         sw[w] = b
     end
     sw[1]:SetPoint("TOPLEFT", v, "TOPLEFT", COUNT_PAD, -COUNT_PAD)
     sw[2]:SetPoint("LEFT", sw[1], "RIGHT", SW_GAP, 0)
 end
+Kit.OnFont(function()
+    for w = 1, #sw do sw[w]:SetHeight(SwHeight()) end
+    st.counted = nil
+end)
 local function HideAll()
     for i = 1, #st.beams do st.beams[i]:Hide() end
     for i = 1, #st.orbs do st.orbs[i]:Hide() end
@@ -99,9 +109,14 @@ local function HideAll()
     st.used, st.usedP, st.usedB = 0, 0, 0
 end
 function V.Use(scene)
+    local was = st.mode
+    st.mode = DEFAULT
+    if was ~= DEFAULT and V.onChange then V.onChange() end
     if not view then return end
     HideAll()
     for w = 1, #sw do sw[w]:Hide() end
+    st.veil:Hide()
+    st.veilOn = false
     st.byName, st.counted = scene and Replay.ByK(scene) or EMPTY, nil
 end
 local function Inverse(ox, oy, ux, uy, vx, vy, x, y)
@@ -177,9 +192,9 @@ local function Same(a, b)
     end
     return true
 end
-local function Switch(R, t, shown)
+local function Switch(R, t, shown, split)
     if #sw == 0 then return end
-    if not (R.p2 and t >= R.p2) then
+    if not split then
         if st.counted then
             for w = 1, 2 do sw[w]:Hide() end
             st.counted = nil
@@ -215,63 +230,62 @@ local function Switch(R, t, shown)
         if #via > 0 then tip = tip .. "\n" .. format(ns.T("iso.world.shared"), tconcat(via, ", ")) end
         st.swTip[w] = tip
         b.tip = tip
+        b.tint = { Kit.RGB(SW_TOKEN[w]) }
         b:SetActive(shown[w])
         b:Show()
     end
 end
-function V.Sample(scene, t, figs)
-    local R = scene.layers and scene.layers.realm
-    if not R then
-        if st.dusked then
-            for k = 1, #figs do ns.ReplayFigs.Dusk(figs[k], false) end
-            st.dusked = false
-        end
-        if st.counted then
-            for w = 1, #sw do sw[w]:Hide() end
-            st.counted = nil
-        end
+local function Shown(show, split, mode, rec)
+    if not split then
+        show[1], show[2] = true, true
         return
     end
-    st.dusked = true
-    local mode = V.Mode()
-    local rec = Recorder(scene, R, t)
-    local show = st.show
     show[1] = mode == "both" or mode == "phys" or (mode == "mine" and rec == 1)
     show[2] = mode == "both" or mode == "twi" or (mode == "mine" and rec == 2)
+end
+function V.Sample(scene, t, figs)
+    local R = scene.layers and scene.layers.realm
+    local split = R ~= nil and R.p2 ~= nil and t >= R.p2
+    local mode = V.Mode()
+    local rec = split and Recorder(scene, R, t) or 1
+    local show = st.show
+    Shown(show, split, mode, rec)
     local inW = st.inW
     for w = 1, 2 do
         for i = #inW[w], 1, -1 do inW[w][i] = nil end
     end
+    local Figs = ns.ReplayFigs
     local n = #scene.tracks
     for k = 1, n do
         local s = scene.states[k]
         local name = scene.tracks[k].name
-        local w = RealmOf(R, name, s, t, rec)
+        local w = split and RealmOf(R, name, s, t, rec) or 1
+        s.realm = w
+        s.ghost = w ~= rec and s.vis and not s.dead and not Core.In(R.shared[name], t)
         if s.vis and not s.dead then inW[w][#inW[w] + 1] = name end
         if not show[w] then s.vis = false end
-        if figs[k] then ns.ReplayFigs.Dusk(figs[k], mode == "both" and w == 2) end
+        local fig = figs[k]
+        if fig then
+            Figs.Dusk(fig, mode == "both" and w == 2)
+            Figs.Ghost(fig, s.ghost)
+        end
     end
     local b = scene.bossState
-    local phys, twi = Core.In(R.boss[1], t), Core.In(R.boss[2], t)
+    local phys, twi = true, false
+    if split then phys, twi = Core.In(R.boss[1], t), Core.In(R.boss[2], t) end
     if not phys and not twi then phys = true end
+    b.realm, b.ghost = (twi and not phys) and 2 or 1, false
     if not ((phys and show[1]) or (twi and show[2])) then b.vis = false end
-    if figs[n + 1] then ns.ReplayFigs.Dusk(figs[n + 1], mode == "both" and twi and not phys) end
-    Switch(R, t, show)
+    if figs[n + 1] then Figs.Dusk(figs[n + 1], mode == "both" and twi and not phys) end
+    local veil = view ~= nil and show[2] and not show[1]
+    if veil ~= st.veilOn then
+        st.veilOn = veil
+        if veil then st.veil:Show() else st.veil:Hide() end
+    end
+    Switch(R, t, show, split)
 end
 function V.HideAdd(scene, a)
-    local R = scene.layers and scene.layers.realm
-    if not R or not a.npc then return false end
-    local rd = ns.replayMech.realms[scene.fight.boss]
-    if not rd then return false end
-    if not st.sets or st.setsOf ~= rd then
-        st.sets, st.setsOf = { {}, {} }, rd
-        for i = 1, #rd.phys do st.sets[1][rd.phys[i]] = true end
-        for i = 1, #rd.twi do st.sets[2][rd.twi[i]] = true end
-    end
-    for w = 1, 2 do
-        if st.sets[w][a.npc] and not st.show[w] then return true end
-    end
-    return false
+    return not st.show[a.realm or 1]
 end
 local function Screen(cam, scene, x, y, z)
     local gx, gy, lift = ns.ReplayGeo.Where(cam, scene, x, y)
@@ -383,7 +397,7 @@ function V.Place(scene, cam, t)
 end
 function V.Probe()
     local shown = { beams = 0, orbs = 0, flashes = st.used, pools = st.usedP, booms = st.usedB,
-                    show = { st.show[1], st.show[2] }, sw = {} }
+                    show = { st.show[1], st.show[2] }, sw = {}, veil = st.veilOn, mode = st.mode }
     for w = 1, #sw do
         shown.sw[w] = { shown = sw[w]:IsShown(), active = sw[w].active == true, text = st.swText[w], tip = st.swTip[w],
                         btn = sw[w] }

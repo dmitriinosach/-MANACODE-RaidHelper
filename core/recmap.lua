@@ -12,6 +12,7 @@ end
 function RecMap.Reset()
     mapArea, mapLevel, mapName = nil, nil, nil
     levelOk = true
+    if ns.PosFix then ns.PosFix.Reset() end
 end
 local function CountOnMap()
     local slots, slotUnit, _, _, slotPlayer = ns.Recorder.Roster(true)
@@ -75,6 +76,15 @@ local function PickLevel()
     goodArea, goodLevel = area, best
     return true
 end
+RecMap.Count = CountOnMap
+function RecMap.Pick()
+    levelOk = PickLevel()
+    return levelOk
+end
+function RecMap.Keep()
+    goodArea, goodLevel = GetCurrentMapAreaID(), GetCurrentMapDungeonLevel() or 0
+    levelOk = true
+end
 local function ReadMap()
     local area, level, name = GetCurrentMapAreaID(), GetCurrentMapDungeonLevel(), GetMapInfo() or ""
     if area == mapArea and level == mapLevel and name == mapName then return false end
@@ -112,10 +122,16 @@ function RecMap.Read(withPos, refresh)
             Borrow(refresh)
             return ReadMap()
         end
+        local fix = ns.PosFix
+        if fix and fix.Busy() then
+            fix.Step(ns.Recorder.Now())
+            return ReadMap()
+        end
         if refresh then SetMapToCurrentZone() end
         if refresh or (levelOk and CountOnMap() == 0) then
             levelOk = PickLevel()
         end
+        if fix then fix.Step(ns.Recorder.Now()) end
         return ReadMap()
     elseif not mapArea then
         return ReadMap()

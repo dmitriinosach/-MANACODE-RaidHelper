@@ -50,3 +50,32 @@ end
 function ns.Icon.Who(tex, key, token)
     if key then ns.Icon.Spec(tex, key) else Kit.Icon.Class(tex, token) end
 end
+local function stockSize(base)
+    local o = _G[base]
+    local _, size = o and o.GetFont and o:GetFont()
+    return size or 12
+end
+function ns.Str(parent, base, layer)
+    if Kit.Str then return Kit.Str(parent, base, layer) end
+    return parent:CreateFontString(nil, layer or "OVERLAY", base)
+end
+function ns.FontSize(base)
+    if Kit.FontSize then return Kit.FontSize(base, true) end
+    return stockSize(base)
+end
+function ns.FontScale(base)
+    if Kit.FontScale then return math.max(1, Kit.FontScale(base, true)) end
+    return 1
+end
+function ns.OnFont(fn)
+    if Kit.OnFont then Kit.OnFont(fn) end
+end
+function ns.LineH(base, lines)
+    return math.ceil(ns.FontSize(base) * 1.2) * (lines or 1)
+end
+function ns.Fit(base, h, pad, lines)
+    return math.max(h, ns.LineH(base, lines) + (pad or 0))
+end
+function ns.Wide(base, w)
+    return math.ceil(w * ns.FontScale(base))
+end

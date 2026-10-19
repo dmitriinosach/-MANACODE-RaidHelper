@@ -1,6 +1,7 @@
 local _, ns = ...
 local format = string.format
 local floor = math.floor
+local ceil = math.ceil
 local max = math.max
 local MARGIN = 8
 local BAR_ROOM = 8
@@ -17,6 +18,19 @@ local Badges = ns.Badges
 local Grid = ns.Grid
 local View = {}
 ns.RaidSummaryView = View
+local function MinW(w)
+    return floor(w * max(1, Kit.FontScale("GameFontHighlightSmall", true)) + 0.5)
+end
+local function FitW(list, base, w)
+    local m = MinW(base)
+    if Kit.FontDelta() <= 0 then return m end
+    for i = 1, #list do
+        local f = list[i]
+        local need = f.Need and f:Need()
+        if type(need) == "number" then m = max(m, need) end
+    end
+    return math.min(m, w)
+end
 local host, content, busy, art
 local pane
 local shownKey, asking
@@ -34,11 +48,11 @@ function View.Title(raid)
     return format(ns.T("rsum.title"), ns.Raid.Title(raid))
 end
 local function Stat(i)
-    stats[i] = stats[i] or Badges.Total(content)
+    stats[i] = stats[i] or Badges.Total(content, true)
     return stats[i]
 end
 local function Panel(i)
-    panels[i] = panels[i] or Badges.Detail(content)
+    panels[i] = panels[i] or Badges.Detail(content, nil, true)
     return panels[i]
 end
 local function Progress()
@@ -57,16 +71,13 @@ local function Busy()
     busy = CreateFrame("Frame", nil, host)
     busy:SetPoint("CENTER", host, "CENTER", 0, 0)
     busy:SetWidth(BUSYW)
-    busy:SetHeight(BUSYH * 2 + BUSYGAP)
     busy:SetFrameLevel(pane.scroll:GetFrameLevel() + 5)
-    busy.text = busy:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    busy.text = Kit.Str(busy, "GameFontHighlight")
     Kit.Text(busy.text, "text.bright")
     busy.text:SetPoint("TOP", busy, "TOP", 0, 0)
     busy.text:SetWidth(BUSYW)
     busy.bar = CreateFrame("Frame", nil, busy)
-    busy.bar:SetPoint("TOPLEFT", busy, "TOPLEFT", 0, -(BUSYH + BUSYGAP))
     busy.bar:SetWidth(BUSYW)
-    busy.bar:SetHeight(BUSYH)
     local track = busy.bar:CreateTexture(nil, "BACKGROUND")
     track:SetAllPoints()
     Kit.Paint(track, "progress.track")
@@ -75,14 +86,23 @@ local function Busy()
     busy.fill:SetPoint("BOTTOMLEFT", 0, 0)
     busy.fill:SetWidth(1)
     Kit.Paint(busy.fill, "progress.fill")
-    busy.pct = busy.bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    busy.pct = Kit.Str(busy.bar, "GameFontHighlightSmall")
     busy.pct:SetPoint("CENTER", busy.bar, "CENTER", 0, 0)
     Kit.Text(busy.pct, "progress.text")
     busy.bar:Hide()
     return busy
 end
+local function FitBusy()
+    local line = max(BUSYH, ceil(Kit.FontSize("GameFontHighlight", true) * 1.2))
+    local bar = max(BUSYH, ceil(Kit.FontSize("GameFontHighlightSmall", true) * 1.2) + 2)
+    busy:SetHeight(line + BUSYGAP + bar)
+    busy.bar:ClearAllPoints()
+    busy.bar:SetPoint("TOPLEFT", busy, "TOPLEFT", 0, -(line + BUSYGAP))
+    busy.bar:SetHeight(bar)
+end
 local function ShowBusy(text, bar)
     local b = Busy()
+    FitBusy()
     b.text:SetText(text)
     b:Show()
     if bar then Progress() else b.bar:Hide() end
@@ -96,7 +116,7 @@ local function DrawTotals(totals, w)
                      color = Kit.C[c.color] or Kit.C["text.accent"], lines = c.lines })
         list[i] = f
     end
-    return Grid.Place(list, MARGIN, MARGIN, w, TOTALMIN, GAP, true)
+    return Grid.Place(list, MARGIN, MARGIN, w, FitW(list, TOTALMIN, w), GAP, true)
 end
 local function Rows(rows)
     local out = {}
@@ -120,7 +140,7 @@ local function DrawAwards(awards, y, w)
         tiles[i]:SetModel(awards[i])
         list[i] = tiles[i]
     end
-    return Grid.Place(list, MARGIN, y + AV.HEAD_H, w, AWARDMIN, GAP, true)
+    return Grid.Place(list, MARGIN, y + AV.HeadH(), w, MinW(AWARDMIN), GAP, true)
 end
 local function DrawDetails(details, y, w)
     local list = {}
@@ -130,7 +150,7 @@ local function DrawDetails(details, y, w)
         f:SetModel({ title = d.title, rows = Rows(d.rows), empty = d.empty, tip = d.tip, onWheel = PageWheel })
         list[i] = f
     end
-    return Grid.Place(list, MARGIN, y, w, DETAILMIN, GAP, true)
+    return Grid.Place(list, MARGIN, y, w, FitW(list, DETAILMIN, w), GAP, true)
 end
 local function Inside()
     return not ns.SumSide or ns.SumSide.Inside()
@@ -148,7 +168,7 @@ local function SidePanel(panel, parent, d, out)
         if panel then panel:Hide() end
         return panel
     end
-    panel = panel or Badges.Detail(parent)
+    panel = panel or Badges.Detail(parent, nil, true)
     panel:SetParent(parent)
     panel:SetModel({ title = d.title, rows = Rows(d.rows), empty = d.empty, onWheel = SideWheel, fit = d.fit })
     out[#out + 1] = panel
@@ -238,6 +258,7 @@ Render = function()
 end
 function View.Attach(frame)
     host = frame
+    host.sized = true
     local bg = host:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     Kit.Paint(bg, "float.bg")
@@ -327,6 +348,9 @@ if ns.GPList and ns.GPList.OnChange then
     end)
 end
 Kit.OnTheme(function()
+    if View.IsShown() then Render() end
+end)
+Kit.OnFont(function()
     if View.IsShown() then Render() end
 end)
 if ns.Jobs and ns.Jobs.OnChange then ns.Jobs.OnChange(Progress) end

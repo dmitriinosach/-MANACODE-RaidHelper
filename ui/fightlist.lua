@@ -19,6 +19,7 @@ local HEADH = 16
 local LISTGAP = 8
 local PHEADH = 16
 local PROW = 15
+local LINE = 12
 local TREEMIN = 3
 local PCOLS = 2
 local PCOLW = floor(COLW / PCOLS)
@@ -33,6 +34,7 @@ local FOLDX = ICONX + ICON + 3
 local TEXTX = FOLDX + FOLDSZ + 2
 local TEXTTOP = -5
 local INFOTOP = -19
+local FITKEY = nil
 local RAIDR = 7
 local OKSZ = 11
 local TIPMAX = 10
@@ -89,7 +91,7 @@ local STEP = { raid = RAIDH + 2, enc = ENCH + 1, wipe = WIPEH + 1 }
 local FL = {}
 ns.FightList = FL
 FL.WIDTH = WIDTH
-local side, treeBox, treeBar, playerHead, playerCtx, playerBox
+local side, treeBox, treeBar, playerHead, playerCtx, playerBox, headLabel, headHint
 local pools = { raid = {}, enc = {}, wipe = {} }
 local used = { raid = 0, enc = 0, wipe = 0 }
 local cells = {}
@@ -125,7 +127,7 @@ end
 FL.Fit = ns.FitText
 local Fit = FL.Fit
 local function Label(parent, font, h, justify)
-    local fs = parent:CreateFontString(nil, "OVERLAY", font)
+    local fs = Kit.Str(parent, font)
     fs:SetHeight(h)
     fs:SetJustifyH(justify or "LEFT")
     return fs
@@ -183,6 +185,22 @@ end
 local function OnClick(self, button)
     ns.Tip.Hide()
     if self.onClick then self.onClick(self, button) end
+end
+local function Measure()
+    local m = ns.Kit.Grow()
+    local key = m.g .. ":" .. m.wk
+    if key == FITKEY then return false end
+    FITKEY = key
+    local g = m.g
+    LINE = 12 + g
+    WIDTH = floor(FL.WIDTH * m.wk + 0.5)
+    COLW = WIDTH - GUTTER
+    PCOLW = floor(COLW / PCOLS)
+    RAIDH, ENCH, WIPEH = 36 + 2 * g, 20 + g, 15 + g
+    HEADH, PHEADH, PROW = 16 + g, 16 + g, 15 + g
+    INFOTOP = TEXTTOP - LINE - 2
+    STEP.raid, STEP.enc, STEP.wipe = RAIDH + 2, ENCH + 1, WIPEH + 1
+    return true
 end
 local function NewRow(parent, kind, w, h)
     local r = CreateFrame("Button", nil, parent)
@@ -243,6 +261,7 @@ end
 local function OnRaid(row, button)
     local line = row.line
     local show = ns.Timeline and ns.Timeline.ShowRaid
+    if line.raid.party then show = nil end
     if button == "RightButton" then
         Del.RaidMenu(row)
         return
@@ -319,6 +338,18 @@ local function DelButton(r)
     r.del = b
     return b
 end
+local function RaidGeom(r)
+    r:SetHeight(RAIDH)
+    r.name:SetHeight(LINE)
+    r.name:ClearAllPoints()
+    r.name:SetPoint("TOPLEFT", FOLDX, TEXTTOP)
+    r.score:SetHeight(LINE)
+    r.score:ClearAllPoints()
+    r.score:SetPoint("TOPRIGHT", -RAIDR, TEXTTOP)
+    r.info:SetHeight(LINE)
+    r.info:ClearAllPoints()
+    r.info:SetPoint("TOPLEFT", FOLDX, INFOTOP)
+end
 local function RaidRow()
     local r = NewRow(treeBox, "raid", COLW, RAIDH)
     r.mark = r:CreateTexture(nil, "ARTWORK")
@@ -357,17 +388,21 @@ local function RaidRow()
     r.fold:SetPoint("CENTER")
     Kit.Tint(r.fold, "text.title")
     DelButton(r):SetPoint("RIGHT", r.foldBtn, "LEFT", 0, 0)
-    r.name = Label(r, "GameFontNormalSmall", 12)
-    r.name:SetPoint("TOPLEFT", FOLDX, TEXTTOP)
+    r.name = Label(r, "GameFontNormalSmall", LINE)
     Kit.Text(r.name, "text.title")
-    r.score = Label(r, "GameFontHighlightSmall", 12, "RIGHT")
-    r.score:SetPoint("TOPRIGHT", -RAIDR, TEXTTOP)
-    r.info = Label(r, "GameFontHighlightSmall", 12)
-    r.info:SetPoint("TOPLEFT", FOLDX, INFOTOP)
+    r.score = Label(r, "GameFontHighlightSmall", LINE, "RIGHT")
+    r.info = Label(r, "GameFontHighlightSmall", LINE)
     Kit.Text(r.info, "text.primary")
+    RaidGeom(r)
     r.onClick = OnRaid
     r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     return r
+end
+local function EncGeom(r)
+    r:SetHeight(ENCH)
+    r.name:SetHeight(LINE)
+    r.count:SetHeight(LINE)
+    r.wipes:SetHeight(ENCH)
 end
 local function EncRow()
     local r = NewRow(treeBox, "enc", COLW - ENCX, ENCH)
@@ -376,9 +411,9 @@ local function EncRow()
     r.stripe:SetWidth(2)
     r.stripe:SetPoint("TOPLEFT", 0, 0)
     r.stripe:SetPoint("BOTTOMLEFT", 0, 0)
-    r.name = Label(r, "GameFontHighlightSmall", 12)
+    r.name = Label(r, "GameFontHighlightSmall", LINE)
     r.name:SetPoint("LEFT", ENCNAME, 0)
-    r.count = Label(r, "GameFontHighlightSmall", 12, "RIGHT")
+    r.count = Label(r, "GameFontHighlightSmall", LINE, "RIGHT")
     Kit.Text(r.count, "sem.wipe")
     r.dots = {}
     for i = 1, DOTS do
@@ -408,6 +443,7 @@ local function EncRow()
     r.wipes = w
     r.wipeOn = r:CreateTexture(nil, "BORDER")
     r.wipeOn:SetAllPoints(w)
+    EncGeom(r)
     r.onClick = OnEnc
     r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     return r
@@ -418,7 +454,7 @@ local function WipeRow()
     r.stripe:SetWidth(2)
     r.stripe:SetPoint("TOPLEFT", 0, 0)
     r.stripe:SetPoint("BOTTOMLEFT", 0, 0)
-    r.name = Label(r, "GameFontHighlightSmall", 12)
+    r.name = Label(r, "GameFontHighlightSmall", LINE)
     r.name:SetPoint("LEFT", ENCNAME, 0)
     r.play = ns.ReplayLink.Mini(r, PLAYSZ)
     r.play:SetPoint("RIGHT", -2, 0)
@@ -428,6 +464,11 @@ local function WipeRow()
     return r
 end
 local MAKE = { raid = RaidRow, enc = EncRow, wipe = WipeRow }
+local function WipeGeom(r)
+    r:SetHeight(WIPEH)
+    r.name:SetHeight(LINE)
+end
+local GEOM = { raid = RaidGeom, enc = EncGeom, wipe = WipeGeom }
 local function Take(kind)
     local n = used[kind] + 1
     used[kind] = n
@@ -565,6 +606,7 @@ local function DrawTree()
         if y + step > treeH + 2 then break end
         local r = Take(line.kind)
         r.line = line
+        GEOM[line.kind](r)
         local x = 0
         if line.kind == "raid" then
             PaintRaid(r, line)
@@ -672,22 +714,31 @@ local function OnPlayer(row)
         ns.Timeline.SelectPlayer(row.who)
     end
 end
+local function CellGeom(c)
+    local col = (c.index - 1) % PCOLS
+    local line = floor((c.index - 1) / PCOLS)
+    c:SetWidth(PCOLW - 2)
+    c:SetHeight(PROW)
+    c:ClearAllPoints()
+    c:SetPoint("TOPLEFT", col * PCOLW, -(line * PROW))
+    c.cls:SetWidth(PROW - 3)
+    c.cls:SetHeight(PROW - 3)
+    c.name:SetHeight(LINE)
+    c.plate:SetHeight(LINE)
+    c.plate.text:SetHeight(LINE)
+    c.dead:SetHeight(LINE)
+end
 local function Cell(index)
     local c = cells[index]
     if c then return c end
     c = NewRow(playerBox, "player", PCOLW - 2, PROW)
-    local col = (index - 1) % PCOLS
-    local line = floor((index - 1) / PCOLS)
-    c:SetPoint("TOPLEFT", col * PCOLW, -(line * PROW))
+    c.index = index
     c.cls = c:CreateTexture(nil, "ARTWORK")
-    c.cls:SetWidth(PROW - 3)
-    c.cls:SetHeight(PROW - 3)
     c.cls:SetPoint("LEFT", 2, 0)
     c.cls:SetTexture(CLASS_TEX)
-    c.name = Label(c, "GameFontHighlightSmall", 12)
+    c.name = Label(c, "GameFontHighlightSmall", LINE)
     c.name:SetPoint("LEFT", c.cls, "RIGHT", 3, 0)
     c.plate = CreateFrame("Frame", nil, c)
-    c.plate:SetHeight(12)
     c.plate:SetPoint("RIGHT", -1, 0)
     c.plate.edge = c.plate:CreateTexture(nil, "BACKGROUND")
     c.plate.edge:SetAllPoints()
@@ -696,12 +747,13 @@ local function Cell(index)
     c.plate.fill:SetPoint("TOPLEFT", 1, -1)
     c.plate.fill:SetPoint("BOTTOMRIGHT", -1, 1)
     Kit.Paint(c.plate.fill, "sem.fault")
-    c.plate.text = Label(c.plate, "GameFontHighlightSmall", 12, "CENTER")
+    c.plate.text = Label(c.plate, "GameFontHighlightSmall", LINE, "CENTER")
     Kit.Text(c.plate.text, "text.bright")
     c.plate.text:SetPoint("CENTER", 0, 0)
-    c.dead = Label(c, "GameFontHighlightSmall", 12, "RIGHT")
+    c.dead = Label(c, "GameFontHighlightSmall", LINE, "RIGHT")
     Kit.Text(c.dead, "text.bright")
     c.onClick = OnPlayer
+    CellGeom(c)
     cells[index] = c
     return c
 end
@@ -776,6 +828,7 @@ function FL.DrawPlayers(skipTree)
         local c = Cell(i)
         local p = list[i]
         if p then
+            CellGeom(c)
             PaintCell(c, p)
             c:Show()
         else
@@ -837,12 +890,12 @@ local function AttachNav(host, title, status)
     nav:SetWidth(1)
     navPrev = NavButton("<", "fl.nav.prev", -1)
     navPrev:SetPoint("LEFT", 0, 0)
-    navNo = Label(nav, "GameFontHighlightSmall", 12, "CENTER")
+    navNo = Label(nav, "GameFontHighlightSmall", LINE, "CENTER")
     Kit.Text(navNo, "text.bright")
     navNo:SetPoint("LEFT", navPrev, "RIGHT", NAVGAP, 0)
     navNext = NavButton(">", "fl.nav.next", 1)
     navNext:SetPoint("LEFT", navNo, "RIGHT", NAVGAP, 0)
-    navOut = Label(nav, "GameFontHighlightSmall", 12)
+    navOut = Label(nav, "GameFontHighlightSmall", LINE)
     navOut:SetPoint("LEFT", navNext, "RIGHT", NAVGAP * 2, 0)
     nav:Hide()
     local bar = Kit.ToolBar(host, "LEFT", title, "RIGHT", NAVGAP * 2, 0)
@@ -868,7 +921,7 @@ Tips.raid = function(r)
         raid.deaths))
     local fold = Folded(raid, r.line.index)
     out[#out + 1] = Line(ns.T(fold and "fl.tip.raid.open" or "fl.tip.raid.fold"), "text.primary", true)
-    if ns.Timeline and ns.Timeline.ShowRaid and not RaidShown(raid) then
+    if ns.Timeline and ns.Timeline.ShowRaid and not raid.party and not RaidShown(raid) then
         out[#out + 1] = Line(ns.T("rsum.fl.tip.open"), "text.primary", true)
     end
     out[#out + 1] = Line(ns.T("fl.tip.raid.menu"), "text.primary")
@@ -1035,13 +1088,13 @@ function FL.Attach(parent, x, y, title, status)
     side = CreateFrame("Frame", nil, parent)
     side:SetWidth(COLW)
     side:SetPoint("TOPLEFT", x, -y)
-    local head = Label(side, "GameFontNormalSmall", 12)
-    Kit.Text(head, "text.title")
-    head:SetPoint("TOPLEFT", 0, -2)
-    head:SetText(ns.T("fl.raids"))
-    local hint = NewRow(side, "head", WIDTH / 2, HEADH)
-    hint:SetPoint("TOPLEFT", 0, 0)
-    hint.hover:SetAlpha(0)
+    headLabel = Label(side, "GameFontNormalSmall", LINE)
+    Kit.Text(headLabel, "text.title")
+    headLabel:SetPoint("TOPLEFT", 0, -2)
+    headLabel:SetText(ns.T("fl.raids"))
+    headHint = NewRow(side, "head", WIDTH / 2, HEADH)
+    headHint:SetPoint("TOPLEFT", 0, 0)
+    headHint.hover:SetAlpha(0)
     treeBox = CreateFrame("Frame", nil, side)
     treeBox:SetPoint("TOPLEFT", 0, -HEADH)
     treeBox:SetWidth(COLW)
@@ -1053,17 +1106,38 @@ function FL.Attach(parent, x, y, title, status)
         treeOffset = offset or (treeOffset - delta * WHEEL)
         DrawTree()
     end)
-    playerHead = Label(side, "GameFontNormalSmall", 12)
+    playerHead = Label(side, "GameFontNormalSmall", LINE)
     Kit.Text(playerHead, "text.title")
     playerHead:SetText(ns.T("tl.players"))
-    playerCtx = Label(side, "GameFontHighlightSmall", 12)
+    playerCtx = Label(side, "GameFontHighlightSmall", LINE)
     Kit.Text(playerCtx, "text.bright")
     playerCtx:SetPoint("LEFT", playerHead, "RIGHT", 6, 0)
     playerBox = CreateFrame("Frame", nil, side)
     playerBox:SetWidth(COLW)
 end
+local function Regeom()
+    side:SetWidth(COLW)
+    treeBox:SetWidth(COLW)
+    treeBox:ClearAllPoints()
+    treeBox:SetPoint("TOPLEFT", 0, -HEADH)
+    playerBox:SetWidth(COLW)
+    headLabel:SetHeight(LINE)
+    headHint:SetWidth(WIDTH / 2)
+    headHint:SetHeight(HEADH)
+    playerHead:SetHeight(LINE)
+    playerCtx:SetHeight(LINE)
+    if nav then
+        navNo:SetHeight(LINE)
+        navOut:SetHeight(LINE)
+    end
+    for kind, pool in pairs(pools) do
+        for i = 1, #pool do GEOM[kind](pool[i]) end
+    end
+    for i = 1, #cells do CellGeom(cells[i]) end
+end
 function FL.Layout(height)
     if not side then return end
+    if Measure() then Regeom() end
     sideH = max(HEADH + LISTGAP + PHEADH + TREEMIN * STEP.enc, height)
     side:SetHeight(sideH)
     Place(Need(fight), true)

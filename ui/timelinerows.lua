@@ -3,6 +3,23 @@ local format = string.format
 local tsort = table.sort
 local Rows = {}
 ns.TimelineRows = Rows
+local M = { g = 0, k = 1, wk = 1, line = 12, bar = 12, row = 18, head = 14, ruler = 34, big = 15 }
+function Rows.Measure()
+    local Kit = ns.Kit
+    local grow = Kit.Grow()
+    local g = grow.g
+    M.g, M.k, M.wk = g, grow.k, grow.wk
+    M.line = 12 + g
+    M.bar = 12 + g
+    M.row = M.bar + 6
+    M.head = 14 + g
+    M.ruler = 34 + g * 2
+    M.big = math.ceil(Kit.FontSize("GameFontNormal", true) * 1.25)
+    return M
+end
+function Rows.Metrics()
+    return M
+end
 function Rows.Glued()
     local ui = ns.GetDB().settings.ui
     return ui.glue ~= false

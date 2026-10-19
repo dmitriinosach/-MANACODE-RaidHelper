@@ -24,7 +24,7 @@ local HP_BACK = 3
 local KILL_WINDOW = ns.Deaths.KILL_WINDOW
 local LOCK_SLACK = 1
 local HP_STEP = 0.01
-local HP_CUT = 0.05
+local HP_SKEW = 0.3
 local F_PLAYER = ns.F.PLAYER
 local TRAIL_STEP = 0.25
 local TRAIL_MIN_YD = 0.1
@@ -314,12 +314,14 @@ local function HpMarks(pv)
     local n = #pv.hpT
     if n == 0 then return end
     pv.hpStart = pv.hpV[1]
-    local cut = pv.death and pv.at - HP_CUT or pv.at
+    local hit = pv.kbT and pv.at - pv.kbT <= KILL_WINDOW and pv.kbT or pv.at
+    local cut = pv.death and hit - HP_SKEW or pv.at
     for k = 1, n do
         if pv.hpT[k] <= cut and (not pv.death or pv.hpV[k] > 0) then pv.hpAt = pv.hpV[k] end
     end
     if not pv.hpAt then pv.hpAt = pv.hpV[1] end
 end
+DP.HpMarks = HpMarks
 local function TrackOf(scene, who)
     local tracks = scene.tracks
     for k = 1, #tracks do

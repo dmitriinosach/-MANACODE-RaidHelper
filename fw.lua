@@ -15,12 +15,32 @@ function ns.LangResolve(set)
     if set == "enUS" or set == "ruRU" then return set end
     return GetLocale() == "ruRU" and "ruRU" or "enUS"
 end
+function ns.TIn(lang, key)
+    if lang == "enUS" then return ns.LEN[key] or key end
+    if ns.lang == "enUS" and ruKept[key] then return ruKept[key] end
+    return ns.L[key] or key
+end
 function ns.SetLangSetting(set)
     if set ~= "enUS" and set ~= "ruRU" then set = "auto" end
     local db = ns.GetDB()
-    if db.settings.lang == set then return end
-    db.settings.lang = set
-    ns.Print(ns.T("set.lang.reload"))
+    if (db.settings.lang or "auto") == set then return end
+    local to = ns.LangResolve(set)
+    if to == ns.lang then
+        db.settings.lang = set
+        return
+    end
+    local Kit, S = ns.Kit, ns.Settings
+    if not (Kit and Kit.Confirm) then
+        db.settings.lang = set
+        ns.Print(ns.TIn(to, "set.lang.reload"))
+        return
+    end
+    Kit.Confirm(ns.TIn(to, "set.lang.ask"), ns.TIn(to, "set.lang.yes"), function()
+        db.settings.lang = set
+        ReloadUI()
+    end, function()
+        if S and S.Refresh then S.Refresh() end
+    end, ns.TIn(to, "set.lang.no"))
 end
 function ns.ApplyLang(lang)
     lang = lang or ns.LangResolve()
@@ -595,6 +615,7 @@ local function ApplyDefaults(db)
     if type(db.gp.manual) ~= "table" then db.gp.manual = {} end
     if type(db.gp.bump) ~= "table" then db.gp.bump = {} end
     db.gp.mini = nil
+    db.fable = nil
     if type(db.gp.proof) ~= "string" then db.gp.proof = "RAID" end
     if type(db.gp.guild) ~= "table" then db.gp.guild = {} end
     if type(db.faults) ~= "table" then db.faults = {} end
@@ -609,6 +630,11 @@ local function ApplyDefaults(db)
         db.recAuto = 1
         db.recording = true
         db.settings.autoRaid = true
+    end
+    if db.geoAuto ~= 1 then
+        db.geoAuto = 1
+        local iso = db.settings.iso
+        if type(iso) == "table" then iso.geo = nil end
     end
 end
 local function InstallWidgetFallback()

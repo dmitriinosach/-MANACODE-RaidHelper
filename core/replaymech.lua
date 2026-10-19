@@ -610,13 +610,14 @@ end
 local function InsertBlast(L, t, x, y, r, n, spell)
     local j = L.nb + 1
     while j > 1 and L.bT[j - 1] > t do
-        L.bT[j], L.bX[j], L.bY[j], L.bR[j], L.bN[j], L.bS[j] =
-            L.bT[j - 1], L.bX[j - 1], L.bY[j - 1], L.bR[j - 1], L.bN[j - 1], L.bS[j - 1]
+        L.bT[j], L.bX[j], L.bY[j], L.bR[j], L.bN[j], L.bS[j], L.bTone[j] =
+            L.bT[j - 1], L.bX[j - 1], L.bY[j - 1], L.bR[j - 1], L.bN[j - 1], L.bS[j - 1], L.bTone[j - 1]
         j = j - 1
     end
-    L.bT[j], L.bX[j], L.bY[j], L.bR[j], L.bN[j], L.bS[j] = t, x, y, r, n, spell
+    L.bT[j], L.bX[j], L.bY[j], L.bR[j], L.bN[j], L.bS[j], L.bTone[j] = t, x, y, r, n, spell, nil
     L.nb = L.nb + 1
 end
+M.InsertBlast = InsertBlast
 local function AddPool(L, from, to, x, y, r, tone, boom)
     local j = L.np + 1
     L.np = j

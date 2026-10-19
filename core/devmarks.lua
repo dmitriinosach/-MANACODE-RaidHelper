@@ -9,39 +9,22 @@ local Marks = {}
 ns.DevMarks = Marks
 Marks.SUB = SUB
 Marks.CUSTOM = CUSTOM
-Marks.list = {
-    { key = "sind_up", label = "dev.mark.sind_up" },
-    { key = "sind_down", label = "dev.mark.sind_down" },
-    { key = "put_green", label = "dev.mark.put_green", room = "putricide" },
-    { key = "put_red", label = "dev.mark.put_red", room = "putricide" },
-    { key = "vali_portal", label = "dev.mark.vali_portal" },
-}
 local OLD = { lk_fall = "dev.mark.lk_fall", lk_back = "dev.mark.lk_back", rot_nw = "dev.mark.rot_nw",
-    rot_ne = "dev.mark.rot_ne", rot_sw = "dev.mark.rot_sw", rot_se = "dev.mark.rot_se" }
-local byKey = {}
-for i = 1, #Marks.list do byKey[Marks.list[i].key] = Marks.list[i] end
+    rot_ne = "dev.mark.rot_ne", rot_sw = "dev.mark.rot_sw", rot_se = "dev.mark.rot_se",
+    sind_up = "dev.mark.sind_up", sind_down = "dev.mark.sind_down", vali_portal = "dev.mark.vali_portal",
+    put_green = "dev.mark.put_green", put_red = "dev.mark.put_red" }
+local OLD_AT = { put_green = true, put_red = true }
 function Marks.Clean(text)
     local s = gsub(gsub(tostring(text or ""), "|", ""), "%c", "")
     s = s:match("^%s*(.-)%s*$") or ""
     return sub(s, 1, TEXT_MAX)
 end
-function Marks.Here(def)
-    if not (WorldMapFrame and WorldMapFrame:IsShown()) then SetMapToCurrentZone() end
-    local x, y = GetPlayerMapPosition("player")
-    if not x or (x == 0 and y == 0) then return nil end
-    local lvl = GetCurrentMapDungeonLevel() or 0
-    local text = format("%.4f,%.4f,%d", x, y, lvl)
-    local R = ns.Replay
-    local room = R and def.room and R.ROOMS[def.room]
-    if not room or room.floor ~= lvl then return text end
-    local ppy = R.PixelsPerYard(R.AreaOf(room), lvl)
-    return text, (x * R.AREA_W - room.cx) / ppy, (y * R.AREA_H - room.cy) / ppy
-end
 function Marks.Label(key, text)
-    local def = byKey[tostring(key)]
-    if def and def.room and text and text ~= "" then return format(ns.T("dev.mark.at"), ns.T(def.label), Marks.Clean(text)) end
-    if def then return ns.T(def.label) end
-    local old = OLD[tostring(key)]
+    local k = tostring(key)
+    local old = OLD[k]
+    if old and OLD_AT[k] and text and text ~= "" then
+        return format(ns.T("dev.mark.at"), ns.T(old), Marks.Clean(text))
+    end
     if old and (text == "on" or text == "off") then return format(ns.T("dev.mark." .. text), ns.T(old)) end
     if old then return ns.T(old) end
     local s = Marks.Clean(text)
@@ -51,22 +34,12 @@ end
 function Marks.Line(key, text)
     return format(ns.T("dev.mark.line"), Marks.Label(key, text))
 end
-function Marks.Write(key, text)
-    local custom = key == CUSTOM
-    local s = custom and Marks.Clean(text) or nil
-    local def = byKey[key]
-    if def and def.room then
-        s = Marks.Here(def)
-        if not s then return false, ns.T("dev.mark.nopos") end
-    end
-    if not custom and not byKey[key] then return false, ns.T("dev.mark.unknown") end
-    if custom and s == "" then return false, ns.T("dev.mark.empty") end
+function Marks.Write(text)
+    local s = Marks.Clean(text)
+    if s == "" then return false, ns.T("dev.mark.empty") end
     local rec = ns.Recorder
     if not rec or not rec.Mark then return false, ns.T("dev.mark.norec") end
     local who = UnitName("player")
-    if not rec.Mark(SUB, nil, who, 0, nil, nil, 0, key, s) then return false, ns.T("dev.mark.norec") end
-    return true, Marks.Line(key, s)
-end
-function Marks.Def(key)
-    return byKey[key]
+    if not rec.Mark(SUB, nil, who, 0, nil, nil, 0, CUSTOM, s) then return false, ns.T("dev.mark.norec") end
+    return true, Marks.Line(CUSTOM, s)
 end

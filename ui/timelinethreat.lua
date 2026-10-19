@@ -6,7 +6,6 @@ local min = math.min
 local PAD = 3
 local PULLW = 3
 local NOTEW = 260
-local NOTEH = 14
 local D = ns.threatData
 local TT = {}
 ns.TimelineThreat = TT
@@ -34,7 +33,8 @@ local function Note(GetBlock, x, y, text)
     ns.Kit.Shade(b.tex, "surface.clear")
     ns.Kit.Tone(b.label, "text.secondary")
     b.label:SetText(text)
-    Place(b, x, y, NOTEW, NOTEH)
+    local m = ns.Kit.Grow()
+    Place(b, x, y, NOTEW * m.k, 14 + m.g)
 end
 function TT.Draw(bound, folded, fight, who, GetBlock, GetBar, XOf, from, to)
     if folded or not bound or not fight or not who then return end

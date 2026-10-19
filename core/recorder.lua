@@ -68,6 +68,11 @@ local clockOff = nil
 local clockAt = 0
 local lastNow = 0
 local seen, kept = 0, 0
+local hearAt = nil
+local FLASK = {}
+for id, c in pairs(ns.consumeCast) do
+    if c.cat == "flask" then FLASK[id] = true end
+end
 local slotUnit, slotGuid, slotName, slotPlayer, slotPet, slotMana = {}, {}, {}, {}, {}, {}
 local slots = 0
 local rosterDirty = true
@@ -129,8 +134,10 @@ end
 local function Hear(on)
     if on then
         frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+        hearAt = hearAt or GetTime()
     else
         frame:UnregisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+        hearAt = nil
     end
     if ns.Meter and ns.Meter.Borrow then ns.Meter.Borrow(on) end
 end
@@ -194,6 +201,9 @@ local function Zone()
 end
 function Recorder.InZone()
     return inZone
+end
+function Recorder.HearSince()
+    return hearAt
 end
 function Recorder.SetSpec(on)
     ns.GetDB().settings.specRec = on and true or nil
@@ -392,6 +402,7 @@ local function RecordEvent(ts, ...)
         PollFor(enc)
         if ns.CpuMeter then ns.CpuMeter.Pull(enc) end
         ns.BuffSnap.Take(ts)
+        if ns.FlaskReady then ns.FlaskReady.Pull() end
         ns.Specs.Take(ts)
         if ns.PullTimer then ns.PullTimer.OnPull(ts) end
         frameHp, framePos = true, true
@@ -405,6 +416,10 @@ local function RecordEvent(ts, ...)
     end
     if spellId == WPN_AURA and sub == "SPELL_AURA_APPLIED" then ns.RecWpn.Ask(dstGUID, dstName) end
     if SPEC_SWAP[spellId] and sub == "SPELL_CAST_SUCCESS" then ns.Specs.Swap(srcName) end
+    if ok and FLASK[spellId] and sub == "SPELL_CAST_SUCCESS" and srcFlags and band(srcFlags, F_GROUP) > 0
+        and ns.FlaskReady then
+        ns.FlaskReady.Cast(srcName)
+    end
     Anchor(ts)
     local srcKey, dstKey = ns.NpcKey(srcGUID), ns.NpcKey(dstGUID)
     if sub == "SPELL_CAST_START" and srcKey and ns.bosses[srcKey] and bossElapsed < BOSS_PERIOD - CAST_POLL then

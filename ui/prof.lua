@@ -5,6 +5,7 @@ local UPDATE_PERIOD = 0.5
 local PAD = 12
 local ROW = 16
 local HEAD = 74
+local Kit = ns.Kit
 local SPIKE = 0.1
 local FOOT = 40
 local COLUMNS = {
@@ -58,25 +59,44 @@ local acc = 0
 local spikeText
 local lastMem = 0
 local worst = nil
+local function Kf()
+    return Kit.FontScale("GameFontHighlightSmall", true)
+end
 local function Width()
     local w = PAD * 2
-    for i = 1, #COLUMNS do w = w + COLUMNS[i].w end
+    for i = 1, #COLUMNS do w = w + math.floor(COLUMNS[i].w * Kf() + 0.5) end
     return w
+end
+local function PlaceCell(line, col, fs)
+    local x = PAD
+    for i = 1, col - 1 do x = x + math.floor(COLUMNS[i].w * Kf() + 0.5) end
+    fs:SetWidth(math.floor(COLUMNS[col].w * Kf() + 0.5) - 6)
+    fs:ClearAllPoints()
+    fs:SetPoint("TOPLEFT", x, -(Kit.GrowH(HEAD, "GameFontHighlightSmall") + line * Kit.GrowH(ROW, "GameFontHighlightSmall")))
 end
 local function Cell(line, col)
     cells[line] = cells[line] or {}
     local fs = cells[line][col]
     if fs then return fs end
-    fs = frame:CreateFontString(nil, "OVERLAY", line == 0 and "GameFontNormalSmall"
-        or "GameFontHighlightSmall")
-    local x = PAD
-    for i = 1, col - 1 do x = x + COLUMNS[i].w end
-    local c = COLUMNS[col]
-    fs:SetWidth(c.w - 6)
-    fs:SetJustifyH(c.right and "RIGHT" or "LEFT")
-    fs:SetPoint("TOPLEFT", x, -(HEAD + line * ROW))
+    fs = Kit.Str(frame, line == 0 and "GameFontNormalSmall" or "GameFontHighlightSmall")
+    fs:SetJustifyH(COLUMNS[col].right and "RIGHT" or "LEFT")
     cells[line][col] = fs
+    PlaceCell(line, col, fs)
     return fs
+end
+local resetBtn
+local function Layout()
+    local small = "GameFontHighlightSmall"
+    frame:SetWidth(Width())
+    frame:SetHeight(Kit.GrowH(HEAD, small) + (#STAGES + 1) * Kit.GrowH(ROW, small) + Kit.GrowH(FOOT, small))
+    headText:ClearAllPoints()
+    headText:SetPoint("TOPLEFT", PAD, -Kit.GrowH(32, small))
+    spikeText:ClearAllPoints()
+    spikeText:SetPoint("TOPLEFT", PAD, -Kit.GrowH(48, small))
+    for line, row in pairs(cells) do
+        for col, fs in pairs(row) do PlaceCell(line, col, fs) end
+    end
+    resetBtn:SetWidth(math.floor(110 * Kf() + 0.5))
 end
 local function Ms(ms)
     if ms >= 100 then return format("%.0f", ms) end
@@ -121,9 +141,8 @@ local function Reset()
 end
 local function Build()
     frame = CreateFrame("Frame", "HTP_FailWatchProf", UIParent)
-    frame:SetWidth(Width())
-    frame:SetHeight(HEAD + (#STAGES + 1) * ROW + FOOT)
     frame:SetFrameStrata("DIALOG")
+    frame.sized = true
     ns.Kit.Window(frame)
     frame:SetMovable(true)
     frame:EnableMouse(true)
@@ -139,19 +158,17 @@ local function Build()
     local ui = ns.GetDB().settings.ui
     frame:SetPoint(ui.profPoint or "CENTER", UIParent, ui.profPoint or "CENTER",
         ui.profX or 0, ui.profY or 0)
-    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local title = Kit.Str(frame, "GameFontNormal")
     title:SetPoint("TOPLEFT", PAD, -12)
     title:SetText(ns.T("prof.title"))
     ns.Kit.Title(title)
     local close = ns.Kit.CloseButton(frame, function() View.Hide() end)
     close:SetPoint("TOPRIGHT", -5, -5)
-    headText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    headText = Kit.Str(frame, "GameFontHighlightSmall")
     ns.Kit.Text(headText, "text.bright")
-    headText:SetPoint("TOPLEFT", PAD, -32)
     headText:SetJustifyH("LEFT")
-    spikeText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    spikeText = Kit.Str(frame, "GameFontHighlightSmall")
     ns.Kit.Text(spikeText, "text.bright")
-    spikeText:SetPoint("TOPLEFT", PAD, -48)
     spikeText:SetJustifyH("LEFT")
     for col = 1, #COLUMNS do
         Cell(0, col):SetText(ns.T(COLUMNS[col].key))
@@ -162,7 +179,8 @@ local function Build()
     reset:SetPoint("BOTTOMLEFT", PAD - 2, 10)
     reset.text:SetText(ns.T("prof.btn.reset"))
     reset.onClick = Reset
-    local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    resetBtn = reset
+    local hint = Kit.Str(frame, "GameFontDisableSmall")
     ns.Kit.Text(hint, "text.off")
     hint:SetPoint("LEFT", reset, "RIGHT", 10, 0)
     hint:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
@@ -180,7 +198,11 @@ local function Build()
         Refresh()
     end)
     frame:SetScript("OnHide", function() ns.Prof.on = false end)
+    Layout()
 end
+Kit.OnFont(function()
+    if frame then Layout() end
+end)
 function View.Show()
     if not frame then Build() end
     ns.Prof.on = true

@@ -417,6 +417,11 @@ function R.Done(ctx, L, posAt, ppy)
         local n = #s.from
         if n > 0 and s.to[n] == nil then s.to[n] = to end
     end
+    local adds = L.adds
+    for i = 1, adds and #adds or 0 do
+        local a = adds[i]
+        a.realm = a.npc and (ctx.twi[a.npc] and TWI or ctx.phys[a.npc] and PHYS) or nil
+    end
     L.realm = { spans = spans, boss = boss, auras = auras, me = me, p2 = p2, shared = ctx.shared }
     L.cutter = R.Cutter(ctx, posAt, ppy)
     L.puddles = R.Puddles(ctx, posAt, ppy)

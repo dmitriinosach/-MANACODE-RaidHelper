@@ -27,6 +27,19 @@ ns.defensives = {
     [53762] = { cd = 3600, item = true },
     [71586] = { cd = 120, item = true },
     [71638] = { cd = 120, item = true },
+    [61336] = { cd = 180, talent = { class = "DRUID", tree = 2 } },
+    [42650] = { cd = 600 },
+}
+ns.covers = {
+    own = {
+        DEATHKNIGHT = { 48707, 48792, 55233, 51271, 42650 },
+        WARRIOR = { 871, 12975, 2565 },
+        PALADIN = { 498 },
+        DRUID = { 22812, 61336 },
+    },
+    ext = { 33206, 47788, 6940 },
+    cast = { [42650] = 4 },
+    late = 2,
 }
 ns.saving = {
     [45438] = true,

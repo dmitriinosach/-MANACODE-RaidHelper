@@ -182,6 +182,9 @@ local function PctFont()
     if path then pctFont:SetFont(path, PCT_SIZE, "OUTLINE") end
     return pctFont
 end
+Figs.PctFont = PctFont
+Figs.PCT_H = PCT_H
+Figs.TRAIL_A = TRAIL_A
 function Figs.Build(fig)
     fig.shadow = fig:CreateTexture(nil, "BACKGROUND")
     fig.side = fig:CreateTexture(nil, "BORDER")
@@ -403,6 +406,26 @@ function Figs.Dusk(fig, on)
     fig.sQ = nil
     if fig.rimTok then Figs.Rim(fig) end
 end
+function Figs.Ghost(fig, on)
+    on = on and true or false
+    if (fig.ghost or false) == on then return end
+    fig.ghost = on
+    if on and not fig.ask then
+        fig.ask = fig:CreateFontString(nil, "OVERLAY")
+        fig.ask:SetFontObject(PctFont())
+        fig.ask:SetJustifyH("CENTER")
+        fig.ask:SetPoint("CENTER", fig.icon, "CENTER", 0, 0)
+        fig.ask:SetText("?")
+        Kit.Text(fig.ask, "sem.rep.ghost")
+        fig.ask:Hide()
+        fig.askOn = false
+    end
+    local want = on and fig.iconOn == true
+    if fig.askOn ~= want then
+        fig.askOn = want
+        if want then fig.ask:Show() else fig.ask:Hide() end
+    end
+end
 local function DrawVol(fig, dead, scale, flat, lift, hp)
     local sw = VOL_SHADOW * scale
     local sh = max(2, sw * flat)
@@ -544,6 +567,7 @@ function Figs.Parts(fig, icon, ring)
     Toggle(fig.trail, ring and fig.trailWant or false, fig, "trailOn")
     Toggle(fig.dot, icon and fig.dotNow or false, fig, "dotOn")
     Toggle(fig.pct, icon and fig.pctWant or false, fig, "pctOn")
+    if fig.ask then Toggle(fig.ask, icon and fig.ghost or false, fig, "askOn") end
 end
 function Figs.Pulse(fig, extra)
     if st.kind == "vol" and fig.pw then

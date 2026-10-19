@@ -60,10 +60,11 @@ local function Build()
     return dim
 end
 local function Panel(panel)
-    local key = panel.wide and "wide" or "detail"
+    local sized = panel.sized and true or nil
+    local key = (panel.wide and "wide" or "detail") .. (sized and "S" or "")
     local f = panels[key]
     if f then return f end
-    f = panel.wide and ns.Badges.Wide(dim, true) or ns.Badges.Detail(dim, true)
+    f = panel.wide and ns.Badges.Wide(dim, true, sized) or ns.Badges.Detail(dim, true, sized)
     f:EnableMouse(true)
     f:SetFrameStrata(STRATA)
     local close = ns.Kit.CloseButton(f, Close)

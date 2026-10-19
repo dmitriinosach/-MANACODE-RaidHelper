@@ -14,14 +14,14 @@ local function ShedAura(st, bd, sub, ts, id, from, im)
     if sub == "SPELL_AURA_REMOVED" then
         if h and not h.gone then
             h.gone = ts
-            if im and math.abs(ts - im.t) <= IMMUNE_WINDOW then h.by = im.key end
+            if im and math.abs(ts - im.t) <= IMMUNE_WINDOW then h.by, h.who = im.key, im.who end
         end
         return false
     end
     if sub ~= "SPELL_AURA_APPLIED" and sub ~= "SPELL_AURA_REFRESH" then return false end
-    local full = bd.shed[id or 0] or SHED_FULL
+    local full = bd.shed[id or 0] or bd.shed[0] or SHED_FULL
     if h and (not h.gone or ts - h.gone <= SHED_RELINK) then
-        h.on, h.gone, h.by, h.full = ts, nil, nil, full
+        h.on, h.gone, h.by, h.who, h.full = ts, nil, nil, nil, full
         return false
     end
     if sub ~= "SPELL_AURA_APPLIED" then return false end
@@ -30,11 +30,11 @@ local function ShedAura(st, bd, sub, ts, id, from, im)
     list[#list + 1] = { t = ts - from, on = ts, full = full }
     return true
 end
-local function ShedBy(p, badges, ts, name)
+local function ShedBy(p, badges, ts, name, who)
     for i = 1, #badges do
         local list = badges[i].shed and p.badges[i].hangs
         local h = list and list[#list]
-        if h and h.gone and not h.by and math.abs(ts - h.gone) <= IMMUNE_WINDOW then h.by = name end
+        if h and h.gone and not h.by and math.abs(ts - h.gone) <= IMMUNE_WINDOW then h.by, h.who = name, who end
     end
 end
 local function DiedNear(list, t)
@@ -86,11 +86,11 @@ local function ShedClose(s, fight)
                     h.off = "died"
                 elseif off < h.on + h.full - SHED_SLACK then
                     h.off = "shed"
-                    Forgive(p.hits[SpellKey(bd.spell)], fight.from + h.t, off)
+                    if not bd.want then Forgive(p.hits[SpellKey(bd.spell)], fight.from + h.t, off) end
                 else
                     h.off = "full"
                 end
-                if h.off ~= "shed" then h.cure = Cures(p, h, fight.from + h.t, noReset[p.name]) end
+                if h.off ~= "shed" and bd.want ~= "full" then h.cure = Cures(p, h, fight.from + h.t, noReset[p.name]) end
                 h.on, h.gone, h.lockId, h.lockOn = nil, nil, nil, nil
             end
         end

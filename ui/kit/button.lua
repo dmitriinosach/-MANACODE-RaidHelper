@@ -1,12 +1,38 @@
 local _, ns = ...
 local Kit = ns.Kit
 local floor = math.floor
+local ceil = math.ceil
 local max = math.max
 local min = math.min
 local WHITE8 = "Interface\\Buttons\\WHITE8X8"
 local GLOW_INSET, GLOW_A = 3, 0.10
 local buttons = {}
 local checks = {}
+local BTN_PAD = 8
+local BTN_FONT = "GameFontNormalSmall"
+local autoW = setmetatable({}, { __mode = "k" })
+local function FitWidth(b)
+    local w = b.wantW
+    if not w then return end
+    local need = 0
+    local t = b.text
+    if t and not b.icon and Kit.FontScale(BTN_FONT, true) > 1 then
+        local s = t:GetText()
+        if s and s ~= "" then need = ceil(t:GetStringWidth() or 0) + BTN_PAD * 2 end
+    end
+    b.rawSetWidth(b, max(w, need))
+end
+local function GrowWidth(self, w)
+    self.wantW = w
+    FitWidth(self)
+end
+local function GrowText(self, text)
+    self.rawSetText(self, text)
+    FitWidth(self)
+end
+Kit.OnFont(function()
+    for b in pairs(autoW) do FitWidth(b) end
+end)
 Kit.BUTTON_KINDS = { main = true, quiet = true, icon = true, danger = true, hot = true }
 function Kit.StyleButton(b)
     local base = Kit.Theme().button
@@ -215,6 +241,12 @@ local function Make(parent, group, style, prep, name)
     local b = CreateFrame("Button", name, parent)
     b.kitGroup = group
     b.kitStyle = style
+    if group == "button" then
+        Kit.AutoH(b, BTN_FONT)
+        b.rawSetWidth, b.rawSetText = b.SetWidth, b.SetText
+        b.SetWidth, b.SetText = GrowWidth, GrowText
+        autoW[b] = true
+    end
     b:SetHeight(Kit.Space.ctl)
     b.glow = b:CreateTexture(nil, "ARTWORK")
     b.glow:SetTexture(1, 1, 1, GLOW_A)
@@ -222,7 +254,7 @@ local function Make(parent, group, style, prep, name)
     b.glow:SetPoint("TOPLEFT", b, "TOPLEFT", GLOW_INSET, -GLOW_INSET)
     b.glow:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -GLOW_INSET, GLOW_INSET)
     b.glow:Hide()
-    b.text = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    b.text = Kit.Str(b, BTN_FONT)
     b.text:SetPoint("CENTER", b, "CENTER", 0, 0)
     b.text:SetJustifyH("CENTER")
     Kit.Halo(b.text)
@@ -241,6 +273,18 @@ local function Make(parent, group, style, prep, name)
     buttons[#buttons + 1] = b
     Restyle(b)
     return b
+end
+function Kit.ButtonFont(b, base)
+    local old = b.text
+    old:SetText("")
+    old:Hide()
+    local fs = Kit.Str(b, base)
+    fs:SetPoint("CENTER", b, "CENTER", 0, 0)
+    fs:SetJustifyH("CENTER")
+    Kit.Halo(fs)
+    b:SetFontString(fs)
+    b.text = fs
+    b.kitStyle(b)
 end
 function Kit.Button(parent, name, kind)
     local b = Make(parent, "button", Kit.StyleButton, nil, name)
@@ -268,7 +312,10 @@ local TOOL_PAD = 10
 local TOOL_MIN = 60
 local TOOL_ICON = 10
 local TOOL_ICONGAP = 3
+local labeled = setmetatable({}, { __mode = "k" })
 local function SetLabel(self, text)
+    self.labelText = text
+    labeled[self] = true
     self.text:SetText(text)
     local w = (self.text:GetStringWidth() or 0) + TOOL_PAD * 2
     if self.icon then
@@ -280,6 +327,9 @@ local function SetLabel(self, text)
     end
     self:SetWidth(max(self.minW or TOOL_MIN, floor(w + 0.5)))
 end
+Kit.OnFont(function()
+    for b in pairs(labeled) do SetLabel(b, b.labelText) end
+end)
 function Kit.ToolButton(parent, name, icon, kind)
     local b = Kit.Button(parent, name, kind)
     local h = Kit.Space.tool
@@ -408,7 +458,7 @@ function Kit.Check(parent, name)
     c:SetWidth(24)
     c:SetHeight(24)
     StyleCheck(c)
-    c.label = c:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    c.label = Kit.Str(c, "GameFontNormalSmall")
     c.label:SetPoint("LEFT", c, "RIGHT", 2, 0)
     Kit.Text(c.label, "check.label")
     c:SetScript("OnClick", CheckWrap)
@@ -445,7 +495,8 @@ function Kit.Row(parent, width)
     r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     r.bg = r:CreateTexture(nil, "BACKGROUND")
     r.bg:SetAllPoints()
-    r.text = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    Kit.AutoH(r, "GameFontHighlightSmall")
+    r.text = Kit.Str(r, "GameFontHighlightSmall")
     r.text:SetPoint("LEFT", 0, 0)
     Kit.Text(r.text, "row.text")
     r.text:SetJustifyH("LEFT")
@@ -493,7 +544,7 @@ local function BuildConfirm()
     Kit.Skin(f, "plate")
     f:EnableMouse(true)
     tinsert(UISpecialFrames, "HTP_FailWatchConfirm")
-    f.text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    f.text = Kit.Str(f, "GameFontHighlight")
     f.text:SetPoint("TOP", 0, -16)
     f.text:SetWidth(340)
     f.yes = ConfirmButton(f, "HTP_FailWatchConfirmYes", true)
@@ -501,7 +552,7 @@ local function BuildConfirm()
     f:SetScript("OnHide", ConfirmHide)
     return f
 end
-function Kit.Confirm(text, yes, onYes, onNo)
+function Kit.Confirm(text, yes, onYes, onNo, no)
     local f = confirm or BuildConfirm()
     confirm = f
     local was = f.onNo
@@ -509,10 +560,23 @@ function Kit.Confirm(text, yes, onYes, onNo)
     if was then was() end
     f.text:SetText(text)
     f.yes.text:SetText(yes)
-    f.no.text:SetText(ns.T("kit.no"))
+    f.no.text:SetText(no or ns.T("kit.no"))
     f.onYes, f.onNo = onYes, onNo
+    Kit.ConfirmSize(f)
     f:Show()
 end
+function Kit.ConfirmSize(f)
+    local k = Kit.FontScale("GameFontHighlight", true)
+    f:SetWidth(floor(380 * k + 0.5))
+    f.text:SetWidth(floor(340 * k + 0.5))
+    f.yes:SetWidth(floor(120 * k + 0.5))
+    f.no:SetWidth(floor(120 * k + 0.5))
+    local th = f.text:GetHeight() or 0
+    f:SetHeight(max(120, floor(16 + th + 16 + f.yes:GetHeight() + 14 + 0.5)))
+end
+Kit.OnFont(function()
+    if confirm and confirm:IsShown() then Kit.ConfirmSize(confirm) end
+end)
 function Kit.Confirming()
     return confirm ~= nil and confirm:IsShown() and (confirm.onYes ~= nil or confirm.onNo ~= nil)
 end

@@ -13,7 +13,7 @@ local RESUME_GAP = 180
 local MIN_FIGHT = 20
 local MIN_DUMMY = 3
 local FX_VERSION = 5
-local SCAN_VERSION = 13
+local SCAN_VERSION = 14
 local CLS_VERSION = 1
 local CAST_WINDOW = 3
 local REVIVE_GAP = 2
@@ -174,7 +174,7 @@ local function SegsOf(fight)
 end
 Encounters.Segs = SegsOf
 local function Resumable(found, enc, ts)
-    if enc == ns.ENC.dummy then return nil end
+    if enc == ns.ENC.dummy or not (ns.scriptedKills and ns.scriptedKills[enc]) then return nil end
     for k = #found, 1, -1 do
         local f = found[k]
         if f.boss == enc then
@@ -209,10 +209,14 @@ end
 local function Wiped(f)
     local list = f.dts
     if not list or #list == 0 then return false end
-    local n = 0
+    local n, down = 0, 0
     for _ in pairs(f.players) do n = n + 1 end
-    return ns.Deaths.Wiped(list, n, f.last or f.to)
+    for _ in pairs(f.down or {}) do down = down + 1 end
+    return ns.Deaths.Wiped(list, n, f.last or f.to, down)
 end
+local ALIVE_SRC = { SPELL_CAST_SUCCESS = true, SPELL_CAST_START = true, SWING_DAMAGE = true, SWING_MISSED = true,
+                    RANGE_DAMAGE = true, RANGE_MISSED = true }
+local GROUP_MATE = 0x06
 local function ScanAll()
     local found = {}
     local listed = {}
@@ -236,6 +240,7 @@ local function ScanAll()
         end
     end
     local function Push(f)
+        f.down = nil
         if ns.trashBosses[f.boss] then return end
         local home = f.seg and f.seg > 0 and ns.GetDB().segments[f.seg]
         if home and ns.Digest and ns.Digest.Frozen(home) then return end
@@ -378,6 +383,7 @@ local function ScanAll()
                         or (not f.killed and ts - f.last > IDLE_GAP and Wiped(f)))
                 if pulled and (not f or stale) then
                     if f and f.to - f.from >= MinFight(f) then
+                        f.wipe = (not f.killed and Wiped(f)) or nil
                         Push(f)
                     end
                     if not open[enc] then openCount = openCount + 1 end
@@ -388,7 +394,8 @@ local function ScanAll()
                         f.last = ts
                     else
                         f = { boss = enc, from = ts, to = ts, last = ts, killed = false,
-                              deaths = 0, seg = segIndex, players = {}, raid = seg.raid, title = dstName }
+                              deaths = 0, seg = segIndex, players = {}, raid = seg.raid, title = dstName,
+                              mates = false }
                     end
                     open[enc] = f
                 end
@@ -416,9 +423,13 @@ local function ScanAll()
                     if ts - f.last <= IDLE_GAP then
                         if srcFlags and bit.band(srcFlags, F_PLAYER) > 0 and srcName then
                             f.players[srcName] = f.players[srcName] or 0
+                            if bit.band(srcFlags, GROUP_MATE) > 0 then f.mates = true end
+                            if f.down and ALIVE_SRC[sub] then f.down[srcName] = nil end
                         end
                         if dstFlags and bit.band(dstFlags, F_PLAYER) > 0 and dstName then
                             f.players[dstName] = (f.players[dstName] or 0)
+                            if bit.band(dstFlags, GROUP_MATE) > 0 then f.mates = true end
+                            if f.down and sub == "SPELL_RESURRECT" then f.down[dstName] = nil end
                             if sub == "UNIT_DIED" then
                                 local at = hitAt[dstName]
                                 local hit = at ~= nil and ts - at <= Deaths.KILL_WINDOW
@@ -428,6 +439,8 @@ local function ScanAll()
                                     local dts = f.dts or {}
                                     f.dts = dts
                                     dts[#dts + 1] = ts
+                                    f.down = f.down or {}
+                                    f.down[dstName] = true
                                     if not hit then
                                         local list = quiet[f] or {}
                                         quiet[f] = list
@@ -443,6 +456,7 @@ local function ScanAll()
         for _, f in pairs(open) do
             f.wipe = (not f.killed and Wiped(f)) or nil
             f.dts = nil
+            f.down = nil
             if f.to - f.from >= MinFight(f) then
                 Push(f)
             end
@@ -933,6 +947,7 @@ local function BuildTimeline(fight, who, idx)
                     local it = { t = ts, label = tostring(a2 or a1), kind = "cast", id = a1 }
                     out.casts[#out.casts + 1] = it
                     ns.CastResult.Cast(cast, it, dstName)
+                    ns.CastGcd.Success(starts, it)
                 end
             end
             if srcName == who and ts >= fight.from and ts <= fight.to then
@@ -1021,7 +1036,7 @@ local function BuildTimeline(fight, who, idx)
         out.auras[#out.auras + 1] = open
     end
     ns.CastResult.Finish(cast, idx)
-    out.cuts = ns.CastGcd.Finish(starts, to)
+    out.cuts = ns.CastGcd.Finish(starts, to, out.casts)
     for k = 1, #out.taken do
         local hit = out.taken[k]
         local c = hit.chaser and chasers[hit.chaser]
@@ -1056,6 +1071,7 @@ local function BuildTimeline(fight, who, idx)
         if ns.Streams.Real(idx.segs, who, out.deaths[k]) then real[#real + 1] = out.deaths[k] end
     end
     out.deaths = real
+    out.phases = ns.Phases and (ns.Phases.Get(fight) or ns.Phases.Scan(fight)) or nil
     return out
 end
 local function ByTotal(a, b)

@@ -83,14 +83,17 @@ S.Section("look", "window", {
           min = 70, max = 130, step = 5, fmt = Pct, default = 100,
           get = function() return Percent((ns.Shell.Scale())) end,
           set = function(v) ns.Shell.SetScale(v / 100) end },
+        { kind = "slider", key = "font", label = "set.window.font", tip = "set.window.font.tip",
+          min = select(2, Kit.FontDelta()), max = select(3, Kit.FontDelta()), step = 1, default = 0,
+          fmt = function(v) return format(T("set.unit.pt"), v > 0 and ("+" .. v) or tostring(v)) end,
+          get = function() return (Kit.FontDelta()) end,
+          set = function(v) Kit.SetFontDelta(v) end },
+        { kind = "choice", key = "face", label = "set.window.face", tip = "set.window.face.tip",
+          default = "client",
+          options = function() return Keys(Kit.FontFaces(), "set.window.face.") end,
+          get = Kit.FontFace, set = function(k) Kit.SetFontFace(k) end },
     },
 })
-local function PanelRow(key, on)
-    return { kind = "check", key = "row." .. key, label = "set.panel.row." .. key, tip = "set.panel.rows.tip",
-             default = on,
-             get = function() return ns.Panel.Row(key) end,
-             set = function(v) ns.Panel.SetRow(key, v) end }
-end
 S.Section("panel", "panel", {
     label = "set.panel",
     order = 10,
@@ -106,8 +109,9 @@ S.Section("panel", "panel", {
           min = 60, max = 150, step = 5, fmt = Pct, default = 100,
           get = function() return Percent((ns.Panel.Scale())) end,
           set = function(v) ns.Panel.SetScale(v / 100) end },
-        PanelRow("count", true), PanelRow("graphs", true), PanelRow("flasks", true),
-        PanelRow("cpu", false), PanelRow("win", false),
+        { kind = "check", key = "compact", label = "panel.compact", tip = "panel.compact.tip", default = false,
+          get = function() return ns.Panel.Compact() end,
+          set = function(on) ns.Panel.SetCompact(on) end },
     },
 })
 local function RecState()
@@ -151,8 +155,6 @@ S.Section("rec", "what", {
         { kind = "check", key = "raid", label = "set.rec.raid", tip = "set.rec.raid.tip",
           enabled = function() return not ns.RecLock() end,
           get = function() return Opt().autoRaid end, set = function(on) SetRec("autoRaid", on) end },
-        { kind = "check", key = "party", label = "set.rec.party", tip = "set.rec.party.tip",
-          get = function() return Opt().autoParty end, set = function(on) SetRec("autoParty", on) end },
         { kind = "check", key = "all", label = "set.rec.all", tip = "set.rec.all.tip",
           get = function() return Opt().recAll == true end, set = function(on) SetRec("recAll", on) end },
         { kind = "choice", key = "mana", buttons = true, label = "set.rec.mana", tip = "set.rec.mana.tip",
@@ -164,16 +166,27 @@ local BOSS_COLS = 2
 local BOSS_COL_W = 250
 local BOSS_ROW = 24
 local BOSS_CAP = 20
+local function BossSizes()
+    return Kit.GrowH(BOSS_CAP, "GameFontNormal"), Kit.GrowH(BOSS_ROW, "GameFontNormalSmall"),
+        floor(BOSS_COL_W * Kit.FontScale("GameFontNormalSmall", true) + 0.5)
+end
 local function BuildBosses(r, it)
-    r.cap = r:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    r.cap = Kit.Str(r, "GameFontNormal")
     r.cap:SetPoint("TOPLEFT", r, "TOPLEFT", 0, -2)
     Kit.Text(r.cap, "text.secondary")
     r.checks = {}
+    r.Place = function()
+        local cap, rowH, colW = BossSizes()
+        for i = 1, #it.list do
+            local col, row = (i - 1) % BOSS_COLS, floor((i - 1) / BOSS_COLS)
+            local c = r.checks[i]
+            c:ClearAllPoints()
+            c:SetPoint("TOPLEFT", r, "TOPLEFT", col * colW - 2, -(cap + row * rowH))
+        end
+    end
     for i = 1, #it.list do
         local enc = it.list[i]
         local c = Kit.Check(r)
-        local col, row = (i - 1) % BOSS_COLS, floor((i - 1) / BOSS_COLS)
-        c:SetPoint("TOPLEFT", r, "TOPLEFT", col * BOSS_COL_W - 2, -(BOSS_CAP + row * BOSS_ROW))
         c.tipTitle = false
         c.onToggle = function(on)
             ns.RecFilter.SetBoss(enc, on)
@@ -199,7 +212,10 @@ local function BossItems()
     for i = 1, #raids do
         local r = raids[i]
         out[#out + 1] = { kind = "custom", key = r.map, map = r.map, list = r.list, order = 10 + i,
-            height = BOSS_CAP + math.ceil(#r.list / BOSS_COLS) * BOSS_ROW + 4,
+            height = function()
+                local cap, rowH = BossSizes()
+                return cap + math.ceil(#r.list / BOSS_COLS) * rowH + 4
+            end,
             build = BuildBosses, refresh = RefreshBosses }
     end
     return out
@@ -220,6 +236,10 @@ S.Section("rec", "store", {
     label = "set.rec.store",
     order = 30,
     items = {
+        { kind = "check", key = "party", label = "set.rec.party", tip = "set.rec.party.tip", order = -2,
+          get = function() return Opt().autoParty == true end, set = function(on) SetRec("autoParty", on) end },
+        { kind = "check", key = "dummy", label = "set.rec.dummy", tip = "set.rec.dummy.tip", order = -1,
+          get = function() return ns.Encounters.Dummy() end, set = function(on) ns.Recorder.SetDummy(on) end },
         { kind = "text", key = "used", tick = true, text = RecUsed,
           token = function() return ns.Store.OverLimit() and "text.bad" or "text.primary" end },
         { kind = "slider", key = "mb", label = "set.rec.limit", tip = "set.rec.limit.tip",
@@ -240,11 +260,11 @@ S.Section("rec", "rng", {
     order = 40,
     items = {
         { kind = "check", key = "on", label = "set.rec.rng.on", tip = "set.rec.rng.on.tip", default = true,
-          get = function() return Opt().rngOn ~= false end, set = function(on) Opt().rngOn = on end },
+          get = function() return Opt().rngOn == true end, set = function(on) Opt().rngOn = on end },
         { kind = "slider", key = "min", label = "set.rec.rng.min", tip = "set.rec.rng.min.tip",
           min = 3, max = 10, step = 1, default = 3,
           get = function() return Opt().rngMin or 3 end, set = function(v) Opt().rngMin = v end,
-          enabled = function() return Opt().rngOn ~= false end },
+          enabled = function() return Opt().rngOn == true end },
     },
 })
 local function Tuner(key, label, lo, hi, step, fmt, order)

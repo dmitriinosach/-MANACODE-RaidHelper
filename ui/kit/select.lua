@@ -56,7 +56,7 @@ local function EnsureList(sel)
     list = CreateFrame("Frame", nil, catcher)
     list:SetFrameLevel(catcher:GetFrameLevel() + 10)
     list:SetClampedToScreen(true)
-    head = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    head = Kit.Str(list, "GameFontNormalSmall")
     head:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PAD + 4, -LIST_PAD - 3)
     head:SetJustifyH("LEFT")
     Kit.Text(head, "list.head")
@@ -77,12 +77,14 @@ local function ShowList(sel, options, value, onPick, owner, title)
     local win = RootOf(sel)
     openOn = owner
     used = 0
+    local rowH = Kit.GrowH(ROW_H, "GameFontNormalSmall")
+    local headH = Kit.GrowH(HEAD_H, "GameFontNormalSmall")
     local y = LIST_PAD
     local w = (sel and sel:GetWidth() or MENU_W) - LIST_PAD * 2
     if title then
         head:SetText(title)
         head:Show()
-        y = y + HEAD_H
+        y = y + headH
         local need = head:GetStringWidth() + 8
         if need > w then w = need end
     else
@@ -105,7 +107,7 @@ local function ShowList(sel, options, value, onPick, owner, title)
         if need > w then w = need end
         b:ClearAllPoints()
         b:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PAD, -y)
-        y = y + ROW_H + ROW_GAP
+        y = y + rowH + ROW_GAP
     end
     for i = used + 1, #pool do pool[i]:Hide() end
     if used == 0 then Kit.SelectClose() return end

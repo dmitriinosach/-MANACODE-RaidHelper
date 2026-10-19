@@ -107,24 +107,34 @@ local function Disable(self)
     Kit.Text(self.value, "text.off")
     PaintThumb(self)
 end
+local sliders = setmetatable({}, { __mode = "k" })
 local function SetLabelWidth(self, w)
+    self.labelW = w
+    local k = Kit.FontScale("GameFontHighlightSmall", true)
+    w = floor(w * k + 0.5)
+    self.value:SetWidth(floor(self.valueW * k + 0.5))
     self.label:SetWidth(w)
     self.bar:ClearAllPoints()
     self.bar:SetPoint("LEFT", self, "LEFT", w + GAP, 0)
     self.bar:SetPoint("RIGHT", self.value, "LEFT", -GAP, 0)
 end
+Kit.OnFont(function()
+    for s in pairs(sliders) do SetLabelWidth(s, s.labelW) end
+end)
 function Kit.Slider(parent, spec)
     local s = CreateFrame("Frame", nil, parent)
+    Kit.AutoH(s, "GameFontHighlightSmall")
     s:SetHeight(Kit.Space.ctl)
+    s.valueW = spec.valueW or VALUE_W
+    sliders[s] = true
     s:EnableMouse(true)
     s:SetScript("OnEnter", OnEnter)
     s:SetScript("OnLeave", OnLeave)
-    s.label = s:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    s.label = Kit.Str(s, "GameFontHighlightSmall")
     s.label:SetPoint("LEFT", s, "LEFT", 0, 0)
     s.label:SetJustifyH("LEFT")
-    s.value = s:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    s.value = Kit.Str(s, "GameFontHighlightSmall")
     s.value:SetPoint("RIGHT", s, "RIGHT", 0, 0)
-    s.value:SetWidth(spec.valueW or VALUE_W)
     s.value:SetJustifyH("RIGHT")
     local bar = CreateFrame("Slider", nil, s)
     bar.owner = s

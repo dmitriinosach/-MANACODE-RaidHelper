@@ -7,6 +7,9 @@ ns.summaries[ns.ENC.lichking] = {
         tanked = { 37698 },
         mechs = { { key = "valkyr", text = "sum.dd.m.valkyr", spells = { ns.EnvKey("FALLING") }, ride = 8 } },
     },
+    cover = {
+        { spells = { 73799, 69409, 73797, 73798 }, id = 73799, tip = "sum.b.reaper", rule = "lich.reaper", lead = 5, after = 5 },
+    },
     stats = {
         { kind = "auras", label = "sum.s.harvest", spells = { 73655, 74297 }, gap = 10 },
         { kind = "frenzy", label = "sum.s.frenzy", gap = 0.1 },
@@ -27,8 +30,8 @@ ns.summaries[ns.ENC.lichking] = {
         { kind = "spirit", spells = { 73808, 70503 }, npc = 37799, id = 73808, age = 2, tip = "sum.b.spiritdrag" },
         { kind = "death", spells = { ns.EnvKey("FALLING") }, skipRide = 8, id = 72262, neutral = true, tip = "sum.b.fall" },
         { kind = "death", phases = { "t1", "t2" }, id = 74272, neutral = true, tip = "sum.b.winterdeath" },
-        { kind = "hit", spell = 73802, src = 36701, gap = 2, tip = "sum.b.shriek" },
-        { kind = "death", spells = { 73802 }, id = 73802, neutral = true, tip = "sum.b.shriekdeath" },
+        { kind = "hit", spell = 73802, src = 36701, gap = 2, tank = "green", tip = "sum.b.shriek" },
+        { kind = "death", spells = { 73802 }, id = 73802, tank = "green", tip = "sum.b.shriekdeath" },
         { kind = "death", srcs = { 37698 }, id = 73796, neutral = true, tip = "sum.b.horrordeath" },
         { kind = "frenzy", spells = { 72143, 72148 }, npc = 37698, id = 72148, sec = 3, rule = "lich.frenzy",
           tip = "sum.b.frenzyleft" },

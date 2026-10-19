@@ -1,5 +1,6 @@
 local _, ns = ...
 local floor = math.floor
+local ceil = math.ceil
 local max = math.max
 local min = math.min
 local pi = math.pi
@@ -7,7 +8,6 @@ local PAD = 12
 local FEED_W = 220
 local HEAD = 30
 local BAR_GAP = 8
-local PLAYER_H = ns.ReplayBar.ROW_H
 local BARS_GAP = 4
 local FOOT = 22
 local STATUS_GRIP = 24
@@ -65,7 +65,7 @@ local Turn, Zoom, SetView, SetFlat = IsoCam.Turn, IsoCam.Zoom, IsoCam.SetView, I
 local ResetCamera, Reframe, Saved = IsoCam.ResetCamera, IsoCam.Reframe, IsoCam.Saved
 local LoadCamera, UpdateCamUi = IsoCam.LoadCamera, IsoCam.UpdateCamUi
 local dim = { viewW = Size.MIN_W, viewH = Size.MIN_H, k = 1 }
-dim.sideH = dim.viewH + BAR_GAP + PLAYER_H
+dim.sideH = dim.viewH + BAR_GAP + Bar.ROW_H
 dim.barsH = floor(dim.sideH / 3)
 dim.h = HEAD + dim.sideH + FOOT
 IsoBuild.dim = dim
@@ -77,18 +77,30 @@ local Tick
 local SetFocus
 local SetHeal
 local UpdateSceneBtn
+local m = { feedW = FEED_W, head = HEAD, foot = FOOT, k = 1, line = 18 }
+local function Metrics()
+    local k = max(1, Kit.FontScale("GameFontHighlightSmall", true), Kit.FontScale("GameFontNormalSmall", true))
+    local pt = Kit.FontSize("GameFontHighlightSmall", true)
+    m.k = k
+    m.feedW = ceil(FEED_W * k)
+    m.head = max(HEAD, ceil(Kit.FontSize("GameFontNormal", true) * 1.15) + 12)
+    m.foot = max(FOOT, ceil(pt * 1.15) + 8)
+    m.line = max(18, ceil(pt * 1.2))
+    Bar.Measure()
+end
 local Box = {}
 function Box.SideX()
     return PAD + Size.Edge()
 end
 function Box.LeftX()
-    return Box.SideX() + FEED_W + PAD
+    return Box.SideX() + m.feedW + PAD
 end
 function Box.HeadH()
-    return HEAD + Size.Edge()
+    local pos = ns.ReplayPosView
+    return m.head + Size.Edge() + (pos and pos.Height() or 0)
 end
 function Box.FootH()
-    return FOOT + Size.Edge()
+    return m.foot + Size.Edge()
 end
 local function Clamp(v, lo, hi)
     if v < lo then return lo end
@@ -97,12 +109,19 @@ local function Clamp(v, lo, hi)
 end
 local function Around()
     local side = Box.SideX()
-    return (run.narrow and side * 2 or Box.LeftX() + side), Box.HeadH() + BAR_GAP + PLAYER_H + Box.FootH()
+    return (run.narrow and side * 2 or Box.LeftX() + side), Box.HeadH() + BAR_GAP + Bar.ROW_H + Box.FootH()
 end
 local function FrameWidth()
     ui.frame:SetWidth(Around() + dim.viewW)
 end
+local function PlacePos()
+    local pos = ns.ReplayPosView
+    if not pos then return end
+    local side = Box.SideX()
+    pos.Place(side, m.head + Size.Edge(), Around() + dim.viewW - side * 2)
+end
 local function PlaceBody()
+    PlacePos()
     ui.side:ClearAllPoints()
     ui.side:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", Box.SideX(), -Box.HeadH())
     ui.view:ClearAllPoints()
@@ -123,24 +142,53 @@ local function Narrow(narrow)
 end
 local function Relayout()
     local bars = ui.bars ~= nil and ui.bars:IsShown()
-    ns.ReplayFeed.SetHeight(bars and dim.sideH - dim.barsH - BARS_GAP or dim.sideH)
+    ns.ReplayFeed.Fit(m.feedW, bars and dim.sideH - dim.barsH - BARS_GAP or dim.sideH)
     Narrow(not (run.feedHas or bars))
 end
+local function FitNav()
+    local b = ui.nav and ui.nav.scene
+    if not b then return end
+    local w = ceil(SCENE.w * m.k)
+    b:SetWidth(w)
+    for i = 1, #ui.navRects do
+        local r = ui.navRects[i]
+        if r.name == "scene" then
+            r.w = w
+            r.right = max(0, NAV_RIGHT + (COMPASS - w) / 2)
+            b:ClearAllPoints()
+            b:SetPoint("TOPRIGHT", ui.view, "TOPRIGHT", -r.right, -r.y)
+        end
+    end
+end
+local function FitLegend()
+    local f = ui.legend
+    if not f then return end
+    local w = ceil(LEGEND_W * m.k)
+    f:SetWidth(w)
+    ui.legendText:SetWidth(w - 20)
+    f:SetHeight(max(120, ui.legendText:GetStringHeight() + 16))
+end
 local function Resize(vw, vh)
+    Metrics()
+    Size.Head(m.head)
     dim.viewW, dim.viewH = vw, vh
-    dim.sideH = vh + BAR_GAP + PLAYER_H
+    dim.sideH = vh + BAR_GAP + Bar.ROW_H
     dim.barsH = floor(dim.sideH / 3)
     dim.h = Box.HeadH() + dim.sideH + Box.FootH()
     dim.k = min(vw / Size.MIN_W, vh / Size.MIN_H)
     cam.w, cam.h = vw, vh
     ui.view:SetWidth(vw)
     ui.view:SetHeight(vh)
+    ui.side:SetWidth(m.feedW)
     ui.side:SetHeight(dim.sideH)
+    ui.bars:SetWidth(m.feedW)
     ui.bars:SetHeight(dim.barsH)
     if ns.ReplayBarsView then ns.ReplayBarsView.Fit() end
     ui.hint:SetWidth(vw - 120)
     ui.gap:SetWidth(vw - 120)
     ui.focus:SetWidth(vw - 180)
+    FitNav()
+    FitLegend()
     for i = 1, #ui.navRects do
         local r = ui.navRects[i]
         r.x = vw - r.right - r.w
@@ -150,6 +198,7 @@ local function Resize(vw, vh)
     ui.status:SetWidth(vw - STATUS_GRIP)
     ui.frame:SetHeight(dim.h)
     FrameWidth()
+    PlacePos()
     Relayout()
     Reframe()
     run.marksDirty = true
@@ -201,13 +250,14 @@ local function BuildLegend(top)
     local bg = f:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(f)
     Kit.Paint(bg, "surface.bg", 0.94)
-    local text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local text = Kit.Str(f, "GameFontHighlightSmall")
     Kit.Text(text, "text.bright")
     text:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -8)
     text:SetWidth(LEGEND_W - 20)
     text:SetJustifyH("LEFT")
     text:SetText(ns.T("iso.legend"))
     f:SetHeight(max(120, text:GetStringHeight() + 16))
+    ui.legendText = text
     f:SetScript("OnClick", function(self) self:Hide() end)
     f:Hide()
     ui.legend = f
@@ -252,13 +302,15 @@ local function BuildNav(top)
         ui.nav[name] = b
     end
     ui.modeBtn = ui.nav.mode
+    Kit.Bind(ui.modeBtn.text, "GameFontNormalSmall")
+    Kit.Bind(ui.nav.scene.text, "GameFontNormalSmall")
     ui.nav.scene:Hide()
     BuildLegend(top)
 end
 local function BuildBars(side)
     local bars = CreateFrame("Frame", nil, side)
     bars:SetPoint("BOTTOMLEFT", side, "BOTTOMLEFT", 0, 0)
-    bars:SetWidth(FEED_W)
+    bars:SetWidth(m.feedW)
     bars:SetHeight(dim.barsH)
     bars:Hide()
     bars:SetScript("OnShow", Relayout)
@@ -267,14 +319,14 @@ local function BuildBars(side)
 end
 local function BuildView(frame)
     local side = CreateFrame("Frame", nil, frame)
-    side:SetWidth(FEED_W)
+    side:SetWidth(m.feedW)
     side:SetHeight(dim.sideH)
     side:SetPoint("TOPLEFT", frame, "TOPLEFT", Box.SideX(), -Box.HeadH())
     local sideBg = side:CreateTexture(nil, "BACKGROUND")
     sideBg:SetAllPoints(side)
     Kit.Paint(sideBg, "surface.page", 0.5)
     ui.side = side
-    ns.ReplayFeed.Build(side, FEED_W, dim.sideH, function(sec, who)
+    ns.ReplayFeed.Build(side, m.feedW, dim.sideH, function(sec, who)
         if not run.scene then return end
         run.t = Clamp(run.scene.pull + sec, run.scene.from, run.scene.to)
         run.marksDirty = true
@@ -318,15 +370,15 @@ local function BuildView(frame)
     ui.hoverText = ui.hoverBox:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     ui.hoverText:SetPoint("BOTTOM", ui.hoverBox, "BOTTOM", 0, 0)
     ui.hoverText:Hide()
-    ui.hint = top:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ui.hint = Kit.Str(top, "GameFontHighlightSmall")
     ui.hint:SetPoint("TOP", view, "TOP", 0, -8)
     ui.hint:SetWidth(dim.viewW - 120)
     Kit.Text(ui.hint, "text.secondary")
-    ui.gap = top:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ui.gap = Kit.Str(top, "GameFontHighlightSmall")
     ui.gap:SetPoint("BOTTOM", view, "BOTTOM", 0, 8)
     ui.gap:SetWidth(dim.viewW - 120)
     Kit.Text(ui.gap, "text.warn")
-    ui.focus = top:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ui.focus = Kit.Str(top, "GameFontHighlightSmall")
     ui.focus:SetPoint("TOPLEFT", view, "TOPLEFT", 8, -8)
     ui.focus:SetWidth(dim.viewW - 180)
     ui.focus:SetJustifyH("LEFT")
@@ -356,8 +408,16 @@ local function NearFigure()
     end
     return best
 end
+local function PosChanged()
+    if not (ui and ui.frame) then return end
+    PlaceBody()
+    Resize(dim.viewW, dim.viewH)
+    Size.Refit()
+end
 local function Build()
+    Metrics()
     local frame = CreateFrame("Frame", "HTP_FailWatchReplayIso", UIParent)
+    frame.sized = true
     frame:SetWidth(Box.LeftX() + dim.viewW + Box.SideX())
     frame:SetHeight(dim.h)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
@@ -380,7 +440,7 @@ local function Build()
     frame:Hide()
     tinsert(UISpecialFrames, "HTP_FailWatchReplayIso")
     ui.frame = frame
-    ui.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    ui.title = Kit.Str(frame, "GameFontNormal")
     ui.title:SetJustifyH("LEFT")
     ui.title:SetWordWrap(false)
     Kit.Title(ui.title)
@@ -388,10 +448,16 @@ local function Build()
     close:SetScript("OnClick", function() Iso.Hide() end)
     ui.nav = {}
     BuildView(frame)
+    ns.ReplayPosView.Build(frame, function(sec)
+        if not run.scene then return end
+        run.t = Clamp(run.scene.pull + sec, run.scene.from, run.scene.to)
+        run.marksDirty = true
+    end, PosChanged)
+    PlacePos()
     LoadCamera()
     BuildBottom()
     Follow.Bind(ui, run, cam, figs, SetFocus)
-    ui.status = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ui.status = Kit.Str(frame, "GameFontHighlightSmall")
     Kit.Text(ui.status, "text.bright")
     ui.status:SetPoint("TOPLEFT", ui.bar, "BOTTOMLEFT", 0, -4)
     ui.status:SetWidth(dim.viewW - STATUS_GRIP)
@@ -400,7 +466,7 @@ local function Build()
     UpdateCamUi()
     run.narrow = false
     Tour.Bind(ui, { Saved = Saved, Figure = NearFigure })
-    Size.Bind(frame, close, HEAD, Resize, Around, ui.title)
+    Size.Bind(frame, close, m.head, Resize, Around, ui.title)
     Size.Restore()
     frame:SetScript("OnUpdate", ns.Prof.Wrap("ui.iso", Tick))
     frame:SetScript("OnShow", function()
@@ -425,6 +491,14 @@ Kit.OnTheme(function()
     Size.Place()
     PlaceBody()
     Resize(dim.viewW, dim.viewH)
+    Size.Refit()
+    Kit.ApplyDecor(ui.frame)
+end)
+Kit.OnFont(function()
+    if not ui or not ui.frame then return end
+    Resize(dim.viewW, dim.viewH)
+    Size.Place()
+    PlaceBody()
     Size.Refit()
     Kit.ApplyDecor(ui.frame)
 end)

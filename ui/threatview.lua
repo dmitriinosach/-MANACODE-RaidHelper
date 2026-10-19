@@ -36,6 +36,22 @@ local drag = nil
 local hoverKey = nil
 local pool = { bar = {}, text = {}, rtext = {} }
 local used = { bar = 0, text = 0, rtext = 0 }
+local fitKey = nil
+local function Fit()
+    local m = ns.Kit.Grow()
+    local key = m.g .. ":" .. m.k
+    if key == fitKey then return end
+    fitKey = key
+    GUTTER, MARKW = floor(150 * m.k + 0.5), floor(52 * m.k + 0.5)
+    ROWH, BARH, RULERH, HEADH = 18 + m.g, 12 + m.g, 20 + m.g, 22 + m.g
+    if ruler then
+        ruler:ClearAllPoints()
+        ruler:SetPoint("TOPLEFT", host, "TOPLEFT", 0, -HEADH)
+        ruler:SetPoint("TOPRIGHT", host, "TOPRIGHT", 0, -HEADH)
+        ruler:SetHeight(RULERH)
+        anchor:SetHeight(ROWH)
+    end
+end
 local function Clock(sec)
     return ns.Clock(sec, true)
 end
@@ -62,7 +78,7 @@ local function Text(list, key, parent)
     used[key] = used[key] + 1
     local fs = list[used[key]]
     if not fs then
-        fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        fs = ns.Kit.Str(parent, "GameFontHighlightSmall")
         fs:SetJustifyH("LEFT")
         list[used[key]] = fs
     end
@@ -187,6 +203,7 @@ local function Say(text)
 end
 local function Draw()
     if not host then return end
+    Fit()
     Release()
     note:Hide()
     if not host:IsShown() then return end
@@ -362,6 +379,7 @@ local function SetButton()
 end
 function TV.Attach(frame, clip, margin, headH)
     host = CreateFrame("Frame", nil, frame)
+    host.sized = true
     host:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -margin, -headH)
     host:SetPoint("BOTTOMLEFT", clip, "BOTTOMLEFT", 0, 0)
     host:SetFrameLevel(clip:GetFrameLevel() + LEVEL)
@@ -369,7 +387,7 @@ function TV.Attach(frame, clip, margin, headH)
     local bg = host:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     ns.Kit.Paint(bg, "surface.bg")
-    hint = host:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    hint = ns.Kit.Str(host, "GameFontHighlightSmall")
     hint:SetPoint("TOPLEFT", host, "TOPLEFT", 4, -6)
     hint:SetJustifyH("LEFT")
     hint:SetText(T("thr.view.hint"))
@@ -393,7 +411,7 @@ function TV.Attach(frame, clip, margin, headH)
     anchor = CreateFrame("Frame", nil, overlay)
     anchor:SetWidth(1)
     anchor:SetHeight(ROWH)
-    note = overlay:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    note = ns.Kit.Str(overlay, "GameFontHighlight")
     note:SetPoint("CENTER", plot, "CENTER", 0, 0)
     ns.Kit.Text(note, "text.secondary")
     note:Hide()
@@ -420,7 +438,11 @@ function TV.Attach(frame, clip, margin, headH)
     end)
     host:SetScript("OnSizeChanged", function() Draw() end)
     host:Hide()
+    Fit()
 end
+ns.Kit.OnFont(function()
+    if host and host:IsShown() then Draw() end
+end)
 function TV.Head(parent)
     btn = ns.Kit.ToolButton(parent, "HTP_FailWatchThreatToggle")
     btn.tipTitle = T("tl.btn.thr")

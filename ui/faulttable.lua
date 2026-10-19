@@ -1,6 +1,7 @@
 local _, ns = ...
 local format = string.format
 local floor = math.floor
+local ceil = math.ceil
 local max = math.max
 local min = math.min
 local PLUS = "Interface\\Buttons\\UI-PlusButton-Up"
@@ -9,9 +10,34 @@ local UNDO = "Interface\\PaperDollInfoFrame\\UI-GearManager-Undo"
 local DONE = "Interface\\RAIDFRAME\\ReadyCheck-Ready"
 local TOGGLE = 14
 local MARKS = 10
-local FABLE_ROOM = 16
 local FT = {}
 ns.FaultTable = FT
+local function Str(sized, parent, base)
+    if sized then return ns.Kit.Str(parent, base) end
+    return parent:CreateFontString(nil, "OVERLAY", base)
+end
+local function Scaled(f)
+    local base = f.base
+    if not f.sized then return base end
+    local Kit = ns.Kit
+    local nb = base.small and "GameFontHighlightSmall" or "GameFontHighlight"
+    local np, sp = Kit.FontSize(nb, true), Kit.FontSize("GameFontHighlightSmall", true)
+    local ds = sp - Kit.FontSize("GameFontHighlightSmall")
+    local k = Kit.FontScale("GameFontHighlightSmall", true)
+    local key = np .. ":" .. sp
+    if f.scaledKey == key then return f.L end
+    local L = {}
+    for name, v in pairs(base) do L[name] = v end
+    L.rowh = max(base.rowh + np - Kit.FontSize(nb), ceil(np * 1.15) + 6)
+    L.headh = max(base.headh + ds, ceil(sp * 1.15) + 4)
+    for _, name in ipairs({ "whenw", "namew", "iconw", "mainw", "proofw", "hotw" }) do
+        L[name] = ceil(base[name] * max(1, k))
+    end
+    L.k = max(1, k)
+    L.icon = base.icon + max(0, floor(ds / 2))
+    f.scaledKey, f.L = key, L
+    return L
+end
 local open = {}
 local fresh
 local freshGen = 0
@@ -79,10 +105,6 @@ local function Head(f, c)
     h.main:SetText(L.small and unit or format(ns.T("ft.col.rule"), unit))
     At(h.proof, h, c.proof, L.proofw)
     h.proof:SetText(L.small and "" or ns.T("ft.col.proof"))
-    if h.fable then
-        At(h.fable, h, c.left, c.nameEnd - c.left)
-        h.fable:SetText(ns.FableView.CountText())
-    end
     for i = 1, 3 do
         At(h.hot[i], h, c.hot[i], L.hotw)
         h.hot[i]:SetText(L.hotw > 0 and ns.T("ft.col." .. ns.Ledger.HOT[i]) or "")
@@ -129,10 +151,6 @@ end
 local function RowUp(self, button)
     local list, d = ListOf(self), self.data
     if not (d and list.fight) then return end
-    if d.ev and ns.FableView
-        and ns.FableView.Click(self, button, ns.GPList.FableAsk(list.fight, d.ev.hit, d.item.name, d.ev)) then
-        return
-    end
     if button == "RightButton" then
         ns.GPList.ManualMenu(list.fight, d.item.name)
     elseif d.ev then
@@ -145,11 +163,8 @@ local function RowEnter(self)
     local list, d = ListOf(self), self.data
     if not (d and list.fight) then return end
     local lines
-    self.fable = nil
     if d.ev then
-        self.fable = ns.GPList.FableAsk(list.fight, d.ev.hit, d.item.name, d.ev)
-        if ns.FableView then ns.FableView.Enter(self) end
-        lines = ns.GPList.HitLines(list.fight, d.ev.hit, d.item.name, d.ev)
+        lines = ns.GPList.HitLines(list.fight, d.ev.hit)
     elseif not d.hand then
         lines = ns.BadgeTips.GPRow(d.item, ns.Penalties.Reason)
         if ns.ReplayLink then ns.ReplayLink.Tag(lines, list.fight, ns.GPList.FirstAt(d.item.events)) end
@@ -157,7 +172,6 @@ local function RowEnter(self)
     if lines then ns.Tip.Show(self, lines) end
 end
 local function RowLeave(self)
-    if ns.FableView then ns.FableView.Leave(self) end
     ns.Tip.Hide()
 end
 local function Wheel(self, delta)
@@ -173,6 +187,7 @@ local function Row(f, k)
     if r then return r end
     local L = f.L
     r = CreateFrame("Frame", nil, f)
+    r.sized = f.sized
     r:SetHeight(L.rowh)
     r:EnableMouse(true)
     r:EnableMouseWheel(true)
@@ -200,17 +215,18 @@ local function Row(f, k)
     r.icon = r:CreateTexture(nil, "ARTWORK")
     r.icon:SetWidth(L.icon)
     r.icon:SetHeight(L.icon)
-    r.name = r:CreateFontString(nil, "OVERLAY", L.small and "GameFontHighlightSmall" or "GameFontHighlight")
+    r.name = Str(f.sized, r, L.small and "GameFontHighlightSmall" or "GameFontHighlight")
     r.name:SetJustifyH("LEFT")
     r.name:SetWordWrap(false)
     r.marks = {}
-    r.note = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.note = Str(f.sized, r, "GameFontHighlightSmall")
     r.note:SetJustifyH("LEFT")
     r.note:SetWordWrap(false)
-    r.when = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.when = Str(f.sized, r, "GameFontHighlightSmall")
     ns.Kit.Text(r.when, "text.bright")
     r.when:SetJustifyH("RIGHT")
     r.main = ns.MakeButton(r, f.prefix .. k, "main")
+    if f.sized then ns.Kit.Bind(r.main.text, "GameFontNormalSmall") end
     r.main:SetHeight(L.rowh - 4)
     r.main.row = r
     r.main.onClick = MainClick
@@ -218,21 +234,18 @@ local function Row(f, k)
     r.done:SetTexture(DONE)
     r.done:SetWidth(12)
     r.done:SetHeight(12)
-    r.doneText = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.doneText = Str(f.sized, r, "GameFontHighlightSmall")
     r.doneText:SetJustifyH("LEFT")
     ns.Kit.Text(r.doneText, "text.good")
     r.undo = ns.Kit.IconButton(r, UNDO, 12, f.prefix .. "Undo" .. k)
     r.undo.row = r
     r.undo.tipTitle = false
     r.undo.onClick = UndoClick
-    if ns.FableView then
-        r.fable = ns.FableView.Button(r, L.small and 12 or 14)
-        r.fable.row = r
-    end
     if ns.ProofView then r.proof = ns.ProofView.Button(r, L.small and 13 or 16) end
     r.hot = {}
     for i = 1, L.hotw > 0 and 3 or 0 do
         local b = ns.MakeButton(r, f.prefix .. "Hot" .. i .. "_" .. k, "hot")
+        if f.sized then ns.Kit.Bind(b.text, "GameFontNormalSmall") end
         b:SetHeight(L.rowh - 4)
         b:SetWidth(L.hotw - 6)
         b.row, b.slot = r, i
@@ -241,6 +254,18 @@ local function Row(f, k)
     end
     f.rows[k] = r
     return r
+end
+local function Fit(r, L)
+    if r.fitFor == L then return end
+    r.fitFor = L
+    r:SetHeight(L.rowh)
+    r.main:SetHeight(L.rowh - 4)
+    r.icon:SetWidth(L.icon)
+    r.icon:SetHeight(L.icon)
+    for i = 1, #r.hot do
+        r.hot[i]:SetHeight(L.rowh - 4)
+        r.hot[i]:SetWidth(L.hotw - 6)
+    end
 end
 local function Blank(r)
     if r.check then r.check:Hide() end
@@ -254,13 +279,12 @@ local function Blank(r)
     r.doneText:Hide()
     r.undo:Hide()
     if r.proof then r.proof:Hide() end
-    if r.fable then r.fable:Hide() end
     for i = 1, #r.hot do r.hot[i]:Hide() end
 end
 local function Main(r, c, L, kind, n, tip)
     r.main:ClearAllPoints()
     r.main:SetPoint("RIGHT", r, "LEFT", c.main + L.mainw - 4, 0)
-    r.main:SetWidth(max(36, min(L.mainw - 6, 18 + 8 * #tostring(n))))
+    r.main:SetWidth(max(36, min(L.mainw - 6, ceil((18 + 8 * #tostring(n)) * (L.k or 1)))))
     ns.Kit.ButtonKind(r.main, kind)
     r.main.text:SetText(tostring(n))
     r.main.tip = tip
@@ -303,20 +327,6 @@ local function Proof(r, c, L, ask)
     r.proof.ask = ask
     r.proof:Show()
 end
-local function Fable(r, c, L, asks)
-    local b = r.fable
-    if not (b and asks) then return end
-    b:ClearAllPoints()
-    if r.main:IsShown() then
-        b:SetPoint("RIGHT", r.main, "LEFT", -3, 0)
-    elseif r.done:IsShown() then
-        b:SetPoint("RIGHT", r.done, "LEFT", -3, 0)
-    else
-        b:SetPoint("RIGHT", r, "LEFT", c.main + L.mainw - 4, 0)
-    end
-    ns.FableView.SetButton(b, asks)
-    b:Show()
-end
 local function Marks(r, item, fight, x, stop)
     local L = ListOf(r).L
     local icons = max(0, min(MARKS, floor((stop - x) / L.iconw)))
@@ -333,6 +343,8 @@ local function Marks(r, item, fight, x, stop)
             r.marks[i] = b
         end
         if b then
+            b:Resize(L.icon)
+            b:Layout(L.iconw - 2)
             b:ClearAllPoints()
             b:SetPoint("LEFT", r, "LEFT", x + (i - 1) * L.iconw, 0)
         end
@@ -346,8 +358,7 @@ local function Marks(r, item, fight, x, stop)
                 count = count,
                 verdict = ns.Penalties.Grade(hit),
                 pair = (kind == "death" or kind == "anydeath") and pair or nil,
-                lines = ns.GPList.HitLines(fight, hit, item.name),
-                fable = ns.GPList.FableAsk(fight, hit, item.name),
+                lines = ns.GPList.HitLines(fight, hit),
                 onClick = MarkClick,
                 fight = fight,
                 at = ns.GPList.FirstAt(hit.events),
@@ -391,7 +402,7 @@ local function FillPlayer(r, d, fight, c)
         At(r.note, r, after + 4, room)
         r.note:SetText(note)
         if yellow then ns.Kit.Text(r.note, "badge.yellow") else ns.Kit.Text(r.note, "text.muted") end
-        r.note:Show()
+        if ListOf(r).sized and (r.note:GetStringWidth() or 0) > room + 1 then r.note:Hide() else r.note:Show() end
     end
     if item.pending > 0 then
         Main(r, c, L, "main", item.pending, format(ns.T("ft.tip.all"), item.pending, unit))
@@ -419,7 +430,7 @@ local function FillFault(r, d, fight, c)
     r.icon:SetTexture(ns.GPList.Icon(ev.hit.icon))
     r.icon:Show()
     x = x + L.icon + 4
-    At(r.name, r, x, c.nameEnd - x - (L.whenw > 0 and 0 or FABLE_ROOM))
+    At(r.name, r, x, c.nameEnd - x)
     local text = ev.reason
     if ev.grade == "yellow" then text = text .. " " .. ns.Kit.Hex("badge.yellow") .. ns.T("ft.maybe") .. "|r" end
     if ev.wipe then text = text .. " " .. ns.Kit.Hex("text.note") .. ns.T("ft.wipe") .. "|r" end
@@ -438,7 +449,6 @@ local function FillFault(r, d, fight, c)
     Proof(r, c, L, { fight = fight, name = d.item.name,
         hits = { { rule = ev.hit.rule, events = { ev.src }, icon = ev.hit.icon, shed = ev.hit.shed } } })
     if not done then Hots(r, c, L, ev) end
-    Fable(r, c, L, ns.GPList.FableAsk(fight, ev.hit, d.item.name, ev))
 end
 local function FillHand(r, d, c)
     local L, h = ListOf(r).L, d.hand
@@ -454,7 +464,7 @@ local function Paint(r, k)
     r.bg:SetTexture(c[1], c[2], c[3], (c[4] or 1) * 0.5)
 end
 local function Draw(self, fight, model, width, offset, slots)
-    local L = self.L
+    local L = Scaled(self)
     self.fight, self.model = fight, model
     local rows = FT.Rows(model, self.filter)
     self.flat = rows
@@ -467,6 +477,7 @@ local function Draw(self, fight, model, width, offset, slots)
     local shown = max(0, min(#rows - offset, slots or #rows))
     for k = 1, max(shown, #rows == 0 and 1 or 0) do
         local r = Row(self, k)
+        Fit(r, L)
         r:ClearAllPoints()
         r:SetPoint("TOPLEFT", self, "TOPLEFT", 0, -(L.headh + (k - 1) * L.rowh))
         r:SetPoint("TOPRIGHT", self, "TOPRIGHT", 0, -(L.headh + (k - 1) * L.rowh))
@@ -497,11 +508,11 @@ local function Draw(self, fight, model, width, offset, slots)
     self:SetHeight(h)
     return h
 end
-function FT.New(parent, prefix, layout)
+function FT.New(parent, prefix, layout, sized)
     local f = CreateFrame("Frame", nil, parent)
     f.rows = {}
     f.prefix = prefix
-    f.L = layout
+    f.L, f.base, f.sized = layout, layout, sized
     f.filter = "all"
     f.sel = {}
     f.total = 0
@@ -513,26 +524,20 @@ function FT.New(parent, prefix, layout)
     f.head:SetPoint("TOPRIGHT", 0, 0)
     local h = f.head
     local font = "GameFontNormalSmall"
-    h.who = h:CreateFontString(nil, "OVERLAY", font)
+    h.who = Str(sized, h, font)
     h.who:SetJustifyH("LEFT")
-    h.when = h:CreateFontString(nil, "OVERLAY", font)
+    h.when = Str(sized, h, font)
     h.when:SetJustifyH("RIGHT")
-    h.main = h:CreateFontString(nil, "OVERLAY", font)
+    h.main = Str(sized, h, font)
     h.main:SetJustifyH("RIGHT")
-    h.proof = h:CreateFontString(nil, "OVERLAY", font)
+    h.proof = Str(sized, h, font)
     h.proof:SetJustifyH("CENTER")
     h.hot = {}
     for i = 1, 3 do
-        h.hot[i] = h:CreateFontString(nil, "OVERLAY", font)
+        h.hot[i] = Str(sized, h, font)
         h.hot[i]:SetJustifyH("CENTER")
         ns.Kit.Text(h.hot[i], "badge.detail")
     end
     for _, fs in ipairs({ h.who, h.when, h.main, h.proof }) do ns.Kit.Text(fs, "text.secondary") end
-    if ns.FableView then
-        h.fable = h:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        h.fable:SetJustifyH("RIGHT")
-        ns.Kit.Text(h.fable, "text.muted")
-        ns.FableView.Counter(h.fable)
-    end
     return f
 end

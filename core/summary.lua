@@ -304,6 +304,7 @@ local function Build(fight)
     local s, byName = NewSummary(fight, def)
     local acts = ns.Actions and ns.Actions.Begin(s, fight)
     local rf = ns.RFury and ns.RFury.Begin(s, fight)
+    local cv = ns.SummaryCover and ns.SummaryCover.Begin(s, fight, def)
     local rs = ns.RuneSwap and ns.RuneSwap.Begin(s, fight)
     local bn = ns.BloodNova and ns.BloodNova.Begin(s, fight)
     local zb = ns.ZoneBuff and ns.ZoneBuff.Begin(fight)
@@ -362,7 +363,7 @@ local function Build(fight)
         local copy = {}
         for k = 1, #p.recent do copy[k] = p.recent[k] end
         p.deathAt[#p.deathAt + 1] = ts
-        local d = { t = ts, killer = killer, recent = copy }
+        local d = { t = ts, killer = killer, recent = copy, rose = p.rezAt and ts - p.rezAt or nil }
         ns.DeathGrade.Snap(p, d)
         p.deathInfo[#p.deathInfo + 1] = d
     end
@@ -422,6 +423,7 @@ local function Build(fight)
             s.marks[#s.marks + 1] = { t = ts, key = a1, text = a2 }
         end
         if rf and (rf.subs[sub] or rf.dead[srcName or ""]) then ns.RFury.Feed(rf, ts, sub, srcName, dstName, a1, a2, a3) end
+        if cv and cv.subs[sub] then ns.SummaryCover.Feed(cv, ts, sub, srcName, dstName, a1, a4) end
         if rs and rs.subs[sub] then ns.RuneSwap.Feed(rs, ts, sub, srcGUID, srcName, dstGUID, dstName, a1, a4, a5) end
         if bn and bn.subs[sub] then ns.BloodNova.Feed(bn, ts, dstName, sk) end
         if zb and zb.subs[sub] then ns.ZoneBuff.Feed(zb, ts, sub, a1, a2) end
@@ -565,7 +567,7 @@ local function Build(fight)
             end
             if inFight then
                 if sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CREATE" or sub == "ENCHANT_APPLIED"
-                    or sub == "SPELL_AURA_APPLIED" then
+                    or sub == "SPELL_AURA_APPLIED" or sub == "FW_FLASK" then
                     ns.RaidPart.Consume(rp, sub, rwho, srcName, srcFlags, a1, dstName, dstFlags, a2)
                 end
                 if ctl then
@@ -741,6 +743,8 @@ local function Build(fight)
                     Remember(dst, { t = ts, spell = a2, key = sk, src = srcName, srcKey = srcKey, id = tonumber(a1) })
                 elseif sub == "UNIT_DIED" and dst then
                     Died(dst, ts)
+                elseif sub == "SPELL_RESURRECT" and dst then
+                    dst.rezAt = ts
                 elseif sub == "SPELL_CAST_SUCCESS" then
                     if p and srcName == who and sk and taunts[sk] then p.taunts = p.taunts + 1 end
                     if p and srcName == who and sk and tankSpells[sk] then p.tankCasts = p.tankCasts + 1 end
@@ -776,8 +780,9 @@ local function Build(fight)
                     Acc.Peak(s, dstName, sk, sub == "SPELL_AURA_APPLIED" and 1 or tonumber(a5) or 0)
                 end
                 if dst and sub == "SPELL_AURA_APPLIED" and sk and immune[sk] then
-                    lastImmune[dstName] = { t = ts, key = sk }
-                    Shed.By(dst, badges, ts, sk)
+                    local who = srcName ~= dstName and byName[srcName or ""] and srcName or nil
+                    lastImmune[dstName] = { t = ts, key = sk, who = who }
+                    Shed.By(dst, badges, ts, sk, who)
                 end
                 if swing and dst and srcKey and srcGUID and chasers[srcGUID] == nil and ns.Shades then
                     ns.Shades.Chaser(chasers, s, watch.npcs, srcGUID, srcName, srcKey)
@@ -796,7 +801,8 @@ local function Build(fight)
                     local i = live[j]
                     local bd = badges[i]
                     local bk = Keys(bd)
-                    if bd.kind == "aura" and dst and sk and sk == bk.sk then
+                    if bd.kind == "aura" and dst and sk and sk == bk.sk
+                        and not (bd.exact and not bd.shed[tonumber(a1) or 0]) then
                         local st = dst.badges[i]
                         local new = sub == "SPELL_AURA_APPLIED"
                         if bd.shed then
@@ -941,6 +947,7 @@ local function Build(fight)
     if pa then ns.Parry.Finish(pa) end
     if hc then ns.Control.Finish(hc) end
     if rf then ns.RFury.Finish(rf) end
+    if cv then ns.SummaryCover.Finish(cv) end
     if rs then ns.RuneSwap.Finish(rs) end
     if bn then ns.BloodNova.Finish(bn) end
     if zb then s.zoneBuff = ns.ZoneBuff.Finish(zb) end

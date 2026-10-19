@@ -104,6 +104,7 @@ ns.replayData = {
         { name = 64205, icon = 64205, prio = 74, self = true },
         { name = 31821, icon = 31821, prio = 68, self = true },
         { name = 53563, icon = 53563, prio = 55, pre = true },
+        { name = 53601, icon = 53601, prio = 56, pre = true },
         { name = 31884, icon = 31884, prio = 60, focus = true, self = true },
         { name = 50334, icon = 50334, prio = 60, focus = true, self = true },
         { name = 47241, icon = 47241, prio = 60, focus = true, self = true },

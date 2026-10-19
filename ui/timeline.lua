@@ -1,12 +1,13 @@
 local _, ns = ...
 local format = string.format
 local floor = math.floor
+local ceil = math.ceil
 local max = math.max
 local min = math.min
 local tsort = table.sort
 local tconcat = table.concat
 local SIDE = ns.FightList and ns.FightList.WIDTH or 240
-local EFFW = 232
+local EFFW = 272
 local MARGIN = 6
 local GAP = 6
 local ROW = 15
@@ -51,9 +52,25 @@ local TRACKS = {
     { key = "hp",     min = 34, want = 80, color = "sem.lane.hp" },
     { key = "threat", min = 24, want = 48, color = "sem.lane.threat" },
 }
+for i = 1, #TRACKS do
+    TRACKS[i].min0, TRACKS[i].want0 = TRACKS[i].min, TRACKS[i].want
+end
 local TL = {}
 ns.Timeline = TL
 local Rows, Tracks, Cursor = ns.TimelineRows, ns.TimelineTracks, ns.TimelineCursor
+local Kit = ns.Kit
+local function Refit()
+    local m = Rows.Measure()
+    RULER, FXROW, FXBAR, THEAD = m.ruler, m.row, m.bar, m.head
+    GUTTERMIN, GUTTERMAX = floor(120 * m.k + 0.5), floor(240 * m.k + 0.5)
+    MARKW, PHASEW = floor(52 * m.k + 0.5), floor(90 * m.k + 0.5)
+    SIDE = floor((ns.FightList and ns.FightList.WIDTH or 240) * m.wk + 0.5)
+    EFFW = floor(272 * m.wk + 0.5)
+    for i = 1, #TRACKS do
+        local t = TRACKS[i]
+        if t.min0 then t.min, t.want = t.min0 + m.g, t.want0 + m.g end
+    end
+end
 local frame, canvas, ruler, overlay, statusText, titleText, bareNote
 local toolBar
 local detailAnchor
@@ -100,7 +117,7 @@ local function GetBlock()
         b.icon:SetPoint("LEFT", 0, 0)
         b.icon:Hide()
         b.reset = true
-        b.label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        b.label = Kit.Str(b, "GameFontHighlightSmall")
         b.label:SetPoint("LEFT", 3, 0)
         b.label:SetJustifyH("LEFT")
         b:EnableMouse(true)
@@ -321,7 +338,7 @@ local function DrawRuler()
             used = used + 1
             local mark = rulerPool[used]
             if not mark then
-                mark = ruler:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                mark = Kit.Str(ruler, "GameFontHighlightSmall")
                 ns.Kit.Text(mark, "text.bright")
                 mark:SetJustifyH("LEFT")
                 rulerPool[used] = mark
@@ -392,7 +409,26 @@ local function DrawPoints(items, bound, color, own)
                 b.tip2 = format("%s%s", Clock(it.t - fight.from),
                     it.amount and it.amount > 0
                         and format("  |  %s: %d", it.src or "", it.amount) or "")
+                b.tip3 = TC and ns.TimelineGcd and ns.TimelineGcd.CutWhy(it) or nil
             end
+        end
+    end
+    local cuts = TC and ns.TimelineGcd and data and data.cuts
+    for i = 1, cuts and #cuts or 0 do
+        local it = cuts[i]
+        if it.t >= viewFrom and it.t <= viewTo then
+            local b = GetBlock()
+            b:SetWidth(2)
+            b:SetHeight(hh)
+            b:ClearAllPoints()
+            b:SetPoint("TOPLEFT", canvas, "TOPLEFT", XOf(it.t), -top)
+            ns.Kit.Shade(b.tex, "sem.castCut", 0.95)
+            b.icon:Hide()
+            b.label:SetText("")
+            b.tip, b.at, b.jumpTo, b.cast = it.label, it.t, nil, nil
+            b.spellId = tonumber(it.id)
+            b.tip2 = Clock(it.t - fight.from)
+            b.tip3 = ns.TimelineGcd.CutWhy(it)
         end
     end
 end
@@ -696,18 +732,8 @@ local function DrawPhases()
     local pull = data and data.pull
     local marks = { { t = fight.from, label = PullLabel(pull), head = true },
                     { t = fight.to, label = ns.T("tl.end"), head = true, right = true } }
-    local wanted = ns.phases and ns.phases[fight.boss]
-    if wanted and data and data.boss then
-        for i = 1, #wanted do
-            for j = 1, #data.boss do
-                if ns.SpellKey(data.boss[j].id) == ns.SpellKey(wanted[i].spell) then
-                    marks[#marks + 1] = { t = data.boss[j].t, label = ns.T(wanted[i].label),
-                                          dim = true }
-                    if not wanted[i].every then break end
-                end
-            end
-        end
-    end
+    local phase = data and data.phases and ns.Phases.Marks(fight, data.phases)
+    for i = 1, phase and #phase or 0 do marks[#marks + 1] = phase[i] end
     local own = data and data.marks
     for i = 1, own and #own or 0 do
         marks[#marks + 1] = { t = own[i].t, label = own[i].label }
@@ -723,7 +749,7 @@ local function DrawPhases()
                 b.line = b:CreateTexture(nil, "OVERLAY")
                 b.line:SetPoint("TOPLEFT", 0, 0)
                 b.line:SetWidth(1)
-                b.tag = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                b.tag = Kit.Str(b, "GameFontHighlightSmall")
                 b.tag:SetPoint("TOPLEFT", 3, -1)
                 markPool[used] = b
             end
@@ -744,7 +770,7 @@ local function DrawPhases()
             if m.head then
                 local h = headPool[i]
                 if not h then
-                    h = ruler:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                    h = Kit.Str(ruler, "GameFontHighlightSmall")
                     h:SetJustifyH("LEFT")
                     headPool[i] = h
                 end
@@ -902,6 +928,7 @@ function SelectPlayer(name)
     canvas:GetParent():Show()
     player, data = name, nil
     hitRows, healRows = {}, {}
+    if ns.EffectPanel then ns.EffectPanel.SetSource(fight, name, nil) end
     BuildAuraRows()
     titleText:SetText(format("%s — %s", ns.EncName(fight.boss), name))
     TL.RefreshLists()
@@ -913,6 +940,7 @@ function SelectPlayer(name)
         if not d or fight ~= want or player ~= name then return end
         local p1 = ns.Prof.on and debugprofilestop()
         data = d
+        if ns.EffectPanel then ns.EffectPanel.SetSource(fight, name, d) end
         if ns.TimelineBrief and ns.TimelineBrief.On() then
             local f0, f1 = ns.TimelineBrief.Window(d, lead, tail)
             if f0 then viewFrom, viewTo = f0, f1 end
@@ -952,11 +980,12 @@ function TL.RefreshLists()
 end
 local function BuildFrame(host)
     frame = host
-    titleText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    frame.sized = true
+    titleText = Kit.Str(frame, "GameFontNormal")
     ns.Kit.Text(titleText, "text.title")
     titleText:SetPoint("TOPLEFT", MARGIN, -12)
     titleText:SetText(ns.T("tl.title"))
-    statusText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    statusText = Kit.Str(frame, "GameFontHighlightSmall")
     ns.Kit.Text(statusText, "text.bright")
     statusText:SetPoint("LEFT", titleText, "RIGHT", 16, 0)
     statusText:SetJustifyH("LEFT")
@@ -980,11 +1009,11 @@ local function BuildCanvas()
     bareNote = CreateFrame("Frame", nil, clip)
     bareNote:SetAllPoints(clip)
     bareNote:SetFrameLevel(canvas:GetFrameLevel() + 20)
-    local noteHead = bareNote:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local noteHead = Kit.Str(bareNote, "GameFontNormalLarge")
     noteHead:SetPoint("BOTTOM", bareNote, "CENTER", 0, 4)
     noteHead:SetText(ns.T("tl.bare.head"))
     ns.Kit.Text(noteHead, "text.title")
-    local noteBody = bareNote:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    local noteBody = Kit.Str(bareNote, "GameFontHighlight")
     noteBody:SetPoint("TOP", bareNote, "CENTER", 0, -4)
     noteBody:SetWidth(520)
     noteBody:SetText(ns.T("tl.bare.body"))
@@ -1018,7 +1047,7 @@ local function BuildCanvas()
     detailAnchor = CreateFrame("Frame", nil, frame)
     detailAnchor:SetHeight(1)
     detailAnchor:SetPoint("BOTTOMLEFT", canvas, "BOTTOMLEFT", 0, 0)
-    Tracks.Build(canvas, TRACKS, TrackFolded, FoldTrack, FXROW, THEAD)
+    Tracks.Build(canvas, TRACKS, TrackFolded, FoldTrack)
     canvas:SetScript("OnMouseWheel", function(self, delta)
         if not fight then return end
         local mx = GetCursorPosition() / self:GetEffectiveScale() - self:GetLeft()
@@ -1135,11 +1164,15 @@ local function BuildTools()
     end
 end
 function TL.Attach(host)
+    Refit()
     BuildFrame(host)
     BuildCanvas()
     BuildTools()
     TL.Layout()
 end
+Kit.OnFont(function()
+    if frame then TL.Layout() end
+end)
 function TL.Redraw()
     BuildAuraRows()
     BuildAmountRows()
@@ -1180,9 +1213,21 @@ function TL.TogglePanel()
     ns.EffectPanel.SetShown(not ui.fxHidden)
     TL.Layout()
 end
+local function FitHead()
+    local m = Rows.Metrics()
+    local line = ceil(Kit.FontSize("GameFontNormal", true) * 1.2)
+    titleText:ClearAllPoints()
+    titleText:SetPoint("TOPLEFT", MARGIN, -max(3, floor(19.5 - line / 2 + 0.5)))
+    statusText:SetHeight(m.line + 2)
+    ruler:SetHeight(RULER)
+    ruler:ClearAllPoints()
+    ruler:SetPoint("TOPLEFT", MARGIN + SIDE, -HEADH)
+end
 function TL.Layout()
     if not frame then return end
     local p0 = ns.Prof.on and debugprofilestop()
+    Refit()
+    FitHead()
     local w, h = frame:GetWidth(), frame:GetHeight()
     local shown = ns.EffectPanel and not panelMissing
         and not ns.GetDB().settings.ui.fxHidden
@@ -1199,7 +1244,7 @@ function TL.Layout()
     if ns.FightList then ns.FightList.Layout(h - SIDETOP - SIDEBOT) end
     if shown then
         local p1 = ns.Prof.on and debugprofilestop()
-        ns.EffectPanel.Layout(h - FXTOP - FXBOT)
+        ns.EffectPanel.Layout(h - FXTOP - FXBOT, EFFW)
         if p1 then ns.Prof.Add("fx.layout", debugprofilestop() - p1) end
     end
     TL.RefreshLists()
@@ -1230,7 +1275,7 @@ function TL.Opened()
     end)
 end
 function TL.ShowRaid(raid)
-    if not frame or not raid or not ns.RaidSummaryView then return end
+    if not frame or not raid or raid.party or not ns.RaidSummaryView then return end
     fight, player, data = nil, nil, nil
     if ns.ThreatView then ns.ThreatView.Hide() end
     if ns.SummaryView then ns.SummaryView.Hide() end

@@ -250,10 +250,11 @@ function BD.Help(data, fight, who)
         end
     end
     local auras = data and data.auras or {}
+    local procs = ns.replayFeed and ns.replayFeed.procs or {}
     for i = 1, #auras do
         local a = auras[i]
         local key = ns.SpellKey(a.id)
-        if a.kind == "buff" and key and H[key] and a.src and a.src ~= who and fight.players[a.src] then
+        if a.kind == "buff" and key and H[key] and not procs[tonumber(a.id) or 0] and a.src and a.src ~= who and fight.players[a.src] then
             out[#out + 1] = { t = a.t, to = a.to, id = a.id, label = a.label, src = a.src, got = true }
         end
     end

@@ -37,7 +37,6 @@ local function Check(seg)
     gp.signaled = key
     ns.Summary.Compute(f, function(s)
         Announce(f, s)
-        if ns.Fable then ns.Fable.Auto(f, s) end
     end)
 end
 waiter:SetScript("OnUpdate", ns.Prof.Wrap("ui.other", function(self)

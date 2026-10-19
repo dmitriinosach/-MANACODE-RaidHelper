@@ -26,6 +26,7 @@ local function OwnText(f)
     return nil
 end
 local first = true
+local sizedShown = false
 local function Line(text, c)
     if first then
         GameTooltip:SetText(text, c[1], c[2], c[3], 1, true)
@@ -42,6 +43,22 @@ function Kit.TipShow(f)
     local link = f.tipLink
     if title and body and title == body then body = nil end
     if not title and not link and not body and not f.tipDim then return end
+    if not link and Kit.Sized(f) then
+        local lines = {}
+        if title then lines[#lines + 1] = { kind = "title", left = title, rgb = f.tipColor or Kit.GameColor("tip.title") } end
+        if body then lines[#lines + 1] = { kind = "text", left = body, rgb = f.tipBodyColor or Kit.GameColor(f.tipTone or "tip.body") } end
+        if f.tipDim then lines[#lines + 1] = { kind = "note", left = f.tipDim, rgb = Kit.GameColor("tip.dim") } end
+        local more = f.tipLines
+        if more then
+            local d = Kit.GameColor("tip.dim")
+            for i = 1, #more do lines[#lines + 1] = { kind = "note", left = more[i], rgb = d } end
+        end
+        GameTooltip:Hide()
+        sizedShown = true
+        Kit.Tip.Dock(f, lines)
+        return
+    end
+    sizedShown = false
     GameTooltip:SetOwner(f, f.tipAnchor or "ANCHOR_RIGHT")
     first = true
     if link then
@@ -62,6 +79,10 @@ function Kit.TipShow(f)
 end
 function Kit.TipHide()
     GameTooltip:Hide()
+    if sizedShown then
+        sizedShown = false
+        Kit.Tip.Hide()
+    end
 end
 function Kit.ShowLines(self)
     if self.lines then ns.Tip.Dock(self, self.lines, self.tipIcon) end
@@ -81,6 +102,7 @@ local TIP_SEP = 6
 local TIP_HEAD = 5
 local KINDS = {
     head = { font = "GameFontNormal", left = "tip.title", right = "tip.dim", small = "GameFontHighlightSmall" },
+    title = { font = "GameFontNormal", left = "tip.title", wrap = true, gap = 0 },
     row = { font = "GameFontHighlight", left = "tip.body", right = "text.primary" },
     sub = { font = "GameFontHighlightSmall", left = "text.secondary", right = "text.secondary",
             indent = TIP_INDENT, wrap = true },
@@ -94,13 +116,15 @@ Kit.Tip = Tip
 local tipFrame, tipIcon
 local dockSide
 local dockOwner
-local avoidFn
+local avoidFns = {}
+local avoidList = {}
 local areaFn
 local tipW, tipH = 0, 0
 local tipMain = 0
 local footY = {}
 local tipInner
 local tipLines = {}
+local tipSized = false
 local tipMids = {}
 local tipRights = {}
 local function TipFrame()
@@ -147,7 +171,7 @@ local function Tone(token)
     return c[1], c[2], c[3]
 end
 local function Fill(fs, text, font, justify, r, g, b)
-    fs:SetFontObject(_G[font])
+    fs:SetFontObject(Kit.FontFor(font, tipSized) or _G[font])
     fs:SetWidth(0)
     fs:SetJustifyH(justify)
     fs:SetText(text)
@@ -189,12 +213,13 @@ local function Measure(i, l, lead, w)
     else
         r, g, b = Tone(spec.left)
     end
+    if l.rgb then r, g, b = l.rgb[1], l.rgb[2], l.rgb[3] end
     m.lw, m.h = Fill(L, l.left or "", spec.font, "LEFT", r, g, b)
     local right, mid = l.right, l.mid
     if mid and not right then right, mid = mid, nil end
     local lead2 = m.indent + lead
     if not right then
-        local room = TIP_MAXW - lead2
+        local room = TIP_MAXW * Kit.FontScale("GameFontHighlight", tipSized) - lead2
         if spec.wrap and m.lw > room then
             local one = m.h
             L:SetWidth(room)
@@ -221,8 +246,9 @@ local function Measure(i, l, lead, w)
     if m.lw + lead2 > w.left then w.left = m.lw + lead2 end
     return m
 end
-local function Layout(lines, icon)
+local function Layout(lines, icon, owner)
     local f = TipFrame()
+    tipSized = Kit.Sized(owner)
     if icon then
         tipIcon:SetTexture(icon)
         tipIcon:Show()
@@ -282,21 +308,32 @@ local function Layout(lines, icon)
     tipInner:Hide()
     return f, width
 end
-function Tip.Show(owner, lines, icon)
-    local f, width = Layout(lines, icon)
+function Tip.Show(owner, lines, icon, reach, reachLeft)
+    local f, width = Layout(lines, icon, owner)
     dockSide = nil
     f:ClearAllPoints()
     local left = owner:GetLeft()
     local scale = owner:GetEffectiveScale() / UIParent:GetEffectiveScale()
-    if left and left * scale < width + TIP_GAP then
-        f:SetPoint("LEFT", owner, "RIGHT", TIP_GAP, 0)
+    local l, r = (reachLeft or 0) * scale, (reach or 0) * scale
+    if left and left * scale < width + TIP_GAP + l then
+        f:SetPoint("LEFT", owner, "RIGHT", TIP_GAP + r, 0)
     else
-        f:SetPoint("RIGHT", owner, "LEFT", -TIP_GAP, 0)
+        f:SetPoint("RIGHT", owner, "LEFT", -TIP_GAP - l, 0)
     end
     f:Show()
 end
 function Tip.SetAvoid(fn)
-    avoidFn = fn
+    avoidFns[#avoidFns + 1] = fn
+end
+local function Avoid()
+    for i = #avoidList, 1, -1 do avoidList[i] = nil end
+    for i = 1, #avoidFns do
+        local list = avoidFns[i]()
+        if list then
+            for k = 1, #list do avoidList[#avoidList + 1] = list[k] end
+        end
+    end
+    return avoidList
 end
 local function Rect(f, scaleOf)
     if not (f and f.GetLeft) then return nil, 0, 0, 0 end
@@ -415,7 +452,7 @@ function Tip.Block(owner, top, under)
         local pl, pr, pb, pt = Rect(page, win)
         if pl and W <= pr - pl and H <= pt - pb then bx = { pl, pb, pr, pt } end
     end
-    local avoid = avoidFn and avoidFn() or {}
+    local avoid = Avoid()
     local best
     for i = 1, #SIDES do
         local spot = Spot(SIDES[i], o, w1, h1, W, H, g, bx)
@@ -432,7 +469,7 @@ function Tip.Block(owner, top, under)
     return edge
 end
 function Tip.Dock(owner, lines, icon)
-    local f = Layout(lines, icon)
+    local f = Layout(lines, icon, owner)
     dockOwner = owner
     dockSide = Tip.Block(owner, f)
     f:Show()

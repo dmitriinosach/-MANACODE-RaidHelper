@@ -74,6 +74,9 @@ function Effects.Absorb(stats)
         e.orig = Shelf(e)
     end
 end
+function Effects.Registry()
+    return Reg()
+end
 function Effects.Entry(id)
     if id == nil then return nil end
     return Reg()[id]
@@ -193,39 +196,12 @@ function Effects.Tracked(id)
     if id == nil then return false end
     return Effects.State(id) == "on"
 end
-local function Collect(wanted)
-    local list = {}
-    for id, e in pairs(Reg()) do
-        local state = Effects.State(id)
-        local inTrash = state == "trash"
-        if (wanted == "trash") == inTrash then
-            list[#list + 1] = { id = id, name = Effects.Name(id),
-                                count = e.n or 0, state = state }
-        end
-    end
-    tsort(list, function(a, b)
-        if a.name ~= b.name then return a.name < b.name end
-        return a.id < b.id
-    end)
-    return list
-end
-function Effects.List()
-    return Collect("list")
-end
-function Effects.Trash()
-    return Collect("trash")
-end
 function Effects.Counts()
-    local shown, trashed = 0, 0
+    local shown, hidden = 0, 0
     for id in pairs(Reg()) do
-        local state = Effects.State(id)
-        if state == "trash" then
-            trashed = trashed + 1
-        elseif state == "on" then
-            shown = shown + 1
-        end
+        if Effects.Tracked(id) then shown = shown + 1 else hidden = hidden + 1 end
     end
-    return shown, trashed
+    return shown, hidden
 end
 local function NameIndex()
     local byName = {}

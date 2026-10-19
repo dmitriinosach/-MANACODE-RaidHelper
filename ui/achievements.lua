@@ -301,7 +301,7 @@ function View.RaidItem(parent, raid, got, onWheel, onReady)
         if raidPanel then raidPanel:Hide() end
         return nil
     end
-    raidPanel = raidPanel or ns.Badges.Detail(parent)
+    raidPanel = raidPanel or ns.Badges.Detail(parent, nil, true)
     raidPanel:SetParent(parent)
     raidPanel:SetModel(View.Model(rows, pending, onWheel))
     return raidPanel

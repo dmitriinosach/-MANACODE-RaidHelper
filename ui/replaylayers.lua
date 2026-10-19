@@ -25,7 +25,11 @@ local CONE_DRAW = 8
 local BLAST_DRAW = 16
 local ADD_DRAW = 48
 local LINE_DRAW = 12
-local AGGRO_W = 7
+local AGGRO_W = 5
+local AGGRO_HL = 14
+local AGGRO_HW = 13
+local AGGRO_GAP = 8
+local AGGRO_SIDE = 4
 local AGGRO_RING = 0.8
 local THR_DRAW = 6
 local THR_WARN = 80
@@ -98,7 +102,7 @@ local fxList = {}
 local focusName
 local fxRow = { tex = {}, more = nil, owner = nil, key = nil }
 local pactK, pactFrom = {}, {}
-local aggro, aggroRing
+local aggro, aggroHead, aggroRing
 local thrRings = {}
 local stats = { aggro = 0, thr = 0, badges = 0, pools = 0, aims = 0, cones = 0, blasts = 0, adds = 0, counts = 0, countTop = nil, chases = 0,
                 chaseLines = 0, waves = 0, edge = 0, waveR = 0, collects = 0, addRings = 0, fx = 0, vortex = 0,
@@ -260,6 +264,7 @@ function V.Build(v, m)
     for i = 1, HIT_DRAW do hits[i] = Tex(marks, CIRCLE, "BORDER", "sem.rep.hit") end
     for i = 1, LINE_DRAW do lines[i] = Tex(marks, LINE, "BORDER", "sem.rep.pact") end
     aggro = Tex(marks, LINE, "BORDER", "sem.rep.aggro")
+    aggroHead = Tex(marks, CONE, "BORDER", "sem.rep.aggro")
     aggroRing = Tex(marks, RING, "BORDER", "sem.rep.aggro")
     for i = 1, THR_DRAW do thrRings[i] = Tex(marks, RING, "BORDER") end
     for i = 1, CONE_DRAW do cones[i] = Tex(marks, CONE, "ARTWORK", "sem.rep.cone") end
@@ -404,6 +409,7 @@ function V.Use(scene)
     for i = 1, #blasts do blasts[i]:Hide() end
     for i = 1, #lines do lines[i]:Hide() end
     aggro:Hide()
+    aggroHead:Hide()
     aggroRing:Hide()
     for i = 1, #thrRings do thrRings[i]:Hide() end
     for i = 1, #hits do hits[i]:Hide() end
@@ -947,12 +953,28 @@ local function PlaceAggro(scene, t, figs)
     if fig and fig.shown and bf and bf.shown then
         local dx, dy = fig.sx - bf.sx, fig.sy - bf.sy
         local d = sqrt(dx * dx + dy * dy)
-        if d >= 2 then
+        if d > AGGRO_GAP * 2 + AGGRO_HL then
+            local ux, uy = dx / d, dy / d
+            local ox, oy = -uy * AGGRO_SIDE, ux * AGGRO_SIDE
+            local tx, ty = fig.sx - ux * AGGRO_GAP + ox, fig.sy - uy * AGGRO_GAP + oy
+            local hx, hy = tx - ux * AGGRO_HL, ty - uy * AGGRO_HL
+            local sx, sy = bf.sx + ux * AGGRO_GAP + ox, bf.sy + uy * AGGRO_GAP + oy
+            local nx, ny = -uy * AGGRO_W, ux * AGGRO_W
+            local wx, wy = -uy * AGGRO_HW, ux * AGGRO_HW
+            drawn = PutAffine(aggro, sx - nx / 2, sy - ny / 2, hx - sx, hy - sy, nx, ny)
+                and PutAffine(aggroHead, tx - wx / 2, ty - wy / 2, hx - tx, hy - ty, wx, wy)
+        elseif d >= 2 then
             local nx, ny = -dy / d * AGGRO_W, dx / d * AGGRO_W
             drawn = PutAffine(aggro, bf.sx - nx / 2, bf.sy - ny / 2, dx, dy, nx, ny)
+            aggroHead:Hide()
         end
     end
-    if drawn then stats.aggro = hk else aggro:Hide() end
+    if drawn then
+        stats.aggro = hk
+    else
+        aggro:Hide()
+        aggroHead:Hide()
+    end
     if not (fig and fig.shown and RingUnder(aggroRing, fig)) then aggroRing:Hide() end
     local n = 0
     local r = b.vis and ThreatRow(scene, t)

@@ -9,6 +9,13 @@ local MAX_TILES = 60
 local MAX_STRIPS = 40
 local MIN_MARK = 0.5
 local windows = {}
+local WEAK = { __mode = "k" }
+local ruleW = setmetatable({}, WEAK)
+Kit.OnFont(function()
+    for fs, w in pairs(ruleW) do
+        if fs.rule then fs.rule:SetWidth(max(1, w - (fs:GetStringWidth() or 0) - 6)) end
+    end
+end)
 function Kit.Back(f)
     local b = f.kitBack
     if not b then
@@ -159,7 +166,7 @@ function Kit.Panel(parent, caption)
     local p = CreateFrame("Frame", nil, parent)
     Kit.Skin(p, "panel")
     if caption then
-        p.cap = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        p.cap = Kit.Str(p, "GameFontNormal")
         p.cap:SetPoint("TOPLEFT", p, "TOPLEFT", Kit.Space.inset, -10)
         p.cap:SetText(caption)
         Kit.Title(p.cap)
@@ -177,7 +184,7 @@ function Kit.Plate(parent)
     return p
 end
 function Kit.Caption(parent, text, width)
-    local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local fs = Kit.Str(parent, "GameFontNormal")
     fs:SetText(text)
     Kit.Title(fs)
     local rule = parent:CreateTexture(nil, "ARTWORK")
@@ -186,7 +193,12 @@ function Kit.Caption(parent, text, width)
     rule:SetPoint("LEFT", fs, "RIGHT", 6, 0)
     rule:SetWidth(max(1, (width or 100) - fs:GetStringWidth() - 6))
     fs.rule = rule
+    ruleW[fs] = width or 100
     return fs
+end
+function Kit.CaptionWidth(fs, width)
+    ruleW[fs] = width
+    if fs.rule then fs.rule:SetWidth(max(1, width - (fs:GetStringWidth() or 0) - 6)) end
 end
 local STRIP_H = 28
 local STRIP_PAD = 10
@@ -386,6 +398,16 @@ local function Num(v)
     if type(v) == "number" and v == v then return v end
     return nil
 end
+local strips = setmetatable({}, WEAK)
+local function StripSize(s)
+    s:SetWidth(floor(s.spec.width * Kit.FontScale("GameFontNormal", true) + 0.5))
+    s:SetHeight(Kit.GrowH(STRIP_H, "GameFontNormal"))
+    s.label:SetHeight(Kit.GrowH(STRIP_TEXT_H, "GameFontNormal"))
+    s.value:SetHeight(Kit.GrowH(STRIP_TEXT_H, "GameFontNormal"))
+end
+Kit.OnFont(function()
+    for s in pairs(strips) do StripSize(s) end
+end)
 local function StripLayout(s)
     s.shut:ClearAllPoints()
     s.shut:SetPoint("RIGHT", s, "RIGHT", STRIP_CLOSE_X, 0)
@@ -416,8 +438,6 @@ function Kit.Strip(spec)
     local s = CreateFrame("Button", spec.name, UIParent)
     s.spec = spec
     s.btns = {}
-    s:SetWidth(spec.width)
-    s:SetHeight(STRIP_H)
     s:SetFrameStrata(spec.strata or "HIGH")
     s:SetToplevel(true)
     s:SetMovable(true)
@@ -429,17 +449,19 @@ function Kit.Strip(spec)
     s:SetScript("OnDoubleClick", function() spec.onRestore() end)
     s:Hide()
     Kit.Window(s)
-    s.label = s:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    s.label = Kit.Str(s, "GameFontNormal")
     s.label:SetHeight(STRIP_TEXT_H)
     s.label:SetJustifyH("LEFT")
     Kit.Title(s.label)
-    s.value = s:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    s.value = Kit.Str(s, "GameFontHighlightSmall")
     s.value:SetHeight(STRIP_TEXT_H)
     s.value:SetJustifyH("RIGHT")
     Kit.Text(s.value, "text.secondary")
     s.restore = Kit.FoldButton(s, true)
     s.restore.onClick = function() spec.onRestore() end
     s.shut = Kit.CloseButton(s, function() spec.onClose() end)
+    strips[s] = true
+    StripSize(s)
     StripLayout(s)
     return s
 end
@@ -461,7 +483,7 @@ function Kit.StripShow(s, x, y)
     if x and y then
         s:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y)
     else
-        s:SetPoint("TOP", UIParent, "TOP", 0, -STRIP_H * 4)
+        s:SetPoint("TOP", UIParent, "TOP", 0, -Kit.GrowH(STRIP_H, "GameFontNormal") * 4)
     end
     s:Show()
 end

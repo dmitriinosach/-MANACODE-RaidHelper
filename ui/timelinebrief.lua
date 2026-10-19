@@ -30,6 +30,13 @@ local DOT = 6
 local CHIP_PAD = 8
 local B = {}
 ns.TimelineBrief = B
+local function Fit()
+    local m = ns.Kit.Grow()
+    LABELH, STATE_ROW, DEF_ROW, FEED_ROW = 14 + m.g, 18 + m.g, 18 + m.g, 18 + m.g
+    FEED_ICON = 14 + m.g
+    FEED_MAXW, FEED_TEXT_MIN = floor(200 * m.k + 0.5), floor(44 * m.k + 0.5)
+    LIFE_H, FLOW_H, HELP_H = 112 + 2 * m.g, 72 + 3 * m.g, 28 + m.g
+end
 local DMG_TOKEN = { boss = "sem.death", add = "sem.dmg", env = "badge.yellow", own = "sem.offline" }
 local DMG_ORDER = { "boss", "add", "env", "own" }
 local holder
@@ -107,6 +114,7 @@ end
 local function Holder(c)
     if not holder then
         holder = CreateFrame("Frame", nil, c.canvas)
+        holder.sized = true
         holder:SetAllPoints(c.canvas)
     end
     holder:SetFrameLevel(c.canvas:GetFrameLevel() + 12)
@@ -710,6 +718,7 @@ local function Tracks(c, stateRows, lanes, help)
     return list
 end
 function B.Draw(c)
+    Fit()
     if holder then holder:Hide() end
     for i = 1, #marks do marks[i]:Hide() end
     last = { ctx = c }

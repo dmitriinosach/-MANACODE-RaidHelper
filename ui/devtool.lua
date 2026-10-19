@@ -43,24 +43,11 @@ local function RecState()
     recText:SetText(T(on and "dev.rec.on" or "dev.rec.off"))
     Kit.Text(recText, on and "text.good" or "text.muted")
 end
-local function Mark(key)
-    local def = ns.DevMarks.Def(key)
-    if def and def.room then
-        local text, ex, ey = ns.DevMarks.Here(def)
-        local where = not text and T("dev.mark.nopos")
-            or ex and format(T("dev.mark.yd"), T(def.label), ex, ey, text)
-            or format(T("dev.mark.noroom"), T(def.label), text)
-        local ok, msg = ns.DevMarks.Write(key)
-        ns.Print(where)
-        Out({ where, ok and msg or T("dev.mark.norec") })
-        RecState()
-        return
-    end
-    local custom = key == ns.DevMarks.CUSTOM
-    local ok, msg = ns.DevMarks.Write(key, custom and edit:GetText() or nil)
+local function Mark()
+    local ok, msg = ns.DevMarks.Write(edit:GetText())
     ns.Print(msg)
     Out({ msg })
-    if ok and custom then edit:SetValue("") end
+    if ok then edit:SetValue("") end
     RecState()
 end
 local function RaidOnMap()
@@ -81,7 +68,12 @@ local function Map()
     out[2] = format(T("dev.map.me"), x or 0, y or 0)
     local on, n = RaidOnMap()
     out[3] = format(T("dev.map.raid"), on, n)
-    if WorldMapFrame and WorldMapFrame:IsShown() then out[4] = T("dev.map.world") end
+    if WorldMapFrame and WorldMapFrame:IsShown() then out[#out + 1] = T("dev.map.world") end
+    local log = ns.PosFix and ns.PosFix.Log() or {}
+    if #log > 0 then
+        out[#out + 1] = T("dev.map.pfx")
+        for i = max(1, #log - 9), #log do out[#out + 1] = log[i] end
+    end
     Out(out, true)
 end
 local function LangMissing(out)
@@ -113,19 +105,30 @@ end
 local function CpuLast()
     if ns.CpuMeter then Out(ns.CpuMeter.Report(), true) end
 end
-local function DummyLabel()
-    return format(T("dev.chk.dummy"), T(ns.Encounters.Dummy() and "dev.dummy.on" or "dev.dummy.off"))
+local function LagLabel()
+    return T(ns.LagFind and ns.LagFind.Running() and "dev.chk.lag.stop" or "dev.chk.lag")
 end
-local function Dummy()
-    local on = not ns.Encounters.Dummy()
-    ns.Recorder.SetDummy(on)
-    local b = View.btn.dummy
+local function LagRelabel()
+    local b = View.btn.lag
     if b then
-        b:SetText(DummyLabel())
-        b.tipTitle = DummyLabel()
+        b:SetText(LagLabel())
+        b.tipTitle = LagLabel()
     end
-    Out({ T(on and "dev.dummy.out.on" or "dev.dummy.out.off") }, true)
-    RecState()
+end
+local function Lag()
+    local LF = ns.LagFind
+    if not LF then return end
+    if LF.Running() then
+        LF.Stop()
+    else
+        LF.Start(function(lines)
+            Out(lines, true)
+            LagRelabel()
+        end)
+        local prof = ns.CpuMeter and ns.CpuMeter.Profiled()
+        Out({ format(T("dev.lag.out.on"), LF.DUR), T(prof and "dev.lag.out.prof" or "lag.noprof") })
+    end
+    LagRelabel()
 end
 local function SpecLabel()
     return format(T("dev.chk.spec"), T(ns.RecFilter.spec and "dev.dummy.on" or "dev.dummy.off"))
@@ -140,34 +143,6 @@ local function Spec()
     end
     Out({ T(on and "dev.spec.out.on" or "dev.spec.out.off") }, true)
     RecState()
-end
-local function LootLabel()
-    return T(ns.Loot and ns.Loot.HasDemo() and "dev.chk.loot.off" or "dev.chk.loot")
-end
-local function LootDemo()
-    local L = ns.Loot
-    if not L then
-        Out({ T("dev.loot.out.nofile") }, true)
-        return
-    end
-    if L.HasDemo() then
-        L.ClearDemo()
-        Out({ T("dev.loot.out.off") })
-    else
-        local f = L.Demo()
-        if not f then
-            Out({ T("dev.loot.out.none") })
-        else
-            Out({ format(T("dev.loot.out.on"), ns.EncName(f.boss)) })
-            if ns.Shell then ns.Shell.Open("log") end
-            if ns.Timeline then ns.Timeline.ShowFight(f) end
-        end
-    end
-    local b = View.btn.loot
-    if b then
-        b:SetText(LootLabel())
-        b.tipTitle = LootLabel()
-    end
 end
 local function OnBtn(self)
     self.run(self.arg)
@@ -187,9 +162,11 @@ local function Put(b, x, y, w)
     b:SetPoint("TOPLEFT", frame, "TOPLEFT", x, y)
     b:SetWidth(w)
 end
-local function Group(text, y, inner)
-    local cap = Kit.Caption(frame, text, inner)
-    cap:SetPoint("TOPLEFT", frame, "TOPLEFT", Kit.Space.pad, y)
+local SMALL = "GameFontHighlightSmall"
+local parts = { caps = {}, checks = {} }
+local function Group(text)
+    local cap = Kit.Caption(frame, text, 100)
+    parts.caps[#parts.caps + 1] = cap
 end
 local function DragStop(self)
     self:StopMovingOrSizing()
@@ -205,79 +182,96 @@ local function BarScroll(v)
     offset = v
     Render()
 end
-local function BuildMarks(y, inner)
-    local pad, gap = Kit.Space.pad, Kit.Space.row
-    Group(T("dev.g.marks"), y, inner)
-    y = y - CAP
-    recText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    recText:SetPoint("TOPLEFT", frame, "TOPLEFT", pad, y)
-    recText:SetWidth(inner)
+local CHECKS = {
+    { "map", Map }, { "auto", Auto }, { "lock", Lock }, { "cpu", Cpu },
+    { "cpulast", CpuLast }, { "spec", Spec }, { "lag", Lag },
+    { "cpulive", function() if ns.CpuLiveView then ns.CpuLiveView.Toggle() end end },
+}
+local function BuildParts()
+    parts.title = Kit.Str(frame, "GameFontNormal")
+    parts.title:SetText(T("dev.title"))
+    Kit.Title(parts.title)
+    parts.close = Kit.CloseButton(frame, View.Hide)
+    parts.close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+    Group(T("dev.g.marks"))
+    recText = Kit.Str(frame, SMALL)
     recText:SetJustifyH("LEFT")
-    y = y - 18
-    local half = floor((inner - gap) / 2)
-    local list = ns.DevMarks.list
-    for i = 1, #list do
-        local d = list[i]
-        local b = Btn(frame, T(d.label), T("dev.mark.tip"), Mark, d.key)
-        local wide = i == #list and i % 2 == 1
-        Put(b, pad + ((i - 1) % 2) * (half + gap), y - floor((i - 1) / 2) * ROW, wide and inner or half)
-        View.btn[d.key] = b
-    end
-    y = y - floor((#list + 1) / 2) * ROW
     edit = Kit.Edit(frame)
-    edit:SetPoint("TOPLEFT", frame, "TOPLEFT", pad, y)
-    edit:SetWidth(inner - CUSTOM_BTN - gap)
     edit:SetMaxLetters(60)
     edit.tipTitle = T("dev.mark.custom")
     edit.tip = T("dev.mark.edit.tip")
-    local custom = Btn(frame, T("dev.mark.custom"), T("dev.mark.custom.tip"), Mark, ns.DevMarks.CUSTOM)
-    Put(custom, pad + inner - CUSTOM_BTN, y, CUSTOM_BTN)
-    View.btn.custom = custom
+    parts.custom = Btn(frame, T("dev.mark.custom"), T("dev.mark.custom.tip"), Mark)
+    View.btn.custom = parts.custom
     View.edit = edit
-    return y - ROW - 4
-end
-local function BuildChecks(y, inner)
-    local pad, gap = Kit.Space.pad, Kit.Space.row
-    Group(T("dev.g.checks"), y, inner)
-    y = y - CAP
-    local checks = {
-        { "map", Map }, { "auto", Auto }, { "lock", Lock }, { "cpu", Cpu },
-        { "cpulast", CpuLast }, { "dummy", Dummy }, { "spec", Spec }, { "loot", LootDemo },
-    }
-    local half = floor((inner - gap) / 2)
-    for i = 1, #checks do
-        local key = checks[i][1]
-        local text = key == "dummy" and DummyLabel() or key == "spec" and SpecLabel()
-            or key == "loot" and LootLabel() or T("dev.chk." .. key)
-        local b = Btn(frame, text, T("dev.chk." .. key .. ".tip"), checks[i][2])
-        Put(b, pad + ((i - 1) % 2) * (half + gap), y - floor((i - 1) / 2) * ROW, half)
+    Group(T("dev.g.checks"))
+    for i = 1, #CHECKS do
+        local key = CHECKS[i][1]
+        local text = key == "spec" and SpecLabel() or key == "lag" and LagLabel() or T("dev.chk." .. key)
+        local b = Btn(frame, text, T("dev.chk." .. key .. ".tip"), CHECKS[i][2])
+        parts.checks[i] = b
         View.btn[key] = b
     end
-    return y - floor((#checks + 1) / 2) * ROW - 4
-end
-local function BuildOut(y, inner)
-    local pad = Kit.Space.pad
-    Group(T("dev.g.out"), y, inner)
-    y = y - CAP
-    local h = OUT_ROWS * OUT_LINE
+    Group(T("dev.g.out"))
     local box = CreateFrame("Frame", nil, frame)
-    box:SetPoint("TOPLEFT", frame, "TOPLEFT", pad, y)
-    box:SetWidth(inner)
-    box:SetHeight(h)
     box:EnableMouseWheel(true)
     box:SetScript("OnMouseWheel", Wheel)
-    outText = box:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    outText = Kit.Str(box, SMALL)
     outText:SetPoint("TOPLEFT", box, "TOPLEFT", 0, 0)
-    outText:SetWidth(inner - 12)
-    outText:SetHeight(h)
     outText:SetJustifyH("LEFT")
     outText:SetJustifyV("TOP")
     outText:SetNonSpaceWrap(true)
     Kit.Text(outText, "text.secondary")
-    outBar = Kit.ScrollBar(box, h)
+    outBar = Kit.ScrollBar(box, OUT_ROWS * OUT_LINE)
     outBar:SetPoint("TOPRIGHT", box, "TOPRIGHT", 0, 0)
     outBar.onScroll = BarScroll
-    return y - h - Kit.Space.pad
+    parts.box = box
+end
+local function Layout()
+    local pad, gap = Kit.Space.pad, Kit.Space.row
+    local k = Kit.FontScale(SMALL, true)
+    local w = floor(W * k + 0.5)
+    local row, cap = Kit.GrowH(ROW, SMALL), Kit.GrowH(CAP, "GameFontNormal")
+    local line = Kit.GrowH(OUT_LINE, SMALL)
+    local custom = floor(CUSTOM_BTN * k + 0.5)
+    local inner = w - pad * 2
+    frame:SetWidth(w)
+    parts.title:ClearAllPoints()
+    parts.title:SetPoint("TOPLEFT", frame, "TOPLEFT", pad, -12)
+    local y = -Kit.GrowH(36, "GameFontNormal")
+    local function Caption(i)
+        local c = parts.caps[i]
+        Kit.CaptionWidth(c, inner)
+        c:ClearAllPoints()
+        c:SetPoint("TOPLEFT", frame, "TOPLEFT", pad, y)
+        y = y - cap
+    end
+    Caption(1)
+    recText:ClearAllPoints()
+    recText:SetPoint("TOPLEFT", frame, "TOPLEFT", pad, y)
+    recText:SetWidth(inner)
+    y = y - Kit.GrowH(18, SMALL)
+    edit:ClearAllPoints()
+    edit:SetPoint("TOPLEFT", frame, "TOPLEFT", pad, y)
+    edit:SetWidth(inner - custom - gap)
+    Put(parts.custom, pad + inner - custom, y, custom)
+    y = y - row - 4
+    Caption(2)
+    local half = floor((inner - gap) / 2)
+    for i = 1, #parts.checks do
+        Put(parts.checks[i], pad + ((i - 1) % 2) * (half + gap), y - floor((i - 1) / 2) * row, half)
+    end
+    y = y - floor((#parts.checks + 1) / 2) * row - 4
+    Caption(3)
+    local h = OUT_ROWS * line
+    parts.box:ClearAllPoints()
+    parts.box:SetPoint("TOPLEFT", frame, "TOPLEFT", pad, y)
+    parts.box:SetWidth(inner)
+    parts.box:SetHeight(h)
+    outText:SetWidth(inner - 12)
+    outText:SetHeight(h)
+    outBar:SetHeight(h)
+    y = y - h - pad
+    frame:SetHeight(-y)
 end
 local function Build()
     frame = CreateFrame("Frame", "HTP_FailWatchDevTool", UIParent)
@@ -287,28 +281,26 @@ local function Build()
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
     frame:SetClampedToScreen(true)
+    frame.sized = true
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", DragStop)
     frame:SetScript("OnShow", RecState)
     local ui = ns.GetDB().settings.ui
     frame:SetPoint(ui.devPoint or "CENTER", UIParent, ui.devPoint or "CENTER", ui.devX or 0, ui.devY or 0)
     tinsert(UISpecialFrames, "HTP_FailWatchDevTool")
-    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", frame, "TOPLEFT", Kit.Space.pad, -12)
-    title:SetText(T("dev.title"))
-    Kit.Title(title)
-    local close = Kit.CloseButton(frame, View.Hide)
-    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
-    local inner = W - Kit.Space.pad * 2
-    local y = BuildMarks(-36, inner)
-    y = BuildChecks(y, inner)
-    y = BuildOut(y, inner)
-    frame:SetHeight(-y)
+    BuildParts()
+    Layout()
     Kit.Window(frame)
     Render()
     RecState()
     frame:Hide()
 end
+Kit.OnFont(function()
+    if frame then
+        Layout()
+        Render()
+    end
+end)
 function View.Show()
     if not frame then Build() end
     frame:Show()

@@ -143,6 +143,21 @@ function Phases.Done(fight, tr)
     cache[fight] = tr.res
     return tr.res
 end
+function Phases.Marks(fight, res)
+    local out = {}
+    if not res then return out end
+    local def = ns.bossPhases and ns.bossPhases[fight.boss]
+    for k = 2, #res.spans do
+        out[#out + 1] = { t = fight.from + res.spans[k].from, label = ns.T(res.spans[k].label), dim = true }
+    end
+    for kind, times in pairs(res.waves) do
+        local w = def and def.waves and def.waves[kind]
+        local label = w and ns.T(w.label) or kind
+        for i = 1, #times do out[#out + 1] = { t = fight.from + times[i], label = label, dim = true } end
+    end
+    table.sort(out, function(a, b) return a.t < b.t end)
+    return out
+end
 function Phases.Get(fight)
     return cache[fight]
 end

@@ -32,8 +32,8 @@ local commands = {}
 local frame, strip, close, grip, pageBg, zoomOut, zoomIn, about, fold, maxBtn
 local toolGroup, winGroup
 local current
-local sizing, sizedW, sizedH, moving
-local sizeX, sizeY, sizeW, sizeH, sizeMaxW, sizeMaxH
+local moving
+local sizer
 local clampRight = 0
 local rightW = 0
 local note = { token = "text.warn", x = 0 }
@@ -57,9 +57,15 @@ end
 local function TabLook()
     return Kit.Theme().tab
 end
+local function TabH()
+    return Kit.GrowH(TabLook().h, "GameFontNormalSmall")
+end
+local function PartW()
+    return floor(PARTW * Kit.FontScale("GameFontNormal", true) + 0.5)
+end
 local function Line()
     local tt = TabLook()
-    return (tt.h - tt.rim) / 2
+    return (TabH() - tt.rim) / 2
 end
 local function Pin()
     local l, t = frame:GetLeft(), frame:GetTop()
@@ -77,7 +83,7 @@ local function SavePlace()
     s.h = floor(frame:GetHeight() + 0.5)
 end
 local function Clamp()
-    frame:SetClampRectInsets(0, clampRight, TabLook().h, 0)
+    frame:SetClampRectInsets(0, clampRight, TabH(), 0)
 end
 local function PageSize()
     local p = INSET + Pad()
@@ -97,7 +103,7 @@ end
 local function PlaceTab(e)
     local tt = TabLook()
     local on = e.key == current or (e.def.lit ~= nil and e.def.lit == current)
-    local top = tt.h
+    local top = TabH()
     local below = on and (INSET + Pad()) or tt.seat
     local tab = e.tab
     tab:SetHeight(top + below)
@@ -169,7 +175,8 @@ local function TabWidth(e)
     end
     tab.tipTitle = false
     tab.text:SetText(Label(e))
-    return max(TABMIN, floor(tab.text:GetStringWidth() + (TabLook().rim + TABPAD) * 2))
+    return max(floor(TABMIN * Kit.FontScale("GameFontNormalSmall", true) + 0.5),
+        floor(tab.text:GetStringWidth() + (TabLook().rim + TABPAD) * 2))
 end
 local function Scale()
     local v = tonumber(Saved().scale) or 1
@@ -187,7 +194,7 @@ end
 local function MaxSize()
     local sw, sh = Screen()
     if not sw then return math.huge, math.huge end
-    return max(MIN_W, floor(sw - clampRight)), max(MIN_H, floor(sh - TabLook().h))
+    return max(MIN_W, floor(sw - clampRight)), max(MIN_H, floor(sh - TabH()))
 end
 local function KeepOnScreen()
     local l, r, t, b = frame:GetLeft(), frame:GetRight(), frame:GetTop(), frame:GetBottom()
@@ -197,7 +204,7 @@ local function KeepOnScreen()
     if r + clampRight > sw then dx = sw - r - clampRight end
     if l + dx < 0 then dx = -l end
     if b < 0 then dy = -b end
-    if t + TabLook().h + dy > sh then dy = sh - t - TabLook().h end
+    if t + TabH() + dy > sh then dy = sh - t - TabH() end
     if dx == 0 and dy == 0 then return end
     frame:ClearAllPoints()
     frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", l + dx, b + dy)
@@ -216,7 +223,7 @@ end
 local function Maximize()
     local sw, sh = Screen()
     if not sw then return end
-    local th = TabLook().h
+    local th = TabH()
     frame:ClearAllPoints()
     frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", MAX_EDGE, sh - MAX_EDGE - th)
     frame:SetWidth(max(MIN_W, floor(sw - clampRight - MAX_EDGE * 2)))
@@ -278,32 +285,62 @@ local function SetScale(v)
     PaintZoom()
     if ns.Settings and ns.Settings.Refresh then ns.Settings.Refresh() end
 end
-local function MakeAct(label, tip, delta)
+local function MakeAct(label, tip, delta, base)
     local b = Kit.TabPart(toolGroup)
-    b.text:SetFontObject("GameFontNormal")
+    Kit.ButtonFont(b, base or "GameFontNormal")
     b:SetText(ns.T(label))
     b.tip = tip and ns.T(tip) or nil
     b.onClick = function() SetScale(Scale() + delta) end
     return b
 end
+local fontLess
+local fontMore
+local function PaintFont()
+    if not fontLess then return end
+    local d, lo, hi = Kit.FontDelta()
+    local title = format(ns.T("shell.font.tip"), d > 0 and ("+" .. d) or tostring(d))
+    fontLess.tipTitle, fontMore.tipTitle = title, title
+    if d <= lo then fontLess:Disable() else fontLess:Enable() end
+    if d >= hi then fontMore:Disable() else fontMore:Enable() end
+    if fontLess.hovered then Kit.TipShow(fontLess) end
+    if fontMore.hovered then Kit.TipShow(fontMore) end
+end
+local function FontButtons(parts)
+    fontLess = MakeAct("shell.font.less", "shell.font.less.tip", 0, "GameFontNormalSmall")
+    fontMore = MakeAct("shell.font.more", "shell.font.more.tip", 0)
+    fontLess.onClick = function() Kit.SetFontDelta(Kit.FontDelta() - 1) end
+    fontMore.onClick = function() Kit.SetFontDelta(Kit.FontDelta() + 1) end
+    local at = 1
+    for i = 1, #parts do
+        if parts[i] == about then at = i + 1 end
+    end
+    table.insert(parts, at, fontMore)
+    table.insert(parts, at, fontLess)
+    Kit.OnFont(function()
+        PaintFont()
+        if ns.Settings and ns.Settings.Refresh then ns.Settings.Refresh() end
+    end)
+    PaintFont()
+end
 local function SeatGroup(g, x)
     local tt = TabLook()
     local inner = max(0, tt.rim - PARTPAD)
-    local w = inner * 2 + #g.parts * PARTW
+    local pw = PartW()
+    local w = inner * 2 + #g.parts * pw
     local lift = (tt.seat - tt.rim) / 2
     g:SetWidth(w)
-    g:SetHeight(tt.h + tt.seat)
+    g:SetHeight(TabH() + tt.seat)
     g:SetFrameLevel(frame:GetFrameLevel() + TABLEVEL)
     g:ClearAllPoints()
     g:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -x, -tt.seat)
-    g:Seat(tt.seat, lift, tt.h + tt.seat)
-    local h = min(PARTH, tt.h - tt.rim + 2)
+    g:Seat(tt.seat, lift, TabH() + tt.seat)
+    local h = min(Kit.GrowH(PARTH, "GameFontNormal"), TabH() - tt.rim + 2)
     for i, b in ipairs(g.parts) do
-        b:SetWidth(PARTW)
+        b:SetWidth(pw)
         b:SetHeight(h)
         b:SetFrameLevel(g:GetFrameLevel() + 1)
         b:ClearAllPoints()
-        b:SetPoint("LEFT", g, "LEFT", inner + (i - 1) * PARTW, lift)
+        b:SetPoint("LEFT", g, "LEFT", inner + (i - 1) * pw, lift)
     end
     return x + w + TABGAP
 end
@@ -323,7 +360,7 @@ local function PlaceNote()
     if not b then
         b = CreateFrame("Button", nil, frame)
         b:SetFrameLevel(frame:GetFrameLevel() + TABLEVEL)
-        b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        b.label = Kit.Str(b, "GameFontNormalSmall")
         b.label:SetAllPoints()
         b.label:SetJustifyH("LEFT")
         b:SetScript("OnEnter", Kit.TipShow)
@@ -334,7 +371,7 @@ local function PlaceNote()
     Kit.Text(b.label, note.token)
     b.tipTitle = note.text
     b.tip = note.tip
-    b:SetHeight(TabLook().h - TabLook().rim)
+    b:SetHeight(TabH() - TabLook().rim)
     b:ClearAllPoints()
     b:SetPoint("LEFT", frame, "TOPLEFT", note.x + TABPAD, Line())
     b:SetPoint("RIGHT", frame, "TOPRIGHT", -(rightW + TABPAD), Line())
@@ -346,7 +383,7 @@ local function LayoutTabs()
     local x = tt.x
     local rx = tt.x
     if winGroup then rx = SeatGroup(winGroup, rx) + GROUPGAP end
-    local textW = TABMIN
+    local textW = floor(TABMIN * Kit.FontScale("GameFontNormalSmall", true) + 0.5)
     for i = 1, #order do
         local e = order[i]
         if not e.tab and not e.def.tabless then
@@ -385,14 +422,20 @@ local function LayoutTabs()
     PlaceNote()
     PaintTabs()
 end
-local function Cursor()
-    local x, y = GetCursorPosition()
-    local s = frame:GetEffectiveScale()
-    if not s or s <= 0 then return x, y end
-    return x / s, y / s
+local function Sizing()
+    return sizer ~= nil and sizer:IsActive()
 end
-local function StopSizing()
-    sizing = false
+local function SizeLimits()
+    local mw, mh = MaxSize()
+    local sw = Screen()
+    local l, t = frame:GetLeft(), frame:GetTop()
+    if sw and l then mw = min(mw, floor(sw - clampRight - l)) end
+    if t then mh = min(mh, floor(t)) end
+    return MIN_W, MIN_H, max(MIN_W, mw), max(MIN_H, mh)
+end
+local function ApplySize(w, h)
+    frame:SetWidth(w)
+    frame:SetHeight(h)
     Fit()
     Pin()
     SavePlace()
@@ -401,41 +444,18 @@ local function StopSizing()
 end
 local function StartSizing(button)
     if button and button ~= "LeftButton" then return end
-    if sizing then return end
+    if Sizing() then return end
     if moving then
         moving = false
         frame:StopMovingOrSizing()
     end
     DropMax()
     Pin()
-    sizeX, sizeY = Cursor()
-    sizeW, sizeH = frame:GetWidth(), frame:GetHeight()
-    sizedW, sizedH = sizeW, sizeH
-    local mw, mh = MaxSize()
-    local sw = Screen()
-    local l, t = frame:GetLeft(), frame:GetTop()
-    if sw and l then mw = min(mw, floor(sw - clampRight - l)) end
-    if t then mh = min(mh, floor(t)) end
-    sizeMaxW, sizeMaxH = max(MIN_W, mw), max(MIN_H, mh)
-    sizing = true
-end
-local function Sizing()
-    if not sizing then return end
-    if not IsMouseButtonDown("LeftButton") then
-        StopSizing()
-        return
-    end
-    local x, y = Cursor()
-    local w = min(max(floor(sizeW + x - sizeX + 0.5), MIN_W), sizeMaxW)
-    local h = min(max(floor(sizeH + sizeY - y + 0.5), MIN_H), sizeMaxH)
-    if w == sizedW and h == sizedH then return end
-    sizedW, sizedH = w, h
-    frame:SetWidth(w)
-    frame:SetHeight(h)
-    OnSizing()
+    SavePlace()
+    sizer:Start()
 end
 local function StartMove()
-    if sizing or moving then return end
+    if Sizing() or moving then return end
     DropMax()
     moving = true
     frame:StartMoving()
@@ -450,7 +470,7 @@ local function StopMove()
     Placed()
 end
 local function ToggleMax()
-    if not frame or sizing then return end
+    if not frame or Sizing() then return end
     local s = Saved()
     if s.max then
         local n = s.norm
@@ -479,7 +499,7 @@ end
 local function Place()
     local p = INSET + Pad()
     local tt = TabLook()
-    strip:SetHeight(tt.h)
+    strip:SetHeight(TabH())
     grip:ClearAllPoints()
     grip:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(4 + Pad()), 4 + Pad())
     pageBg:ClearAllPoints()
@@ -496,13 +516,14 @@ end
 local function BuildGrip()
     grip = Kit.Grip(frame, GRIP)
     grip:SetFrameLevel(frame:GetFrameLevel() + 70)
+    sizer = ns.Sizer.New(frame, {
+        limits = SizeLimits,
+        apply = ApplySize,
+        paint = function(tex, role) Kit.Paint(tex, role == "fill" and "window.gripGlow" or "window.grip", role == "fill" and 0.08 or nil) end,
+        text = function(fs) Kit.Text(fs, "text.title") end,
+    })
     grip.onDown = function(_, button) StartSizing(button) end
-    grip.onUp = function()
-        if not sizing then return end
-        Sizing()
-        if sizing then StopSizing() end
-    end
-    grip:SetScript("OnUpdate", ns.Prof.Wrap("ui.other", Sizing))
+    grip.onUp = function() sizer:Finish() end
 end
 local function Unfold()
     Saved().mini = nil
@@ -511,7 +532,7 @@ end
 local function Fold(x, y)
     if not ns.ShellMini then return end
     if frame and frame:IsShown() then
-        x, y = Kit.TopLeftOf(frame, TabLook().h)
+        x, y = Kit.TopLeftOf(frame, TabH())
         frame:Hide()
     end
     Saved().mini = true
@@ -546,6 +567,7 @@ local function BuildStrip()
     about = MakeAct("shell.about", nil, 0)
     about.tipTitle = ns.T("shell.about.tip")
     toolGroup.parts = { about, zoomOut, zoomIn }
+    FontButtons(toolGroup.parts)
     about.onClick = function() if ns.About then ns.About.Toggle() end end
     PaintZoom()
 end
@@ -575,6 +597,7 @@ local function Build()
     frame:SetPoint(s.point or "CENTER", UIParent, s.rel or s.point or "CENTER", s.x or 0, s.y or 0)
     frame:SetFrameStrata("HIGH")
     frame:SetToplevel(true)
+    frame.sized = true
     frame:SetMovable(true)
     frame:SetResizable(true)
     frame:SetMinResize(MIN_W, MIN_H)
@@ -586,7 +609,7 @@ local function Build()
     frame:RegisterEvent("UI_SCALE_CHANGED")
     frame:RegisterEvent("DISPLAY_SIZE_CHANGED")
     frame:SetScript("OnEvent", function()
-        if frame:IsShown() and not sizing then
+        if frame:IsShown() and not Sizing() then
             Fit()
             SavePlace()
         end
@@ -607,7 +630,7 @@ local function Build()
     frame:SetScript("OnHide", function()
         if ns.CpuMeter then ns.CpuMeter.WinCheck() end
         StopMove()
-        if sizing then StopSizing() end
+        if sizer then sizer:Cancel() end
         local e = current and entries[current]
         if e and e.page and e.def.OnHide then e.def.OnHide(e.page) end
     end)
@@ -655,7 +678,7 @@ function Shell.FoldTo(view)
     ns.ShellMini.SetView(view)
 end
 function Shell.Probe()
-    return { frame = frame, strip = strip, maxBtn = maxBtn, fold = fold, grip = grip, close = close,
+    return { frame = frame, strip = strip, maxBtn = maxBtn, fold = fold, grip = grip, sizer = sizer, close = close,
              acts = { toolGroup, winGroup, about, zoomOut, zoomIn, fold, maxBtn, close } }
 end
 function Shell.IsFolded()
@@ -689,7 +712,7 @@ function Shell.ClampRight(px)
     clampRight = px or 0
     if not frame then return end
     Clamp()
-    if frame:IsShown() and not sizing and not moving then Fit() end
+    if frame:IsShown() and not Sizing() and not moving then Fit() end
 end
 function Shell.Scale()
     return Scale(), SCALE_MIN, SCALE_MAX, SCALE_STEP
@@ -750,6 +773,12 @@ function Shell.Note()
     return note.text
 end
 Kit.OnTheme(OnTheme)
+Kit.OnFont(function()
+    if not frame then return end
+    Place()
+    LayoutTabs()
+    OnSizing()
+end)
 if ns.OnReady then
     ns.OnReady(function()
         if Saved().mini then Fold() end

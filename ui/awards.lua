@@ -23,9 +23,19 @@ local FRAME_COORD = { 0, 0.5625, 0, 0.5625 }
 local TINY_COORD = { 0, 0.625, 0, 0.625 }
 local Kit = ns.Kit
 local Badges = ns.Badges
+local function Grow()
+    local function Extra(base)
+        local line = math.ceil(Kit.FontSize(base, true) * 1.2) - math.ceil(Kit.FontSize(base) * 1.2)
+        return max(0, line)
+    end
+    return Extra("GameFontHighlight"), Extra("GameFontHighlightSmall")
+end
 local View = {}
 ns.AwardView = View
 View.HEAD_H = 20
+function View.HeadH()
+    return View.HEAD_H + (Grow())
+end
 local Hover = Kit.HoverLines
 local OneLine = Kit.OneLine
 local function Coord(tex, c)
@@ -35,10 +45,10 @@ local Fit = Kit.Fit
 local function Nick(body)
     local b = CreateFrame("Frame", nil, body)
     b:SetHeight(14)
-    b.name = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    b.name = Kit.Str(b, "GameFontHighlight")
     b.name:SetPoint("LEFT", 0, 0)
     OneLine(b.name)
-    b.val = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    b.val = Kit.Str(b, "GameFontHighlightSmall")
     b.val:SetPoint("LEFT", b.name, "RIGHT", WHO_GAP, 0)
     OneLine(b.val)
     Kit.Text(b.val, "text.muted")
@@ -93,21 +103,21 @@ function View.Tile(parent)
     f.shield.tex:SetAllPoints()
     f.shield.tex:SetTexture(TINY_SHIELD)
     Coord(f.shield.tex, TINY_COORD)
-    f.shield.num = body:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    f.shield.num = Kit.Str(body, "GameFontHighlight")
     f.shield.num:SetPoint("RIGHT", f.shield, "LEFT", -2, 0)
     Kit.Text(f.shield.num, "ach.points")
-    f.title = body:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    f.title = Kit.Str(body, "GameFontHighlight")
     f.title:SetPoint("TOPLEFT", body, "TOPLEFT", left, -TITLE_TOP - 2)
     OneLine(f.title)
     Kit.Text(f.title, "ach.name")
-    f.desc = body:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.desc = Kit.Str(body, "GameFontHighlightSmall")
     f.desc:SetPoint("TOPLEFT", body, "TOPLEFT", left, -DESC_TOP)
     OneLine(f.desc)
     Kit.Text(f.desc, "text.muted")
     f.nicks = {}
     for k = 1, ns.RaidModel.AWARD_TILE do f.nicks[k] = Nick(body) end
     f.rest = CreateFrame("Frame", nil, f)
-    f.rest.text = f.rest:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.rest.text = Kit.Str(f.rest, "GameFontHighlightSmall")
     f.rest:Hide()
     function f.SetModel(self, a)
         self.model = a
@@ -134,8 +144,14 @@ function View.Tile(parent)
     end
     function f.Layout(self, width)
         self:SetWidth(width)
+        local et, es = Grow()
+        local whoTop, h = WHO_TOP + et + es, BODY + et * 2 + es
+        self.body:SetHeight(h)
+        self.bar:SetHeight(BAR_H + et)
+        self.desc:ClearAllPoints()
+        self.desc:SetPoint("TOPLEFT", self.body, "TOPLEFT", PAD + ICON + GAP, -(DESC_TOP + et))
         local a = self.model
-        if not a then return BODY end
+        if not a then return h end
         local left = PAD + ICON + GAP
         local numW = Fit(self.shield.num, a.badge or "", width / 3)
         Fit(self.title, a.title, width - left - PAD - SHIELD - numW - 8)
@@ -148,20 +164,23 @@ function View.Tile(parent)
                 local free = max(1, left + room - x)
                 if free < 30 then b:Hide() end
                 local nw = Fit(b.name, b.name:GetText() or "", free)
-                local vw = Fit(b.val, b.val:GetText() or "", max(1, free - nw - WHO_GAP))
-                local bw = min(free, nw + ((b.val:GetText() or "") ~= "" and WHO_GAP + vw or 0))
+                local vroom = max(1, free - nw - WHO_GAP)
+                if vroom < 14 then b.val:Hide() else b.val:Show() end
+                local vw = b.val:IsShown() and Fit(b.val, b.val:GetText() or "", vroom) or 0
+                local bw = min(free, nw + (b.val:IsShown() and (b.val:GetText() or "") ~= "" and WHO_GAP + vw or 0))
                 b:SetWidth(bw)
+                b:SetHeight(14 + et)
                 b:ClearAllPoints()
-                b:SetPoint("TOPLEFT", self.body, "TOPLEFT", x, -WHO_TOP)
+                b:SetPoint("TOPLEFT", self.body, "TOPLEFT", x, -whoTop)
                 x = x + bw + WHO_SEP
             end
         end
-        return BODY
+        return h
     end
     return f
 end
 function View.Head(parent)
-    local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local fs = Kit.Str(parent, "GameFontNormal")
     OneLine(fs)
     Kit.Title(fs)
     fs:SetText(ns.T("rsum.awards"))

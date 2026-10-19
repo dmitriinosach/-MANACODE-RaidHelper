@@ -8,7 +8,7 @@ ns.summaries[ns.ENC.lanathel] = {
         { kind = "aura", spell = 71340, tip = "sum.b.pact" },
         { kind = "killer", spells = { 71340 }, id = 71340, tip = "sum.b.pactkill" },
         { kind = "death", spells = { 71340 }, id = 71340, tip = "sum.b.pactdeath" },
-        { kind = "aura", spell = 71264, tip = "sum.b.shadows" },
+        { kind = "aura", spell = 71264, tip = "sum.b.shadows", want = "shed", shed = { [0] = 6 } },
         { kind = "death", spells = { 71264 }, id = 72637, neutral = true, tip = "sum.b.shadowsdeath" },
         { kind = "killer", spells = { 71483 }, id = 71483, tip = "sum.b.splashkill" },
     },

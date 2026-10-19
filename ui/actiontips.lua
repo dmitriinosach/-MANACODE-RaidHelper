@@ -260,6 +260,23 @@ local function Spans(out, st, off)
     More(out, st.n)
     return unsure
 end
+function Tips.cover(st, def)
+    local out = {}
+    Head(out, T(def.tip), format("x%d", st.n))
+    for k = 1, min(TIMES, st.n) do
+        local e = st.eps and st.eps[k]
+        if e then
+            Put(out, "row", Clock(st.times[k]), (e.dmg or 0) > 0 and format(T("sum.tt.cover.hit"), ns.Short(e.dmg)) or nil,
+                nil, e.died and "bad" or nil)
+            local names = {}
+            for q = 1, #(e.ready or {}) do names[q] = ns.SpellName(e.ready[q]) end
+            Put(out, "sub", T("sum.tt.cover.ready"), table.concat(names, ", "), nil, "warn")
+            if e.died then Put(out, "sub", T("sum.tt.cover.died"), nil, nil, "bad") end
+        end
+    end
+    More(out, st.n)
+    return out
+end
 function Tips.rfuryoff(st, def)
     local out = {}
     Head(out, T(def.tip))

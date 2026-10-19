@@ -34,7 +34,7 @@ function UI.Build(c)
         t:Hide()
         c.rdy[i] = t
     end
-    c.rdyMore = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    c.rdyMore = ns.Str(c, "GameFontHighlightSmall")
     c.rdyMore:SetPoint("BOTTOMLEFT", c, "BOTTOMLEFT", 23 + (SLOTS - 1) * STEP, 2)
     ns.PaintText(c.rdyMore, "text.warn")
     c.rdyMore:Hide()
@@ -75,6 +75,9 @@ function UI.FillCell(c, m)
         c.rdyMore:Show()
     end
 end
+local function stripH()
+    return ns.Fit("GameFontHighlightSmall", STRIP_H, 8)
+end
 local function stripTip()
     local R = ns.ReadyBuffs
     local res = R.Result()
@@ -108,11 +111,11 @@ local function stripTip()
 end
 function UI.BuildStrip(pane)
     strip = ns.MakePanel(pane)
-    strip:SetHeight(STRIP_H)
+    strip:SetHeight(stripH())
     strip:EnableMouse(true)
     strip:SetScript("OnEnter", function(self) ns.TipShow(self) end)
     strip:SetScript("OnLeave", ns.TipHide)
-    strip.text = strip:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    strip.text = ns.Str(strip, "GameFontHighlightSmall")
     ns.PaintText(strip.text, "text.bright")
     strip.text:SetPoint("LEFT", strip, "LEFT", 10, 0)
     strip.send = ns.MakeKitButton(strip)
@@ -145,8 +148,9 @@ function UI.FillStrip(pane, top)
     strip:ClearAllPoints()
     strip:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -top)
     strip:SetWidth(ns.window.PANE_W)
+    strip:SetHeight(stripH())
     strip:Show()
-    return STRIP_H + STRIP_GAP
+    return stripH() + STRIP_GAP
 end
 function UI.Strip()
     return strip

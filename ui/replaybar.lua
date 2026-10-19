@@ -36,6 +36,17 @@ local Bar = { ROW_H = ROW_H, SEEK_STEP = SEEK_STEP, SPEEDS = SPEEDS }
 ns.ReplayBar = Bar
 local Kit = ns.Kit
 local MK = ns.ReplayMarks
+local m = { btn = BTN, row = ROW_H, dy = 0, speedW = SPEED_W, clockW = CLOCK_W }
+local function Metrics()
+    local k = max(1, Kit.FontScale("GameFontNormalSmall", true), Kit.FontScale("GameFontHighlightSmall", true))
+    local pt = max(Kit.FontSize("GameFontNormalSmall", true), Kit.FontSize("GameFontHighlightSmall", true))
+    m.btn = max(BTN, ceil(pt * 1.15) + 6)
+    m.row = max(ROW_H, m.btn + 6)
+    m.dy = floor((m.btn - BTN) / 2)
+    m.speedW = ceil(SPEED_W * k)
+    m.clockW = ceil(CLOCK_W * k)
+    Bar.ROW_H = m.row
+end
 local st = { width = 0, scrubW = 0, groups = {}, rects = {}, deaths = 0 }
 local pool, ticks = {}, {}
 local function Clamp(v, lo, hi)
@@ -58,6 +69,9 @@ local function SeekTo(t)
     if not scene then return end
     run.t = Clamp(t, scene.from, scene.to)
     run.marksDirty = true
+end
+function Bar.Measure()
+    Metrics()
 end
 function Bar.Seek(delta)
     local run = st.run
@@ -192,9 +206,9 @@ local function DrawGroup(b, g)
     end
     local x = st.scrubX + g.x
     b:ClearAllPoints()
-    b:SetPoint("TOP", st.ui.bar, "TOPLEFT", x, -ICON_Y)
+    b:SetPoint("TOP", st.ui.bar, "TOPLEFT", x, -(ICON_Y + m.dy))
     b.line:ClearAllPoints()
-    b.line:SetPoint("TOP", st.ui.bar, "TOPLEFT", x, -TRACK_Y)
+    b.line:SetPoint("TOP", st.ui.bar, "TOPLEFT", x, -(TRACK_Y + m.dy))
     if lead.kind == "death" then
         b.line:Hide()
     else
@@ -232,7 +246,7 @@ function Bar.Use(scene)
                 local tick = ticks[d]
                 local x = st.scrubW * Clamp((scene.deaths[i].t - scene.from) / dur, 0, 1)
                 tick:ClearAllPoints()
-                tick:SetPoint("TOP", ui.bar, "TOPLEFT", st.scrubX + x, -DEATH_Y)
+                tick:SetPoint("TOP", ui.bar, "TOPLEFT", st.scrubX + x, -(DEATH_Y + m.dy))
                 tick:Show()
             end
         end
@@ -265,6 +279,7 @@ local function BuildSpeed(ui)
         local b = Kit.Button(ui.bar)
         b:SetWidth(SPEED_W)
         b:SetHeight(BTN)
+        Kit.Bind(b.text, "GameFontNormalSmall")
         b.speed = SPEEDS[i]
         b.text:SetText(SpeedText(b.speed))
         b.tipTitle = ns.T("iso.speed.title")
@@ -322,48 +337,62 @@ local function BuildGear(ui)
 end
 function Bar.Resize(width)
     local ui = st.ui
+    Metrics()
     st.width = width
     st.rects = {}
     ui.bar:SetWidth(width)
+    ui.bar:SetHeight(m.row)
+    local btn, sw = m.btn, m.speedW
     local x = 0
+    ui.playBtn:SetWidth(btn)
+    ui.playBtn:SetHeight(btn)
     At(ui.playBtn, x, 0)
-    Rect("play", x, BTN)
-    x = x + BTN + GAP
-    local speedW = #ui.speedBtns * SPEED_W + (#ui.speedBtns - 1) * SPEED_GAP
-    for i = 1, #ui.speedBtns do At(ui.speedBtns[i], x + (i - 1) * (SPEED_W + SPEED_GAP), 0) end
+    Rect("play", x, btn)
+    x = x + btn + GAP
+    local speedW = #ui.speedBtns * sw + (#ui.speedBtns - 1) * SPEED_GAP
+    for i = 1, #ui.speedBtns do
+        local b = ui.speedBtns[i]
+        b:SetWidth(sw)
+        b:SetHeight(btn)
+        At(b, x + (i - 1) * (sw + SPEED_GAP), 0)
+    end
     Rect("speed", x, speedW)
     x = x + speedW + GAP_WIDE
     st.scrubX = x
-    st.scrubW = max(1, width - x - GAP_WIDE - CLOCK_W - GAP - BTN)
-    At(ui.track, x, -TRACK_Y)
+    st.scrubW = max(1, width - x - GAP_WIDE - m.clockW - GAP - btn)
+    At(ui.track, x, -(TRACK_Y + m.dy))
     ui.track:SetWidth(st.scrubW)
-    At(ui.scrub, x, -HIT_Y)
+    At(ui.scrub, x, -(HIT_Y + m.dy))
     ui.scrub:SetWidth(st.scrubW)
     Rect("scrub", x, st.scrubW)
     x = x + st.scrubW + GAP_WIDE
+    ui.clock:SetWidth(m.clockW)
     ui.clock:ClearAllPoints()
-    ui.clock:SetPoint("LEFT", ui.bar, "TOPLEFT", x, -(TRACK_Y + TRACK_H / 2))
-    Rect("clock", x, CLOCK_W)
-    x = x + CLOCK_W + GAP
+    ui.clock:SetPoint("LEFT", ui.bar, "TOPLEFT", x, -(TRACK_Y + m.dy + TRACK_H / 2))
+    Rect("clock", x, m.clockW)
+    x = x + m.clockW + GAP
+    ui.gearBtn:SetWidth(btn)
+    ui.gearBtn:SetHeight(btn)
     At(ui.gearBtn, x, 0)
-    Rect("gear", x, BTN)
+    Rect("gear", x, btn)
 end
 function Bar.Build(ui, run, width)
     st.ui, st.run = ui, run
+    Metrics()
     local bar = CreateFrame("Frame", nil, ui.frame)
-    bar:SetHeight(ROW_H)
+    bar:SetHeight(m.row)
     ui.bar = bar
     BuildPlay(ui)
     BuildSpeed(ui)
     BuildScrub(ui)
-    ui.clock = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ui.clock = Kit.Str(bar, "GameFontHighlightSmall")
     Kit.Text(ui.clock, "text.bright")
-    ui.clock:SetWidth(CLOCK_W)
+    ui.clock:SetWidth(m.clockW)
     ui.clock:SetJustifyH("RIGHT")
     BuildGear(ui)
     Bar.Resize(width)
     Bar.UpdatePlay()
-    return ROW_H
+    return m.row
 end
 function Bar.Advance(elapsed)
     local run = st.run

@@ -103,6 +103,7 @@ local function NewLayers()
         switchRaw = 0, switchSmooth = 0, taunts = 0,
         bcT = {}, bcD = {}, nbc = 0, bsT = {},
         pfQuake = {}, pfWinter = {}, pfMarkT = {}, pfMarkK = {},
+        pfxT = {}, pfxKind = {}, pfxFix = {}, pfxDiag = {},
     }
 end
 local Pos = ns.Replay.PosOf
@@ -590,7 +591,7 @@ local function OnDied(c, ts, dstGUID, dst, dstKey)
     end
     if dstKey and c.bosses[dstKey] then c.L.bossDied = ts end
     local add = dstGUID and c.addBy[dstGUID]
-    if add and not add.to then add.to = ts end
+    if add and not add.to then add.to, add.died = ts, true end
 end
 local function OnSummon(c, ts, srcKey, dstGUID, dst)
     if not dstGUID or not dst then return end
@@ -656,6 +657,10 @@ local function Dispatch(c, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFla
         OnVehicle(c, ts, src, tonumber(a1) == 1)
     elseif sub == "FW_MARK" then
         OnMark(c, ts, a1)
+    elseif sub == "FW_POSFIX" then
+        local L = c.L
+        local n = #L.pfxT + 1
+        L.pfxT[n], L.pfxKind[n], L.pfxFix[n], L.pfxDiag[n] = ts, tostring(a1), tostring(a2 or ""), tostring(a4 or "")
     elseif sub == "FW_BUFFSNAP" then
         OnSnap(c, ts, a1, a2)
     end
@@ -1203,6 +1208,9 @@ function Layers.Build(scene)
     local ph = ns.Phases.New(fight)
     local RU = ns.ReplayUnits
     local ru = RU and RU.New(scene)
+    local AR = ns.ReplayArrows
+    local ar = AR and AR.New(scene)
+    local arSubs = AR and AR.SUBS
     local segs = ns.Encounters.Segs(fight)
     local span = max(1, fight.to - fight.from)
     local mcWant, rbWant = mc and (mc.want or ANY), rb and (rb.want or ANY)
@@ -1228,6 +1236,7 @@ function Layers.Build(scene)
                 or (dst and ruOpen[dst] and (sub == "UNIT_DIED" or sub == "SPELL_INTERRUPT"))) then
                 RU.Event(ru, ts, sub, src, dst, a1, a2, a4, id)
             end
+            if ar and arSubs[sub] then AR.Event(ar, ts, sub, src, dstGUID, dst, id, srcKey) end
             Dispatch(c, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4, sk, srcKey, dstKey)
             FC.Event(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4, a5, skF)
             if id then
@@ -1266,6 +1275,7 @@ function Layers.Build(scene)
     if sw then SW.Done(sw, c.L, scene) end
     if cu then CU.Done(cu, c.L, scene) end
     if RU then RU.Build(scene, segs, ru) end
+    if ar then AR.Done(ar, c.L, scene) end
     FC.Done(fc, c.L, feedRes)
     MK.Done(mc, c.L, feedRes)
     if rm and #rm.marks > 0 then c.L.marks = MK.Merge(c.L.marks, rm.marks) end
