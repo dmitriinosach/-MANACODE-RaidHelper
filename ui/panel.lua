@@ -29,8 +29,6 @@ local CORNER_GAP = 3
 local CORNER_LIFT = 2
 local DOT = 8
 local ORB_DOT = 8
-local TRI = 10
-local ORB_TRI = 10
 local JOB_H = 3
 local JOB_IN = 2
 local LONG_JOB = 1
@@ -40,7 +38,6 @@ local WHEN = { always = true, group = true, raid = true }
 local DEFAULT_LIST = { "count", "graphs" }
 local GLOW = "Interface\\Buttons\\CheckButtonHilight"
 local WHITE8 = "Interface\\Buttons\\WHITE8X8"
-local TRI_TEX = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_4"
 local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\"
 local ARROWS = { prev = "Interface\\MoneyFrame\\Arrow-Left-Up", next = "Interface\\MoneyFrame\\Arrow-Right-Up" }
 local LINE_TONES = { normal = "text.primary", muted = "text.note", warn = "text.warn", bad = "text.bad", good = "text.good" }
@@ -89,7 +86,7 @@ local rows = {}
 local buttons = {}
 local alerts = {}
 local ctx = { group = false, raid = false }
-local frame, logBtn, strip, dot, tri, job, jobFill, lockGlyph, compactGlyph
+local frame, logBtn, strip, dot, job, jobFill, lockGlyph, compactGlyph
 local hoverRow
 local ctrlHot
 local ctrlSide = "RIGHT"
@@ -395,10 +392,6 @@ local function IconTip(b)
     if b.def.tip then lines[#lines + 1] = TipLine(ns.T(b.def.tip), "tip.body") end
     if b.def.key == "log" then
         lines[#lines + 1] = TipLine(ns.T(Panel.RecStateKey()), "text.secondary")
-        local rng = ns.Ranging and ns.Ranging.Working and ns.Ranging.Working()
-        if rng then
-            lines[#lines + 1] = TipLine(string.format(ns.T("panel.rng"), rng, ns.Plural(rng, ns.T("panel.rng.n"))), "badge.yellow")
-        end
         local _, frac, text = ns.Jobs.State()
         if frac and text then
             lines[#lines + 1] = TipLine(string.format(ns.T("job.tip"), text, floor(frac * 100)), "progress.fill")
@@ -758,11 +751,9 @@ local function LayTop(compact)
             end
         end
     end
-    local d, t = compact and ORB_DOT or DOT, compact and ORB_TRI or TRI
+    local d = compact and ORB_DOT or DOT
     dot:SetWidth(d)
     dot:SetHeight(d)
-    tri:SetWidth(t)
-    tri:SetHeight(t)
 end
 local function Bare(bare)
     if frame.bare == bare then return end
@@ -916,12 +907,6 @@ local function StepDot()
     else
         dot:Hide()
     end
-    local rng = ns.Ranging and ns.Ranging.Working and ns.Ranging.Working()
-    if rng then
-        if not tri:IsShown() then tri:Show() end
-    elseif tri:IsShown() then
-        tri:Hide()
-    end
 end
 local function Glow(b, on)
     if on then
@@ -990,14 +975,6 @@ local function BuildMarks()
     dot:SetTexture(ART .. "dot.tga")
     ns.Kit.Tint(dot, "sem.rec")
     dot:Hide()
-    tri = logBtn:CreateTexture(nil, "OVERLAY")
-    tri:SetWidth(TRI)
-    tri:SetHeight(TRI)
-    tri:SetPoint("TOPLEFT", -1, 1)
-    tri:SetTexture(TRI_TEX)
-    tri:SetDesaturated(true)
-    ns.Kit.Tint(tri, "badge.yellow")
-    tri:Hide()
     job = CreateFrame("Frame", nil, logBtn)
     job:SetPoint("BOTTOMLEFT", JOB_IN, JOB_IN)
     job:SetPoint("BOTTOMRIGHT", -JOB_IN, JOB_IN)

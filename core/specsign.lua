@@ -17,8 +17,8 @@ local swaps = {}
 local snaps = {}
 local function Build()
     byClass = {}
-    swaps = ns.SpellSet(ns.specSwap, nil, true)
-    snaps = ns.SpellSet(ns.specSignSnap, nil, true)
+    swaps = ns.IdSet(ns.specSwap)
+    snaps = ns.IdSet(ns.specSignSnap)
     for cls, trees in pairs(ns.specSigns or {}) do
         local map = {}
         for t = 1, #trees do

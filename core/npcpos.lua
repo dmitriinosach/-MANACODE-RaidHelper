@@ -3,15 +3,11 @@ local sqrt = math.sqrt
 local max = math.max
 local min = math.min
 local floor = math.floor
-local huge = math.huge
 local band = bit.band
 local tsort = table.sort
-local tonumber = tonumber
 local pairs = pairs
-local wipe = wipe
 local F_NPC = 0x800
 local F_HOSTILE = 0x40
-local RNG = "FW_RNG"
 local STEP = 0.5
 local WINDOW = 2
 local MELEE_MIN = 2
@@ -30,16 +26,6 @@ local EASE = 0.6
 local HOLD = 20
 local WITNESS_HOLD = 3
 local ADD_R = 3
-local RNG_MIN = 3
-local RNG_BACK = 0.75
-local RNG_AHEAD = 0.25
-local RNG_W_MID = 0.15
-local RNG_W_MELEE = 0.5
-local RNG_W_PRIOR = 0.02
-local RNG_W_WEAK = 0.002
-local RNG_NEAR = 15
-local RNG_FAR = 40
-local RNG_BAD = 4
 local HOME_W = 0.02
 local HOME_M = 0.5
 local HOME_ITER = 30
@@ -52,16 +38,13 @@ NpcPos.off = false
 NpcPos.WINDOW = WINDOW
 NpcPos.EASE = EASE
 local px, py, qx, qy, sx, sy = {}, {}, {}, {}, {}, {}
-local rmx, rmy, rlo, rhi = {}, {}, {}, {}
-local pick = {}
-local gRx, gRy, gMx, gMy, gPy, gY, gMid = {}, {}, {}, {}, {}, {}, {}
 function NpcPos.New(scene, c)
     if NpcPos.off then return nil end
     return {
         scene = scene, c = c, byK = c.byK, tracks = c.tracks, ppy = scene.ppy, bosses = c.bosses,
-        hitT = {}, hitK = {}, hitN = {}, rng = {}, names = {}, witness = scene.boss, bodies = {}, actI = 0,
-        stats = { steps = 0, melee = 0, target = 0, witness = 0, range = 0, hold = 0, r = 0, rData = 0,
-                  rngLines = 0, addPts = 0, addMoved = 0, addShift = 0, home = 0, pin = 0, gone = 0, ms = 0,
+        hitT = {}, hitK = {}, hitN = {}, names = {}, witness = scene.boss, bodies = {}, actI = 0,
+        stats = { steps = 0, melee = 0, target = 0, witness = 0, hold = 0, r = 0, rData = 0,
+                  addPts = 0, addMoved = 0, addShift = 0, home = 0, pin = 0, gone = 0, ms = 0,
                   holder = 0, switch = 0 },
     }
 end
@@ -77,7 +60,7 @@ local function Hit(np, guid, name, ts, k, byPlayer)
     np.hitK[guid][n] = k
     if byPlayer then np.hitN[guid] = np.hitN[guid] + 1 end
 end
-function NpcPos.Feed(np, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2)
+function NpcPos.Feed(np, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags)
     if SWING[sub] then
         local ks = src and np.byK[src]
         if ks and dstGUID and dstFlags and band(dstFlags, F_NPC) > 0 and band(dstFlags, F_HOSTILE) > 0 then
@@ -88,18 +71,6 @@ function NpcPos.Feed(np, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags
         if kd and srcGUID and srcFlags and band(srcFlags, F_NPC) > 0 and band(srcFlags, F_HOSTILE) > 0 then
             Hit(np, srcGUID, src, ts, kd, false)
         end
-    elseif sub == RNG then
-        local k = src and np.byK[src]
-        local lo = tonumber(a1)
-        if not k or not dstGUID or not lo then return end
-        local r = np.rng[dstGUID]
-        if not r then
-            r = { T = {}, K = {}, lo = {}, hi = {}, at = 1 }
-            np.rng[dstGUID] = r
-        end
-        local n = #r.T + 1
-        r.T[n], r.K[n], r.lo[n], r.hi[n] = ts, k, lo, tonumber(a2) or false
-        np.stats.rngLines = np.stats.rngLines + 1
     end
 end
 local function SortCols(T, cols)
@@ -127,7 +98,6 @@ local function SortCols(T, cols)
 end
 local function Order(np)
     for guid, T in pairs(np.hitT) do SortCols(T, { np.hitK[guid] }) end
-    for _, r in pairs(np.rng) do SortCols(r.T, { r.K, r.lo, r.hi }) end
 end
 local function NewSweep(T, K)
     return { T = T, K = K, hi = 0, last = {} }
@@ -299,165 +269,7 @@ local function Primary(np)
         local key = ns.NpcKey(guid)
         if key and np.bosses[key] and n > bestN then best, bestN = guid, n end
     end
-    if best then return best end
-    bestN = MIN_HITS - 1
-    for guid, r in pairs(np.rng) do
-        local key = ns.NpcKey(guid)
-        if (not key or np.bosses[key]) and #r.T > bestN then best, bestN = guid, #r.T end
-    end
     return best
-end
-local function Cost(x, y, cnt, m, reach, gx, gy, wp, ppy)
-    local s = 0
-    for i = 1, cnt do
-        local dx, dy = x - rmx[i], y - rmy[i]
-        local d = sqrt(dx * dx + dy * dy) / ppy
-        local lo, hi = rlo[i], rhi[i]
-        if d < lo then
-            s = s + (lo - d) * (lo - d)
-        elseif hi and d > hi then
-            s = s + (d - hi) * (d - hi)
-        end
-        if hi then
-            local e = d - (lo + hi) / 2
-            s = s + RNG_W_MID * e * e
-        end
-    end
-    for i = 1, m do
-        local dx, dy = x - px[i], y - py[i]
-        local d = sqrt(dx * dx + dy * dy) / ppy
-        if d > reach then s = s + RNG_W_MELEE * (d - reach) * (d - reach) end
-    end
-    local dx, dy = (x - gx) / ppy, (y - gy) / ppy
-    return s + wp * (dx * dx + dy * dy)
-end
-local function Outside(cnt, x, y, ppy)
-    local s = 0
-    for i = 1, cnt do
-        local dx, dy = x - rmx[i], y - rmy[i]
-        local d = sqrt(dx * dx + dy * dy) / ppy
-        if d < rlo[i] then
-            s = s + (rlo[i] - d) * (rlo[i] - d)
-        elseif rhi[i] and d > rhi[i] then
-            s = s + (d - rhi[i]) * (d - rhi[i])
-        end
-    end
-    return sqrt(s / cnt)
-end
-local function Measurers(np, rs, t, offYd)
-    local T, n = rs.T, #rs.T
-    local at = rs.at
-    while at <= n and T[at] < t - RNG_BACK do at = at + 1 end
-    rs.at = at
-    wipe(pick)
-    local j = at
-    while j <= n and T[j] <= t + RNG_AHEAD do
-        pick[rs.K[j]] = j
-        j = j + 1
-    end
-    local cnt = 0
-    local PosAtTime = ns.Replay.PosAtTime
-    for k, i in pairs(pick) do
-        local x, y = PosAtTime(np.tracks[k], T[i])
-        if x >= 0 then
-            cnt = cnt + 1
-            rmx[cnt], rmy[cnt] = x, y
-            rlo[cnt] = rs.lo[i] + offYd
-            rhi[cnt] = rs.hi[i] and (rs.hi[i] + offYd) or false
-        end
-    end
-    return cnt
-end
-function NpcPos.Range(np, rs, t, offYd, reachYd, gx, gy, m, strong)
-    if not rs then return nil, 0, 0 end
-    local cnt = Measurers(np, rs, t, offYd)
-    if cnt < RNG_MIN then return nil, 0, cnt end
-    local ppy = np.ppy
-    local wp, span = RNG_W_PRIOR, RNG_NEAR
-    if gx < 0 then
-        gx, gy = 0, 0
-        for i = 1, cnt do gx, gy = gx + rmx[i], gy + rmy[i] end
-        gx, gy = gx / cnt, gy / cnt
-        wp, span = RNG_W_WEAK, RNG_FAR
-    elseif not strong then
-        wp, span = RNG_W_WEAK, RNG_FAR
-    end
-    local bx, by, best = gx, gy, huge
-    for q = 1, cnt do
-        if rhi[q] then gMid[q] = (rlo[q] + rhi[q]) / 2 end
-    end
-    local bound = Cost(gx, gy, cnt, m, reachYd, gx, gy, wp, ppy)
-    local step = 2
-    local ox, oy, half = gx, gy, span
-    for _ = 1, 3 do
-        local steps = floor(half / step + 0.5)
-        local cols = 0
-        for j = -steps, steps do
-            cols = cols + 1
-            local y = oy + j * step * ppy
-            gY[cols] = y
-            local base = (cols - 1) * cnt
-            for q = 1, cnt do
-                local dy = y - rmy[q]
-                gRy[base + q] = dy * dy
-            end
-            base = (cols - 1) * m
-            for q = 1, m do
-                local dy = y - py[q]
-                gMy[base + q] = dy * dy
-            end
-            local pdy = (y - gy) / ppy
-            gPy[cols] = pdy * pdy
-        end
-        for i = -steps, steps do
-            ns.Jobs.Step()
-            local x = ox + i * step * ppy
-            for q = 1, cnt do
-                local dx = x - rmx[q]
-                gRx[q] = dx * dx
-            end
-            for q = 1, m do
-                local dx = x - px[q]
-                gMx[q] = dx * dx
-            end
-            local pdx = (x - gx) / ppy
-            local pxx = pdx * pdx
-            for col = 1, cols do
-                local s = 0
-                local base = (col - 1) * cnt
-                local q = 1
-                while q <= cnt and s < best and s <= bound do
-                    local d = sqrt(gRx[q] + gRy[base + q]) / ppy
-                    local lo, hi = rlo[q], rhi[q]
-                    if d < lo then
-                        s = s + (lo - d) * (lo - d)
-                    elseif hi and d > hi then
-                        s = s + (d - hi) * (d - hi)
-                    end
-                    if hi then
-                        local e = d - gMid[q]
-                        s = s + RNG_W_MID * e * e
-                    end
-                    q = q + 1
-                end
-                if q > cnt and s < best and s <= bound then
-                    base = (col - 1) * m
-                    for r = 1, m do
-                        local d = sqrt(gMx[r] + gMy[base + r]) / ppy
-                        if d > reachYd then s = s + RNG_W_MELEE * (d - reachYd) * (d - reachYd) end
-                    end
-                    if s < best and s <= bound then
-                        local v = s + wp * (pxx + gPy[col])
-                        if v < best then bx, by, best = x, gY[col], v end
-                    end
-                end
-            end
-        end
-        ox, oy, half = bx, by, step
-        step = step / 4
-    end
-    if Outside(cnt, bx, by, ppy) > RNG_BAD then return nil, 0, cnt end
-    return bx, by, cnt
 end
 local function RaidMean(c, t)
     local sx0, sy0, n = 0, 0, 0
@@ -493,21 +305,18 @@ end
 local function PlaceAdds(np)
     local st, ppy = np.stats, np.ppy
     local lim = (ADD_R + OUT_YD) * ppy
-    local off = ns.ReplayLayers.Hitbox("")
     for guid, add in pairs(np.c.addBy) do
-        local T, rs = np.hitT[guid], np.rng[guid]
-        if add.n > 0 and (T or rs) then
-            local sw = T and NewSweep(T, np.hitK[guid])
+        local T = np.hitT[guid]
+        if add.n > 0 and T then
+            local sw = NewSweep(T, np.hitK[guid])
             for i = 1, add.n do
                 ns.Jobs.Step(2)
                 local x, y = add.x[i], add.y[i]
                 if x >= 0 then
                     st.addPts = st.addPts + 1
-                    local m = sw and Gather(np, sw, add.t[i]) or 0
+                    local m = Gather(np, sw, add.t[i])
                     local cx, cy = -1, -1
                     if m >= MELEE_MIN then cx, cy = MeleeMean(m, lim) end
-                    local rx, ry = NpcPos.Range(np, rs, add.t[i], off, ADD_R + 1, cx, cy, m, cx >= 0)
-                    if rx then cx, cy = rx, ry end
                     if cx >= 0 then
                         local dx, dy = (cx - x) / ppy, (cy - y) / ppy
                         st.addMoved = st.addMoved + 1
@@ -551,7 +360,7 @@ local function Body(np, guid)
     local rData = np.c.L.hitbox + REACH_PAD
     local T, K = np.hitT[guid], np.hitK[guid]
     local rYd = T and EstimateR(np, T, K, rData) or rData
-    b = { rYd = rYd, rData = rData, lim = (rYd + OUT_YD) * ppy, sw = T and NewSweep(T, K), rs = np.rng[guid],
+    b = { rYd = rYd, rData = rData, lim = (rYd + OUT_YD) * ppy, sw = T and NewSweep(T, K),
           reachPx = (rYd + 1) * ppy }
     np.bodies[guid] = b
     return b
@@ -613,7 +422,6 @@ function NpcPos.Place(np, HolderAt)
         local tx, ty = -1, -1
         if k > 0 then tx, ty = PosAtTime(c.tracks[k], t) end
         local m = b and b.sw and Gather(np, b.sw, t) or 0
-        local rs = b and b.rs
         local rYd = b and b.rYd or rDef
         local fixed, fixX, fixY, fixFrom = Fixed(c, t, near and ax or nil, ay)
         if fixed == "gone" then
@@ -626,8 +434,7 @@ function NpcPos.Place(np, HolderAt)
         else
             local cx, cy, src = -1, -1, nil
             if fixed == "pin" then
-                local rx, ry = NpcPos.Range(np, rs, t, L.hitbox, rYd + 1, fixX, fixY, 0, false)
-                if rx then cx, cy, src = rx, ry, "range" else cx, cy, src = fixX, fixY, "pin" end
+                cx, cy, src = fixX, fixY, "pin"
                 wasPin, gx = true, nil
             else
                 if wasPin and near then gx, gy, gt = ax, ay, t end
@@ -651,11 +458,6 @@ function NpcPos.Place(np, HolderAt)
                     cx, cy, src = AtTarget(np, t, tx, ty)
                     if src == "target" and hsrc ~= "target" then src = "holder" end
                 end
-                local hx, hy = cx, cy
-                if hx < 0 and near then hx, hy = ax, ay end
-                local melee = src == "melee"
-                local rx, ry = NpcPos.Range(np, rs, t, L.hitbox, rYd + 1, hx, hy, melee and m or 0, melee)
-                if rx then cx, cy, src = rx, ry, "range" end
                 if not src and lastX and t - lastT <= HOLD then cx, cy, src = lastX, lastY, "hold" end
             end
             if src then
@@ -663,7 +465,7 @@ function NpcPos.Place(np, HolderAt)
                 if src ~= "hold" and src ~= "pin" then lastX, lastY, lastT = cx, cy, t end
                 local glide = gx ~= nil and t - gt < GLIDE
                 local free = near and fixed ~= "pin"
-                local eased = free and not glide and (src == "melee" or src == "range")
+                local eased = free and not glide and src == "melee"
                 if glide then
                     local q = min(1, (t - gt + STEP) / GLIDE)
                     cx, cy = gx + (cx - gx) * q, gy + (cy - gy) * q

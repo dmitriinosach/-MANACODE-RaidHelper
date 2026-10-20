@@ -36,9 +36,9 @@ local headh, titleh, rowh, leadw, pctw = HEADH, TITLEH, ROWH, LEADW, PCTW
 local top = PAD + HEADH + GAP + TITLEH + GAP
 local ft
 local viewBtns = {}
-local rows = {}
+local rows
+local pool
 local list = {}
-local offset = 0
 local acc = 0
 local dirty = true
 local live = false
@@ -144,12 +144,8 @@ local function RowClick(self)
     end
 end
 local function Wheel(_, delta)
-    local most = max(0, Count() - Slots())
-    local want = max(0, min(most, offset - delta))
-    if want ~= offset then
-        offset = want
-        Mini.Draw()
-    end
+    pool:Clamp(Count(), Slots())
+    if pool:Wheel(delta) then Mini.Draw() end
 end
 local function SeatRow(r, k)
     r:SetHeight(rowh)
@@ -192,7 +188,6 @@ local function NewRow(k)
     r.name:SetPoint("RIGHT", r.val, "LEFT", -4, 0)
     r.name:SetJustifyH("LEFT")
     r.name:SetWordWrap(false)
-    rows[k] = r
     SeatRow(r, k)
     return r
 end
@@ -233,12 +228,8 @@ local function PaintRow(r, e)
     end
     r:Show()
 end
-local function HideRows()
-    for k = 1, #rows do
-        rows[k].e = nil
-        rows[k]:Hide()
-    end
-end
+pool = Kit.List(NewRow, PaintRow, { clear = function(r) r.e = nil end })
+rows = pool.rows
 local function DrawFaults()
     if not ft then
         ft = ns.GPList.New(frame, "HTP_FailWatchShellMiniFault", ns.GPList.MINI, true)
@@ -246,7 +237,7 @@ local function DrawFaults()
     end
     ft:ClearAllPoints()
     ft:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -top)
-    ft:Draw(fight, model, frame:GetWidth() - PAD * 2, offset, Slots())
+    ft:Draw(fight, model, frame:GetWidth() - PAD * 2, pool.offset, Slots())
     ft:Show()
 end
 local function PaintGive()
@@ -269,23 +260,14 @@ function Mini.Draw()
     if not frame then return end
     PaintGive()
     local n = Slots()
-    offset = max(0, min(offset, Count() - n))
+    pool:Clamp(Count(), n)
     if Faults() then
-        HideRows()
+        pool:Hide()
         DrawFaults()
         return
     end
     if ft then ft:Hide() end
-    for k = #rows + 1, n do NewRow(k) end
-    for k = 1, #rows do
-        local e = k <= n and list[k + offset]
-        if e then
-            PaintRow(rows[k], e)
-        else
-            rows[k].e = nil
-            rows[k]:Hide()
-        end
-    end
+    pool:Draw(list, n)
 end
 local function Title(text, sub)
     Put(titleText, text)
@@ -438,7 +420,7 @@ end
 local function SetView(key, auto)
     if not auto then manualPhase = phase end
     Saved().view = key
-    offset = 0
+    pool.offset = 0
     for i = 1, #VIEWS do viewBtns[VIEWS[i]]:SetActive(VIEWS[i] == key) end
     if RATE[key] then
         chat.tip = ns.T(key == "hps" and "report.tip.heal" or "report.tip")
@@ -494,7 +476,7 @@ end
 local function Choose(f)
     pickKey = f and Key(f) or nil
     manualPhase = phase
-    offset, asked = 0, nil
+    pool.offset, asked = 0, nil
     Mini.Rebuild()
 end
 function Mini.Pick(f)
@@ -722,7 +704,7 @@ function Mini.Show(x, y)
     else
         frame:SetPoint("TOP", UIParent, "TOP", 0, -120)
     end
-    offset, asked, seenTop = 0, nil, nil
+    pool.offset, asked, seenTop = 0, nil, nil
     wasCombat = UnitAffectingCombat("player") and true or false
     frame:Show()
     if View() == "faults" and ns.Panel and ns.Panel.SetAlert then ns.Panel.SetAlert("gp", false) end

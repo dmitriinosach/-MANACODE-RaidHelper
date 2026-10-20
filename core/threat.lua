@@ -27,7 +27,6 @@ Threat.PACK = PACK
 local RAID, RAID_PET = ns.Units.raid, ns.Units.raidPet
 local session = nil
 local halt = { seg = nil, why = nil, err = nil }
-local said = { seg = nil }
 local elapsed = 0
 local stat = { ticks = 0, lines = 0, gone = 0, ms = 0, worst = 0 }
 local units, guids, mobNames, hits, rank, order = {}, {}, {}, {}, {}, {}
@@ -46,8 +45,13 @@ function Threat.Status()
     return { on = Threat.Enabled(), session = session, halt = halt.why, err = halt.err, stat = stat }
 end
 local function Attempt()
-    local R = ns.Ranging
-    return R and R.Attempt and R.Attempt() or nil
+    local Rec = ns.Recorder
+    if not Rec or not Rec.IsOn() or Rec.IsPaused() or not Rec.InZone() then return nil end
+    local _, kind = GetInstanceInfo()
+    if kind ~= "raid" then return nil end
+    local live = ns.Store.Live()
+    if not live or not live.pull then return nil end
+    return live
 end
 local function Before(a, b)
     if rank[a] ~= rank[b] then return rank[a] > rank[b] end
@@ -170,10 +174,6 @@ local function Halt(why)
     local seg = s and s.seg or ns.Store.Live()
     halt.seg, halt.why = seg, why
     Finish(why ~= "error")
-    if said.seg ~= seg then
-        said.seg = seg
-        ns.Print(ns.T("thr.stop." .. why))
-    end
 end
 local function Tick(now)
     local seg = Threat.Enabled() and UnitDetailedThreatSituation and GetNumRaidMembers() > 0 and Attempt() or nil

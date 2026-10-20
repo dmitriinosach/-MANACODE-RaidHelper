@@ -7,7 +7,6 @@ local D = ns.guildNotes
 local CHAIN = 5
 local ROSTER_GAP = 15
 local SRC_ORDER = { "qdkp", "officer", "note", "list" }
-local SRC_RANK = { qdkp = 1, officer = 2, note = 3, list = 4 }
 local GuildNotes = {}
 ns.GuildNotes = GuildNotes
 GuildNotes.SRC_ORDER = SRC_ORDER
@@ -42,9 +41,6 @@ function GuildNotes.Lower(s)
     return (s:lower():gsub("[\208\209][\128-\191]", cyr))
 end
 local Lower = GuildNotes.Lower
-function GuildNotes.IsWord(word)
-    return WORDS[word] ~= nil or ALT[word] or ALTS[word] or GSW[word] or KW[word] or false
-end
 local function Around(before, after)
     local w = before:match("([^%s%d%p]+)[%s%p]*$")
     local a = after:match("^%s*([^%s%d%p]+)")
@@ -325,13 +321,6 @@ end
 function GuildNotes.AltsOf(main)
     GuildNotes.Refresh()
     return altsOf[main] or {}
-end
-function GuildNotes.Links()
-    GuildNotes.Refresh()
-    return altsOf
-end
-function GuildNotes.SrcRank(src)
-    return SRC_RANK[src or ""] or 99
 end
 function GuildNotes.Invalidate()
     dirty = true

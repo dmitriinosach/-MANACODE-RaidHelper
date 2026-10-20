@@ -461,7 +461,7 @@ local function buildMenu()
     end
     menuBtns = {}
     for k, a in ipairs(ACTIONS) do
-        local b = ns.MakeKitButton(menu)
+        local b = ns.MakeKitButton(menu, nil, a.danger and "danger" or nil)
         b:SetSize(202, 20)
         b:SetPoint("TOPLEFT", menu, "TOPLEFT", 10, a.key == "kick" and -251 or -136 - (k - 1) * 23)
         b.text:ClearAllPoints()
@@ -555,7 +555,6 @@ local function openMenu(cell, m)
         local a = b.action
         local on = a.on(m)
         b:SetText(ns.T(a.label))
-        b.tint = a.danger and ns.DANGER or nil
         if on then b.check:Show() else b.check:Hide() end
         local allowed = a.lead and canLead or (not a.lead and canOfficer)
         if allowed then

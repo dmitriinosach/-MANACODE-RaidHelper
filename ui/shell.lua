@@ -10,6 +10,7 @@ local MIN_W, MIN_H = 860, 572
 local TABGAP = 2
 local TABPAD = 12
 local TABMIN = 72
+local TABTIGHT = 44
 local ICONTAB = 40
 local ICON = 18
 local ACTPAD = 2
@@ -209,6 +210,7 @@ local function KeepOnScreen()
     frame:ClearAllPoints()
     frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", l + dx, b + dy)
 end
+local LayoutTabs
 local function OnSizing()
     local e = current and entries[current]
     for _, other in pairs(entries) do
@@ -219,6 +221,7 @@ local function OnSizing()
         end
     end
     if e and e.page then SizePage(e) end
+    LayoutTabs()
 end
 local function Maximize()
     local sw, sh = Screen()
@@ -377,7 +380,7 @@ local function PlaceNote()
     b:SetPoint("RIGHT", frame, "TOPRIGHT", -(rightW + TABPAD), Line())
     b:Show()
 end
-local function LayoutTabs()
+function LayoutTabs()
     tsort(order, TabOrder)
     local tt = TabLook()
     local x = tt.x
@@ -402,21 +405,38 @@ local function LayoutTabs()
             if not e.def.icon then textW = max(textW, e.w) end
         end
     end
+    local leftIcons, leftTexts = 0, 0
     for i = 1, #order do
         local e = order[i]
-        if e.tab then
+        if e.tab and e.def.right then
             local w = e.def.icon and e.w or textW
             e.tab:SetWidth(w)
-            if e.def.right then
-                e.x = rx
-                rx = rx + w + TABGAP
-            else
-                e.x = x
-                x = x + w + TABGAP
-            end
+            e.x = rx
+            rx = rx + w + TABGAP
+        elseif e.tab then
+            if e.def.icon then leftIcons = leftIcons + e.w + TABGAP else leftTexts = leftTexts + 1 end
         end
     end
     if toolGroup then rx = SeatGroup(toolGroup, rx + GROUPGAP) end
+    local leftW = textW
+    local frameW = frame:GetWidth() or 0
+    if leftTexts > 0 and frameW > 0 then
+        local room = floor(frameW - x - rx - GROUPGAP - leftIcons - leftTexts * TABGAP)
+        leftW = max(TABTIGHT, min(textW, floor(room / leftTexts)))
+    end
+    for i = 1, #order do
+        local e = order[i]
+        if e.tab and not e.def.right then
+            local w = e.def.icon and e.w or leftW
+            e.tab:SetWidth(w)
+            if not e.def.icon then
+                e.tab.text:SetWidth(max(1, w - TabLook().rim * 2 - 4))
+                e.tab.text:SetWordWrap(false)
+            end
+            e.x = x
+            x = x + w + TABGAP
+        end
+    end
     rightW = rx
     note.x = x
     PlaceNote()

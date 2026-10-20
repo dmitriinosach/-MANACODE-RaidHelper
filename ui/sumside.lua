@@ -1,12 +1,13 @@
 local _, ns = ...
 local floor = math.floor
 local max = math.max
-local W = 360
+local W = 420
 local OVERLAP = 4
 local INSET = 6
 local PAD = 6
 local GAP = 6
 local TOGGLE = 32
+local TOGGLE_OUT = TOGGLE / 2 - 2
 local LEVEL = 60
 local ARROW = "Interface\\Buttons\\UI-SpellbookIcon-%sPage-%s"
 local HILITE = "Interface\\Buttons\\UI-Common-MouseHilight"
@@ -74,29 +75,35 @@ local function PaintToggle()
     toggle.tipTitle = ns.T(open and "sum.side.in" or "sum.side.out")
     toggle.tip = ns.T("sum.side.tip")
 end
+local function PlaceToggle()
+    toggle:ClearAllPoints()
+    local open = Side.Open()
+    local _, right = nil, nil
+    if ns.Shell and ns.Shell.Room then _, right = ns.Shell.Room() end
+    local need = TOGGLE + (open and dock == "right" and Width() or 0)
+    if dock == "left" then
+        toggle:SetPoint("CENTER", open and side or shell, "LEFT", -TOGGLE_OUT, 0)
+    elseif right and right < need then
+        toggle:SetPoint("CENTER", shell, "LEFT", -TOGGLE_OUT, 0)
+    else
+        toggle:SetPoint("CENTER", (open and dock == "right") and side or shell, "RIGHT", TOGGLE_OUT, 0)
+    end
+end
 local function Dock()
     dock = PickDock()
-    local p = Inner()
     side:ClearAllPoints()
-    toggle:ClearAllPoints()
     if dock == "right" then
         side:SetPoint("TOPLEFT", shell, "TOPRIGHT", -OVERLAP, 0)
         side:SetPoint("BOTTOMLEFT", shell, "BOTTOMRIGHT", -OVERLAP, 0)
-        toggle:SetPoint("CENTER", shell, "RIGHT", -p, 0)
     elseif dock == "left" then
         side:SetPoint("TOPRIGHT", shell, "TOPLEFT", OVERLAP, 0)
         side:SetPoint("BOTTOMRIGHT", shell, "BOTTOMLEFT", OVERLAP, 0)
-        toggle:SetPoint("CENTER", shell, "LEFT", p, 0)
     else
         side:SetPoint("TOPRIGHT", shell, "TOPRIGHT", 0, 0)
         side:SetPoint("BOTTOMRIGHT", shell, "BOTTOMRIGHT", 0, 0)
-        if Side.Open() then
-            toggle:SetPoint("CENTER", side, "LEFT", p, 0)
-        else
-            toggle:SetPoint("CENTER", shell, "RIGHT", -p, 0)
-        end
     end
     side:SetWidth(Width())
+    PlaceToggle()
     PaintToggle()
 end
 local function Stack()

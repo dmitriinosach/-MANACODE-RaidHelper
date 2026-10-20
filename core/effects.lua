@@ -1,6 +1,5 @@
 local _, ns = ...
 local tsort = table.sort
-local format = string.format
 local Effects = {}
 ns.Effects = Effects
 local RAID_TARGETS = 8
@@ -258,11 +257,8 @@ function Effects.Migrate()
         return
     end
     local byName = NameIndex()
-    local clash = {}
     for name, ids in pairs(byName) do
-        if #ids > 1 then
-            clash[#clash + 1] = name
-        else
+        if #ids == 1 then
             local id = ids[1]
             local state = oldState and oldState[name]
             if state then Effects.Set(id, state) end
@@ -275,8 +271,4 @@ function Effects.Migrate()
     db.effectIds = nil
     db.effectState = nil
     db.effectCat = nil
-    if #clash > 0 then
-        tsort(clash)
-        ns.Print(format(ns.T("fx.clash"), #clash, table.concat(clash, ", ")))
-    end
 end

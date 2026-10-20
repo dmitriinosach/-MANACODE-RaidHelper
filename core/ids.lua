@@ -104,6 +104,9 @@ function ns.SpellSet(list, out, exact)
     end
     return out
 end
+function ns.IdSet(list, out)
+    return ns.SpellSet(list, out, true)
+end
 function ns.NpcSet(list, out, exact)
     out = out or {}
     for i = 1, #(list or {}) do

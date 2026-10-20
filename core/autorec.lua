@@ -69,7 +69,6 @@ local function CheckStop()
     end
     Disarm()
     ns.Recorder.Pause(true)
-    ns.Print(ns.T("auto.done"))
 end
 frame:SetScript("OnEvent", ns.Prof.Wrap("hot.bg", function(_, event)
     if event == "PLAY_MOVIE" or event == "CINEMATIC_START" then
@@ -130,7 +129,6 @@ function AutoRec.Killed(enc)
     if not AllFinals(map, enc) then return end
     Disarm()
     R.Pause(true)
-    ns.Print(string.format(ns.T("auto.final"), ns.EncName(enc)))
 end
 function AutoRec.DevAsk()
     ns.Print(ns.T(ns.Recorder.InZone() and "auto.here" or "auto.away"))

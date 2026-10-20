@@ -225,9 +225,26 @@ local function lootText()
     if k == "none" then return "" end
     return ns.T("loot_" .. k)
 end
+local function freeText(n, size)
+    local free = (size or 0) - (n or 0)
+    if free <= 0 then return "" end
+    return free .. " " .. plural(free, ns.T("seat1"), ns.T("seat2"), ns.T("seat5"))
+end
+local function howText()
+    local A = root.AutoInvite
+    if A and A.IsOn() then
+        local w = (A.WordsText() or ""):match("^%s*([^,]-)%s*,") or A.WordsText() or ""
+        if w ~= "" then return ns.T("howAuto", w) end
+    end
+    return ns.T("howWhisper")
+end
 local function tokens(needs)
     local n, size = ns.Session.Count()
     return {
+        tokFree  = freeText(n, size),
+        tokLead  = UnitName("player") or "",
+        tokHow   = howText(),
+        tokDs    = ns.Session.Field("ds") or "",
         tokRaid  = ns.Tpl.Name(ns.Session.Template()),
         tokNeeds = needs,
         tokCount = n .. "/" .. size,

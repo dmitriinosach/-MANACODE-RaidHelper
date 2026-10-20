@@ -3,8 +3,8 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 1.6.1
-## X-Date: 2026-10-19
+## Version: 1.6.2
+## X-Date: 2026-10-20
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
 ## OptionalDeps: Auctionator
@@ -86,7 +86,6 @@ data\achievements\toc.lua
 data\flasks.lua
 data\raidbuffs.lua
 data\servercmd.lua
-data\ranging.lua
 data\threat.lua
 data\ids.lua
 data\guildnotes.lua
@@ -194,7 +193,6 @@ core\replayunits.lua
 core\replayarrows.lua
 core\replaylayers.lua
 core\npcpos.lua
-core\ranging.lua
 core\realmshare.lua
 core\threat.lua
 core\deathpreview.lua

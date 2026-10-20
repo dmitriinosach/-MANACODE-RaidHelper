@@ -292,9 +292,8 @@ local function build(parent, width)
     grab:SetText(ns.T("btnMarksGrab"))
     grab.tip = ns.T("tipMarksGrab")
     grab.onClick = function() ns.Marks.Grab() end
-    wipeBtn = ns.MakeKitButton(box)
+    wipeBtn = ns.MakeKitButton(box, nil, "danger")
     wipeBtn:SetText(ns.T("btnMarksWipe"))
-    wipeBtn.tint = ns.DANGER
     wipeBtn.onClick = function() ns.Marks.ClearAll() end
     for i = 1, ns.Marks.COUNT do rows[i] = newRow(i) end
     pult:HookScript("OnHide", function() fly = false end)

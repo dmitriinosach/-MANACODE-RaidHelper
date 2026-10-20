@@ -9,7 +9,7 @@ local TOP = 8
 local SKADA = "Skada"
 local CVAR = "scriptProfile"
 local MINE = ADDON .. "_"
-local PARTS = { "hot.log", "hot.rec", "hot.aura", "hot.rng", "hot.realm", "hot.comm", "hot.panel", "hot.bg" }
+local PARTS = { "hot.log", "hot.rec", "hot.aura", "hot.realm", "hot.comm", "hot.panel", "hot.bg" }
 local WIN_PARTS = { "ui.iso", "ui.tl", "ui.page", "ui.click", "ui.sum", "ui.other", "bg" }
 local IS_PART, IS_WIN = {}, {}
 for i = 1, #PARTS do IS_PART[PARTS[i]] = true end
@@ -148,8 +148,7 @@ end
 function CpuMeter.Close(enc)
     if not (session and session.boss) then return end
     if enc ~= nil then session.enc = enc end
-    local r = Finish()
-    if r and profiled then CpuMeter.Print(r) end
+    Finish()
 end
 function CpuMeter.Running()
     return session ~= nil
@@ -196,10 +195,6 @@ function CpuMeter.Lines(r)
     if #parts > 0 then out[#out + 1] = format(T("cpu.parts"), table.concat(parts, "; ")) end
     out[#out + 1] = T(rows and "cpu.warn" or "cpu.hint")
     return out
-end
-function CpuMeter.Print(r)
-    local lines = CpuMeter.Lines(r)
-    for i = 1, #lines do ns.Print(lines[i]) end
 end
 function CpuMeter.State()
     local want = CpuMeter.Wanted()

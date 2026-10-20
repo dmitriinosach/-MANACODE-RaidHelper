@@ -91,6 +91,15 @@ local function Edge(f, c)
     f:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
 end
 function Badges.Skin(f, color)
+    if f.bare then
+        f.bare = nil
+        if f.stripe then
+            f:SetBackdrop(ns.Kit.Theme().badge.backdrop)
+            f:SetBackdropColor(style.bg[1], style.bg[2], style.bg[3], style.bg[4] or 1)
+            Edge(f, style.edge)
+            f.stripe:Show()
+        end
+    end
     if not f.stripe then
         f:SetBackdrop(ns.Kit.Theme().badge.backdrop)
         f:SetBackdropColor(style.bg[1], style.bg[2], style.bg[3], style.bg[4] or 1)
@@ -102,6 +111,12 @@ function Badges.Skin(f, color)
         skinned[#skinned + 1] = f
     end
     f.stripe:SetTexture(color[1], color[2], color[3], 1)
+end
+function Badges.Bare(f)
+    if f.bare then return end
+    f.bare = true
+    f:SetBackdrop(nil)
+    if f.stripe then f.stripe:Hide() end
 end
 local ShowLines = ns.Kit.ShowLines
 local HideTip = ns.Kit.HideLines
@@ -1467,7 +1482,9 @@ if ns.Tip and ns.Tip.SetAvoid then ns.Tip.SetAvoid(function() return lit end) en
 ns.Kit.OnTheme(function()
     for i = 1, #skinned do
         local f = skinned[i]
-        f:SetBackdropColor(style.bg[1], style.bg[2], style.bg[3], style.bg[4] or 1)
-        Edge(f, (f.lit or f.hot) and style.link or style.edge)
+        if not f.bare then
+            f:SetBackdropColor(style.bg[1], style.bg[2], style.bg[3], style.bg[4] or 1)
+            Edge(f, (f.lit or f.hot) and style.link or style.edge)
+        end
     end
 end)

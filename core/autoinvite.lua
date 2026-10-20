@@ -1,13 +1,12 @@
 local _, ns = ...
-local format = string.format
 local gmatch, gsub, lower = string.gmatch, string.gsub, string.lower
 local concat = table.concat
 local RAID_MAX = 40
 local PARTY_MAX = 5
 local HOLD = 60
-local SAY_GAP = 1.5
 local WORDS_MAX = 120
-local DEF = { words = "+, инв, inv, invite" }
+local DEF = { words = "+, инв, инвайт, пати, пригласи, inv, invite, party" }
+local OLD_WORDS = "+, инв, inv, invite"
 local Auto = {}
 ns.AutoInvite = Auto
 Auto.DEF = DEF
@@ -16,9 +15,6 @@ local listeners = {}
 local pending = {}
 local queue = {}
 local waits = {}
-local said = {}
-local told = {}
-local toldAt = 0
 local wordSet
 local wordSrc
 local function LowA(a)
@@ -42,9 +38,7 @@ local function Opt()
         o = {}
         s.autoInvite = o
     end
-    for k, v in pairs(DEF) do
-        if type(o[k]) ~= type(v) then o[k] = v end
-    end
+    if o.words == OLD_WORDS or o.words == DEF.words or type(o.words) ~= "string" then o.words = nil end
     return o
 end
 function Auto.OnChange(fn)
@@ -54,7 +48,7 @@ function Auto.IsOn()
     return on
 end
 function Auto.WordsText()
-    return Opt().words
+    return Opt().words or DEF.words
 end
 function Auto.SetWordsText(text)
     local list = {}
@@ -71,11 +65,12 @@ function Auto.SetWordsText(text)
             if n > WORDS_MAX then at = i break end
         end
     end
-    Opt().words = v ~= "" and v:sub(1, at - 1) or DEF.words
+    v = v:sub(1, at - 1)
+    Opt().words = (v ~= "" and v ~= DEF.words) and v or nil
     Notify()
 end
 local function Words()
-    local src = Opt().words
+    local src = Auto.WordsText()
     if wordSet and wordSrc == src then return wordSet end
     wordSet, wordSrc = {}, src
     for w in gmatch(src, "[^,]+") do
@@ -140,31 +135,6 @@ local function Ignored(name)
     end
     return false
 end
-local function SayOnce(key, text)
-    if said[key] then return end
-    said[key] = true
-    ns.Print(text)
-end
-local ticker = CreateFrame("Frame")
-ticker:Hide()
-local function Flush()
-    ticker:Hide()
-    if #told == 0 then return end
-    if #told == 1 then
-        ns.Print(format(ns.T("ainv.invited"), told[1]))
-    else
-        ns.Print(format(ns.T("ainv.invited.many"), #told, concat(told, ", ")))
-    end
-    told = {}
-end
-local function Tell(name)
-    told[#told + 1] = name
-    toldAt = GetTime()
-    ticker:Show()
-end
-ticker:SetScript("OnUpdate", function()
-    if GetTime() - toldAt >= SAY_GAP then Flush() end
-end)
 local function Convert()
     local raid, party = Group()
     if raid == 0 and party > 0 and IsPartyLeader() then ConvertToRaid() end
@@ -176,16 +146,9 @@ function Auto.Try(name)
     if InGroup(name) then return "member" end
     if pending[name] or queue[name] then return "pending" end
     if Ignored(name) then return "ignored" end
-    if not Auto.CanInvite() then
-        SayOnce("rights", ns.T("ainv.norights"))
-        return "rights"
-    end
-    said.rights = nil
+    if not Auto.CanInvite() then return "rights" end
     if Members() + Pending() >= RAID_MAX then
-        if not waits[name] then
-            waits[name] = GetTime()
-            ns.Print(format(ns.T("ainv.wait"), RAID_MAX, name, Auto.Waiting()))
-        end
+        waits[name] = waits[name] or GetTime()
         return "waiting"
     end
     waits[name] = nil
@@ -197,16 +160,11 @@ function Auto.Try(name)
     end
     InviteUnit(name)
     pending[name] = GetTime()
-    Tell(name)
     return "invited"
 end
 function Auto.Whisper(author, text)
     if not on or not Auto.Match(text) then return nil end
-    local v = Auto.Try(author)
-    if v == "member" or v == "self" or v == "ignored" then
-        SayOnce("why" .. v .. tostring(author), format(ns.T("ainv.why." .. v), tostring(author)))
-    end
-    return v
+    return Auto.Try(author)
 end
 local function Drain()
     if not on or (GetNumRaidMembers() or 0) == 0 then return end
@@ -229,14 +187,10 @@ function Auto.Switch(v)
     v = v and true or false
     if on == v then return end
     on = v
-    pending, queue, waits, said = {}, {}, {}, {}
+    pending, queue, waits = {}, {}, {}
     if on then
-        ns.Print(format(ns.T("ainv.on"), Opt().words))
         local raid, party = Group()
         if raid == 0 and party + 1 >= PARTY_MAX then Convert() end
-    else
-        Flush()
-        ns.Print(ns.T("ainv.off"))
     end
     Notify()
 end

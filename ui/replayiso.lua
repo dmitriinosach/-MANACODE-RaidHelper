@@ -403,7 +403,6 @@ function Iso.Show()
         return
     end
     if not ui.frame then Build() end
-    if auto then ns.Print(format(ns.T("iso.auto"), ns.EncName(fight.boss))) end
     run.want = run.focus
     ui.frame:Show()
     if run.fight ~= fight or not run.scene then

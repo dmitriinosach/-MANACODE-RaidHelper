@@ -24,10 +24,8 @@ local SCATTER_TOL = 2
 local HIT_WIN = 0.5
 local M = {}
 ns.ReplayMech = M
-local function Set(list, v)
-    local out = {}
-    for i = 1, list and #list or 0 do out[list[i]] = v == nil and true or v end
-    return out
+local function Put(out, list, v)
+    for i = 1, list and #list or 0 do out[list[i]] = v end
 end
 function M.New(fight)
     local D = ns.replayMech
@@ -52,29 +50,29 @@ function M.New(fight)
                   marks = {}, bomb = bomb, bCasts = {}, bHits = {}, chase = chase, cAura = {}, cSpawn = {},
                   cNpc = {}, cSeen = {}, cWait = {}, cLone = {}, cOpen = {}, runs = {},
                   winter = winter, rings = {}, wHits = {}, soul = soul, sOpen = {}, spans = {} }
-    ctx.wAura = Set(winter and winter.aura)
-    ctx.wHit = Set(winter and winter.hit)
-    ctx.sAura = Set(soul and soul.aura)
-    ctx.trapCast = Set(trap and trap.cast)
-    ctx.trapBoom = Set(trap and trap.boom)
-    ctx.bCast = Set(bomb and bomb.cast)
-    ctx.bGas = Set(bomb and bomb.gas)
-    ctx.bBoom = Set(bomb and bomb.boom)
-    ctx.bTomb = Set(bomb and bomb.tomb)
-    ctx.bFall = Set(bomb and bomb.fall and bomb.fall.cast)
+    ctx.wAura = ns.IdSet(winter and winter.aura)
+    ctx.wHit = ns.IdSet(winter and winter.hit)
+    ctx.sAura = ns.IdSet(soul and soul.aura)
+    ctx.trapCast = ns.IdSet(trap and trap.cast)
+    ctx.trapBoom = ns.IdSet(trap and trap.boom)
+    ctx.bCast = ns.IdSet(bomb and bomb.cast)
+    ctx.bGas = ns.IdSet(bomb and bomb.gas)
+    ctx.bBoom = ns.IdSet(bomb and bomb.boom)
+    ctx.bTomb = ns.IdSet(bomb and bomb.tomb)
+    ctx.bFall = ns.IdSet(bomb and bomb.fall and bomb.fall.cast)
     ctx.tombs, ctx.tombCasts = {}, {}
     for di = 1, #chase do
         local d = chase[di]
         ctx.cNpc[ns.NpcKeyOf(d.npc)] = di
-        for k in pairs(Set(d.aura)) do ctx.cAura[k] = di end
-        for k in pairs(Set(d.spawn)) do ctx.cSpawn[k] = di end
+        Put(ctx.cAura, d.aura, di)
+        Put(ctx.cSpawn, d.spawn, di)
     end
     for zi = 1, #zones do
         local z = zones[zi]
-        for k, v in pairs(Set(z.cast, zi)) do ctx.zCast[k] = v end
-        for k, v in pairs(Set(z.summon, zi)) do ctx.zSum[k] = v end
-        for k, v in pairs(Set(z.drop, zi)) do ctx.zDrop[k] = v end
-        for k, v in pairs(Set(z.hit, zi)) do ctx.zHit[k] = v end
+        Put(ctx.zCast, z.cast, zi)
+        Put(ctx.zSum, z.summon, zi)
+        Put(ctx.zDrop, z.drop, zi)
+        Put(ctx.zHit, z.hit, zi)
         ctx.zCasts[zi] = {}
     end
     if #chase == 0 then

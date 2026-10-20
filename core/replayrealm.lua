@@ -23,11 +23,6 @@ local PSRC = "FW_PSRC"
 local LEAVE = "SPELL_CAST_SUCCESS"
 local R = {}
 ns.ReplayRealm = R
-local function Ids(list)
-    local out = {}
-    for i = 1, list and #list or 0 do out[list[i]] = true end
-    return out
-end
 function R.New(fight)
     local D = ns.replayMech
     local rd = D and D.realms and D.realms[fight.boss]
@@ -35,7 +30,7 @@ function R.New(fight)
     local cd = D.cutters and D.cutters[fight.boss]
     local ctx = {
         fight = fight, players = fight.players or {}, rd = rd, cd = cd, ev = {}, bossT = { {}, {} }, bossNames = {},
-        emotes = {}, hits = {}, twi = Ids(rd.twi), phys = Ids(rd.phys), aura = ns.SpellSet(rd.aura),
+        emotes = {}, hits = {}, twi = ns.IdSet(rd.twi), phys = ns.IdSet(rd.phys), aura = ns.SpellSet(rd.aura),
         leave = ns.SpellSet(rd.leave), split = ns.SpellSet(rd.split), cutHit = ns.SpellSet(cd and cd.hit),
         cutPulse = ns.SpellSet(cd and cd.pulse), cutStart = ns.SpellSet(cd and cd.start),
         pudAura = {}, pudMark = {}, marks = {}, puds = {}, meteorHit = ns.SpellSet(rd.meteor and rd.meteor.hit),

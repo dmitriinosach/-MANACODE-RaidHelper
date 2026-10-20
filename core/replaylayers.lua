@@ -48,7 +48,6 @@ local BLAST_LIMIT = 500
 local VICTIM_LIMIT = 2000
 local BTGT = "FW_BTGT"
 local THR = "FW_THR"
-local RNG = "FW_RNG"
 local THR_HOLD = 6
 local HOLDER_KEEP = 30
 local CAST_LIMIT = 2000
@@ -1254,9 +1253,7 @@ function Layers.Build(scene)
             end
             if rr then RR.Event(rr, ts, sub, srcGUID, src, dstGUID, dst, a1, a2, skF) end
             if sk and cuWant and cuWant[sk] then CU.Event(cu, ts, sub, srcGUID, src, dst, a1, sk, srcKey or false) end
-            if np and (SWING[sub] or sub == RNG) then
-                NpcFeed(np, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2)
-            end
+            if np and SWING[sub] then NpcFeed(np, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags) end
         end
     end
     local res = ph and ns.Phases.Done(fight, ph) or ns.Phases.Get(fight)

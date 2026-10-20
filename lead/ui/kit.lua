@@ -6,7 +6,6 @@ local C = Kit.C
 ns.Kit = Kit
 ns.C = C
 ns.EDGE = C["text.title"]
-ns.DANGER = C["text.bad"]
 ns.Theme = setmetatable({}, {
     __index = function(_, k) return Kit.Theme()[k] end,
 })
@@ -21,6 +20,7 @@ ns.ClassText = Kit.ClassText
 ns.Hex = Kit.Hex
 ns.PaintWindow = Kit.Window
 ns.MakePanel = Kit.Panel
+ns.ScrollPage = Kit.ScrollPage
 ns.Caption = Kit.Caption
 ns.ClassColor = Kit.ClassColor
 ns.MakeKitButton = Kit.Button

@@ -303,7 +303,6 @@ local function Broadcast(v, data)
 end
 local function Got(v, sum, data, by)
     Accept(v, sum, data, by)
-    ns.Print(format(ns.T("gpg.got"), v, by))
 end
 local function OnRoster()
     local g = Store()

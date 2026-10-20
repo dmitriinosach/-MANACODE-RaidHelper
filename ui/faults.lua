@@ -21,7 +21,8 @@ local top, bar, foot, logh, btnh = 40, 26, 30, LOGH, BTNH
 local tab = "give"
 local current, model
 local follow = true
-local giveOffset, logOffset = 0, 0
+local giveOffset = 0
+local logW = 600
 local function RaidKey(f)
     return ns.Raid and ns.Raid.Key(f.raid) or "solo"
 end
@@ -80,8 +81,7 @@ local function GiveWheel(delta)
     if giveOffset ~= was then Page.Refresh() end
 end
 local function LogWheel(delta)
-    logOffset = max(0, logOffset - delta * 3)
-    Page.Refresh()
+    if log.list:Wheel(delta) then Page.Refresh() end
 end
 local function Metrics()
     btnh = Kit.FontGrow(BTNH)
@@ -178,6 +178,30 @@ local function LogLayout(r, width)
         x = x + w + 6
     end
 end
+local function LogTexts(row)
+    local unit = ns.Ledger.Get(row.s) and ns.Ledger.Unit(row.s) or tostring(row.s)
+    local what = row.r or ""
+    if row.kind == "hand" then what = format(ns.T("ft.hand"), what) end
+    local sys = row.kind == "undo" and format(ns.T("fp.log.undo"), unit) or unit
+    local n = tostring(row.n or 0)
+    if row.want and row.n and row.want > row.n then n = format(ns.T("fp.log.of"), row.n, row.want) end
+    return what, sys, n
+end
+local function FillLog(r, row, k)
+    r:ClearAllPoints()
+    r:SetHeight(logh)
+    r:SetPoint("TOPLEFT", 0, -(bar + logh * k))
+    r:SetPoint("TOPRIGHT", 0, -(bar + logh * k))
+    LogLayout(r, logW)
+    local what, sys, n = LogTexts(row)
+    r.cells.time:SetText(date("%H:%M", row.t or 0))
+    r.cells.who:SetText(row.who or "")
+    r.cells.what:SetText(what)
+    r.cells.sys:SetText(sys)
+    r.cells.n:SetText(n)
+    r.cells.by:SetText(row.by or "")
+    ns.Kit.Text(r.cells.sys, row.kind == "undo" and "text.bad" or "text.title")
+end
 local function BuildLog()
     log = CreateFrame("Frame", nil, frame)
     log:EnableMouseWheel(true)
@@ -194,19 +218,10 @@ local function BuildLog()
         fs:SetText(ns.T("fp.log.col." .. LOGCOLS[i][1]))
         ns.Kit.Text(fs, "text.secondary")
     end
-    log.rows = {}
+    log.list = Kit.List(function() return LogRow(log) end, FillLog, { step = 3 })
     log.empty = Kit.Str(log, "GameFontDisableSmall")
     ns.Kit.Text(log.empty, "text.off")
     log.empty:SetText(ns.T("fp.log.empty"))
-end
-local function LogTexts(row)
-    local unit = ns.Ledger.Get(row.s) and ns.Ledger.Unit(row.s) or tostring(row.s)
-    local what = row.r or ""
-    if row.kind == "hand" then what = format(ns.T("ft.hand"), what) end
-    local sys = row.kind == "undo" and format(ns.T("fp.log.undo"), unit) or unit
-    local n = tostring(row.n or 0)
-    if row.want and row.n and row.want > row.n then n = format(ns.T("fp.log.of"), row.n, row.want) end
-    return what, sys, n
 end
 local function RaidLabel(key)
     local all = ns.Encounters and ns.Encounters.Fights() or {}
@@ -239,36 +254,9 @@ local function PaintLog()
     local width = log:GetWidth() or 600
     LogLayout(log.head, width)
     local slots = max(1, floor(((log:GetHeight() or 300) - bar - logh - 4) / logh))
-    logOffset = max(0, min(logOffset, #rows - slots))
-    local shown = 0
-    for k = 1, slots do
-        local row = rows[#rows - logOffset - k + 1]
-        local r = log.rows[k]
-        if row and not r then
-            r = LogRow(log)
-            log.rows[k] = r
-        end
-        if row then
-            r:ClearAllPoints()
-            r:SetHeight(logh)
-            r:SetPoint("TOPLEFT", 0, -(bar + logh * k))
-            r:SetPoint("TOPRIGHT", 0, -(bar + logh * k))
-            LogLayout(r, width)
-            local what, sys, n = LogTexts(row)
-            r.cells.time:SetText(date("%H:%M", row.t or 0))
-            r.cells.who:SetText(row.who or "")
-            r.cells.what:SetText(what)
-            r.cells.sys:SetText(sys)
-            r.cells.n:SetText(n)
-            r.cells.by:SetText(row.by or "")
-            ns.Kit.Text(r.cells.sys, row.kind == "undo" and "text.bad" or "text.title")
-            r:Show()
-            shown = shown + 1
-        elseif r then
-            r:Hide()
-        end
-    end
-    for k = slots + 1, #log.rows do log.rows[k]:Hide() end
+    logW = width
+    log.list:Draw(function(i) return rows[#rows - i + 1] end, slots, #rows)
+    local shown = max(0, min(slots, #rows - log.list.offset))
     if shown == 0 then log.empty:Show() else log.empty:Hide() end
 end
 local function PaintGive()

@@ -15,7 +15,6 @@ local DLG_DARK = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
 local DLG_GOLD = "Interface\\DialogFrame\\UI-DialogBox-Gold-Border"
 local ACH_WOOD = "Interface\\AchievementFrame\\UI-Achievement-WoodBorder"
 local ACH_BG = "Interface\\AchievementFrame\\UI-Achievement-AchievementBackground"
-local ACH_TITLE = "Interface\\AchievementFrame\\UI-Achievement-Title"
 local LATTICE = "Interface\\AddOns\\" .. ADDON .. "\\lead\\art\\weave_lattice.tga"
 local ACCENT = { 0.22, 0.72, 0.32 }
 local WHITE = { 1, 1, 1 }
@@ -246,7 +245,6 @@ Kit.themes.dark = {
         bgHover = { 1, 1, 1, 0.08 },
         bgOn = { 1, 1, 1, 0.16 },
         text = WHITE,
-        textDim = { 0.75, 0.75, 0.75 },
         raid = { tex = ACH_CAT, coord = { 5 / 256, 162 / 256, 4 / 32, 23.5 / 32 }, color = { 1, 1, 1, 0.9 } },
     },
     card = {
@@ -269,8 +267,6 @@ Kit.themes.dark = {
         trackIdle = { 1, 1, 1, 0.05 },
         thumb = { 0.72, 0.78, 0.86, 0.95 },
         thumbHot = { 0.96, 0.98, 1.00, 1.00 },
-        mini = { 1, 1, 1, 0.08 },
-        miniThumb = { 1, 0.82, 0.3, 0.7 },
     },
     slider = {
         track = { 1, 1, 1, 0.16 },
@@ -300,7 +296,6 @@ Kit.themes.dark = {
         secondary = { 0.75, 0.75, 0.75 },
         muted = { 0.68, 0.68, 0.68 },
         note = { 0.565, 0.565, 0.565 },
-        ink = { 0.72, 0.72, 0.72 },
         tag = { 1, 0.25, 0.2 },
         good = { 0.49, 1, 0.54 },
         bad = { 1, 0.4, 0.3 },
@@ -325,19 +320,6 @@ Kit.themes.dark = {
         muted = { 0.6, 0.6, 0.6, 1 },
         alert = { 1, 0.48, 0.38, 1 },
         noClass = { 0.85, 0.85, 0.85, 1 },
-    },
-    award = {
-        plate = { bgFile = PARCH, coord = { 0, 1, 0.671875, 1 }, color = { 1, 1, 1, 1 } },
-        bar = { bgFile = ACH_TITLE, coord = { 0, 0.9765625, 0, 0.3125 }, color = { 1, 1, 1, 0.95 } },
-        frame = WHITE,
-        shield = WHITE,
-        num = WHITE,
-        title = WHITE,
-        desc = { 0.10, 0.06, 0.02, 1 },
-        who = { 0.16, 0.09, 0.03, 1 },
-        whoVal = { 0.36, 0.23, 0.10, 1 },
-        more = { 0.62, 0.62, 0.62, 1 },
-        edge = { 0.70, 0.15, 0.05, 1 },
     },
     ach = {
         bar = { 1, 1, 1, 0.55 },
@@ -418,7 +400,6 @@ Kit.themes.dark = {
             boss = { 0, 0, 0, 0.6 },
             skull = { 0.9, 0.9, 0.9, 0.9 },
         },
-        full = { 0.35, 0.78, 0.40 },
         ready = { 0.49, 1, 0.54 },
         notReady = { 1, 0.38, 0.38 },
         offline = { 0.5, 0.5, 0.5 },
@@ -472,8 +453,6 @@ Kit.themes.dark = {
             spread = { 1, 1, 1, 0.85 },
             spreadBad = { 1, 0.16, 0.12, 1 },
             chase = { 0.95, 0.75, 0.35, 0.9 },
-            badge = { 0, 0, 0, 0.75 },
-            now = { 1, 0.82, 0, 0.18 },
             important = { 1, 0.86, 0.55 },
             focus = { 1, 0.82, 0, 0.95 },
             focusText = { 1, 0.95, 0.35 },
@@ -604,7 +583,6 @@ local EDGE = { 1, 0.86, 0.42 }
 local WOOD = { 0.255, 0.205, 0.135 }
 local LIGHT = { 0.93, 0.89, 0.80 }
 local LIGHT2 = { 0.79, 0.72, 0.58 }
-local OLD_INK = { 0.23, 0.14, 0.06 }
 local TILE = { 0.72, 0.59, 0.35 }
 local metal = lift(WOOD, 0.82)
 local dusk = lift(WOOD, 0.22)
@@ -651,7 +629,6 @@ Kit.themes.scroll = {
     scroll = {
         thumb = rgba(LIGHT2, 0.95),
         thumbHot = rgba(EDGE, 1),
-        miniThumb = rgba(EDGE, 0.7),
     },
     slider = {
         track = { 0, 0, 0, 0.35 },
@@ -757,7 +734,6 @@ Kit.themes.scroll = {
         primary = LIGHT,
         secondary = LIGHT2,
         muted = { 0.68, 0.62, 0.51 },
-        ink = OLD_INK,
     },
     badge = {
         bg = { 0.085, 0.065, 0.045, 1 },
@@ -849,7 +825,6 @@ Kit.themes.gold = {
     scroll = {
         thumb = rgba(brass, 0.95),
         thumbHot = rgba(GOLD, 1),
-        miniThumb = rgba(GOLD, 0.7),
     },
     slider = {
         track = { 0, 0, 0, 0.40 },
@@ -956,7 +931,6 @@ Kit.themes.gold = {
         primary = CREAM,
         secondary = CREAM2,
         muted = { 0.70, 0.64, 0.50 },
-        ink = CREAM2,
     },
     badge = {
         bg = { 0.075, 0.06, 0.035, 1 },

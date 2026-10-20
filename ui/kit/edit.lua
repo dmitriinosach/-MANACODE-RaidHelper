@@ -34,6 +34,7 @@ local function EditEnter(self)
 end
 function Kit.Edit(parent, multi, name)
     local e = CreateFrame("EditBox", name, parent)
+    e:SetFontObject(ChatFontNormal)
     Kit.Bind(e, "ChatFontNormal")
     e:SetTextInsets(6, 6, 3, 3)
     e:SetAutoFocus(false)

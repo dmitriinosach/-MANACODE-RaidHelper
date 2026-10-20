@@ -385,7 +385,7 @@ local function Armed(b)
 end
 local function BuildButton(r, it)
     local label = it.text and it.label and Label(r, "text.primary") or nil
-    local b = Kit.Button(r)
+    local b = Kit.Button(r, nil, it.danger and "danger" or nil)
     r.Place = function()
         if label then PlaceLabel(r, label) end
         b:ClearAllPoints()
@@ -409,7 +409,6 @@ local function BuildButton(r, it)
         b:SetText(Text(Armed(b) and it.confirm or (it.text or it.label)))
         b:SetWidth(max(it.width and Wide(it.width) or BTN_MIN, b.text:GetStringWidth() + BTN_PAD))
         Tip(b, it, false)
-        b.tint = it.danger and Kit.C["text.bad"] or nil
         if Enabled(it) then b:Enable() else b:Disable() end
     end
 end

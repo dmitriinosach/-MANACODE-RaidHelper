@@ -51,8 +51,8 @@ frame:Hide()
 local seenAll = 0
 local borrowed, borrowBase = false, 0
 local counter = CreateFrame("Frame")
-local LOG_FIX = { tick = 1, silent = 5, gap = 15, say = 60, few = 5, each = 0.8, quiet = 0, acc = 0, last = -1,
-                  at = -60, saidAt = -60 }
+local LOG_FIX = { tick = 1, silent = 5, gap = 15, few = 5, each = 0.8, quiet = 0, acc = 0, last = -1,
+                  at = -60 }
 local function Clear()
     if CombatLogClearEntries then CombatLogClearEntries() end
 end
@@ -125,10 +125,6 @@ counter:SetScript("OnUpdate", function(_, elapsed)
     if F.quiet < F.silent or now - F.at < F.gap then return end
     F.quiet, F.at = 0, now
     Clear()
-    if now - F.saidAt >= F.say then
-        F.saidAt = now
-        ns.Print(ns.T("log.revived"))
-    end
 end)
 function Meter.Seen()
     return SeenNow()

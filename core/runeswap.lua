@@ -10,7 +10,7 @@ function RS.Begin(s, fight)
     for i = 1, #s.badges do
         local bd = s.badges[i]
         if bd.kind == "runeswap" then
-            local hitIds = ns.SpellSet(bd.hits, nil, true)
+            local hitIds = ns.IdSet(bd.hits)
             return { s = s, from = fight.from, to = fight.to, i = i, late = bd.late or 3, aura = bd.id,
                      hitIds = hitIds, eps = {}, healAmt = 0, subs = SUBS }
         end

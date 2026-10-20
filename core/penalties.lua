@@ -228,11 +228,6 @@ local function Episodes(times, gap)
     end
     return out
 end
-local function AsSet(set, list)
-    set = set or {}
-    ns.SpellSet(list, set)
-    return set
-end
 local function Applies(rule, fight)
     local raid = fight.raid
     if rule.size and not (raid and raid.size == rule.size) then return false end
@@ -243,7 +238,7 @@ function Penalties.Applies(rule, fight)
     return Applies(rule, fight)
 end
 local function DeathMatch(rule, d)
-    local spells = AsSet(nil, rule.spells)
+    local spells = ns.SpellSet(rule.spells)
     local srcs = {}
     ns.NpcSet(rule.srcs, srcs)
     local k = d.killer
@@ -398,7 +393,7 @@ local function Detect(rule, p, s, fight)
             end
         end
     elseif kind == "killer" then
-        local spells = AsSet(nil, rule.spells)
+        local spells = ns.SpellSet(rule.spells)
         for i = 1, #s.players do
             local other = s.players[i]
             for k = 1, #other.deathInfo do
@@ -450,7 +445,7 @@ local function Detect(rule, p, s, fight)
             end
         end
     elseif kind == "mccast" then
-        local spells = AsSet(nil, rule.spells)
+        local spells = ns.SpellSet(rule.spells)
         for i = 1, #p.mcCasts do
             local c = p.mcCasts[i]
             if spells[c.spell] then out[#out + 1] = { t = c.t, note = c.spell } end

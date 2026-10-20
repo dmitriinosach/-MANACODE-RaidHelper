@@ -23,7 +23,6 @@ local STAGES = {
     "hot.rec",
     "rec.snap",
     "hot.aura",
-    "hot.rng",
     "hot.realm",
     "hot.comm",
     "hot.panel",

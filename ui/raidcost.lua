@@ -23,7 +23,7 @@ local function Fit()
     COL_EDIT = COL_AH + AHW + 10
     COL_DATE = COL_EDIT + EDITW + 12
 end
-local sec = { rows = {}, heads = {}, offset = 0 }
+local sec = { heads = {} }
 local function GoldText(copper)
     if not copper then return ns.T("cost.none") end
     return ns.RaidCost.Gold(copper)
@@ -114,6 +114,19 @@ local function PaintAH(r, it)
     end
     hit.tipDim = Cost.Manual(it.item) and ns.T("set.cost.tip.own") or nil
 end
+local function FillRow(r, it, i)
+    r.item = it
+    r.icon:SetTexture(ns.RaidCost.Icon(it.id))
+    r.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    r.name:SetText(ns.ConsumableName(it.id, it.spell, it.item))
+    PaintAH(r, it)
+    local c, t = ns.RaidCost.Manual(it.item)
+    if not r.edit:HasFocus() then r.edit:SetValue(EditText(c)) end
+    r.when:SetText(t and ns.RaidCost.Date(t) or "")
+    r:ClearAllPoints()
+    r:SetPoint("TOPLEFT", 0, -(INFOH + HEADH + (i - 1) * ROWH))
+    r:SetPoint("RIGHT", sec.body, "RIGHT", 0, 0)
+end
 Refresh = function()
     local body = sec.body
     if not body then return end
@@ -123,37 +136,17 @@ Refresh = function()
         h.fs:ClearAllPoints()
         h.fs:SetPoint("TOPLEFT", h.x(), -INFOH)
     end
-    for i = 1, #sec.rows do RowGeom(sec.rows[i]) end
+    for i = 1, #sec.list.rows do RowGeom(sec.list.rows[i]) end
     local items = ns.RaidCost.Items()
     local ah = ns.RaidCost.HasAH()
     local stamp = _G.AUCTIONATOR_LAST_SCAN_TIME
     sec.info:SetText(ah and format(ns.T("set.cost.ah"), ns.RaidCost.Date(type(stamp) == "number" and stamp or nil))
         or ns.T("set.cost.noah"))
     local shown = Visible()
-    sec.offset = max(0, min(sec.offset, #items - shown))
-    for i = 1, #sec.rows do
-        local r = sec.rows[i]
-        local it = items[i + sec.offset]
-        if it and i <= shown then
-            r.item = it
-            r.icon:SetTexture(ns.RaidCost.Icon(it.id))
-            r.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            r.name:SetText(ns.ConsumableName(it.id, it.spell, it.item))
-            PaintAH(r, it)
-            local c, t = ns.RaidCost.Manual(it.item)
-            if not r.edit:HasFocus() then r.edit:SetValue(EditText(c)) end
-            r.when:SetText(t and ns.RaidCost.Date(t) or "")
-            r:ClearAllPoints()
-            r:SetPoint("TOPLEFT", 0, -(INFOH + HEADH + (i - 1) * ROWH))
-            r:SetPoint("RIGHT", body, "RIGHT", 0, 0)
-            r:Show()
-        else
-            r.item = nil
-            r:Hide()
-        end
-    end
+    sec.list:Draw(items, shown)
     if #items > shown then
-        sec.more:SetText(format(ns.T("set.cost.more"), sec.offset + 1, min(#items, sec.offset + shown), #items))
+        local off = sec.list.offset
+        sec.more:SetText(format(ns.T("set.cost.more"), off + 1, min(#items, off + shown), #items))
         sec.more:ClearAllPoints()
         sec.more:SetPoint("TOPLEFT", 0, -(INFOH + HEADH + shown * ROWH + 2))
         sec.more:Show()
@@ -182,8 +175,8 @@ local function Build(body)
     Head(body, function() return COL_DATE end, "set.cost.date")
     sec.more = ns.Kit.Str(body, "GameFontDisableSmall")
     ns.Kit.Text(sec.more, "text.off")
-    local items = ns.RaidCost.Items()
-    for i = 1, #items do sec.rows[i] = NewRow(body, i) end
+    sec.list = ns.Kit.List(function(k) return NewRow(body, k) end, FillRow,
+        { clear = function(r) r.item = nil end })
     body:SetScript("OnSizeChanged", function() Refresh() end)
     Refresh()
 end

@@ -189,3 +189,48 @@ function Kit.ScrollPage(parent, spec)
     end
     return p
 end
+local function ListClamp(l, total, slots)
+    l.total, l.slots = total, slots
+    l.offset = max(0, min(l.offset, total - slots))
+    return l.offset
+end
+local function ListHide(l)
+    for k = 1, #l.rows do
+        local r = l.rows[k]
+        if l.clear then l.clear(r) end
+        r:Hide()
+    end
+end
+local function ListDraw(l, items, slots, total)
+    local get = type(items) == "function" and items or nil
+    ListClamp(l, total or #items, slots)
+    local rows = l.rows
+    for k = #rows + 1, slots do rows[k] = l.make(k) end
+    for k = 1, #rows do
+        local i = k + l.offset
+        local item
+        if k <= slots and i <= l.total then
+            if get then item = get(i) else item = items[i] end
+        end
+        local r = rows[k]
+        if item ~= nil then
+            l.fill(r, item, k)
+            r:Show()
+        else
+            if l.clear then l.clear(r) end
+            r:Hide()
+        end
+    end
+end
+local function ListWheel(l, delta)
+    local was = l.offset
+    l.offset = max(0, min(max(0, l.total - l.slots), l.offset - delta * l.step))
+    return l.offset ~= was
+end
+function Kit.List(make, fill, spec)
+    spec = spec or {}
+    local l = { rows = {}, offset = 0, slots = 0, total = 0, step = spec.step or 1, make = make, fill = fill,
+                clear = spec.clear }
+    l.Clamp, l.Draw, l.Wheel, l.Hide = ListClamp, ListDraw, ListWheel, ListHide
+    return l
+end

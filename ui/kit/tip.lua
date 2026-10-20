@@ -174,7 +174,10 @@ local function Fill(fs, text, font, justify, r, g, b)
     fs:SetFontObject(Kit.FontFor(font, tipSized) or _G[font])
     fs:SetWidth(0)
     fs:SetJustifyH(justify)
-    fs:SetText(text)
+    if not pcall(fs.SetText, fs, text) then
+        fs:SetFontObject(_G[font])
+        fs:SetText(text)
+    end
     fs:SetTextColor(r, g, b)
     fs:ClearAllPoints()
     fs:Show()

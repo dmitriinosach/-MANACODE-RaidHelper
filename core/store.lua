@@ -4,8 +4,6 @@ local tremove = table.remove
 local type = type
 local tostring = tostring
 local tonumber = tonumber
-local match = string.match
-local format = string.format
 local abs = math.abs
 local MB = 1048576
 local WEEK = 7 * 86400
@@ -284,22 +282,12 @@ local function DropGroup(group)
     ns.FightTree.Drop(plan)
     return true, #doomed
 end
-local function Forms(n, key)
-    local forms = ns.T(key)
-    return ns.Plural and ns.Plural(n, forms) or match(forms, "^[^|]*")
-end
 local function Apply(drop)
-    local raids, gone = 0, 0
+    local raids = 0
     for k = 1, #drop do
-        local ok, tries = DropGroup(drop[k])
-        if ok then
-            raids = raids + 1
-            gone = gone + tries
-        end
+        if DropGroup(drop[k]) then raids = raids + 1 end
     end
     if raids == 0 then return end
-    local _, _, bytes = Store.Stats()
-    ns.Print(format(Forms(raids, "store.dropped"), raids, gone, ns.Fixed(bytes / MB)))
     if ns.Settings and ns.Settings.RefreshRecord then ns.Settings.RefreshRecord() end
 end
 local function Noop() end

@@ -460,7 +460,6 @@ jobFrame:SetScript("OnUpdate", Prof.Wrap("hot.bg", function(self)
         if job.prof and ns.Prof.on then ns.Prof.Add(job.prof, spent) end
         if win then Prof.Once(job.prof or "job", spent) end
         if not ok then
-            ns.Print(tostring(a))
             Finish(job, false, a)
         elseif coroutine.status(job.co) == "dead" then
             Finish(job, true, a, b, c)
@@ -486,8 +485,6 @@ end
 function ns.Print(text)
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99Raid Helper:|r " .. text)
 end
-local OLD_ADDON = "HTP_FailWatch"
-local SHIP_ADDON = "ManaCode_RaidHelper"
 local scratch = nil
 local recLock = nil
 local testListeners = {}
@@ -545,10 +542,6 @@ local function AddonVersion()
     return GetAddOnMetadata(ADDON, "Version")
 end
 ns.AddonVersion = AddonVersion
-local function OldFolder()
-    if ADDON ~= SHIP_ADDON or not IsAddOnLoaded then return end
-    if IsAddOnLoaded(OLD_ADDON) then ns.Print(ns.T("old.folder")) end
-end
 ns.TUNE = { react = 3, tail = 40, waveMin = 5, waveStep = 1, rebuff = 90, expectGood = 100, expectFair = 85,
             preview = 8 }
 local TUNE_GRADE = { react = true, tail = true, waveMin = true, waveStep = true, rebuff = true }
@@ -691,13 +684,7 @@ local function InstallWidgetFallback()
 end
 local loader = CreateFrame("Frame")
 loader:RegisterEvent("ADDON_LOADED")
-loader:RegisterEvent("PLAYER_LOGIN")
-loader:SetScript("OnEvent", function(self, event, name)
-    if event == "PLAYER_LOGIN" then
-        self:UnregisterEvent("PLAYER_LOGIN")
-        OldFolder()
-        return
-    end
+loader:SetScript("OnEvent", function(self, _, name)
     if name ~= ADDON then return end
     self:UnregisterEvent("ADDON_LOADED")
     if type(ManaCodeRaidHelperDB) ~= "table" then
@@ -723,5 +710,4 @@ loader:SetScript("OnEvent", function(self, event, name)
     for i = 1, #readyCallbacks do
         readyCallbacks[i]()
     end
-    if newer then ns.Print(string.format(ns.T("fmt.newer"), newer, rec)) end
 end)

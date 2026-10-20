@@ -71,8 +71,9 @@ local function FailMetrics()
     local preset = max(GPPRESET, GPTITLE + n + 4)
     local hover = max(GPHOVER, preset + s + 4)
     local btns = max(GPBTNS, hover + 4)
+    local side = GPTITLE + n + 10
     return { line = max(GPLINE, math.ceil(n * 1.15) + 8), preset = preset, hover = hover, btns = btns,
-             head = max(GPHEAD, btns + BTNH + 6) }
+             head = max(GPHEAD, btns + BTNH + 6), side = side, sideHead = side + BTNH + 10 }
 end
 local function Good(x)
     return x.goodDmg or x.dmg
@@ -464,7 +465,7 @@ end
 local function FailLayout(self, width)
     local model = self.model
     local fm = FailMetrics()
-    local top = self.inside and fm.line or fm.head
+    local top = self.inside and fm.line or fm.sideHead
     local h = top
     if model and #model.items > 0 then
         self.list:Show()
@@ -495,7 +496,17 @@ local function FailMode(f, inside)
     f.inside = inside
     f:SetParent(inside and content or ns.SumSide.Content())
     f.all:ClearAllPoints()
-    f.all:SetPoint("TOPRIGHT", -6, -(inside and 4 or fm.btns))
+    f.cfg:ClearAllPoints()
+    f.pop:ClearAllPoints()
+    if inside then
+        f.all:SetPoint("TOPRIGHT", -6, -4)
+        f.pop:SetPoint("RIGHT", f.all, "LEFT", -6, 0)
+        f.cfg:SetPoint("RIGHT", f.pop, "LEFT", -6, 0)
+    else
+        f.cfg:SetPoint("TOPLEFT", 0, -fm.side)
+        f.pop:SetPoint("LEFT", f.cfg, "RIGHT", 6, 0)
+        f.all:SetPoint("TOPRIGHT", 0, -fm.side)
+    end
     f.head:ClearAllPoints()
     f.head:SetPoint("TOPLEFT", 0, 0)
     f.title:ClearAllPoints()
@@ -506,17 +517,19 @@ local function FailMode(f, inside)
         f.title:SetPoint("LEFT", f.head, "LEFT", 10, 0)
         f.preset:SetPoint("LEFT", f.title, "RIGHT", GPGAP, 0)
         f.preset:SetPoint("RIGHT", f.head, "RIGHT", 0, 0)
+        f.preset:Show()
     else
         f.head:SetPoint("TOPRIGHT", 0, 0)
-        f.head:SetHeight(fm.hover)
-        TopLine(f.title, f.head, GPTITLE)
-        TopLine(f.preset, f.head, fm.preset)
+        f.head:SetHeight(fm.side)
+        f.title:SetPoint("TOPLEFT", f.head, "TOPLEFT", 0, -GPTITLE)
+        f.title:SetPoint("TOPRIGHT", f.head, "TOPRIGHT", 0, -GPTITLE)
+        f.preset:Hide()
     end
     local other = inside and f.narrow or f.wide
     other:Hide()
     f.list = inside and f.wide or f.narrow
     f.list:ClearAllPoints()
-    f.list:SetPoint("TOPLEFT", 0, -((inside and fm.line or fm.head) + 2))
+    f.list:SetPoint("TOPLEFT", 0, -((inside and fm.line or fm.sideHead) + 2))
 end
 local function FailPanel()
     if failPanel then return failPanel end
@@ -528,13 +541,11 @@ local function FailPanel()
         if fight and gpModel then ns.GPList.Issue(fight, gpModel.all) end
     end
     f.pop = ns.Kit.IconButton(f, "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\gp.tga", 16, "HTP_FailWatchGPOpen")
-    f.pop:SetPoint("RIGHT", f.all, "LEFT", -6, 0)
     f.pop.tipTitle = false
     f.pop.tip = ns.T("sum.gp.open")
     f.pop.onClick = OpenPage
     f.cfg = ns.MakeButton(f, "HTP_FailWatchGPSys", "quiet")
     f.cfg:SetHeight(BTNH)
-    f.cfg:SetPoint("RIGHT", f.pop, "LEFT", -6, 0)
     f.cfg.tip = ns.T("gpset.pick")
     f.cfg.onClick = function() if ns.FaultsPage then ns.FaultsPage.SystemMenu(f.cfg) end end
     f.head = CreateFrame("Frame", nil, f)
@@ -557,7 +568,7 @@ local function FailItem(model)
     if not model then return nil end
     local f = FailPanel()
     FailMode(f, Inside())
-    Badges.Skin(f, style.red)
+    if Inside() then Badges.Skin(f, style.red) else Badges.Bare(f) end
     f.model = model
     f.title:SetText(format(ns.T("sum.gp.title"), model.ready, model.pending, ns.Ledger.Unit()))
     f.preset:SetText("")

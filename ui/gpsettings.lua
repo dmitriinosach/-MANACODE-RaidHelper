@@ -25,10 +25,8 @@ local heads = {}
 local hotBoxes = {}
 local hotLabels = {}
 local edits = {}
-local rows = {}
+local list
 local items = {}
-local offset = 0
-local slots = 0
 local rowh, head = ROWH, HEAD
 local placed
 local function Changed()
@@ -183,10 +181,8 @@ local function PlaceRow(r, i, c)
     r.reset:ClearAllPoints()
     r.reset:SetPoint("LEFT", c.xReset, 0)
 end
-local function Row(i)
-    local r = rows[i]
-    if r then return r end
-    r = CreateFrame("Frame", nil, listBox)
+local function NewRow(i)
+    local r = CreateFrame("Frame", nil, listBox)
     r:EnableMouseWheel(true)
     r:SetScript("OnMouseWheel", function(_, delta) View.Scroll(delta) end)
     r.head = Kit.Str(r, "GameFontNormal")
@@ -210,7 +206,6 @@ local function Row(i)
     r.reset.text:SetText(ns.T("gpset.reset"))
     r.reset.onClick = function() OnReset(r) end
     PlaceRow(r, i, Cols())
-    rows[i] = r
     return r
 end
 local function SetBox(box, value)
@@ -244,6 +239,7 @@ local function FillRow(r, item)
     SetBox(r.short, ns.Penalties.Short(rule))
     if ns.Penalties.IsChanged(rule.key) then r.reset:Enable() else r.reset:Disable() end
 end
+list = Kit.List(NewRow, FillRow, { step = WHEEL })
 local function GuildLine()
     local G = ns.GPGuild
     if not G then return "" end
@@ -343,39 +339,27 @@ local function Place()
     pageText:SetPoint("BOTTOMRIGHT", -PAD, U(10))
     hintText:ClearAllPoints()
     hintText:SetPoint("BOTTOMLEFT", PAD, U(10))
-    for i = 1, #rows do PlaceRow(rows[i], i, cols) end
+    for i = 1, #list.rows do PlaceRow(list.rows[i], i, cols) end
 end
 function View.Refresh()
     if not frame or not frame:IsVisible() then return end
     Place()
     RefreshHead()
     RefreshGuild()
-    slots = max(1, floor(listBox:GetHeight() / rowh))
-    offset = max(0, min(offset, #items - slots))
-    for i = 1, slots do
-        local r = Row(i)
-        local item = items[i + offset]
-        if item then
-            FillRow(r, item)
-            r:Show()
-        else
-            r:Hide()
-        end
-    end
-    for i = slots + 1, #rows do rows[i]:Hide() end
-    pageText:SetText(format(ns.T("gpset.page"), min(#items, offset + 1), min(#items, offset + slots), #items))
+    local slots = max(1, floor(listBox:GetHeight() / rowh))
+    list:Draw(items, slots)
+    pageText:SetText(format(ns.T("gpset.page"), min(#items, list.offset + 1), min(#items, list.offset + slots), #items))
 end
 function View.Search(text)
     query = Lower(ns.Penalties.Clean(text))
-    offset = 0
+    list.offset = 0
     BuildItems()
     View.Refresh()
 end
 function View.Scroll(delta)
     local focus = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus()
     if focus and focus.editKey then focus:ClearFocus() end
-    offset = offset - delta * WHEEL
-    View.Refresh()
+    if list:Wheel(delta) then View.Refresh() end
 end
 local function DoPublish()
     local G = ns.GPGuild

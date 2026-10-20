@@ -2,7 +2,6 @@ local _, ns = ...
 local floor = math.floor
 local band = bit.band
 local find = string.find
-local format = string.format
 local KILL_GRACE = 2
 local AUTO_WAIT = 10
 local IDLE_CLOSE = 10
@@ -28,7 +27,7 @@ local F_PLAYER = ns.F.PLAYER
 local F_BY_PLAYER = ns.F.BY_PLAYER
 local F_GROUP = ns.F.GROUP
 local WPN_AURA = ns.RecWpn.AURA
-local SPEC_SWAP = ns.SpellSet(ns.specSwap, nil, true)
+local SPEC_SWAP = ns.IdSet(ns.specSwap)
 local ACH_EVENTS = ns.RecAch.EVENTS
 local ASKED_MAX = 4096
 local Recorder = {}
@@ -265,7 +264,6 @@ function Recorder.Resume(why)
     ForgetKill()
     wipe(dead)
     Listen(true)
-    if why then ns.Print(ns.T("rec.resumed." .. why)) end
 end
 function Recorder.Stop()
     if not isOn then
@@ -397,7 +395,6 @@ local function RecordEvent(ts, ...)
         ns.Trash.Pull(seg, ts)
         if not ns.RecFilter.BossOn(enc) then
             seg.lite = enc
-            ns.Print(format(ns.T("rec.boss.lite"), ns.EncName(enc)))
         end
         PollFor(enc)
         if ns.CpuMeter then ns.CpuMeter.Pull(enc) end
@@ -783,11 +780,6 @@ ns.OnReady(function()
     if db.recording or db.settings.autoRaid then
         db.recording = false
         Recorder.Start()
-        if isOn and db.paused then
-            Recorder.Pause(true)
-            ns.Print(ns.T("slash.restored.paused"))
-        elseif isOn then
-            ns.Print(ns.T("slash.restored"))
-        end
+        if isOn and db.paused then Recorder.Pause(true) end
     end
 end)

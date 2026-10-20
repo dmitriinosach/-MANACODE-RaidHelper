@@ -55,7 +55,6 @@ local query = ""
 local tools = {}
 local wanted, onTimeline = true, false
 local srcFight = nil
-local srcWho = nil
 local srcData = nil
 local function Lower(text)
     local ru = ns.AutoInvite and ns.AutoInvite.Lower
@@ -219,13 +218,10 @@ local function WantUse()
     end
 end
 function Panel.SetSource(fight, who, data)
-    srcFight, srcWho, srcData = fight, who, data
+    srcFight, srcData = fight, data
     listOffset, hiddenOffset = 0, 0
     WantUse()
     Panel.Refresh()
-end
-function Panel.Source()
-    return srcFight, srcWho, srcData
 end
 local function DragBusy()
     return ns.FxDrag ~= nil and ns.FxDrag.Busy()

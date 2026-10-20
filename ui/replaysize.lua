@@ -9,8 +9,6 @@ local MARGIN = 24
 local GRIP = 16
 local MAX_EDGE = 8
 local BTN = 20
-local CLOSE = 28
-local CLOSE_EDGE = 5
 local SIDE = 12
 local BTN_GAP = 2
 local CAPTION_GAP = 8
@@ -151,7 +149,7 @@ function Size.Place()
     local e = Size.Edge()
     local y = -(e + st.head / 2)
     st.close:ClearAllPoints()
-    st.close:SetPoint("RIGHT", f, "TOPRIGHT", -(e + SIDE - CLOSE_EDGE), y)
+    st.close:SetPoint("RIGHT", f, "TOPRIGHT", -(e + SIDE), y)
     st.maxBtn:ClearAllPoints()
     st.maxBtn:SetPoint("RIGHT", st.close, "LEFT", -BTN_GAP, 0)
     st.foldBtn:ClearAllPoints()
@@ -171,8 +169,8 @@ function Size.Head(head)
     Size.Place()
 end
 local function BuildTitle(frame, close)
-    close:SetWidth(CLOSE)
-    close:SetHeight(CLOSE)
+    close:SetWidth(BTN)
+    close:SetHeight(BTN)
     close:SetFrameLevel(frame:GetFrameLevel() + BTN_LEVEL)
     st.close = close
     local b = Kit.MaxButton(frame)

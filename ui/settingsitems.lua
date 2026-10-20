@@ -255,18 +255,6 @@ S.Section("rec", "store", {
           end },
     },
 })
-S.Section("rec", "rng", {
-    label = "set.rec.rng",
-    order = 40,
-    items = {
-        { kind = "check", key = "on", label = "set.rec.rng.on", tip = "set.rec.rng.on.tip", default = true,
-          get = function() return Opt().rngOn == true end, set = function(on) Opt().rngOn = on end },
-        { kind = "slider", key = "min", label = "set.rec.rng.min", tip = "set.rec.rng.min.tip",
-          min = 3, max = 10, step = 1, default = 3,
-          get = function() return Opt().rngMin or 3 end, set = function(v) Opt().rngMin = v end,
-          enabled = function() return Opt().rngOn == true end },
-    },
-})
 local function Tuner(key, label, lo, hi, step, fmt, order)
     return { kind = "slider", key = key, label = label, tip = label .. ".tip", warn = "set.grade.warn",
              min = lo, max = hi, step = step, fmt = fmt, default = ns.TUNE[key], order = order,

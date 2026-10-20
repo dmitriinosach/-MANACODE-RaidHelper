@@ -8,6 +8,7 @@ local ARROW = "Interface\\Buttons\\UI-SpellbookIcon-%sPage-%s"
 local HEAD_H = 24
 local PAD = 8
 local WHEEL = 36
+local TOGGLE_OUT = 14
 local ROW_W = W - EDGE * 2 - PAD * 2 - 4
 local NAME = "GameFontNormalSmall"
 local INFO = "GameFontHighlightSmall"
@@ -195,8 +196,11 @@ end
 local function refresh()
     if not built then return end
     paintToggle()
+    toggle:ClearAllPoints()
+    toggle:SetPoint("CENTER", ns.Side.Open() and side or ns.window:Outer(), "RIGHT", TOGGLE_OUT, 0)
     local open = ns.Side.Open() and side:GetParent():IsVisible()
-    ns.window:ClampRight(open and -(W - 6) or 0)
+    local shown = side:GetParent():IsVisible()
+    ns.window:ClampRight(open and -(W - 6) or (shown and -(TOGGLE_OUT + 18) or 0))
     if ns.Side.Open() then
         side:Show()
         layout()
@@ -244,7 +248,6 @@ local function build()
     waitPool = ns.NewPool(newWaitRow)
     toggle = ns.NewFrame("Button", nil, win)
     toggle:SetSize(32, 32)
-    toggle:SetPoint("CENTER", outer, "RIGHT", -4, 0)
     toggle:SetFrameLevel(win:GetFrameLevel() + 20)
     toggle:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
     toggle:SetScript("OnEnter", function(self) ns.TipShow(self) end)

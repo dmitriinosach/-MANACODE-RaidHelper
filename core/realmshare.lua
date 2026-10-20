@@ -217,7 +217,7 @@ function S.AuraCount(name, spellId)
     if not auraSet then
         auraSet = {}
         for _, def in pairs(ns.replayMech.realms or {}) do
-            for i = 1, #(def.aura or {}) do auraSet[def.aura[i]] = true end
+            ns.IdSet(def.aura, auraSet)
         end
     end
     if not auraSet[spellId] then return nil end

@@ -18,33 +18,6 @@ local function Help()
 end
 local Slash = {}
 ns.Slash = Slash
-function Slash.Ranging()
-    if not ns.Ranging then return end
-    local st = ns.Ranging.Status()
-    local s = st.session
-    if st.broken then
-        ns.Print(format(ns.T("rng.status.broken"), st.broken))
-    elseif not st.on then
-        ns.Print(ns.T("rng.status.off"))
-    elseif not s then
-        ns.Print(format(ns.T("rng.status.idle"), st.sent, st.got))
-    elseif not s.decided then
-        local heard = 0
-        for _ in pairs(s.peers) do heard = heard + 1 end
-        ns.Print(format(ns.T("rng.status.wait"), s.enc, heard))
-    elseif not s.active then
-        ns.Print(format(ns.T("rng.status.below"), s.enc, s.count, ns.Ranging.MinClients()))
-    else
-        local me = s.lowFps and "rng.status.lowfps" or (s.me and "rng.status.me" or "rng.status.notme")
-        ns.Print(format(ns.T("rng.status.run"), s.enc, s.count, math.min(s.count, ns.Ranging.MEASURERS), ns.T(me),
-            s.sent, s.got))
-    end
-    local last = st.last
-    if last.why and last.at then
-        ns.Print(format(ns.T("rng.status.last"), date("%H:%M:%S", last.at), ns.T("rng.why." .. last.why)))
-    end
-    if st.foreign > 0 then ns.Print(format(ns.T("rng.status.foreign"), st.foreign)) end
-end
 function Slash.Diag()
     local parts = {
         { "core/store.lua", ns.Store },
@@ -105,7 +78,6 @@ function Slash.Diag()
         ns.Print(ns.T("slash.diag.panelhidden"))
     end
     if ns.Bober then ns.Print(ns.Bober.Diag()) end
-    Slash.Ranging()
     if ns.widgetFallback then
         ns.Print(ns.T("slash.diag.fallback"))
     end

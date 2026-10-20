@@ -223,7 +223,6 @@ local function restore(i, name, now)
     if #r >= FIGHT_N then
         paused[i] = now + FIGHT_PAUSE
         restores[i] = nil
-        ns.say(ns.T("marksFight", ns.T("mark" .. i)))
         return false
     end
     return true

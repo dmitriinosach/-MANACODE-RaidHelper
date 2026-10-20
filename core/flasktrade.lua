@@ -34,9 +34,6 @@ end
 function Trade.AutoBlocked()
     return blocked
 end
-local function Say(text)
-    ns.Print(text)
-end
 local function After(sec, fn, any)
     tasks[#tasks + 1] = { at = GetTime() + sec, id = not any and cur.id or nil, fn = fn }
     frame:Show()
@@ -178,7 +175,6 @@ local function Forget()
 end
 local function Failed()
     if cur.status == "split" then return end
-    Say(format(T("flask.put." .. cur.status), F.ItemName(cur.item)))
     if (cur.put or 0) == 0 then Forget() end
 end
 local Retry
@@ -238,7 +234,6 @@ local function Start(plan, forced)
         return
     end
     if have < need then
-        Say(format(T("flask.put.short"), F.ItemName(it), have, need, plan.name))
         need = have
     end
     cur.need, cur.put, cur.slots = need, 0, {}
@@ -263,7 +258,6 @@ end
 local function TryAccept()
     if not cur.open or cur.accepted or cur.done or not Ours() then return end
     if not TargetEmpty() then
-        if cur.status ~= "offer" then Say(format(T("flask.trade.offer"), cur.partner)) end
         cur.status = "offer"
         Changed()
         return
@@ -282,7 +276,6 @@ local function TryAccept()
         fails = fails + 1
         if fails >= BLOCK_AFTER and not blocked then
             blocked = true
-            Say(T("flask.trade.noauto"))
         end
         cur.status = "press"
         Changed()
@@ -301,7 +294,6 @@ local function ItemChanged()
     if cur.item and (cur.put or 0) > 0 then
         local n = Offered(cur.item.id)
         if n > cur.put then
-            Say(format(T("flask.trade.many"), n, F.ItemName(cur.item)))
             Withdraw()
             cur.status, cur.many = "many", n
             Changed()
@@ -330,11 +322,9 @@ local function Plan(force)
     local give = plan.give or (force and plan.item and plan.why ~= "bags" and plan.n < plan.limit)
     if give then
         if cur.item and cur.item ~= plan.item then Withdraw() end
-        if plan.warn == "own" then Say(format(T("flask.warn.own"), plan.name, plan.has or 0)) end
         if not cur.item then Start(plan, not plan.give) end
     else
         cur.status = plan.why
-        Say(Reason(plan))
         Whisper(plan)
     end
     Changed()
@@ -372,7 +362,6 @@ local function OnShow()
     end
     if InCombatLockdown() then
         cur.status = "combat"
-        Say(T("flask.trade.combat"))
         Changed()
         return
     end
@@ -390,9 +379,6 @@ local function Complete(s)
     if s.done or not a or not s.partner then return end
     s.done = true
     F.Record(s.partner, a.item, a.kind, time(), a.forced, a.count)
-    local plan = s.plan
-    local n = (plan and plan.n or 0) + a.count
-    Say(format(T("flask.trade.given"), F.ItemName(a.item), a.count, s.partner, n, plan and plan.norm or n))
     Changed()
 end
 local function OnClosed()
@@ -452,11 +438,9 @@ end
 function Trade.Switch(on)
     local ok, why = F.SetOn(on)
     if not ok then
-        Say(T("flask.on.group"))
         return false, why
     end
     if on then fails, blocked = 0, false end
-    Say(T(on and "flask.on" or "flask.off"))
     return true, nil
 end
 local function OnUpdate(self)
@@ -486,7 +470,6 @@ local function OnEvent(_, event, a, b)
     elseif not cur.open then
         if (event == "RAID_ROSTER_UPDATE" or event == "PARTY_MEMBERS_CHANGED") and F.IsOn() and not F.InGroup() then
             F.SetOn(false)
-            Say(T("flask.off.group"))
         end
     elseif event == "TRADE_PLAYER_ITEM_CHANGED" then
         ItemChanged()
