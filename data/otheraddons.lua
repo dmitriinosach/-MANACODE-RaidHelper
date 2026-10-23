@@ -5,8 +5,16 @@ ns.otherAddons = {
         url = "https://github.com/dmitriinosach/-MANACODE-PlayerRaidsInfo",
         name = { ruRU = "Player Raids Info", enUS = "Player Raids Info" },
         desc = {
-            ruRU = "Статистика рейдов игроков WoW Circle: окно рейдов и Alt-карточка",
-            enUS = "WoW Circle player raid stats: raids window and Alt card",
+            ruRU = "Дополнение по данным к Raid Helper: статистика рейдов игроков",
+            enUS = "Data add-on for Raid Helper: player raid stats",
+        },
+    },
+    {
+        url = "https://github.com/dmitriinosach/-MANACODE-Update/releases",
+        name = { ruRU = "ManacodeUpdate", enUS = "ManacodeUpdate" },
+        desc = {
+            ruRU = "Обновлялка: ставит и обновляет аддоны ManaCode и 3D-залы",
+            enUS = "Updater: installs and updates ManaCode addons and 3D rooms",
         },
     },
     {

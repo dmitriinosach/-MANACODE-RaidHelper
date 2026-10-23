@@ -23,7 +23,7 @@ Raid Helper records your raid and turns it into answers: who died and why, who s
 - **Discord** — one click sends the raid result as 4K images (raid summary + every boss with all DPS, healers and the key target) to your channel via ManacodeUpdate.
 
 ### Loot and penalties (GP)
-- **Fault list** — mechanics mistakes per attempt with proof, ready to award GP / deduct EP / spend DKP (EPGP, Quick DKP V2).
+- **Fault list** — mechanics mistakes per attempt with proof, ready to award GP / deduct EP / spend DKP (EPGP, Quick DKP V2) or give a roll penalty: the addon keeps each player's penalty for the raid and shows /roll results minus it.
 - Rules, presets, hotkeys for Slack / Death / Wipe, a journal with undo.
 
 ### Raid gathering
@@ -47,6 +47,16 @@ Raid Helper records your raid and turns it into answers: who died and why, who s
 2. **Manually**: download `ManaCode_RaidHelper-v….zip` (full, with 3D rooms) or `…-lite-v….zip` (without rooms) from [Releases](https://github.com/dmitriinosach/-MANACODE-RaidHelper/releases), unpack into `Interface\AddOns`, restart the game client completely.
 
 Open the window with `/mrh` or the panel buttons. Interface languages: English and Russian.
+
+## Lich King positions (client patch)
+
+The 3.3.5 client does not know the floor of the broken Lich King platform: from Quake to Remorseless Winter it reports zero coordinates for every participant, and the replay loses positions. A small client patch adds the two missing rows to the client floor table (`DungeonMapChunk.dbc`). Only the player who records the fight needs it.
+
+- **ManacodeUpdate** (easiest): the **Починить позиции на Личе** (Fix Lich King positions) button builds the patch for your client and leaves other map patches alone.
+- **By hand**: both release archives have `README.txt` and `patch-ruRU-A.MPQ` in the root, next to the addon folders. Put the file into the game's `Data\ruRU\` folder next to `patch-ruRU-3.MPQ`. Another client locale: rename it to `patch-<locale>-A.MPQ` and put it into `Data\<locale>\` (e.g. `Data\enUS\patch-enUS-A.MPQ`). The shared `Data\` folder does not work. If the name is taken, use the next free letter (B, C…). Fully restart the game.
+- **Another dungeon map patch** (its own `DungeonMapChunk.dbc`): the manual file replaces that whole table and the other patch's maps are lost — use ManacodeUpdate instead.
+
+Check: on the platform after Quake your arrow shows on the world map. Without the patch the Lich King replay shows a "no positions" line; click it for the same steps.
 
 ---
 
@@ -73,7 +83,7 @@ Raid Helper записывает рейд и отвечает на вопрос�
 - **Discord** — одной кнопкой итог рейда уходит в канал картинками в 4K (сводка рейда и каждый босс: все ДПС, хилы, важная цель) через ManacodeUpdate.
 
 ### Косячница (ГП)
-- **Косяки** — ошибки на механиках по попыткам с пруфом, сразу к начислению ГП / снятию ЕП / ДКП (EPGP, Quick DKP V2).
+- **Косяки** — ошибки на механиках по попыткам с пруфом, сразу к начислению ГП / снятию ЕП / ДКП (EPGP, Quick DKP V2) или штрафу к роллу: аддон помнит штраф каждого за рейд и показывает броски /roll за вычетом штрафа.
 - Правила, пресеты, хоткеи Слак / Смерть / Вайп, журнал с отменой.
 
 ### Сбор рейда
@@ -96,3 +106,13 @@ Raid Helper записывает рейд и отвечает на вопрос�
 2. **Вручную**: скачать `ManaCode_RaidHelper-v….zip` (полный, с 3D-залами) или `…-lite-v….zip` (без залов) в [Releases](https://github.com/dmitriinosach/-MANACODE-RaidHelper/releases), распаковать в `Interface\AddOns`, полностью перезапустить клиент.
 
 Окно — `/mrh` или кнопки на панели. Язык интерфейса — русский и английский.
+
+## Позиции на Личе (патч клиента)
+
+Клиент 3.3.5 не знает этаж разрушенной платформы Короля-лича: от «Сотрясения» до «Беспощадной зимы» он отдаёт всем участникам нулевые координаты, и реплей теряет позиции. Небольшой патч клиента добавляет две недостающие строки в таблицу этажей (`DungeonMapChunk.dbc`). Нужен только тому, кто пишет бой.
+
+- **ManacodeUpdate** (проще всего): кнопка **Починить позиции на Личе** соберёт патч под ваш клиент и не тронет другие патчи карт.
+- **Вручную**: в корне обоих архивов релиза, рядом с папками аддона, лежат `README.txt` и `patch-ruRU-A.MPQ`. Файл — в папку игры `Data\ruRU\`, рядом с `patch-ruRU-3.MPQ`. Клиент на другом языке: назвать `patch-<локаль>-A.MPQ` и положить в `Data\<локаль>\` (например, `Data\enUS\patch-enUS-A.MPQ`). Общая папка `Data\` не годится. Имя занято — следующая свободная буква (B, C…). Полностью перезапустить игру.
+- **Стоит другой патч карт подземелий** (свой `DungeonMapChunk.dbc`): ручной файл заменит его таблицу целиком, карты того патча пропадут — ставьте через ManacodeUpdate.
+
+Проверка: на платформе после «Сотрясения» на карте мира видна ваша стрелка. Без патча в реплее Лича строка «нет позиций» — щелчок по ней покажет те же шаги.

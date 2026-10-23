@@ -159,10 +159,10 @@ function AutoRec.DevState()
     ns.Print(string.format(ns.T("dev.state.zone"), tostring(name), tostring(kind),
         inIcc and yes or no, ns.Recorder.InZone() and yes or no))
     if ns.Recorder and ns.Recorder.MapLevel then
-        local good, probes, fixes = ns.Recorder.MapLevel()
+        local good = ns.Recorder.MapLevel()
         local x, y = GetPlayerMapPosition("player")
         ns.Print(string.format(ns.T("dev.state.map"), GetCurrentMapDungeonLevel() or 0, GetNumDungeonMapLevels() or 0,
-            x or 0, y or 0, good and tostring(good) or no, probes, fixes))
+            x or 0, y or 0, good and tostring(good) or no))
     end
     if not diedAt then
         ns.Print(ns.T("dev.state.idle"))

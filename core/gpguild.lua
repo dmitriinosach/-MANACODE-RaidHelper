@@ -27,12 +27,13 @@ local TWO32 = 4294967296
 local FNV_BASIS = 2166136261
 local FNV_LOW = 403
 local FNV_HIGH = 16777216
-local ORDER = { "on", "mode", "gp", "wipe", "step", "ep", "epwipe", "epstep", "dkp", "dkpwipe", "dkpstep", "short" }
+local ORDER = { "on", "mode", "gp", "wipe", "step", "ep", "epwipe", "epstep", "dkp", "dkpwipe", "dkpstep", "short",
+    "roll", "rollwipe", "rollstep" }
 local RSET = {}
 for i = 1, #ORDER do RSET[ORDER[i]] = true end
 local MODES = { once = true, each = true, grow = true }
 local NUMS = { gp = true, wipe = true, step = true, ep = true, epwipe = true, epstep = true, dkp = true, dkpwipe = true,
-    dkpstep = true }
+    dkpstep = true, roll = true, rollwipe = true, rollstep = true }
 local ESC = { ["~"] = "~t", [";"] = "~s", [","] = "~c", ["="] = "~e", [":"] = "~o" }
 local UNESC = { t = "~", s = ";", c = ",", e = "=", o = ":" }
 local BLOCK = "%-FW%-.-%-FW%-"

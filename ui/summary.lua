@@ -570,7 +570,9 @@ local function FailItem(model)
     FailMode(f, Inside())
     if Inside() then Badges.Skin(f, style.red) else Badges.Bare(f) end
     f.model = model
-    f.title:SetText(format(ns.T("sum.gp.title"), model.ready, model.pending, ns.Ledger.Unit()))
+    local title = format(ns.T("sum.gp.title"), model.ready, model.pending, ns.Ledger.Unit())
+    if model.raid then title = title .. format(ns.T("sum.gp.title.roll"), model.raid) end
+    f.title:SetText(title)
     f.preset:SetText("")
     FitButton(f.all, format(ns.T("sum.gp.all"), model.pending))
     FitButton(f.cfg, ns.Ledger.Label())

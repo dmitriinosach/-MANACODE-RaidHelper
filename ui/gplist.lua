@@ -235,11 +235,12 @@ function GPList.Note(item)
         local hit = item.hits[h]
         for k = 1, #(hit.shed or {}) do list[#list + 1] = { hit = hit, hangs = hit.shed[k].hangs } end
     end
-    if #list == 0 then return nil, false end
-    local parts, yellow = {}, true
+    local raid = item.raid and item.raid > 0 and format(ns.T("ft.roll.raid"), item.raid) or nil
+    if #list == 0 then return raid, false end
+    local parts, yellow = { raid }, true
     for i = 1, #list do
         local text = ns.Penalties.ShedText(list[i].hangs)
-        parts[i] = #list > 1 and (ns.Penalties.Reason(list[i].hit.rule) .. ": " .. text) or text
+        parts[#parts + 1] = #list > 1 and (ns.Penalties.Reason(list[i].hit.rule) .. ": " .. text) or text
         if ns.Penalties.Grade(list[i].hit) ~= "yellow" then yellow = false end
     end
     return concat(parts, "; "), yellow
@@ -309,7 +310,14 @@ function GPList.Build(fight, summary)
         return a.name < b.name
     end)
     for i = 1, #items do all[i] = items[i] end
-    return { pens = pens, totals = totals, items = items, pending = pending, ready = ready, all = all }
+    local model = { pens = pens, totals = totals, items = items, pending = pending, ready = ready, all = all }
+    if ns.RollPen and ns.Ledger and ns.Ledger.Key() == "roll" then
+        local sums, raid = ns.RollPen.Sums(ns.RollPen.KeysOf(fight)), 0
+        for _, n in pairs(sums) do raid = raid + n end
+        for i = 1, #items do items[i].raid = sums[items[i].name] or 0 end
+        model.raid = raid
+    end
+    return model
 end
 function GPList.New(parent, prefix, layout, sized)
     return ns.FaultTable.New(parent, prefix, layout or GPList.WIDE, sized)

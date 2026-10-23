@@ -3,10 +3,11 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 1.6.2
-## X-Date: 2026-10-20
+## Version: 1.7.0
+## X-Date: 2026-10-23
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
+## SavedVariablesPerCharacter: ManaCodeRaidHelperChar
 ## OptionalDeps: Auctionator
 
 libs\manacode\sizer.lua
@@ -97,6 +98,7 @@ core\reccodec.lua
 core\decode.lua
 core\recfilter.lua
 core\store.lua
+core\keep.lua
 core\buffsnap.lua
 core\zonebuff.lua
 core\specs.lua
@@ -106,7 +108,6 @@ core\reccast.lua
 core\unitscan.lua
 core\recwpn.lua
 core\recmap.lua
-core\posfix.lua
 core\recach.lua
 core\recorder.lua
 core\meter.lua
@@ -126,6 +127,7 @@ core\pulltimer.lua
 core\devmarks.lua
 core\gpguild.lua
 core\ledger.lua
+core\rollpen.lua
 core\guildnotes.lua
 core\guildlocks.lua
 core\guildbober.lua
@@ -244,6 +246,7 @@ ui\faulttable.lua
 ui\sumside.lua
 ui\summary.lua
 ui\gpsettings.lua
+ui\faultsroll.lua
 ui\faults.lua
 ui\gpsignal.lua
 ui\minirows.lua
@@ -278,6 +281,7 @@ ui\panelbuffs.lua
 ui\panelfaults.lua
 ui\prof.lua
 ui\about.lua
+ui\vertoast.lua
 ui\replayshield.lua
 ui\replayfigs.lua
 ui\replaylayers.lua
@@ -291,11 +295,11 @@ ui\replayunits.lua
 ui\replayarrows.lua
 ui\replaysoul.lua
 ui\replayfeed.lua
-ui\replaypos.lua
 ui\replayfollow.lua
 ui\replaybar.lua
 ui\replaysize.lua
 ui\replaytour.lua
+ui\replaynopatch.lua
 ui\replayview.lua
 ui\replaylive.lua
 ui\replaygeo.lua

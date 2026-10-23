@@ -6,7 +6,7 @@ local BAR_H = 14
 local TEXT_PAD = 4
 local QUEUE_GAP = 1
 local MIN_AGE = 0.3
-local BAR_MIN = 240
+local BAR_MIN = 180
 local JobBar = {}
 ns.JobBar = JobBar
 local bar
@@ -29,12 +29,18 @@ local function Update()
         return
     end
     status:SetAlpha(0)
-    Fade(0)
     local h = BAR_H + ns.Kit.Grow().g
     bar:SetHeight(h)
     label:SetHeight(h)
-    local from = (lead or status):GetLeft()
-    local to = status:GetRight()
+    local own, to = status:GetLeft(), status:GetRight()
+    local room = own and to and to - own or 0
+    local from = own
+    if room >= BAR_MIN then
+        Fade(1)
+    else
+        from = (lead or status):GetLeft()
+        Fade(0)
+    end
     bar:SetWidth((from and to) and max(BAR_MIN, to - from) or BAR_MIN)
     bar:Show()
     fill:SetWidth(max(1, bar:GetWidth() * frac))

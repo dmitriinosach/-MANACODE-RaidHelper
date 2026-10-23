@@ -8,13 +8,13 @@ local Kit = ns.Kit
 local PAD = 12
 local BTNH = 20
 local LOGH = 20
-local TABS = { "give", "rules", "log" }
+local TABS = { "give", "rules", "log", "roll" }
 local PREV = "Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Up"
 local NEXT = "Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up"
 local LOGCOLS = { { "time", 44 }, { "who", 110 }, { "what", 0 }, { "sys", 80 }, { "n", 80 }, { "by", 100 } }
 local Page = {}
 ns.FaultsPage = Page
-local frame, sysBtn, give, rules, log
+local frame, sysBtn, give, rules, log, roll
 local tabBtns = {}
 local btns = {}
 local top, bar, foot, logh, btnh = 40, 26, 30, LOGH, BTNH
@@ -312,7 +312,9 @@ local function PaintGive()
     giveOffset = max(0, min(giveOffset, #rows - give.slots))
     give.list:Draw(current, model, width, giveOffset, give.slots)
     give.list:Show()
-    give.total:SetText(format(ns.T("fp.pending"), model.pending, unit, model.ready, ns.Plural(model.ready, ns.T("gp.players"))))
+    local total = format(ns.T("fp.pending"), model.pending, unit, model.ready, ns.Plural(model.ready, ns.T("gp.players")))
+    if model.raid then total = total .. format(ns.T("sum.gp.title.roll"), model.raid) end
+    give.total:SetText(total)
     Fit(give.giveAll, format(ns.T("sum.gp.all"), model.pending))
     if model.pending > 0 then give.giveAll:Enable() else give.giveAll:Disable() end
     local marked, count = ns.GPList.Marked(model, give.list.sel), 0
@@ -329,8 +331,13 @@ function Page.Refresh()
     if tab == "give" then give:Show() else give:Hide() end
     if tab == "rules" then rules:Show() else rules:Hide() end
     if tab == "log" then log:Show() else log:Hide() end
+    if tab == "roll" then roll:Show() else roll:Hide() end
     if tab == "give" then PaintGive() end
     if tab == "log" then PaintLog() end
+    if tab == "roll" then
+        ns.FaultsRoll.Place(bar, logh, btnh)
+        ns.FaultsRoll.Paint(LogRaid())
+    end
     if tab == "rules" and ns.GPSettings then ns.GPSettings.Refresh() end
 end
 local function SetTab(key)
@@ -365,6 +372,9 @@ local function Place()
     log.head:SetPoint("TOPLEFT", 0, -bar)
     log.head:SetPoint("TOPRIGHT", 0, -bar)
     log.empty:SetPoint("TOPLEFT", 4, -(bar + logh + 6))
+    roll:SetPoint("TOPLEFT", PAD, -top)
+    roll:SetPoint("BOTTOMRIGHT", -PAD, PAD)
+    ns.FaultsRoll.Place(bar, logh, btnh)
 end
 function Page.Attach(host)
     frame = host
@@ -383,6 +393,7 @@ function Page.Attach(host)
     rules:SetPoint("BOTTOMRIGHT", 0, 0)
     if ns.GPSettings then ns.GPSettings.Attach(rules) end
     BuildLog()
+    roll = ns.FaultsRoll.Build(frame, Btn)
     Place()
     ns.GPList.OnChange(function() Page.Refresh() end)
     Kit.OnFont(function()

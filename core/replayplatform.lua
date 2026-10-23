@@ -1,6 +1,7 @@
 local _, ns = ...
 local floor = math.floor
 local max = math.max
+local min = math.min
 local tsort = table.sort
 local GOLD = 0.6180339887
 local FALL = "fall"
@@ -34,6 +35,47 @@ function Platform.Add(list, cast, ts, success)
         return
     end
     list[n + 1] = start
+end
+local function FrameSeen(fr)
+    local alive, seen = 0, false
+    for _, p in pairs(fr.units) do
+        if (p.hp or 0) > 0 then
+            alive = alive + 1
+            if not p.stale and (p.x > 0 or p.y > 0) then seen = true end
+        end
+    end
+    return alive, seen
+end
+function Platform.NoPatch(scene, frames)
+    local def = Platform.Def(scene.fight.boss)
+    local bl = def and def.blind
+    local quakes = bl and scene.layers and scene.layers.pfQuake
+    if not (quakes and #quakes > 0) then return nil end
+    local fight = scene.fight
+    for q = 1, #quakes do
+        local cast = quakes[q]
+        local a, b = cast + bl.from, min(cast + bl.to, fight.to)
+        local before, during, seen = false, 0, 0
+        for i = 1, #frames do
+            local fr = frames[i]
+            local t = fr.t
+            if t > b then break end
+            if t >= cast - bl.before and t < cast then
+                local _, s = FrameSeen(fr)
+                before = before or s
+            elseif t >= a then
+                local alive, s = FrameSeen(fr)
+                if alive > bl.alive then
+                    during = during + 1
+                    if s then seen = seen + 1 end
+                end
+            end
+        end
+        if before and during >= bl.frames and seen <= during * bl.share then
+            return { who = fight.raid and fight.raid.who or nil, at = cast }
+        end
+    end
+    return nil
 end
 local function ByTime(a, b)
     return a.t < b.t

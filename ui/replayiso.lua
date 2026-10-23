@@ -315,7 +315,7 @@ local function UseScene(scene)
     ns.ReplayUnitsView.Use(scene)
     Soul.Use(scene)
     run.feedHas = ns.ReplayFeed.Use(scene.layers)
-    ns.ReplayPosView.Use(scene)
+    ns.ReplayNoPatchView.Use(scene)
     Relayout()
     local n = #scene.tracks
     for k = #figs + 1, n + 1 do figs[k] = NewFigure(ui.view) end
@@ -382,7 +382,7 @@ local function LoadFight(fight)
     ui.hint:SetText(ns.T("iso.loading"))
     ui.hint:Show()
     ui.gap:Hide()
-    ns.ReplayPosView.Use(nil)
+    ns.ReplayNoPatchView.Use(nil)
     ui.status:SetText("")
     Replay.Load(fight, function(scene)
         if run.fight ~= fight then return end
@@ -491,7 +491,7 @@ function Iso.Layout()
     return { w = aw + dim.viewW, h = ah + dim.viewH, viewW = dim.viewW, viewH = dim.viewH, sideH = dim.sideH,
              barsH = dim.barsH, nav = ui.navRects, navBtns = ui.nav, camW = cam.w, camH = cam.h, fitZoom = run.fitZoom,
              figScale = run.figScale, size = Size.Probe(), tour = Tour.Probe(), feedRows = ns.ReplayFeed.Stats().rows,
-             bar = Bar.Probe(), menu = ViewMenu.Probe(), pos = ns.ReplayPosView.Probe(), narrow = run.narrow, zoom = cam.zoom,
+             bar = Bar.Probe(), menu = ViewMenu.Probe(), notice = ns.ReplayNoPatchView.Probe(), narrow = run.narrow, zoom = cam.zoom,
              tilt = run.tilt3, flat = run.flat, speed = run.speed, heal = run.focusHeal,
              scene = run.scene and (run.scene == run.base and "base" or "alt") or nil, pin = run.pin, fade = run.fadeA,
              camR = cam.r, camCx = cam.cx, camCy = cam.cy, gap = run.gapKind or nil }

@@ -68,12 +68,7 @@ local function Map()
     out[2] = format(T("dev.map.me"), x or 0, y or 0)
     local on, n = RaidOnMap()
     out[3] = format(T("dev.map.raid"), on, n)
-    if WorldMapFrame and WorldMapFrame:IsShown() then out[#out + 1] = T("dev.map.world") end
-    local log = ns.PosFix and ns.PosFix.Log() or {}
-    if #log > 0 then
-        out[#out + 1] = T("dev.map.pfx")
-        for i = max(1, #log - 9), #log do out[#out + 1] = log[i] end
-    end
+    if WorldMapFrame and WorldMapFrame:IsShown() then out[4] = T("dev.map.world") end
     Out(out, true)
 end
 local function LangMissing(out)
@@ -186,6 +181,7 @@ local CHECKS = {
     { "map", Map }, { "auto", Auto }, { "lock", Lock }, { "cpu", Cpu },
     { "cpulast", CpuLast }, { "spec", Spec }, { "lag", Lag },
     { "cpulive", function() if ns.CpuLiveView then ns.CpuLiveView.Toggle() end end },
+    { "ver", function() if ns.VerToast then ns.VerToast.Demo() end end },
 }
 local function BuildParts()
     parts.title = Kit.Str(frame, "GameFontNormal")
@@ -257,8 +253,10 @@ local function Layout()
     y = y - row - 4
     Caption(2)
     local half = floor((inner - gap) / 2)
-    for i = 1, #parts.checks do
-        Put(parts.checks[i], pad + ((i - 1) % 2) * (half + gap), y - floor((i - 1) / 2) * row, half)
+    local n = #parts.checks
+    for i = 1, n do
+        local alone = i == n and n % 2 == 1
+        Put(parts.checks[i], pad + ((i - 1) % 2) * (half + gap), y - floor((i - 1) / 2) * row, alone and inner or half)
     end
     y = y - floor((#parts.checks + 1) / 2) * row - 4
     Caption(3)

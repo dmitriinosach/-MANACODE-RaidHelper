@@ -253,6 +253,7 @@ local function PaintGive()
     end
     local unit = ns.Ledger and ns.Ledger.Unit() or ""
     give.tip = format(ns.T("gpmini.all.tip"), model.pending, unit, model.ready)
+        .. (model.raid and format(ns.T("sum.gp.title.roll"), model.raid) or "")
     if model.pending > 0 then give:Enable() else give:Disable() end
     give:Show()
 end

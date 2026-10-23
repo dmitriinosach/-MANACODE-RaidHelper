@@ -9,5 +9,6 @@ ns.replayPlatform = {
         grow = { band = 1.2, spread = 0.8, grow = 1.4, rise = 3 },
         markFall = "lk_fall",
         markBack = "lk_back",
+        blind = { from = 8, to = 30, before = 15, alive = 2, frames = 3, share = 0.2 },
     },
 }

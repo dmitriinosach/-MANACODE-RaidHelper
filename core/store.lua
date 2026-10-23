@@ -399,4 +399,5 @@ logoutFrame:SetScript("OnEvent", ns.Prof.Wrap("bg.store", function(self, event)
         return
     end
     Store.Close()
+    if ns.Keep then ns.Keep.Logout() end
 end))

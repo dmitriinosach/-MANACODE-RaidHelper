@@ -62,7 +62,7 @@ Replay.MOVE_YPS = MOVE_YPS
 Replay.ROOMS = {
     lanathel = { boss = ns.ENC.lanathel, floor = 6, tex = "lanathel", cx = 511, cy = 310, r = 160, pack = "ICC" },
     lichking = { boss = ns.ENC.lichking, floor = 7, tex = "lichking", cx = 500, cy = 349, r = 255, pack = "ICC",
-                 sky = "icecrown", alias ={ [0] = { 41.601306, -28.455828, 41.601233, -27.249835 } } },
+                 sky = "icecrown" },
     marrowgar = { boss = ns.ENC.marrowgar, floor = 1, tex = "marrowgar", cx = 390, cy = 402, r = 66, pack = "ICC" },
     deathwhisper = { boss = ns.ENC.deathwhisper, floor = 1, tex = "deathwhisper", cx = 390, cy = 540, r = 66, pack = "ICC" },
     gunship = { boss = ns.ENC.gunship, floor = 2, tex = "gunship", cx = 625, cy = 318, r = 100 },
@@ -194,17 +194,6 @@ local function PickFloor(fight, frames)
         count[fr.floor] = (count[fr.floor] or 0) + n
         area[fr.floor] = area[fr.floor] or fr.map
     end
-    for _, room in pairs(Replay.ROOMS) do
-        if room.boss == fight.boss and room.alias then
-            for level in pairs(room.alias) do
-                if count[level] then
-                    count[room.floor] = (count[room.floor] or 0) + count[level]
-                    area[room.floor] = area[room.floor] or area[level]
-                    count[level] = nil
-                end
-            end
-        end
-    end
     local best, bestN = nil, -1
     for level, n in pairs(count) do
         local weight = n
@@ -306,11 +295,11 @@ Replay.Push = Push
 local function NewGaps()
     return { t = {}, kind = {}, since = {}, floor = {}, n = 0, prev = false, prevFloor = nil }
 end
-local function GapStep(g, fr, level, alias)
+local function GapStep(g, fr, level)
     local kind = false
     if fr.lost then
         kind = "lost"
-    elseif fr.floor ~= level and not alias[fr.floor] then
+    elseif fr.floor ~= level then
         kind = "away"
     end
     if kind ~= g.prev or (kind == "away" and fr.floor ~= g.prevFloor) then
@@ -323,10 +312,8 @@ end
 local function SetGaps(scene, g)
     scene.gapT, scene.gapKind, scene.gapSince, scene.gapFloor = g.t, g.kind, g.since, g.floor
 end
-local NO_ALIAS = {}
 local function FillTracks(fight, frames, scene)
     local level, tracks, deaths = scene.floor, scene.tracks, scene.deaths
-    local alias = scene.room and scene.room.alias
     local gaps = NewGaps()
     local byName = {}
     local boss, bossName = nil, nil
@@ -336,7 +323,7 @@ local function FillTracks(fight, frames, scene)
         ns.Jobs.Step(10)
         ns.Jobs.Progress(i, total)
         local fr = frames[i]
-        GapStep(gaps, fr, level, alias or NO_ALIAS)
+        GapStep(gaps, fr, level)
         local list = fr.floor == level and fr.npcs
         if list then
             for q = 1, #list do
@@ -349,8 +336,7 @@ local function FillTracks(fight, frames, scene)
                 end
             end
         end
-        local k = fr.floor ~= level and alias and alias[fr.floor] or nil
-        local onFloor = fr.floor == level or k ~= nil
+        local onFloor = fr.floor == level
         for name, p in pairs(fr.units) do
             local tr = byName[name]
             if not tr and fight.players[name] then
@@ -358,19 +344,14 @@ local function FillTracks(fight, frames, scene)
                 byName[name] = tr
                 tracks[#tracks + 1] = tr
             end
-            local px, py = p.x, p.y
-            local valid = onFloor and (px > 0 or py > 0)
-            if valid and k then
-                px, py = px * k[1] + k[2], py * k[3] + k[4]
-                valid = px >= 0 and px <= 1 and py >= 0 and py <= 1
-            end
+            local valid = onFloor and (p.x > 0 or p.y > 0)
             if tr and (lastRef[name] ~= p or valid == (gapped[name] or false)) then
                 lastRef[name] = p
                 local hp = p.hp or 0
                 local top = p.max
                 local pct = hp > 0 and (top and top > 0 and min(1, hp / top) or 1) or 0
-                local x = valid and px * AREA_W or -1
-                local y = valid and py * AREA_H or -1
+                local x = valid and p.x * AREA_W or -1
+                local y = valid and p.y * AREA_H or -1
                 if hp == 0 and (lastHp[name] or 1) > 0 then
                     deadAt[name] = fr.t
                     local mx = valid and x or lastX[name]
@@ -575,11 +556,11 @@ local function FillAlt(fight, frames, scene)
     if not room then return nil end
     local byName, on, lastHp, deadAt, lastX, lastY, mark = {}, {}, {}, {}, {}, {}, {}
     local deaths, n = {}, 0
-    local gaps, alias = NewGaps(), room.alias or NO_ALIAS
+    local gaps = NewGaps()
     for i = 1, #frames do
         ns.Jobs.Step(10)
         local fr = frames[i]
-        GapStep(gaps, fr, room.floor, alias)
+        GapStep(gaps, fr, room.floor)
         local here = fr.floor == room.floor
         for name, p in pairs(fr.units) do
             if fight.players[name] then
@@ -1045,6 +1026,7 @@ function Replay.Load(fight, onDone)
             local scene = Replay.Build(fight, frames)
             ns.Jobs.Band(0.7, 1)
             if ns.ReplayLayers then ns.ReplayLayers.Build(scene) end
+            scene.lkNoPatch = ns.ReplayPlatform.NoPatch(scene, frames)
             return scene
         end, onDone, "iso.data", true)
     end)

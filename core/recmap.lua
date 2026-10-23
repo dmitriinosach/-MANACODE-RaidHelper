@@ -4,15 +4,13 @@ ns.RecMap = RecMap
 local mapArea, mapLevel, mapName = nil, nil, nil
 local goodArea, goodLevel = nil, nil
 local levelOk = true
-local levelProbes, levelFixes = 0, 0
 local viewArea, viewLevel, viewCont, viewZone, viewHere = nil, 0, 0, 0, nil
 function RecMap.Level()
-    return goodLevel, levelProbes, levelFixes
+    return goodLevel
 end
 function RecMap.Reset()
     mapArea, mapLevel, mapName = nil, nil, nil
     levelOk = true
-    if ns.PosFix then ns.PosFix.Reset() end
 end
 local function CountOnMap()
     local slots, slotUnit, _, _, slotPlayer = ns.Recorder.Roster(true)
@@ -28,12 +26,7 @@ local function CountOnMap()
     return on, alive
 end
 local function TryLevel(level)
-    levelProbes = levelProbes + 1
-    if level ~= 0 then
-        SetDungeonMapLevel(level)
-    elseif not pcall(SetDungeonMapLevel, 0) or GetCurrentMapDungeonLevel() ~= 0 then
-        return 0, 0
-    end
+    SetDungeonMapLevel(level)
     return CountOnMap()
 end
 local function PickLevel()
@@ -61,38 +54,21 @@ local function PickLevel()
             end
         end
     end
-    if bestOn == 0 and was ~= 0 and first ~= 0 then
-        local c = TryLevel(0)
-        if c > 0 then best, bestOn = 0, c end
-    end
     if bestOn == 0 then best = first or was end
-    if best == 0 and bestOn == 0 and first ~= 0 then
+    if best == 0 then
         SetMapToCurrentZone()
     elseif best ~= GetCurrentMapDungeonLevel() then
-        if best ~= 0 then SetDungeonMapLevel(best) else pcall(SetDungeonMapLevel, 0) end
+        SetDungeonMapLevel(best)
     end
     if bestOn == 0 then return false end
-    if best ~= was then levelFixes = levelFixes + 1 end
     goodArea, goodLevel = area, best
     return true
-end
-RecMap.Count = CountOnMap
-function RecMap.Pick()
-    levelOk = PickLevel()
-    return levelOk
-end
-function RecMap.Keep()
-    goodArea, goodLevel = GetCurrentMapAreaID(), GetCurrentMapDungeonLevel() or 0
-    levelOk = true
 end
 local function ReadMap()
     local area, level, name = GetCurrentMapAreaID(), GetCurrentMapDungeonLevel(), GetMapInfo() or ""
     if area == mapArea and level == mapLevel and name == mapName then return false end
     mapArea, mapLevel, mapName = area, level, name
     return ns.Store.Map(ns.Recorder.Now(), area, level, name)
-end
-local function SetLevel(level)
-    if level ~= 0 then SetDungeonMapLevel(level) else pcall(SetDungeonMapLevel, 0) end
 end
 local function Borrow(refresh)
     local area, level = GetCurrentMapAreaID(), GetCurrentMapDungeonLevel() or 0
@@ -104,7 +80,7 @@ local function Borrow(refresh)
     if refresh or levelOk then
         levelOk = PickLevel()
     elseif goodLevel and viewHere == goodArea and goodLevel ~= GetCurrentMapDungeonLevel() then
-        SetLevel(goodLevel)
+        SetDungeonMapLevel(goodLevel)
     end
 end
 function RecMap.Restore()
@@ -114,7 +90,9 @@ function RecMap.Restore()
     if area ~= viewHere then
         if viewZone > 0 then SetMapZoom(viewCont, viewZone) else SetMapZoom(viewCont) end
     end
-    if GetCurrentMapAreaID() == area and (GetCurrentMapDungeonLevel() or 0) ~= viewLevel then SetLevel(viewLevel) end
+    if GetCurrentMapAreaID() == area and viewLevel > 0 and (GetCurrentMapDungeonLevel() or 0) ~= viewLevel then
+        SetDungeonMapLevel(viewLevel)
+    end
 end
 function RecMap.Read(withPos, refresh)
     if withPos then
@@ -122,16 +100,10 @@ function RecMap.Read(withPos, refresh)
             Borrow(refresh)
             return ReadMap()
         end
-        local fix = ns.PosFix
-        if fix and fix.Busy() then
-            fix.Step(ns.Recorder.Now())
-            return ReadMap()
-        end
         if refresh then SetMapToCurrentZone() end
         if refresh or (levelOk and CountOnMap() == 0) then
             levelOk = PickLevel()
         end
-        if fix then fix.Step(ns.Recorder.Now()) end
         return ReadMap()
     elseif not mapArea then
         return ReadMap()

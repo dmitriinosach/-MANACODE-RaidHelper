@@ -71,7 +71,7 @@ local function Refit()
         if t.min0 then t.min, t.want = t.min0 + m.g, t.want0 + m.g end
     end
 end
-local frame, canvas, ruler, overlay, statusText, titleText, bareNote
+local frame, canvas, ruler, overlay, statusText, titleText, bareNote, noneNote
 local toolBar
 local detailAnchor
 local lastBounds
@@ -861,8 +861,14 @@ local function DrawBrief()
     if not Status() then return end
     DrawDeaths()
 end
+local function NoneNote()
+    local db = ns.GetDB()
+    local none = not fight and #db.segments == 0 and not db.live
+    if none then noneNote:Show() else noneNote:Hide() end
+end
 local function RedrawNow()
     Cursor.Reset()
+    NoneNote()
     if not player and ns.SummaryView and ns.SummaryView.IsShown() then return end
     if ns.ThreatView and ns.ThreatView.IsShown() then return end
     local p0 = ns.Prof.on and debugprofilestop()
@@ -1019,6 +1025,19 @@ local function BuildCanvas()
     noteBody:SetText(ns.T("tl.bare.body"))
     ns.Kit.Text(noteBody, "text.secondary")
     bareNote:Hide()
+    noneNote = CreateFrame("Frame", nil, clip)
+    noneNote:SetAllPoints(clip)
+    noneNote:SetFrameLevel(canvas:GetFrameLevel() + 20)
+    local noneHead = Kit.Str(noneNote, "GameFontNormalLarge")
+    noneHead:SetPoint("BOTTOM", noneNote, "CENTER", 0, 4)
+    noneHead:SetText(ns.T("tl.none.head"))
+    ns.Kit.Text(noneHead, "text.title")
+    local noneBody = Kit.Str(noneNote, "GameFontHighlight")
+    noneBody:SetPoint("TOP", noneNote, "CENTER", 0, -4)
+    noneBody:SetWidth(520)
+    noneBody:SetText(ns.T("tl.none.body"))
+    ns.Kit.Text(noneBody, "text.secondary")
+    noneNote:Hide()
     if ns.SummaryView then
         local host = CreateFrame("Frame", nil, frame)
         host:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -MARGIN, -HEADH)
@@ -1277,6 +1296,7 @@ end
 function TL.ShowRaid(raid)
     if not frame or not raid or raid.party or not ns.RaidSummaryView then return end
     fight, player, data = nil, nil, nil
+    noneNote:Hide()
     if ns.ThreatView then ns.ThreatView.Hide() end
     if ns.SummaryView then ns.SummaryView.Hide() end
     if ns.EffectPanel then ns.EffectPanel.SetTimeline(false) end

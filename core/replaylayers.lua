@@ -102,7 +102,6 @@ local function NewLayers()
         switchRaw = 0, switchSmooth = 0, taunts = 0,
         bcT = {}, bcD = {}, nbc = 0, bsT = {},
         pfQuake = {}, pfWinter = {}, pfMarkT = {}, pfMarkK = {},
-        pfxT = {}, pfxKind = {}, pfxFix = {}, pfxDiag = {},
     }
 end
 local Pos = ns.Replay.PosOf
@@ -656,10 +655,6 @@ local function Dispatch(c, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFla
         OnVehicle(c, ts, src, tonumber(a1) == 1)
     elseif sub == "FW_MARK" then
         OnMark(c, ts, a1)
-    elseif sub == "FW_POSFIX" then
-        local L = c.L
-        local n = #L.pfxT + 1
-        L.pfxT[n], L.pfxKind[n], L.pfxFix[n], L.pfxDiag[n] = ts, tostring(a1), tostring(a2 or ""), tostring(a4 or "")
     elseif sub == "FW_BUFFSNAP" then
         OnSnap(c, ts, a1, a2)
     end

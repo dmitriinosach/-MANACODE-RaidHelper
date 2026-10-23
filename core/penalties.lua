@@ -19,9 +19,10 @@ local SYS = {
     gp = { sum = "gp", wipe = "wipe", step = "step" },
     ep = { sum = "ep", wipe = "epwipe", step = "epstep" },
     dkp = { sum = "dkp", wipe = "dkpwipe", step = "dkpstep" },
+    roll = { sum = "roll", wipe = "rollwipe", step = "rollstep" },
 }
 local NUMS = { gp = true, wipe = true, step = true, ep = true, epwipe = true, epstep = true, dkp = true,
-    dkpwipe = true, dkpstep = true }
+    dkpwipe = true, dkpstep = true, roll = true, rollwipe = true, rollstep = true }
 local FIELDS = { on = true, mode = true, short = true }
 for f in pairs(NUMS) do FIELDS[f] = true end
 local MODES = { once = true, each = true, grow = true }
@@ -83,11 +84,22 @@ function Penalties.All()
     for i = 1, #rules do out[i] = Merge(rules[i], mine[rules[i].key]) end
     return out
 end
+local function RollOf(gp)
+    if type(gp) ~= "number" then return gp end
+    if gp <= 0 then return 0 end
+    if gp <= 200 then return 5 end
+    if gp <= 400 then return 10 end
+    return 20
+end
+Penalties.RollOf = RollOf
 function Penalties.Amount(rule, sys, what)
     local f = SYS[sys or "gp"] or SYS.gp
     what = what or "sum"
     local v = rule[f[what]]
-    if v == nil and f ~= SYS.gp then v = rule[SYS.gp[what]] end
+    if v == nil and f ~= SYS.gp then
+        v = rule[SYS.gp[what]]
+        if f == SYS.roll then v = RollOf(v) end
+    end
     return v
 end
 function Penalties.Reason(rule)
@@ -107,6 +119,8 @@ for sys, f in pairs(SYS) do
         for what, name in pairs(f) do ALT[name] = SYS.gp[what] end
     end
 end
+local ROLLF = {}
+for _, name in pairs(SYS.roll) do ROLLF[name] = true end
 local function Was(rule, field, over)
     if field == "on" then return rule.on ~= false end
     if field == "mode" then return rule.mode or "each" end
@@ -115,6 +129,7 @@ local function Was(rule, field, over)
     if alt and rule[field] == nil then
         local v = over and over[alt]
         if v == nil then v = rule[alt] end
+        if ROLLF[field] then v = RollOf(v) end
         return v
     end
     return rule[field]

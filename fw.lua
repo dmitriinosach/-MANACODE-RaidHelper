@@ -613,7 +613,7 @@ local function ApplyDefaults(db)
     if type(db.gp.guild) ~= "table" then db.gp.guild = {} end
     if type(db.faults) ~= "table" then db.faults = {} end
     local fl = db.faults
-    if fl.system ~= "gp" and fl.system ~= "ep" and fl.system ~= "dkp" then fl.system = "gp" end
+    if fl.system ~= "gp" and fl.system ~= "ep" and fl.system ~= "dkp" and fl.system ~= "roll" then fl.system = "gp" end
     if type(fl.done) ~= "table" then fl.done = {} end
     if type(fl.log) ~= "table" then fl.log = {} end
     if type(fl.rules) ~= "table" then fl.rules = {} end
@@ -687,10 +687,12 @@ loader:RegisterEvent("ADDON_LOADED")
 loader:SetScript("OnEvent", function(self, _, name)
     if name ~= ADDON then return end
     self:UnregisterEvent("ADDON_LOADED")
-    if type(ManaCodeRaidHelperDB) ~= "table" then
+    local lost = type(ManaCodeRaidHelperDB) ~= "table"
+    if lost then
         ManaCodeRaidHelperDB = {}
     end
     local db = ManaCodeRaidHelperDB
+    if ns.Keep then ns.Keep.Load(db, lost) end
     local rec = ns.RecCodec and ns.RecCodec.VERSION
     local newer = rec and Newer(db, rec)
     if newer then

@@ -404,10 +404,11 @@ local function FillPlayer(r, d, fight, c)
         if yellow then ns.Kit.Text(r.note, "badge.yellow") else ns.Kit.Text(r.note, "text.muted") end
         if ListOf(r).sized and (r.note:GetStringWidth() or 0) > room + 1 then r.note:Hide() else r.note:Show() end
     end
+    local raid = item.raid and "\n" .. format(ns.T("ft.tip.roll.raid"), item.raid) or ""
     if item.pending > 0 then
-        Main(r, c, L, "main", item.pending, format(ns.T("ft.tip.all"), item.pending, unit))
+        Main(r, c, L, "main", item.pending, format(ns.T("ft.tip.all"), item.pending, unit) .. raid)
     elseif item.given > 0 then
-        Done(r, c, L, item.given, format(ns.T("ft.tip.given"), item.given), false)
+        Done(r, c, L, item.given, format(ns.T("ft.tip.given"), item.given) .. raid, false)
     end
     if #item.hits > 0 then Proof(r, c, L, { fight = fight, name = item.name, hits = item.hits }) end
     Hots(r, c, L, nil)

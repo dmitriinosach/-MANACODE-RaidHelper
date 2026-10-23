@@ -477,6 +477,26 @@ function RaidSum.Reset()
     for k in pairs(cache) do cache[k] = nil end
     for i = #order, 1, -1 do order[i] = nil end
 end
+local function RollIssued(res, by)
+    local set = {}
+    for k = 1, #res.sums do
+        local raid, alt = ns.RollPen.KeysOf(res.sums[k].fight)
+        if raid then set[raid] = true end
+        if alt then set[alt] = true end
+    end
+    local given = 0
+    for _, row in pairs(by) do row.issued = 0 end
+    for name, n in pairs(ns.RollPen.Sums(set)) do
+        local row = by[name]
+        if not row then
+            row = { offer = 0, issued = 0, n = 0 }
+            by[name] = row
+        end
+        row.issued = n
+        given = given + n
+    end
+    return by, given
+end
 function RaidSum.GP(res)
     if res.gp then return res.gp, res.gpOffer, res.gpIssued end
     if not (ns.Penalties and ns.Penalties.Evaluate) then return nil, 0, 0 end
@@ -526,6 +546,7 @@ function RaidSum.GP(res)
         if a.gp ~= b.gp then return a.gp > b.gp end
         return a.rule.key < b.rule.key
     end)
+    if ns.RollPen and ns.Ledger.Key() == "roll" then by, given = RollIssued(res, by) end
     res.gp, res.gpOffer, res.gpIssued, res.faults = by, offer, given, faults
     return by, offer, given
 end

@@ -179,6 +179,8 @@ local function Handler(msg)
             ns.AutoRec.DevLich(true)
         elseif arg == "lock" then
             ns.Raid.DevLock()
+        elseif arg == "ver" then
+            if ns.VerToast then ns.VerToast.Demo() else ns.Print(ns.T("slash.diag.restart")) end
         else
             ns.Print(ns.T("dev.help"))
         end

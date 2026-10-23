@@ -82,6 +82,7 @@ local function LinkField(parent, url, height, tipTitle, tipKey)
     Kit.Text(key, "text.muted")
     return e
 end
+About.LinkField = LinkField
 local function Part(id, make)
     local p = frame.parts[id]
     if not p then
@@ -279,9 +280,10 @@ end)
 local function Refresh()
     if not frame then return end
     for _, t in ipairs(frame.tiles) do
-        local on = About.Installed(t.addon.folder)
+        local folder = t.addon.folder
+        local on = folder and About.Installed(folder)
         t.on = on
-        t.state:SetText(ns.T(on and "about.addon.on" or "about.addon.off"))
+        t.state:SetText(folder and ns.T(on and "about.addon.on" or "about.addon.off") or "")
         Kit.Text(t.state, on and "text.good" or "text.muted")
     end
     local mine = ns.AddonVersion and ns.AddonVersion() or "?"

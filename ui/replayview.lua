@@ -152,7 +152,6 @@ function View.Refresh()
     st.heal:SetChecked(api.Heal())
     st.follow:SetChecked(ns.ReplayFollow.On())
     st.casts:SetChecked(ns.ReplayUnitsView.CastsAll())
-    st.pos:SetChecked(ns.ReplayPosView.On())
     if st.sound then st.sound:SetChecked(ns.ReplayBarsView.Sound()) end
 end
 local function Pick(key, opt)
@@ -230,7 +229,6 @@ function View.Build(ui, run, api)
     st.heal = Check(menu, "iso.focusheal", function(on) api.SetHeal(on) end)
     st.follow = Check(menu, "iso.follow", function(on) ns.ReplayFollow.SetOn(on) end)
     st.casts = Check(menu, "iso.castsall", function(on) ns.ReplayUnitsView.SetCastsAll(on) end)
-    st.pos = Check(menu, "iso.pos", function(on) ns.ReplayPosView.SetOn(on) end)
     if ns.ReplayBarsView then
         st.sound = Check(menu, "iso.barsound", function(on) ns.ReplayBarsView.SetSound(on) end)
     end
@@ -261,5 +259,5 @@ function View.Hide()
 end
 function View.Probe()
     return { rects = st.rects, w = m.W, h = st.hNow or st.h or 0, rows = st.rows, heal = st.heal,
-             follow = st.follow, pos = st.pos, sound = st.sound, threat = st.threat, tour = st.tour, menu = st.menu }
+             follow = st.follow, sound = st.sound, threat = st.threat, tour = st.tour, menu = st.menu }
 end

@@ -39,6 +39,10 @@ pump:Hide()
 local function T(key)
     return ns.T(key)
 end
+local function RollKey(key)
+    if ns.Ledger and ns.Ledger.Key() == "roll" then return key .. ".roll" end
+    return key
+end
 local function Plain(s)
     return (tostring(s or ""):gsub("[|\r\n]", ""))
 end
@@ -348,7 +352,7 @@ local function HitTexts(fight, name, p, s, hit, out, view)
     local gp, done = Sum(hit.events)
     local head = Head(name, rule, gp, done)
     if gp == 0 and ns.Penalties and ns.Penalties.Grade(hit) == "yellow" then
-        head = format(T("proof.head.maybe"), TAG, Plain(name), Plain(ns.Penalties.Reason(rule)))
+        head = format(T(RollKey("proof.head.maybe")), TAG, Plain(name), Plain(ns.Penalties.Reason(rule)))
     end
     out[#out + 1] = Compose(head, Chain(fight, hit, p, s))
 end
@@ -381,7 +385,7 @@ function Proof.Clauses(ask)
                 local gp, done = Sum({ ev })
                 head = Head(name, hit.rule, gp, done)
             else
-                head = format(T("proof.head.death"), TAG, Plain(name))
+                head = format(T(RollKey("proof.head.death")), TAG, Plain(name))
             end
             out[#out + 1] = Clause(view, fight, head, p, d, name)
         end

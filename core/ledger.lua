@@ -10,11 +10,12 @@ local MAX_LOG = 2000
 local EP_MEMO = 30
 local HOT = { "slack", "death", "wipe" }
 local HOT_SUM = { slack = 200, death = 400, wipe = 800 }
+local HOT_ROLL = { slack = 5, death = 10, wipe = 20 }
 local LEGACY = { s = "gp", old = true }
 local Ledger = {}
 ns.Ledger = Ledger
 Ledger.HOT = HOT
-Ledger.ORDER = { "gp", "ep", "dkp" }
+Ledger.ORDER = { "gp", "ep", "dkp", "roll" }
 local epMemo = {}
 local function Store()
     return ns.GetDB().faults
@@ -139,7 +140,11 @@ DKP.Flush = function()
     qdkpDirty = false
     if _G.QDKP2_SENDTRIG_MODIFY and type(_G.QDKP2_UploadAll) == "function" then pcall(_G.QDKP2_UploadAll) end
 end
-local SYSTEMS = { gp = GP, ep = EP, dkp = DKP }
+local ROLL = { key = "roll", label = "led.sys.roll", unit = "led.unit.roll", ask = "led.ask.roll" }
+ROLL.Ready = function() return true end
+ROLL.Can = ROLL.Ready
+ROLL.Give = function(_, _, n) return n end
+local SYSTEMS = { gp = GP, ep = EP, dkp = DKP, roll = ROLL }
 function Ledger.Get(key)
     return SYSTEMS[key]
 end
@@ -165,6 +170,7 @@ end
 function Ledger.Select(key)
     if not SYSTEMS[key] then return false end
     Store().system = key
+    if ns.RollPen then ns.RollPen.Sync() end
     Changed()
     return true
 end
@@ -184,17 +190,21 @@ function Ledger.Pending(events)
     end
     return n
 end
+local function HotDef(kind, sys)
+    return (sys == "roll" and HOT_ROLL or HOT_SUM)[kind]
+end
 function Ledger.HotSum(kind, sys)
-    local by = Store().hot[sys or Ledger.Key()]
+    sys = sys or Ledger.Key()
+    local by = Store().hot[sys]
     local v = by and by[kind]
     if type(v) == "number" then return v end
-    return HOT_SUM[kind] or 0
+    return HotDef(kind, sys) or 0
 end
 function Ledger.SetHot(kind, sys, n)
     if not HOT_SUM[kind] or not SYSTEMS[sys] then return end
     local hot = Store().hot
     if type(n) == "number" then n = max(0, floor(n + 0.5)) end
-    if n == HOT_SUM[kind] then n = nil end
+    if n == HotDef(kind, sys) then n = nil end
     local by = hot[sys] or {}
     by[kind] = n
     hot[sys] = next(by) and by or nil

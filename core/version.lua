@@ -30,6 +30,7 @@ local due = {}
 local toldTop = nil
 local newest = nil
 local listeners = {}
+local onNew = {}
 local loginAt = nil
 local started = false
 local inGuild = false
@@ -87,6 +88,9 @@ function Version.Newest()
 end
 function Version.OnChange(fn)
     listeners[#listeners + 1] = fn
+end
+function Version.OnNew(fn)
+    onNew[#onNew + 1] = fn
 end
 function Version.StatusLine()
     local mine = Version.Mine() or "?"
@@ -155,6 +159,7 @@ local function Note(v, from)
     if toldTop and Version.Compare(v, toldTop) ~= 1 then return end
     toldTop = v
     ns.Print(format(ns.T("ver.new"), v, mine))
+    for i = 1, #onNew do onNew[i](v, mine) end
 end
 local function RxRoom(now)
     for name, at in pairs(rxAt) do

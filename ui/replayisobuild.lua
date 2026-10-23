@@ -96,8 +96,7 @@ function Box.LeftX()
     return Box.SideX() + m.feedW + PAD
 end
 function Box.HeadH()
-    local pos = ns.ReplayPosView
-    return m.head + Size.Edge() + (pos and pos.Height() or 0)
+    return m.head + Size.Edge() + ns.ReplayNoPatchView.Height()
 end
 function Box.FootH()
     return m.foot + Size.Edge()
@@ -114,14 +113,12 @@ end
 local function FrameWidth()
     ui.frame:SetWidth(Around() + dim.viewW)
 end
-local function PlacePos()
-    local pos = ns.ReplayPosView
-    if not pos then return end
+local function PlaceNotice()
     local side = Box.SideX()
-    pos.Place(side, m.head + Size.Edge(), Around() + dim.viewW - side * 2)
+    ns.ReplayNoPatchView.Place(side, m.head + Size.Edge(), Around() + dim.viewW - side * 2)
 end
 local function PlaceBody()
-    PlacePos()
+    PlaceNotice()
     ui.side:ClearAllPoints()
     ui.side:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", Box.SideX(), -Box.HeadH())
     ui.view:ClearAllPoints()
@@ -198,7 +195,7 @@ local function Resize(vw, vh)
     ui.status:SetWidth(vw - STATUS_GRIP)
     ui.frame:SetHeight(dim.h)
     FrameWidth()
-    PlacePos()
+    PlaceNotice()
     Relayout()
     Reframe()
     run.marksDirty = true
@@ -408,7 +405,7 @@ local function NearFigure()
     end
     return best
 end
-local function PosChanged()
+local function NoticeChanged()
     if not (ui and ui.frame) then return end
     PlaceBody()
     Resize(dim.viewW, dim.viewH)
@@ -447,12 +444,8 @@ local function Build()
     local close = Kit.CloseButton(frame, function() Iso.Hide() end)
     ui.nav = {}
     BuildView(frame)
-    ns.ReplayPosView.Build(frame, function(sec)
-        if not run.scene then return end
-        run.t = Clamp(run.scene.pull + sec, run.scene.from, run.scene.to)
-        run.marksDirty = true
-    end, PosChanged)
-    PlacePos()
+    ns.ReplayNoPatchView.Build(frame, NoticeChanged)
+    PlaceNotice()
     LoadCamera()
     BuildBottom()
     Follow.Bind(ui, run, cam, figs, SetFocus)

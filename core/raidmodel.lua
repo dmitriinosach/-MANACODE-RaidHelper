@@ -193,27 +193,36 @@ local function Deaths(res)
 end
 local function GP(res)
     local by, offer, issued = ns.RaidSummary.GP(res)
+    local roll = ns.Ledger and ns.Ledger.Key() == "roll"
     if not by then
-        return { key = "gp", title = T("rsum.d.gp"), rows = {}, empty = T("rsum.nogp") }
+        return { key = "gp", title = T(roll and "rsum.d.roll" or "rsum.d.gp"), rows = {}, empty = T("rsum.nogp") }
     end
     local rows = {}
     for name, g in pairs(by) do
-        if g.offer > 0 then
+        if g.offer > 0 or (roll and g.issued > 0) then
             local p = res.byName[name]
             local tip = { { kind = "head", left = name, class = p and p.class } }
             Put(tip, "row", T("rsum.tt.offer"), tostring(g.offer))
             Put(tip, "row", T("rsum.tt.issued"), tostring(g.issued))
             Put(tip, "row", T("rsum.tt.faults"), tostring(g.n))
-            rows[#rows + 1] = { who = name, class = p and p.class, text = tostring(g.offer), v = g.offer,
-                                note = g.issued > 0 and format(T("rsum.issued"), g.issued) or nil, lines = tip }
+            if roll then
+                Put(tip, "row", T("rsum.tt.roll"), g.issued > 0 and format(T("roll.minus"), g.issued) or "0")
+                rows[#rows + 1] = { who = name, class = p and p.class, text = tostring(g.issued), v = g.issued,
+                                    note = g.offer > 0 and format(T("rsum.offered"), g.offer) or nil, lines = tip }
+            else
+                rows[#rows + 1] = { who = name, class = p and p.class, text = tostring(g.offer), v = g.offer,
+                                    note = g.issued > 0 and format(T("rsum.issued"), g.issued) or nil, lines = tip }
+            end
         end
     end
     tsort(rows, function(a, b)
         if a.v ~= b.v then return a.v > b.v end
         return a.who < b.who
     end)
-    return { key = "gp", title = format(T("rsum.title.gp"), offer, issued), rows = rows, empty = T("rsum.nogpyet") }
+    local title = format(T(roll and "rsum.title.roll" or "rsum.title.gp"), offer, issued)
+    return { key = "gp", title = title, rows = rows, empty = T("rsum.nogpyet") }
 end
+Model.GPDetail = GP
 local DRUNK = { flask = true, elixir = true, potion = true }
 local ICON_ROW = 15
 local ICON_TIP = 14
@@ -563,7 +572,8 @@ local function Fault(res)
     for i = 1, #faults do
         local fl = faults[i]
         rows[i] = { who = RuleName(fl.rule), text = Count(fl.n, "rsum.w.times", "rsum.n.word"),
-                    note = fl.gp > 0 and format(T("rsum.gp.n"), fl.gp) or nil, v = fl.n, lines = FaultTip(res, fl) }
+                    note = fl.gp > 0 and format(T("rsum.gp.n"), fl.gp, ns.Ledger and ns.Ledger.Unit() or T("led.unit.gp")) or nil, v = fl.n,
+                    lines = FaultTip(res, fl) }
     end
     local title = faults[1] and format(T("rsum.title.fault"), ns.Penalties.Short(faults[1].rule)) or T("rsum.d.fault")
     return { key = "fault", title = title, rows = rows, empty = T("rsum.nogpyet") }
