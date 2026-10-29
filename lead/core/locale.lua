@@ -3,13 +3,19 @@ root.Lead = root.Lead or {}
 local ns = root.Lead
 ns.locales = ns.locales or {}
 local DEFAULT = "ruRU"
+local CLIENT_LANG = { ruRU = "ruRU", esES = "esES", esMX = "esES" }
 function ns.Lang()
     if root.lang then return root.lang end
-    return GetLocale() == "ruRU" and "ruRU" or "enUS"
+    return CLIENT_LANG[GetLocale()] or "enUS"
 end
 function ns.T(key, ...)
-    local own = ns.locales[ns.Lang()]
+    local lang = ns.Lang()
+    local own = ns.locales[lang]
     local s = own and own[key]
+    if s == nil and lang == "esES" then
+        local en = ns.locales.enUS
+        s = en and en[key]
+    end
     if s == nil then
         local base = ns.locales[DEFAULT]
         s = base and base[key]

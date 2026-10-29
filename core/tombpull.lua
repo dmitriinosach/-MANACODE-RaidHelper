@@ -17,8 +17,8 @@ function TP.Begin(s, fight)
     for i = 1, #s.badges do
         local bd = s.badges[i]
         if bd.kind == "pulled" then
-            return { s = s, fight = fight, i = i, beacon = ns.SpellKey(bd.spell), tomb = ns.SpellKey(bd.splash),
-                     on = {}, off = {}, waves = {}, subs = SUBS }
+            return { s = s, fight = fight, i = i, def = bd, beacon = ns.SpellKey(bd.spell), tomb = ns.SpellKey(bd.splash),
+                     on = {}, off = {}, waves = {}, ends = {}, subs = SUBS }
         end
     end
     return nil
@@ -47,7 +47,14 @@ function TP.Feed(st, ts, sub, dstName, a1)
         st.s.spellIds[sk] = st.s.spellIds[sk] or tonumber(a1)
         return
     end
-    if sk ~= st.tomb or sub ~= "SPELL_AURA_APPLIED" then return end
+    if sk ~= st.tomb then return end
+    if sub == "SPELL_AURA_REMOVED" then
+        local list = st.ends[dstName] or {}
+        st.ends[dstName] = list
+        list[#list + 1] = ts
+        return
+    end
+    if sub ~= "SPELL_AURA_APPLIED" then return end
     local w = st.waves[#st.waves]
     if not w or ts - w.t > WAVE then
         w = { t = ts, hit = {}, seen = {}, carriers = Carriers(st, ts) }
@@ -134,38 +141,97 @@ local function Nearest(st, victim, carriers, t)
     if second and second - bestD < MARGIN then return nil end
     return best
 end
-function TP.Finish(st)
-    local s, i = st.s, st.i
-    for w = 1, #st.waves do
-        local wave = st.waves[w]
-        local carrier = {}
-        for k = 1, #wave.carriers do carrier[wave.carriers[k]] = true end
-        local by, order = {}, {}
-        for k = 1, #wave.hit do
-            local v = wave.hit[k]
-            if not carrier[v] then
-                local who = #wave.carriers == 1 and wave.carriers[1] or nil
-                if #wave.carriers > 1 then who = Nearest(st, v, wave.carriers, wave.t) end
-                if who and s.byName[who] then
-                    if not by[who] then
-                        by[who] = {}
-                        order[#order + 1] = who
-                    end
-                    by[who][#by[who] + 1] = v
-                end
+local function Dist(st, a, b, t)
+    local yw, yh = Scale(st, t)
+    local ax, ay = Near(Track(st, a), t)
+    local bx, by = Near(Track(st, b), t)
+    if not (yw and ax and bx) then return nil end
+    local dx, dy = (ax - bx) * yw, (ay - by) * yh
+    return sqrt(dx * dx + dy * dy)
+end
+local function DiedIn(st, wave)
+    local after = st.def.after or 0
+    for k = 1, #wave.hit do
+        local name = wave.hit[k]
+        local till = wave.t
+        local ends = st.ends[name] or {}
+        for e = 1, #ends do
+            if ends[e] >= wave.t then
+                till = ends[e]
+                break
             end
         end
-        for k = 1, #order do
-            local b = s.byName[order[k]].badges[i]
-            b.n = b.n + 1
-            b.times[#b.times + 1] = wave.t - s.from
-            b.whom = b.whom or {}
-            b.whom[#b.whom + 1] = concat(by[order[k]], ", ")
-            for v = 1, #by[order[k]] do b.notes[#b.notes + 1] = by[order[k]][v] end
-            b.grade = s.badges[i].grade
+        local d = st.s.byName[name].deathInfo or {}
+        for e = 1, #d do
+            if d[e].t >= wave.t and d[e].t <= till + after then return true end
         end
     end
-    s.icons[i] = s.icons[i] or s.spellIds[st.beacon]
+    return false
+end
+local function Pairs(st, wave)
+    local out, hit = {}, {}
+    for k = 1, #wave.hit do hit[wave.hit[k]] = true end
+    local r = st.def.radius or 0
+    for a = 1, #wave.carriers do
+        for b = a + 1, #wave.carriers do
+            local A, B = wave.carriers[a], wave.carriers[b]
+            local d = hit[A] and hit[B] and Dist(st, A, B, wave.t)
+            if d and d <= r then
+                out[A], out[B] = out[A] or {}, out[B] or {}
+                out[A][#out[A] + 1], out[B][#out[B] + 1] = B, A
+            end
+        end
+    end
+    return out
+end
+local function Judge(st, wave)
+    local s, i = st.s, st.i
+    local carrier = {}
+    for k = 1, #wave.carriers do carrier[wave.carriers[k]] = true end
+    local by, order = {}, {}
+    local function Add(who, v)
+        if not by[who] then
+            by[who] = {}
+            order[#order + 1] = who
+        end
+        by[who][#by[who] + 1] = v
+    end
+    for k = 1, #wave.hit do
+        local v = wave.hit[k]
+        if not carrier[v] then
+            local who = #wave.carriers == 1 and wave.carriers[1] or nil
+            if #wave.carriers > 1 then who = Nearest(st, v, wave.carriers, wave.t) end
+            if who and s.byName[who] then Add(who, v) end
+        end
+    end
+    local died = DiedIn(st, wave)
+    local free = {}
+    for k = 1, #order do free[order[k]] = #by[order[k]] end
+    if died then
+        for who, list in pairs(Pairs(st, wave)) do
+            if s.byName[who] then
+                for v = 1, #list do Add(who, list[v]) end
+            end
+        end
+    end
+    for k = 1, #order do
+        local who = order[k]
+        local b = s.byName[who].badges[i]
+        local grade = (not died and (free[who] or 0) >= (st.def.red or math.huge)) and "red" or "yellow"
+        local n = b.n + 1
+        b.n = n
+        b.times[n] = wave.t - s.from
+        b.whom = b.whom or {}
+        b.whom[n] = concat(by[who], ", ")
+        b.grades = b.grades or {}
+        b.grades[n] = grade
+        for v = 1, #by[who] do b.notes[#b.notes + 1] = by[who][v] end
+        if grade == "red" or not b.grade then b.grade = grade end
+    end
+end
+function TP.Finish(st)
+    for w = 1, #st.waves do Judge(st, st.waves[w]) end
+    st.s.icons[st.i] = st.s.icons[st.i] or st.s.spellIds[st.beacon]
     st.tracks, st.marks = nil, nil
 end
 function TP.Of(s, p)
@@ -174,7 +240,8 @@ function TP.Of(s, p)
         if s.badges[i].kind == "pulled" then
             local b = p.badges[i]
             for k = 1, #((b and b.times) or {}) do
-                out[#out + 1] = { t = s.from + b.times[k], whom = b.whom and b.whom[k] or nil }
+                out[#out + 1] = { t = s.from + b.times[k], whom = b.whom and b.whom[k] or nil,
+                                  grade = b.grades and b.grades[k] or "yellow" }
             end
         end
     end

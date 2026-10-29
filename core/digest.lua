@@ -3,7 +3,8 @@ local floor = math.floor
 local abs = math.abs
 local format = string.format
 local tsort = table.sort
-local TOTALS_VERSION = 51
+local TOTALS_VERSION = 60
+local TOTALS_CODE = "9ee216fcf1"
 local TRASH_VERSION = 3
 local ABIL_KEEP = 10
 local TRASH_KEY = "#trash"
@@ -23,6 +24,7 @@ local STAT_LIST = { times = true, notes = true }
 local Digest = {}
 ns.Digest = Digest
 Digest.VERSION = TOTALS_VERSION
+Digest.CODE = TOTALS_CODE
 local extIndex = nil
 local sigs = {}
 local commonSig = nil
@@ -180,12 +182,19 @@ local function Unpack(s)
     s.byName = byName
     return s
 end
+local function FightSig(fight)
+    local names = {}
+    for key in pairs(fight.names or {}) do names[#names + 1] = tostring(key) end
+    tsort(names)
+    return (fight.raid and fight.raid.size or 0) .. ":" .. table.concat(names, ",") .. ":" .. tostring(fight.killed)
+end
 local function Entry(fight)
     local seg = SegOf(fight)
     local e = seg and seg.totals and seg.totals[Key(fight)]
     if type(e) ~= "table" or type(e.s) ~= "string" then return nil end
     if abs((e.to or 0) - fight.to) > TO_SLACK or e.n ~= Count(fight.players) then return nil end
-    if e.sig ~= Digest.Sig(fight.boss) and not ns.Store.Bare(fight) then return nil end
+    if ns.Store.Bare(fight) then return e end
+    if e.sig ~= Digest.Sig(fight.boss) or e.fs ~= FightSig(fight) then return nil end
     return e
 end
 function Digest.Has(fight)
@@ -226,7 +235,7 @@ function Digest.Save(fight, s)
     seg.totals = seg.totals or {}
     if ns.Encounters.Ready() then Prune(seg, fight.seg) end
     seg.totals[Key(fight)] = { sig = Digest.Sig(fight.boss), to = fight.to, n = Count(fight.players), s = blob,
-                               zb = s.zoneBuff }
+                               zb = s.zoneBuff, fs = FightSig(fight) }
     if seg.lite and fight.seg then Digest.Lite(fight.seg) end
     return #blob
 end
@@ -258,7 +267,8 @@ local function Windows(seg)
     return out, before
 end
 local function WinSig(wins)
-    local parts = { TRASH_VERSION, Common() }
+    local parts = { ns.Codec.Sig(TRASH_VERSION, ns.consumeCast or false, ns.consumeCreate or false,
+                                 ns.consumeEnchant or false, ns.consumeAura or false) }
     for k = 1, #wins do
         parts[#parts + 1] = format("%.0f-%.0f", floor(wins[k].from * 1000 + 0.5), floor(wins[k].to * 1000 + 0.5))
     end
@@ -378,7 +388,7 @@ function Digest.Refresh()
     ns.Jobs.Run(REFRESH_KEY, function()
         for k = 1, #stale do
             local f = stale[k]
-            if Digest.Stale(f) then ns.Summary.Full(f) end
+            if Digest.Stale(f) then ns.Summary.Now(f) end
             ns.Jobs.Yield()
         end
         return true

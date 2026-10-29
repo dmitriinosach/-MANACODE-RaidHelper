@@ -8,12 +8,13 @@ local sqrt = math.sqrt
 local band = bit.band
 local find = string.find
 local NpcKey = ns.NpcKey
+local SubKind = ns.SubKind
 local IDLE_GAP = 15
 local RESUME_GAP = 180
 local MIN_FIGHT = 20
 local MIN_DUMMY = 3
 local FX_VERSION = 5
-local SCAN_VERSION = 14
+local SCAN_VERSION = 16
 local CLS_VERSION = 1
 local CAST_WINDOW = 3
 local REVIVE_GAP = 2
@@ -106,7 +107,7 @@ local function EndOf(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags
     if srcGUID == nil or spellId == nil or sub == "SPELL_CAST_START" then return nil, nil, false end
     enc = EncounterIn(srcGUID, srcName, auto, alias)
     local win = enc and ns.bossWin[enc]
-    if win ~= nil and ns.SpellKey(spellId) == ns.SpellKey(win) then return enc, NpcKey(srcGUID), false end
+    if win ~= nil and win[ns.SpellKey(spellId)] then return enc, NpcKey(srcGUID), false end
     return nil, nil, false
 end
 function Encounters.Of(guid, name, auto)
@@ -193,6 +194,33 @@ local function StatOf(stats, id, name)
     end
     return s
 end
+local function NoteClasses(seg)
+    local info = GetPlayerInfoByGUID
+    local classes = ns.GetDB().classes
+    if not info or not classes then return end
+    local actors = ns.Decode.Tables(seg).actors
+    for k = 1, #actors do
+        local g, n, f = string.match(actors[k], "^([^\31]*)\31([^\31]*)\31(%-?%d*)$")
+        if g and n and n ~= "" and not classes[n] and band(tonumber(f) or 0, F_PLAYER) > 0 then
+            local _, cls = info(g)
+            if cls then classes[n] = cls end
+        end
+    end
+end
+local function AbsorbSaved(seg)
+    if type(seg.fx) ~= "string" then return false end
+    local stats, ok = ns.Codec.Decode(seg.fx, nil)
+    if not ok or type(stats) ~= "table" then return false end
+    ns.Effects.Absorb(stats)
+    return true
+end
+local function PackFx(stats)
+    local out = {}
+    for id, s in pairs(stats) do
+        out[id] = { name = s.name, n = s.n, debuff = s.debuff, hostile = s.hostile, mine = s.mine, cast = s.cast, tn = s.tn }
+    end
+    return ns.Codec.Encode(out, nil, nil)
+end
 local function Pressed(log)
     for name, list in pairs(log or {}) do
         local all = pressed[name]
@@ -217,13 +245,65 @@ end
 local ALIVE_SRC = { SPELL_CAST_SUCCESS = true, SPELL_CAST_START = true, SWING_DAMAGE = true, SWING_MISSED = true,
                     RANGE_DAMAGE = true, RANGE_MISSED = true }
 local GROUP_MATE = 0x06
+local function ConfirmProgress(group, boss, proof)
+    if group.done[boss] then return end
+    group.done[boss] = true
+    local last = group.last[boss]
+    if boss ~= proof.boss and last and not last.killed and last.to < proof.from then
+        last.progress = proof.boss
+        if not last.wipe then last.killed, last.byProgress = true, true end
+    end
+    local required = ns.bossRequires and ns.bossRequires[boss]
+    if not required then return end
+    for i = 1, #required do ConfirmProgress(group, required[i], proof) end
+end
+local function RecheckProgress(list)
+    local groups = {}
+    local was = {}
+    for i = 1, #list do
+        local f = list[i]
+        was[i] = f.killed
+        if f.byProgress then f.killed, f.byProgress = false, nil end
+        f.progress = nil
+    end
+    for i = #list, 1, -1 do
+        local f = list[i]
+        local r = f.raid
+        if r and r.id and r.id > 0 and r.size and r.map == "IcecrownCitadel" and f.mates ~= false then
+            local key = tostring(r.id) .. ":" .. tostring(r.size)
+            local group = groups[key]
+            if not group then
+                group = { last = {}, done = {} }
+                groups[key] = group
+            end
+            if f.killed then
+                ConfirmProgress(group, f.boss, f)
+            else
+                group.last[f.boss] = f
+            end
+        end
+    end
+    for i = 1, #list do
+        if was[i] ~= list[i].killed then
+            if ns.Summary then ns.Summary.Reset() end
+            if ns.RaidSummary then ns.RaidSummary.Reset() end
+            break
+        end
+    end
+end
 local function ScanAll()
     local found = {}
     local listed = {}
     local alias = {}
     local segIndex = 0
     local Deaths = ns.Deaths
-    local hitAt, hitId, quiet = {}, {}, {}
+    local hitAt, hitSeg, hitS, hitPos, hitGen, hitSub, quiet = {}, {}, {}, {}, {}, {}, {}
+    local function HitId(who)
+        local sub = hitSub[who]
+        if not sub then return nil end
+        if SubKind[sub].swing then return false end
+        return (ns.Decode.Tail(hitSeg[who], hitS[who], hitPos[who], hitGen[who], sub, 1))
+    end
     local function Settle(f)
         local list = quiet[f]
         if not list then return end
@@ -271,15 +351,20 @@ local function ScanAll()
     end
     local segTotal = #db.segments
     local defensives = ns.defensives or {}
+    local raidCovers = ns.covers and ns.covers.raid or {}
     pressed = {}
     ns.Jobs.Label("job.scan", true)
     for i, seg in ns.Store.Segments() do
         segIndex = i
         ns.Jobs.Progress(i - 1, segTotal)
         local noteEffects = seg.fxNoted ~= FX_VERSION
-        local noteClasses = seg.clsNoted ~= CLS_VERSION
+        if seg.clsNoted ~= CLS_VERSION then
+            NoteClasses(seg)
+            seg.clsNoted = CLS_VERSION
+        end
         local cached = seg.scan
-        if cached and (seg.bare or (cached.v == SCAN_VERSION and not noteEffects and not noteClasses)) then
+        if cached and (seg.bare or cached.v == SCAN_VERSION) and (not noteEffects or seg.bare or AbsorbSaved(seg)) then
+            seg.fxNoted = FX_VERSION
             for k = 1, #cached.fights do
                 local f = cached.fights[k]
                 f.seg = i
@@ -301,63 +386,56 @@ local function ScanAll()
         local open = {}
         local openCount = 0
         local fxStats, castAt = {}, {}
-        local classes, asked = ns.GetDB().classes, {}
+        local Tail = ns.Decode.Tail
         local guards = {}
         local seen, perEvent = 0, 1 / max(1, tonumber(seg.n) or 1)
-        for ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, _, a4
-            in ns.Store.Events(seg, nil, nil, 4) do
+        for s, pos, gen, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags in ns.Decode.Scan(seg) do
             ns.Jobs.Step()
             seen = seen + 1
             if seen % PROGRESS_EVERY == 0 then ns.Jobs.Progress(i - 1 + seen * perEvent, segTotal) end
-            if noteClasses and srcName and srcGUID and not classes[srcName]
-                and not asked[srcName] and srcFlags and bit.band(srcFlags, F_PLAYER) > 0 then
-                asked[srcName] = true
-                local _, cls = GetPlayerInfoByGUID(srcGUID)
-                if cls then classes[srcName] = cls end
-            end
-            if sub == "SPELL_CAST_SUCCESS" and srcName and srcFlags and bit.band(srcFlags, F_PLAYER) > 0 then
-                local gid = tonumber(a1)
-                if gid and defensives[gid] then
-                    local list = guards[srcName]
-                    if not list then
-                        list = {}
-                        guards[srcName] = list
+            if srcName and (sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CAST_START") then
+                local id = tonumber((Tail(seg, s, pos, gen, sub, 1)))
+                if id then
+                    castAt[srcName .. "\0" .. id] = ts
+                    if sub == "SPELL_CAST_SUCCESS" and srcFlags and bit.band(srcFlags, F_PLAYER) > 0
+                        and (defensives[id] or raidCovers[id]) then
+                        local list = guards[srcName]
+                        if not list then
+                            list = {}
+                            guards[srcName] = list
+                        end
+                        list[#list + 1] = ts
+                        list[#list + 1] = id
                     end
-                    list[#list + 1] = ts
-                    list[#list + 1] = gid
                 end
-            end
-            if noteEffects then
+            elseif srcName and sub == "SPELL_AURA_APPLIED" and dstFlags and bit.band(dstFlags, F_PLAYER) > 0 then
+                local a1, a2, _, a4 = Tail(seg, s, pos, gen, sub, 4)
                 local id = tonumber(a1)
-                if id and srcName then
-                    if sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CAST_START" then
-                        castAt[srcName .. "\0" .. id] = ts
-                    elseif sub == "SPELL_AURA_APPLIED" and dstFlags
-                        and bit.band(dstFlags, F_PLAYER) > 0 then
-                        local s = StatOf(fxStats, id, a2)
-                        s.n = s.n + 1
-                        if a4 == "DEBUFF" then s.debuff = s.debuff + 1 end
-                        if srcFlags and bit.band(srcFlags, F_HOSTILE) > 0 then
-                            s.hostile = s.hostile + 1
-                        end
-                        if srcName == dstName then s.mine = s.mine + 1 end
-                        local at = castAt[srcName .. "\0" .. id]
-                        if at and ts - at <= CAST_WINDOW then s.cast = s.cast + 1 end
-                        if dstName and not s.tg[dstName] then
-                            s.tg[dstName] = true
-                            s.tn = s.tn + 1
-                        end
+                if id then
+                    local st = StatOf(fxStats, id, a2)
+                    st.n = st.n + 1
+                    if a4 == "DEBUFF" then st.debuff = st.debuff + 1 end
+                    if srcFlags and bit.band(srcFlags, F_HOSTILE) > 0 then
+                        st.hostile = st.hostile + 1
+                    end
+                    if srcName == dstName then st.mine = st.mine + 1 end
+                    local at = castAt[srcName .. "\0" .. id]
+                    if at and ts - at <= CAST_WINDOW then st.cast = st.cast + 1 end
+                    if dstName and not st.tg[dstName] then
+                        st.tg[dstName] = true
+                        st.tn = st.tn + 1
                     end
                 end
             end
             local asSrc = EncounterIn(srcGUID, srcName, own, alias, dummy)
             local asDst = EncounterIn(dstGUID, dstName, own, alias, dummy)
-            local hurt = sub:find("_DAMAGE", 1, true) ~= nil
-            local touched = hurt or sub:find("_HEAL", 1, true) ~= nil
+            local K = SubKind[sub]
+            local hurt = K.dmg
+            local touched = hurt or K.heal
             if (hurt or sub == "SPELL_INSTAKILL") and dstName and dstFlags
                 and bit.band(dstFlags, F_PLAYER) > 0 then
                 hitAt[dstName] = ts
-                hitId[dstName] = sub:find("SWING", 1, true) == nil and a1 or false
+                hitSeg[dstName], hitS[dstName], hitPos[dstName], hitGen[dstName], hitSub[dstName] = seg, s, pos, gen, sub
             end
             local byPlayer = touched and srcFlags ~= nil
                 and bit.band(srcFlags, F_BY_PLAYER) > 0
@@ -410,6 +488,11 @@ local function ScanAll()
                         and ts - (f.diedAt or ts) > REVIVE_GAP then
                         f.killed = false
                     end
+                    local a1 = nil
+                    if asSrc and ns.bossWin[asSrc] and sub ~= "UNIT_DIED" and sub ~= "PARTY_KILL"
+                        and sub ~= "SPELL_CAST_START" then
+                        a1 = Tail(seg, s, pos, gen, sub, 1)
+                    end
                     local ended, _, died = EndOf(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags,
                         a1, own, alias, bossSeen)
                     if ended == enc then
@@ -433,7 +516,7 @@ local function ScanAll()
                             if sub == "UNIT_DIED" then
                                 local at = hitAt[dstName]
                                 local hit = at ~= nil and ts - at <= Deaths.KILL_WINDOW
-                                if not (hit and Deaths.ByScript(f.boss, hitId[dstName])) then
+                                if not (hit and Deaths.ByScript(f.boss, HitId(dstName))) then
                                     f.players[dstName] = f.players[dstName] + 1
                                     f.deaths = f.deaths + 1
                                     local dts = f.dts or {}
@@ -461,11 +544,9 @@ local function ScanAll()
                 Push(f)
             end
         end
-        if noteEffects then
-            ns.Effects.Absorb(fxStats)
-        end
+        ns.Effects.Absorb(fxStats)
+        seg.fx = PackFx(fxStats)
         seg.fxNoted = FX_VERSION
-        seg.clsNoted = CLS_VERSION
         local mine = {}
         for k = 1, #found do
             if found[k].seg == i then
@@ -489,6 +570,7 @@ local function ScanAll()
         if not (seg and seg.cut and seg.cut[Encounters.Key(f)]) then kept[#kept + 1] = f end
     end
     tsort(kept, function(a, b) return a.from > b.from end)
+    RecheckProgress(kept)
     return kept
 end
 function Encounters.Ready()
@@ -578,9 +660,6 @@ function Encounters.Scan(onDone)
         if ns.FightTree then ns.FightTree.Lend(fights) end
         onDone()
     end, "scan.frame")
-end
-function Encounters.Prepare(fight, onDone)
-    ns.Index.Get(fight, onDone, false)
 end
 local LEAD = ns.PULL_LEAD
 local TAIL = 20
@@ -892,7 +971,7 @@ local function BuildTimeline(fight, who, idx)
     local starts = ns.CastGcd.New(who)
     local mine = idx.who[who] or {}
     local common = idx.common
-    local mineT, commonT = ns.Index.Times(idx, mine) or {}, ns.Index.Times(idx, common) or {}
+    local mineT, commonT = ns.Index.Times(idx, mine), ns.Index.Times(idx, common)
     local i, j = 1, 1
     while true do
         local a, b = mine[i], common[j]
@@ -1071,7 +1150,7 @@ local function BuildTimeline(fight, who, idx)
         if ns.Streams.Real(idx.segs, who, out.deaths[k]) then real[#real + 1] = out.deaths[k] end
     end
     out.deaths = real
-    out.phases = ns.Phases and (ns.Phases.Get(fight) or ns.Phases.Scan(fight)) or nil
+    out.phases = ns.Phases and ns.Phases.Get(fight) or nil
     return out
 end
 local function ByTotal(a, b)

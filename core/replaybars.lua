@@ -135,8 +135,9 @@ function RB.Bars(B, t, out, cap)
     for i = n, (cap or BAR_MAX) + 1, -1 do out[i] = nil end
     return #out, active
 end
-function RB.Alerts(B, t, out)
+function RB.Alerts(B, t, out, keep)
     local n = 0
+    keep = keep or ALERT_FOR
     if B then
         local list = B.alerts
         local lo, hi = 1, #list
@@ -146,7 +147,7 @@ function RB.Alerts(B, t, out)
         end
         for j = hi, 1, -1 do
             local a = list[j]
-            if t - a.t >= ALERT_FOR or n >= ALERT_MAX then break end
+            if t - a.t >= keep or n >= ALERT_MAX then break end
             n = n + 1
             out[n] = a
         end

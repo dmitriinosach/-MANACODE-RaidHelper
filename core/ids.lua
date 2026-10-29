@@ -44,6 +44,19 @@ local function IsSpellSub(sub)
     end
     return v
 end
+local NO_KIND = { dmg = false, heal = false, miss = false, swing = false, periodic = false, aura = false, env = false }
+ns.SubKind = setmetatable({}, { __index = function(t, sub)
+    if type(sub) ~= "string" then return NO_KIND end
+    local find = string.find
+    local k = {
+        dmg = find(sub, "_DAMAGE", 1, true) ~= nil, heal = find(sub, "_HEAL", 1, true) ~= nil,
+        miss = find(sub, "_MISSED", 1, true) ~= nil, swing = strsub(sub, 1, 5) == "SWING",
+        periodic = find(sub, "PERIODIC", 1, true) ~= nil, aura = strsub(sub, 1, 11) == "SPELL_AURA_",
+        env = sub == "ENVIRONMENTAL_DAMAGE",
+    }
+    t[sub] = k
+    return k
+end })
 function ns.SpellOf(sub, id)
     if not IsSpellSub(sub) then return nil end
     if not built then Build() end

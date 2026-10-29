@@ -11,6 +11,7 @@ local tsort = table.sort
 local select = select
 local strsub = string.sub
 local strbyte = string.byte
+local SCENE_SHARE = 0.07
 local AREA_W = 1002
 local AREA_H = 668
 local RIM = 0.45
@@ -70,7 +71,7 @@ Replay.ROOMS = {
     festergut = { boss = ns.ENC.festergut, floor = 5, tex = "festergut", cx = 199, cy = 440, r = 48, pack = "ICC" },
     rotface = { boss = ns.ENC.rotface, floor = 5, tex = "rotface", cx = 199, cy = 270, r = 48, pack = "ICC" },
     putricide = { boss = ns.ENC.putricide, floor = 5, tex = "putricide", cx = 125, cy = 355, r = 52, pack = "ICC" },
-    council = { boss = ns.ENC.council, floor = 5, tex = "council", cx = 518, cy = 95, r = 58, pack = "ICC" },
+    council = { boss = ns.ENC.council, floor = 5, tex = "council", cx = 518, cy = 95, r = 58, pack = "ICC", sky = "citadel" },
     valithria = { boss = ns.ENC.valithria, floor = 5, tex = "valithria", cx = 769, cy = 475, r = 85, pack = "ICC" },
     sindragosa = { boss = ns.ENC.sindragosa, floor = 4, tex = "sindragosa", cx = 365, cy = 115, r = 78, pack = "ICC" },
     frostmourne = { boss = ns.ENC.lichking, floor = 8, tex = "frostmourne", cx = 470, cy = 365, r = 130, pack = "ICC" },
@@ -624,14 +625,14 @@ local function FillAlt(fight, frames, scene)
     return alt
 end
 function Replay.Build(fight, frames)
-    ns.Jobs.Band(0, 0.1)
+    ns.Jobs.Band(0, 0.005)
     local level, area, first = PickFloor(fight, frames)
     local scene = {
         fight = fight, from = first, pull = fight.from, to = fight.to, area = area, floor = level,
         room = Replay.RoomOf(fight.boss, level), ppy = PixelsPerYard(area, level),
         tracks = {}, states = {}, deaths = {}, bossState = NewState(),
     }
-    ns.Jobs.Band(0.1, 0.6)
+    ns.Jobs.Band(0.005, 0.05)
     FillTracks(fight, frames, scene)
     local mended = 0
     for k = 1, #scene.tracks do mended = mended + Mend(scene.tracks[k]) end
@@ -643,7 +644,7 @@ function Replay.Build(fight, frames)
         byK[scene.tracks[k].name] = k
     end
     scene.byK = byK
-    ns.Jobs.Band(0.6, 0.7)
+    ns.Jobs.Band(0.05, SCENE_SHARE)
     FitCircle(scene)
     FillGrid(scene)
     scene.alt = FillAlt(fight, frames, scene)
@@ -1024,7 +1025,7 @@ function Replay.Load(fight, onDone)
         ns.Jobs.Run(JOB_KEY, function()
             ns.Jobs.Label("job.replay")
             local scene = Replay.Build(fight, frames)
-            ns.Jobs.Band(0.7, 1)
+            ns.Jobs.Band(SCENE_SHARE, 1)
             if ns.ReplayLayers then ns.ReplayLayers.Build(scene) end
             scene.lkNoPatch = ns.ReplayPlatform.NoPatch(scene, frames)
             return scene

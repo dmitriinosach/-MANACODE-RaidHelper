@@ -4,9 +4,10 @@ local concat = table.concat
 local RAID_MAX = 40
 local PARTY_MAX = 5
 local HOLD = 60
+local RETRY = 5
 local WORDS_MAX = 120
-local DEF = { words = "+, инв, инвайт, пати, пригласи, inv, invite, party" }
-local OLD_WORDS = "+, инв, inv, invite"
+local DEF = { words = "+, инв, инвайт, пати, пригласи, inv, invite, party, invitar" }
+local OLD_WORDS = { ["+, инв, inv, invite"] = true, ["+, инв, инвайт, пати, пригласи, inv, invite, party"] = true }
 local Auto = {}
 ns.AutoInvite = Auto
 Auto.DEF = DEF
@@ -17,6 +18,9 @@ local queue = {}
 local waits = {}
 local wordSet
 local wordSrc
+local fails
+local f = CreateFrame("Frame")
+f:Hide()
 local function LowA(a)
     return "\208" .. string.char(a:byte() + 32)
 end
@@ -38,7 +42,7 @@ local function Opt()
         o = {}
         s.autoInvite = o
     end
-    if o.words == OLD_WORDS or o.words == DEF.words or type(o.words) ~= "string" then o.words = nil end
+    if OLD_WORDS[o.words] or o.words == DEF.words or type(o.words) ~= "string" then o.words = nil end
     return o
 end
 function Auto.OnChange(fn)
@@ -113,8 +117,8 @@ local function Expire()
     for name, at in pairs(pending) do
         if now - at > HOLD or InGroup(name) then pending[name] = nil end
     end
-    for name, at in pairs(queue) do
-        if now - at > HOLD then queue[name] = nil end
+    for name in pairs(queue) do
+        if InGroup(name) then queue[name] = nil end
     end
 end
 local function Pending()
@@ -144,9 +148,16 @@ function Auto.Try(name)
     if type(name) ~= "string" or name == "" or name == UnitName("player") then return "self" end
     Expire()
     if InGroup(name) then return "member" end
-    if pending[name] or queue[name] then return "pending" end
     if Ignored(name) then return "ignored" end
     if not Auto.CanInvite() then return "rights" end
+    local at = pending[name]
+    if at then
+        if GetTime() - at < RETRY then return "pending" end
+        InviteUnit(name)
+        pending[name] = GetTime()
+        return "invited"
+    end
+    if queue[name] then return "pending" end
     if Members() + Pending() >= RAID_MAX then
         waits[name] = waits[name] or GetTime()
         return "waiting"
@@ -166,22 +177,48 @@ function Auto.Whisper(author, text)
     if not on or not Auto.Match(text) then return nil end
     return Auto.Try(author)
 end
-local function Drain()
-    if not on or (GetNumRaidMembers() or 0) == 0 then return end
+local function Sorted(set)
     local list = {}
-    for name in pairs(queue) do list[#list + 1] = name end
-    table.sort(list, function(a, b) return queue[a] < queue[b] end)
-    queue = {}
-    for i = 1, #list do Auto.Try(list[i]) end
-    list = {}
-    for name in pairs(waits) do
-        if InGroup(name) then waits[name] = nil else list[#list + 1] = name end
+    for name in pairs(set) do
+        if InGroup(name) then set[name] = nil else list[#list + 1] = name end
     end
-    table.sort(list, function(a, b) return waits[a] < waits[b] end)
+    table.sort(list, function(a, b) return set[a] < set[b] end)
+    return list
+end
+local function Drain()
+    if not on then return end
+    if next(queue) and ((GetNumRaidMembers() or 0) > 0 or Members() + Pending() < PARTY_MAX) then
+        local was = queue
+        local list = Sorted(was)
+        queue = {}
+        for i = 1, #list do
+            if Auto.Try(list[i]) == "queued" then queue[list[i]] = was[list[i]] end
+        end
+    end
+    local list = Sorted(waits)
     for i = 1, #list do
         if Members() + Pending() >= RAID_MAX then break end
         Auto.Try(list[i])
     end
+end
+local function Wake()
+    if on and (next(pending) or next(queue) or next(waits)) then f:Show() else f:Hide() end
+end
+local function Failed(msg)
+    if not fails then
+        fails = {}
+        for _, key in ipairs({ "ERR_DECLINE_GROUP_S", "ERR_ALREADY_IN_GROUP_S", "ERR_BAD_PLAYER_NAME_S", "ERR_IGNORING_YOU_S" }) do
+            local s = _G[key]
+            if type(s) == "string" then
+                fails[#fails + 1] = "^" .. gsub(gsub(s, "[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0"), "%%%%s", "(.+)") .. "$"
+            end
+        end
+    end
+    for i = 1, #fails do
+        local name = msg:match(fails[i])
+        if name then return name:match("|Hplayer:([^:|]+)") or name end
+    end
+    return nil
 end
 function Auto.Switch(v)
     v = v and true or false
@@ -192,20 +229,36 @@ function Auto.Switch(v)
         local raid, party = Group()
         if raid == 0 and party + 1 >= PARTY_MAX then Convert() end
     end
+    Wake()
     Notify()
 end
-local f = CreateFrame("Frame")
+local tick = 0
+f:SetScript("OnUpdate", function(_, elapsed)
+    tick = tick + elapsed
+    if tick < 1 then return end
+    tick = 0
+    Expire()
+    Drain()
+    Wake()
+end)
 f:RegisterEvent("CHAT_MSG_WHISPER")
+f:RegisterEvent("CHAT_MSG_SYSTEM")
 f:RegisterEvent("CHAT_MSG_GUILD")
 f:RegisterEvent("PARTY_MEMBERS_CHANGED")
 f:RegisterEvent("RAID_ROSTER_UPDATE")
 f:SetScript("OnEvent", function(_, event, msg, author)
     if event == "CHAT_MSG_WHISPER" or event == "CHAT_MSG_GUILD" then
         Auto.Whisper(author, msg)
+    elseif event == "CHAT_MSG_SYSTEM" then
+        local name = on and next(pending) and type(msg) == "string" and Failed(msg)
+        if not name or not pending[name] then return end
+        pending[name] = nil
+        Drain()
     elseif on then
         Expire()
         local raid, party = Group()
         if raid == 0 and (party + 1 >= PARTY_MAX or (party > 0 and next(queue))) then Convert() end
         Drain()
     end
+    Wake()
 end)

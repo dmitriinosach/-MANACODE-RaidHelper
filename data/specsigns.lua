@@ -1,4 +1,10 @@
 local _, ns = ...
+ns.specHeal = {
+    PALADIN = { [1] = true },
+    PRIEST = { [1] = true, [2] = true },
+    DRUID = { [3] = true },
+    SHAMAN = { [3] = true },
+}
 ns.specSigns = {
     WARRIOR = {
         { mortalStrike = { 12294, 21551, 21552, 21553, 25248, 30330, 47485, 47486 }, bladestorm = { 46924 } },

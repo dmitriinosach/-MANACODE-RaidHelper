@@ -7,7 +7,7 @@ local tonumber = tonumber
 local abs = math.abs
 local MB = 1048576
 local WEEK = 7 * 86400
-local MB_MIN, MB_MAX, MB_DEF = 50, 300, 250
+local MB_MIN, MB_MAX, MB_DEF, MB_WARN = 20, 200, 100, 100
 local ROTATE_TICK = 2
 local APPLY_DELAY = 5
 local ASK_AGAIN = 30
@@ -134,7 +134,7 @@ function Store.Limit()
     return Clamp(ns.GetDB().settings.limitMB, MB_MIN, MB_MAX, MB_DEF)
 end
 function Store.LimitRange()
-    return MB_MIN, MB_MAX, MB_DEF
+    return MB_MIN, MB_MAX, MB_DEF, MB_WARN
 end
 function Store.LimitBytes()
     return Store.Limit() * MB
@@ -381,6 +381,12 @@ function Store.Events(seg, from, to, maxTail)
 end
 function Store.Heads(seg, from, to)
     return ns.Decode.Heads(seg, from, to)
+end
+function Store.Span(seg, from, to)
+    return ns.Decode.Span(seg, from, to)
+end
+function Store.Read()
+    return ns.Decode.read
 end
 ns.OnReady(function()
     if ns.GetDB().live then

@@ -7,6 +7,7 @@ local KEEP = 14 * 86400
 local ICC = {
     ["Цитадель Ледяной Короны"] = true,
     ["Icecrown Citadel"] = true,
+    ["Ciudadela de la Corona de Hielo"] = true,
 }
 local AutoRec = {}
 ns.AutoRec = AutoRec

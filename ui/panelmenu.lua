@@ -17,6 +17,7 @@ local ARROW_TEX = "Interface\\ChatFrame\\ChatFrameExpandArrow"
 local ITEMS = {
     { key = "log" },
     { key = "gp" },
+    { key = "mini", label = "panel.mini", tip = "panel.mini.tip", pic = "mini" },
     { key = "raid" },
     { key = "spam" },
     { key = "timer", sub = true },
@@ -188,7 +189,7 @@ local function Build()
     menu.sized = true
     menu:SetClampedToScreen(true)
     menu:EnableMouse(true)
-    ns.Kit.Skin(menu, "float")
+    ns.Kit.Skin(menu, "pop")
     local defs = {}
     for _, d in ipairs(ns.Panel.ICONS) do defs[d.key] = d end
     for i = 1, #ITEMS do

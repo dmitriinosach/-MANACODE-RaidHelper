@@ -139,7 +139,7 @@ local function room(list)
 end
 local function settle(name, w)
     learn(name, w.spec, w.off)
-    W.Place(name, w.spec)
+    W.Place(name)
 end
 function W.Take(name, text)
     if type(name) ~= "string" or name == "" then return end
@@ -147,7 +147,7 @@ function W.Take(name, text)
     if not spec then return end
     if ns.Session.Member(name) then
         learn(name, spec, off)
-        W.Place(name, spec)
+        W.Place(name)
     else
         local list = waiting()
         if not list[name] then room(list) end
@@ -155,35 +155,8 @@ function W.Take(name, text)
     end
     ns.Session.Changed()
 end
-function W.Place(name, spec)
-    local S = ns.Session
-    if S.SlotOf(name) then return end
-    local m = S.Member(name)
-    spec = spec or S.Player(name).spec
-    if not m or not m.work or not spec then return end
-    local tpl = S.Template()
-    local exact, loose = {}, {}
-    for i, slot in ipairs(tpl.slots) do
-        if not S.SlotPlayer(i) and ns.Tpl.SpecFits(slot.role, spec) then
-            local sig = slot.role .. ":" .. table.concat(slot.specs or {}, ",")
-            local named = false
-            for _, k in ipairs(slot.specs or {}) do
-                if k == spec then named = true end
-            end
-            if named then
-                exact[sig] = exact[sig] or i
-            elseif not slot.specs then
-                loose[sig] = loose[sig] or i
-            end
-        end
-    end
-    local function only(t)
-        local one, n = nil, 0
-        for _, i in pairs(t) do one, n = i, n + 1 end
-        return n == 1 and one or nil
-    end
-    local pick = next(exact) and only(exact) or only(loose)
-    if pick then S.Assign(pick, name) end
+function W.Place(name)
+    return ns.Session.AutoPlace(name)
 end
 function W.Invite(name)
     local w = waiting()[name]

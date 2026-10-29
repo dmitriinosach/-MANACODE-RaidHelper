@@ -6,11 +6,7 @@ local OVERLAP = 4
 local INSET = 6
 local PAD = 6
 local GAP = 6
-local TOGGLE = 32
-local TOGGLE_OUT = TOGGLE / 2 - 2
 local LEVEL = 60
-local ARROW = "Interface\\Buttons\\UI-SpellbookIcon-%sPage-%s"
-local HILITE = "Interface\\Buttons\\UI-Common-MouseHilight"
 local Side = {}
 ns.SumSide = Side
 local Kit = ns.Kit
@@ -30,6 +26,7 @@ local hosts = {}
 local placed = {}
 local dock = "right"
 local laid
+local wasInside
 local function Ui()
     local set = ns.GetDB().settings
     if type(set.ui) ~= "table" then set.ui = {} end
@@ -40,8 +37,15 @@ local function Ui()
     end
     return ui
 end
+local function PickDock()
+    local left, right = nil, nil
+    if ns.Shell and ns.Shell.Room then left, right = ns.Shell.Room() end
+    if not right or right >= Width() - OVERLAP then return "right" end
+    if left and left >= Width() - OVERLAP then return "left" end
+    return nil
+end
 function Side.Inside()
-    return Ui().sumPlace ~= "outside"
+    return Ui().sumPlace ~= "outside" or PickDock() == nil
 end
 function Side.Open()
     return not Side.Inside()
@@ -59,52 +63,26 @@ function Side.PageWheel(pageWheel)
         return Side.Wheel(delta)
     end
 end
-local function PickDock()
-    local left, right = nil, nil
-    if ns.Shell and ns.Shell.Room then left, right = ns.Shell.Room() end
-    if not right or right >= Width() - OVERLAP then return "right" end
-    if left and left >= Width() - OVERLAP then return "left" end
-    return "inside"
-end
 local function PaintToggle()
+    if not toggle then return end
     local open = Side.Open()
-    local out = dock == "left"
-    local dir = (open ~= out) and "Prev" or "Next"
-    toggle:SetNormalTexture(ARROW:format(dir, "Up"))
-    toggle:SetPushedTexture(ARROW:format(dir, "Down"))
+    local room = PickDock() ~= nil
+    toggle:SetLabel(ns.T(open and "sum.side.btn.in" or "sum.side.btn.out"))
     toggle.tipTitle = ns.T(open and "sum.side.in" or "sum.side.out")
-    toggle.tip = ns.T("sum.side.tip")
-end
-local function PlaceToggle()
-    toggle:ClearAllPoints()
-    local open = Side.Open()
-    local _, right = nil, nil
-    if ns.Shell and ns.Shell.Room then _, right = ns.Shell.Room() end
-    local need = TOGGLE + (open and dock == "right" and Width() or 0)
-    if dock == "left" then
-        toggle:SetPoint("CENTER", open and side or shell, "LEFT", -TOGGLE_OUT, 0)
-    elseif right and right < need then
-        toggle:SetPoint("CENTER", shell, "LEFT", -TOGGLE_OUT, 0)
-    else
-        toggle:SetPoint("CENTER", (open and dock == "right") and side or shell, "RIGHT", TOGGLE_OUT, 0)
-    end
+    toggle.tip = ns.T(room and "sum.side.tip" or "sum.side.noroom")
+    if room or open then toggle:Enable() else toggle:Disable() end
 end
 local function Dock()
-    dock = PickDock()
+    dock = PickDock() or "right"
     side:ClearAllPoints()
     if dock == "right" then
         side:SetPoint("TOPLEFT", shell, "TOPRIGHT", -OVERLAP, 0)
         side:SetPoint("BOTTOMLEFT", shell, "BOTTOMRIGHT", -OVERLAP, 0)
-    elseif dock == "left" then
+    else
         side:SetPoint("TOPRIGHT", shell, "TOPLEFT", OVERLAP, 0)
         side:SetPoint("BOTTOMRIGHT", shell, "BOTTOMLEFT", OVERLAP, 0)
-    else
-        side:SetPoint("TOPRIGHT", shell, "TOPRIGHT", 0, 0)
-        side:SetPoint("BOTTOMRIGHT", shell, "BOTTOMRIGHT", 0, 0)
     end
     side:SetWidth(Width())
-    PlaceToggle()
-    PaintToggle()
 end
 local function Stack()
     local p = Inner()
@@ -151,17 +129,26 @@ local function Release()
     placed = {}
     laid = nil
 end
+local Redraw
 local function Refresh()
     if not side then return end
     if not Live() then
         side:Hide()
-        toggle:Hide()
+        if toggle then toggle:Hide() end
         Release()
         return
     end
-    toggle:Show()
-    Dock()
-    if Side.Open() then
+    if toggle then toggle:Show() end
+    PaintToggle()
+    local inside = Side.Inside()
+    if wasInside ~= nil and inside ~= wasInside then
+        wasInside = inside
+        Redraw()
+        return
+    end
+    wasInside = inside
+    if not inside then
+        Dock()
         side:Show()
         Stack()
     else
@@ -169,13 +156,13 @@ local function Refresh()
         Release()
     end
 end
-local function Redraw()
+Redraw = function()
     Refresh()
     local fn = owner and redraws[owner]
     if fn then fn() end
 end
 local function Flip()
-    Ui().sumPlace = Side.Inside() and "outside" or "inside"
+    Ui().sumPlace = Side.Open() and "inside" or "outside"
     Redraw()
 end
 local function Build()
@@ -191,16 +178,14 @@ local function Build()
     pane = Kit.ScrollPage(side)
     scroll, content = pane.scroll, pane.content
     side:Hide()
-    toggle = CreateFrame("Button", "HTP_FailWatchSideToggle", shell)
-    toggle:SetWidth(TOGGLE)
-    toggle:SetHeight(TOGGLE)
-    toggle:SetFrameLevel(shell:GetFrameLevel() + LEVEL + 5)
-    toggle:SetHighlightTexture(HILITE, "ADD")
-    toggle:SetScript("OnEnter", Kit.TipShow)
-    toggle:SetScript("OnLeave", Kit.TipHide)
-    toggle:SetScript("OnClick", Flip)
-    toggle:Hide()
     if ns.Shell and ns.Shell.OnPlace then ns.Shell.OnPlace(Refresh) end
+end
+function Side.Head(host)
+    toggle = Kit.ToolButton(host, "HTP_FailWatchSideToggle")
+    toggle.onClick = Flip
+    toggle:Hide()
+    PaintToggle()
+    return toggle
 end
 function Side.Content()
     Build()

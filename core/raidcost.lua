@@ -94,6 +94,21 @@ function Cost.Price(item)
     if c then return c, "ah", t end
     return nil, nil, nil
 end
+function Cost.Given(raid)
+    local out = {}
+    local F = ns.Flasks
+    if not F or not raid or not raid.name then return out end
+    local given = F.Given({ name = raid.name, size = raid.size or 0, id = raid.id })
+    if not next(given) then return out end
+    local byId = {}
+    local list = Cost.Items()
+    for i = 1, #list do byId[list[i].id] = list[i].item end
+    for id, n in pairs(given) do
+        local each = byId[id] and Cost.Price(byId[id])
+        out[id] = { n = n, c = each and each * n or nil }
+    end
+    return out
+end
 local function Spaced(n)
     local s = tostring(floor(n))
     local sep = ns.lang == "enUS" and "," or " "

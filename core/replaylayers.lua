@@ -10,6 +10,7 @@ local rad = math.rad
 local band = bit.band
 local SpellKey = ns.SpellKey
 local MAX_TAIL = 5
+local WALK_SHARE = 0.85
 local F_PLAYER = 0x400
 local F_NPC = 0x800
 local F_HOSTILE = 0x40
@@ -1179,7 +1180,8 @@ function Layers.Build(scene)
     local c = NewContext(scene)
     c.L.hitbox = Layers.Hitbox(fight.boss)
     local FC = ns.ReplayFeedCore
-    local fc = FC.New(fight)
+    local ready = FC.Peek(fight)
+    local fc = not ready and FC.New(fight) or nil
     local MK = ns.ReplayMarks
     local mc = MK.New(fight)
     local RB = ns.ReplayBars
@@ -1199,14 +1201,15 @@ function Layers.Build(scene)
     local CU = ns.ReplayCue
     local cu = CU and CU.New(fight)
     local np = ns.NpcPos and ns.NpcPos.New(scene, c)
-    local ph = ns.Phases.New(fight)
+    local ph = not ns.Phases.Get(fight) and ns.Phases.New(fight) or nil
     local RU = ns.ReplayUnits
     local ru = RU and RU.New(scene)
     local AR = ns.ReplayArrows
     local ar = AR and AR.New(scene)
     local arSubs = AR and AR.SUBS
     local segs = ns.Encounters.Segs(fight)
-    local span = max(1, fight.to - fight.from)
+    local span, read0 = 0, ns.Store.Read()
+    for o = 1, #segs do span = span + ns.Store.Span(segs[o], fight.from, fight.to) end
     local mcWant, rbWant = mc and (mc.want or ANY), rb and (rb.want or ANY)
     local ozWant, spWant, swWant = oz and (oz.want or ANY), sp and (sp.want or ANY), sw and (sw.want or ANY)
     local cuWant = cu and (cu.want or ANY)
@@ -1215,12 +1218,14 @@ function Layers.Build(scene)
     local phHooks = ph and ph.idx.hooks
     local ruNames, ruOpen = ru and ru.names, ru and ru.open
     local Step, Progress, Feed, NpcFeed = ns.Jobs.Step, ns.Jobs.Progress, ns.Phases.Feed, ns.NpcPos and ns.NpcPos.Feed
+    local Read = ns.Store.Read
+    ns.Jobs.Part(0, WALK_SHARE)
     local NpcKey, SpellOf = ns.NpcKey, ns.SpellOf
     for o = 1, #segs do
         for ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, _, a4, a5
             in ns.Store.Events(segs[o], fight.from, fight.to, MAX_TAIL) do
             Step()
-            Progress(ts - fight.from, span)
+            Progress(Read() - read0, span)
             local id = tonumber(a1)
             local sk = SpellOf(sub, id)
             local srcKey, dstKey = NpcKey(srcGUID), NpcKey(dstGUID)
@@ -1232,7 +1237,7 @@ function Layers.Build(scene)
             end
             if ar and arSubs[sub] then AR.Event(ar, ts, sub, src, dstGUID, dst, id, srcKey) end
             Dispatch(c, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4, sk, srcKey, dstKey)
-            FC.Event(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4, a5, skF)
+            if fc then FC.Event(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4, a5, skF) end
             if id then
                 if mcWant and mcWant[id] then MK.Event(mc, ts, sub, src, dst, a1, id) end
                 if rbWant and rbWant[id] then RB.Event(rb, ts, sub, src, dst, a1, id) end
@@ -1251,6 +1256,7 @@ function Layers.Build(scene)
             if np and SWING[sub] then NpcFeed(np, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags) end
         end
     end
+    ns.Jobs.Part(WALK_SHARE, 1)
     local res = ph and ns.Phases.Done(fight, ph) or ns.Phases.Get(fight)
     SortStates(c.L)
     ns.Replay.SnapDeaths(scene, c.diedK, c.diedT)
@@ -1268,7 +1274,12 @@ function Layers.Build(scene)
     if cu then CU.Done(cu, c.L, scene) end
     if RU then RU.Build(scene, segs, ru) end
     if ar then AR.Done(ar, c.L, scene) end
-    FC.Done(fc, c.L, feedRes)
+    if fc then
+        FC.Done(fc, c.L, feedRes)
+        FC.Keep(fight, FC.Pack(c.L))
+    else
+        FC.Reuse(c.L, ready, feedRes)
+    end
     MK.Done(mc, c.L, feedRes)
     if rm and #rm.marks > 0 then c.L.marks = MK.Merge(c.L.marks, rm.marks) end
     if rb then RB.Done(rb, c.L, feedRes, fight) end

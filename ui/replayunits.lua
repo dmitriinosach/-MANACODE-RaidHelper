@@ -1,6 +1,7 @@
 local _, ns = ...
 local floor = math.floor
 local max = math.max
+local abs = math.abs
 local tostring = tostring
 local format = string.format
 local WHITE = "Interface\\Buttons\\WHITE8X8"
@@ -20,7 +21,9 @@ local CB_ICON = 10
 local SN_H = 3
 local SN_ICON = 8
 local SN_MIN = 26
-local NICK_N = 5
+local NICK_W = 2.2
+local NICK_NEAR = 1.4
+local NICK_MIN = 18
 local NICK_GAP = 1
 local IN_K = 0.8
 local IN_RISE = 0.5
@@ -77,27 +80,25 @@ local function HideMana(fig)
     fig.mpFill:Hide()
     if fig.mpPct then fig.mpPct:Hide() end
 end
-local function Short(name)
-    local out, n = {}, 0
-    for ch in name:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
-        n = n + 1
-        if n > NICK_N then break end
-        out[n] = ch
-    end
-    return table.concat(out)
-end
 local function PutNick(fig)
     local fs = fig.nkFs
     if not fs then
         fs = fig:CreateFontString(nil, "OVERLAY")
         fs:SetFontObject(PctFont())
+        fs:SetJustifyH("CENTER")
+        fs:SetWordWrap(false)
         Kit.Text(fs, "sem.rep.nick")
         fig.nkFs = fs
     end
     if fig.nkName ~= fig.name then
         fig.nkName = fig.name
-        fig.nkTxt = Short(fig.name or "")
+        fig.nkTxt = fig.name or ""
         fs:SetText(fig.nkTxt)
+    end
+    local w = floor(max(NICK_MIN, (fig.uw or 0) * NICK_W) + 0.5)
+    if fig.nkW ~= w then
+        fig.nkW = w
+        fs:SetWidth(w)
     end
     local up = fig.bd ~= nil and fig.bd[1]:IsShown() and true or false
     if fig.nkUp ~= up then
@@ -446,6 +447,15 @@ end
 function V.SetCastsAll(on)
     Saved().castsAll = on and true or false
 end
+local function Covered(figs, k, n)
+    local fig = figs[k]
+    local near = max(NICK_MIN, fig.uw or 0) * NICK_NEAR
+    for j = 1, n do
+        local o = figs[j]
+        if j ~= k and o.shown and o.sy > fig.sy and abs(o.sx - fig.sx) < near and o.sy - fig.sy < near then return true end
+    end
+    return false
+end
 function V.Place(scene, t, figs, n)
     local data = st.data
     local all = V.CastsAll()
@@ -457,7 +467,8 @@ function V.Place(scene, t, figs, n)
         local m = alive and data.mana[fig.name]
         local v = m and RU.ManaAt(m, t)
         local focus = fig.name == st.focus
-        if fig.shown and not focus and fig.icon then PutNick(fig) else HideNick(fig) end
+        local nick = fig.shown and not focus and fig.icon and (fig.role == "tank" or not Covered(figs, k, n))
+        if nick then PutNick(fig) else HideNick(fig) end
         if v then
             PutMana(fig, v, focus)
             shown = shown + 1
@@ -485,7 +496,7 @@ function V.Probe(fig)
              cast = (fig.snOn and fig.snRec) or (fig.cbOn and fig.cbRec) or nil, strip = fig.snOn and fig.snQ or nil,
              stripW = fig.snOn and fig.snW or nil, tone = (fig.snOn and fig.snTok) or (fig.cbOn and fig.cbTok) or nil,
              bar = fig.cbOn and fig.cbQ or nil, left = fig.cbOn and fig.cbTxt or nil,
-             nick = fig.nkOn and fig.nkTxt or nil,
+             nick = fig.nkOn and fig.nkTxt or nil, nickW = fig.nkOn and fig.nkW or nil,
              inst = fig.inN or 0, instA = (fig.inN or 0) > 0 and fig.inA[1] / IN_Q or nil,
              instId = (fig.inN or 0) > 0 and fig.inId[1] or nil, instPos = fig.inPos and fig.inPos[1] or nil,
              instBar = fig.ibOn and fig.ibTxt or nil, instAt = fig.ibOn and fig.ibAt or nil }

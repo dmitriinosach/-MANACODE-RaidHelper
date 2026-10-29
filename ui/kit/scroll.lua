@@ -119,9 +119,11 @@ local function PageSync(p)
     if p.bar then p.bar:SetState(p.offset, p.view:GetHeight(), p.content:GetHeight()) end
 end
 local function PageScrollTo(p, want)
+    local was = p.offset
     p.offset = max(0, min(max(0, p.content:GetHeight() - p.view:GetHeight()), want))
     p.scroll:SetVerticalScroll(p.offset)
     PageSync(p)
+    if p.onScroll and p.offset ~= was then p.onScroll() end
 end
 local function PageRescroll(p)
     if p.scroll.UpdateScrollChildRect then p.scroll:UpdateScrollChildRect() end
@@ -136,13 +138,13 @@ local function PageLaid(p)
     p.laidW = floor(p.view:GetWidth())
 end
 local function PageRelayout(p)
-    if not p.pump or floor(p.view:GetWidth()) == p.laidW then return end
+    if not p.pump then return end
     p.relayoutAt = GetTime() + p.delay
     p.pump:Show()
 end
 function Kit.ScrollPage(parent, spec)
     spec = spec or {}
-    local p = { offset = 0, laidW = 0, wheel = spec.wheel or 40, delay = spec.delay or 0.15 }
+    local p = { offset = 0, laidW = 0, wheel = spec.wheel or 40, delay = spec.delay or 0.15, onScroll = spec.onScroll }
     p.Wheel, p.ScrollTo, p.Rescroll, p.Sync = PageWheel, PageScrollTo, PageRescroll, PageSync
     p.Laid, p.Relayout = PageLaid, PageRelayout
     local scroll = CreateFrame("ScrollFrame", nil, parent)
@@ -182,10 +184,11 @@ function Kit.ScrollPage(parent, spec)
         local function Tick(self)
             if GetTime() < p.relayoutAt then return end
             self:Hide()
-            relayout()
+            if floor(p.view:GetWidth()) ~= p.laidW then relayout() else PageRescroll(p) end
         end
         pump:SetScript("OnUpdate", spec.prof and ns.Prof.Wrap(spec.prof, Tick) or Tick)
         p.pump, p.relayoutAt = pump, 0
+        p.view:HookScript("OnSizeChanged", function() PageRelayout(p) end)
     end
     return p
 end

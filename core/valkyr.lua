@@ -84,7 +84,8 @@ function Valkyr.View(b, s, classOf)
     end
     local label = T(b.label or b.def.label)
     local tip = { { kind = "head", left = label, right = Short(b.total) } }
-    return { title = format(T("sum.k.title"), label, Short(b.total)),
-             cols = { T(b.normal and "sum.tt.total" or "sum.vk.col"), T("sum.vk.share") },
-             heads = { icon }, rows = rows, tip = tip, span = 1 }
+    local cols = { T(b.normal and "sum.tt.total" or "sum.vk.col"), T("sum.vk.share") }
+    return { title = label, total = Short(b.total),
+             cols = cols,
+             heads = { icon }, rows = rows, tip = tip }
 end

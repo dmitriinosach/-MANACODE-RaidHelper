@@ -1,18 +1,16 @@
 local _, ns = ...
 local format = string.format
 local gsub = string.gsub
+local tinsert = table.insert
 local tsort = table.sort
-local tremove = table.remove
-local KEEP = 40
+local KEEP = 100
 local LIMIT = 255
 local Roll = {}
 ns.RollPen = Roll
 local throws = {}
-local seen = {}
 local listeners = {}
 local pattern
 local frame
-local listening = false
 local function Notify()
     for i = 1, #listeners do listeners[i]() end
 end
@@ -40,21 +38,18 @@ function Roll.Parse(msg)
     if not who or not n or not lo or not hi then return nil end
     return who, n, lo, hi
 end
-function Roll.OnSystem(msg)
-    local who, n, lo, hi = Roll.Parse(msg)
-    if not who or seen[who] then return end
-    seen[who] = true
-    throws[#throws + 1] = { who = who, n = n, lo = lo, hi = hi, t = time() }
-    while #throws > KEEP do
-        seen[throws[1].who] = nil
-        tremove(throws, 1)
-    end
-    Notify()
+function Roll.KeysOf(fight)
+    local r = fight and fight.raid
+    if not (r and ns.Raid and ns.Raid.Key) then return nil, nil end
+    return ns.Raid.Key(r), r.id and ns.Raid.DayKey and ns.Raid.DayKey(r) or nil
 end
-function Roll.Clear()
-    for i = #throws, 1, -1 do throws[i] = nil end
-    for k in pairs(seen) do seen[k] = nil end
-    Notify()
+function Roll.Here()
+    local R = ns.Raid
+    local r = R and R.Current and R.Current()
+    if r then return R.Key(r), r.id and R.DayKey(r) or nil end
+    local E = ns.Encounters
+    local top = E and E.Ready() and E.Fights()[1]
+    return Roll.KeysOf(top)
 end
 function Roll.Sums(raid, alt)
     local set = type(raid) == "table" and raid or nil
@@ -69,10 +64,18 @@ function Roll.Sums(raid, alt)
     end
     return out
 end
-function Roll.KeysOf(fight)
-    local r = fight and fight.raid
-    if not (r and ns.Raid and ns.Raid.Key) then return nil, nil end
-    return ns.Raid.Key(r), r.id and ns.Raid.DayKey and ns.Raid.DayKey(r) or nil
+function Roll.OnSystem(msg)
+    local who, n, lo, hi = Roll.Parse(msg)
+    if not who then return end
+    local raid, alt = Roll.Here()
+    local pen = raid and Roll.Sums(raid, alt)[who] or 0
+    tinsert(throws, 1, { who = who, n = n, lo = lo, hi = hi, t = time(), pen = pen, net = n - pen })
+    throws[KEEP + 1] = nil
+    Notify()
+end
+function Roll.Clear()
+    for i = #throws, 1, -1 do throws[i] = nil end
+    Notify()
 end
 function Roll.List(raid, alt)
     local out = {}
@@ -83,30 +86,31 @@ function Roll.List(raid, alt)
     end)
     return out
 end
-function Roll.Throws(raid, alt)
-    local sums = Roll.Sums(raid, alt)
-    local out = {}
+function Roll.Throws()
+    return throws
+end
+function Roll.Best()
+    local best
     for i = 1, #throws do
-        local t = throws[i]
-        t.pen = sums[t.who] or 0
-        t.net = t.n - t.pen
-        out[i] = t
+        if not best or throws[i].net > best then best = throws[i].net end
     end
-    tsort(out, function(a, b)
+    return best
+end
+function Roll.Lines()
+    if not throws[1] then return {} end
+    local list = {}
+    for i = 1, #throws do list[i] = throws[i] end
+    tsort(list, function(a, b)
         if a.net ~= b.net then return a.net > b.net end
         if a.n ~= b.n then return a.n > b.n end
-        return a.t < b.t
+        return a.t > b.t
     end)
-    return out
-end
-function Roll.Lines(raid, alt)
-    local list = Roll.Throws(raid, alt)
-    if not list[1] then return {} end
-    local out, line = {}, ns.T("roll.chat.head")
+    local head = ns.T("roll.chat.head")
+    local out, line = {}, head
     for i = 1, #list do
         local t = list[i]
         local part = t.pen > 0 and format(ns.T("roll.chat.pen"), t.who, t.net, t.n, t.pen) or format(ns.T("roll.chat.n"), t.who, t.n)
-        local sep = line == ns.T("roll.chat.head") and " " or ", "
+        local sep = line == head and " " or ", "
         if #line + #sep + #part > LIMIT then
             out[#out + 1] = line
             line, sep = "", ""
@@ -116,23 +120,16 @@ function Roll.Lines(raid, alt)
     out[#out + 1] = line
     return out
 end
-function Roll.Report(raid, alt)
-    return (ns.Proof.SendLines(Roll.Lines(raid, alt), "RAID", nil, "roll"))
+function Roll.Report()
+    return (ns.Proof.SendLines(Roll.Lines(), "RAID", nil, "roll"))
 end
 function Roll.Count()
     return #throws
 end
-function Roll.Listening()
-    return listening
-end
 function Roll.Sync()
-    local want = ns.Ledger.Key() == "roll"
-    if want == listening then return end
-    if not frame then
-        frame = CreateFrame("Frame")
-        frame:SetScript("OnEvent", function(_, _, msg) Roll.OnSystem(msg) end)
-    end
-    listening = want
-    if want then frame:RegisterEvent("CHAT_MSG_SYSTEM") else frame:UnregisterEvent("CHAT_MSG_SYSTEM") end
+    if frame then return end
+    frame = CreateFrame("Frame")
+    frame:SetScript("OnEvent", function(_, _, msg) Roll.OnSystem(msg) end)
+    frame:RegisterEvent("CHAT_MSG_SYSTEM")
 end
 ns.OnReady(Roll.Sync)

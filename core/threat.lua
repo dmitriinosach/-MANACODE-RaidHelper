@@ -19,6 +19,9 @@ local PACK = 1000
 local ERR_LEN = 200
 local LATE = 0.5
 local CAST = "SPELL_CAST_SUCCESS"
+local PROGRESS_EVERY = 64
+local FEED_SHARE = 0.05
+local TAUNT_SHARE = 0.9
 local D = ns.threatData
 local Threat = {}
 ns.Threat = Threat
@@ -440,7 +443,7 @@ local function KeyOf(fight)
     return k
 end
 local function ReadMarks(fight, idx, b)
-    local res = ns.Phases and (ns.Phases.Get(fight) or ns.Phases.Scan(fight))
+    local res = ns.Phases and ns.Phases.Get(fight)
     local phase = res and ns.Phases.Marks(fight, res) or {}
     for i = 1, #phase do b.marks[#b.marks + 1] = phase[i] end
     local list = idx.common
@@ -463,10 +466,14 @@ local function ReadTaunts(idx, b)
             if who and not asked[who] then asked[who] = true end
         end
     end
+    local total, done = 0, 0
+    for who in pairs(asked) do total = total + #(idx.who[who] or {}) end
     for who in pairs(asked) do
         local list = idx.who[who]
         for i = 1, list and #list or 0 do
             ns.Jobs.Step()
+            done = done + 1
+            if done % PROGRESS_EVERY == 0 then ns.Jobs.Progress(done, total) end
             local ts, what, _, srcName, _, _, _, _, a1 = ns.Index.Read(idx, list, i, 2)
             local sk = ns.SpellOf(what, a1)
             if what == CAST and srcName == who and sk and taunts[sk] then Threat.Taunt(b, who, ts) end
@@ -475,16 +482,20 @@ local function ReadTaunts(idx, b)
 end
 local function Build(fight, idx)
     ns.Jobs.Label("job.thr")
+    ns.Jobs.Part(0, FEED_SHARE)
     local b = Threat.New()
     local list = idx.thr or {}
     for i = 1, #list do
         ns.Jobs.Step()
+        if i % PROGRESS_EVERY == 0 then ns.Jobs.Progress(i, #list) end
         local ts, _, guid, mobName, _, _, who, _, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10
             = ns.Index.Read(idx, list, i, 10)
         if ts then Threat.Feed(b, ts, guid, mobName, who, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) end
     end
     if b.mobs[1] then
+        ns.Jobs.Part(FEED_SHARE, TAUNT_SHARE)
         ReadTaunts(idx, b)
+        ns.Jobs.Part(TAUNT_SHARE, 1)
         ReadMarks(fight, idx, b)
     end
     return Threat.Finish(b, idx.from, idx.to, ns.Index.BossKeys(fight), fight.players)

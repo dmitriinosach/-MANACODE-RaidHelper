@@ -3,14 +3,15 @@ local band = bit.band
 local format = string.format
 local find = string.find
 local max = math.max
+local floor = math.floor
 local min = math.min
 local concat = table.concat
 local tsort = table.sort
 local F_BY_PLAYER = ns.F.BY_PLAYER
 local ENTER_GAP = 5
 local OOZE_SLOTS = { "rt", "gt", "ov", "gv" }
-local ABOM_SLOTS = { "slow", "eat" }
 local ONLY = { ov = "green", gv = "red" }
+local GLYPH = "|T%s:0:0:0:0:64:64:5:59:5:59|t"
 local Putri = {}
 ns.Putri = Putri
 function Putri.Begin(s, fight, pets)
@@ -211,6 +212,9 @@ end
 local function Cell(v)
     return v > 0 and Short(v) or "—"
 end
+local function Pct(v, whole)
+    return ns.Fixed(v * 100 / max(1, whole)) .. "%"
+end
 local function Of(eps, k)
     local out = {}
     for i = 1, #eps do
@@ -303,9 +307,9 @@ local function OozeView(b, classOf)
                     lines = OozeTip(b, who, eps, class) }
     end
     local tip = { { kind = "head", left = T(b.def.label), right = Short(b.total) } }
-    return { title = format(T("sum.k.title"), T(b.def.label), Short(b.total)),
-             cols = { T("sum.oz.colall"), T("sum.oz.colgreen"), T("sum.oz.colred") },
-             heads = Heads(b, slots, b.def.icons), rows = rows, tip = tip, span = 1 }
+    local cols, heads = { T("sum.oz.colall"), T("sum.oz.colgreen"), T("sum.oz.colred") }, Heads(b, slots, b.def.icons)
+    return { title = T(b.def.label), total = Short(b.total),
+             cols = cols, heads = heads, rows = rows, tip = tip }
 end
 local function Drivers(b)
     local by, list = {}, {}
@@ -385,57 +389,125 @@ local function HealerTip(b, healer, v, class, energy)
     for i = 1, #parts do Put(out, "sub", parts[i].k, Short(parts[i].v)) end
     return out
 end
+local function Glyph(id)
+    local tex = id and ns.Effects.IconById(id)
+    return tex and format(GLYPH, tex) or ""
+end
+local function HealerRows(b, r, classOf, rows, sub)
+    local hs, seen = {}, {}
+    for healer, v in pairs(r.heal) do
+        hs[#hs + 1] = { k = healer, v = v, e = 0 }
+        seen[healer] = hs[#hs]
+    end
+    for giver, sp in pairs(r.eby or {}) do
+        local e = 0
+        for _, x in pairs(sp) do e = e + x end
+        local h = seen[giver]
+        if not h then
+            h = { k = giver, v = 0, e = 0 }
+            hs[#hs + 1] = h
+        end
+        h.e = e
+    end
+    tsort(hs, function(x, y)
+        if x.v ~= y.v then return x.v > y.v end
+        if x.e ~= y.e then return x.e > y.e end
+        return x.k < y.k
+    end)
+    for k = 1, #hs do
+        local h = hs[k]
+        local hc = classOf and classOf(h.k) or nil
+        local cells = { h.v > 0 and Short(h.v) or "", h.v > 0 and Pct(h.v, r.got) or "" }
+        local vals = { h.v > 0 and h.v or false, h.v > 0 and h.v or false }
+        if b.power then
+            cells[3], vals[3] = h.e > 0 and tostring(h.e) or "", h.e > 0 and h.e or false
+        end
+        rows[#rows + 1] = { who = h.k, class = hc, sub = sub, cells = cells, vals = vals, marks = {},
+                            lines = HealerTip(b, h.k, h.v, hc, h.e > 0 and r.eby[h.k] or nil) }
+    end
+end
 local function AbomView(b, classOf)
     local rows = {}
     local list = Drivers(b)
+    local label = T(b.def.label)
+    local tip = { { kind = "head", left = label, right = Short(b.total) } }
     for i = 1, #list do
         local r = list[i]
         local class = classOf and r.who ~= "?" and classOf(r.who) or nil
-        rows[#rows + 1] = {
-            who = r.who, class = class,
-            cells = b.power and { ns.Clock(r.secs), tostring(r.energy), Cell(r.got) }
-                or { ns.Clock(r.secs), Cell(r.got) },
-            marks = { r.slows > 0 and { id = b.ids.slow or b.def.icons.slow, n = r.slows } or false,
-                      r.eats > 0 and { id = b.ids.eat or b.def.icons.eat, n = r.eats } or false },
-            lines = DriverTip(b, r, class),
-        }
-        local hs, seen = {}, {}
-        for healer, v in pairs(r.heal) do
-            hs[#hs + 1] = { k = healer, v = v, e = 0 }
-            seen[healer] = hs[#hs]
-        end
-        for giver, sp in pairs(r.eby or {}) do
-            local e = 0
-            for _, x in pairs(sp) do e = e + x end
-            local h = seen[giver]
-            if not h then
-                h = { k = giver, v = 0, e = 0 }
-                hs[#hs + 1] = h
-            end
-            h.e = e
-        end
-        tsort(hs, function(x, y)
-            if x.v ~= y.v then return x.v > y.v end
-            return x.e > y.e
-        end)
-        for k = 1, #hs do
-            local h = hs[k]
-            local hc = classOf and classOf(h.k) or nil
-            local heal = h.v > 0 and Short(h.v) or ""
-            rows[#rows + 1] = { who = h.k, class = hc, sub = true,
-                                cells = b.power and { "", h.e > 0 and tostring(h.e) or "", heal } or { "", heal },
-                                marks = { false, false }, lines = HealerTip(b, h.k, h.v, hc, h.e > 0 and r.eby[h.k] or nil) }
+        rows[#rows + 1] = { who = Glyph(b.def.enter) .. format(T("sum.ab.drvrow"), r.who, ns.Clock(r.secs)), class = class,
+                            cells = { Cell(r.got), Pct(r.got, b.total), b.power and tostring(r.energy) or nil },
+                            vals = { r.got, r.got, b.power and r.energy or false }, marks = {}, lines = DriverTip(b, r, class) }
+        HealerRows(b, r, classOf, rows, true)
+        local lines = DriverTip(b, r, class)
+        lines[1].kind = "row"
+        Put(tip, "sep")
+        for k = 1, #lines do tip[#tip + 1] = lines[k] end
+    end
+    local cols = { T("sum.ab.colheal"), T("sum.ab.colshare") }
+    if b.power then cols[3] = T("sum.ab.colenergy") end
+    return { title = label, total = Short(b.total), cols = cols, heads = {}, rows = rows, tip = tip }
+end
+local function Dec(v)
+    local s = format("%.1f", v):gsub("%.0$", "")
+    return ns.Dec(s)
+end
+local function Heat(v, top)
+    if v <= 0 or top <= 0 then return false end
+    if v * 3 >= top * 2 then return "text.warn" end
+    if v * 3 < top then return "text.muted" end
+    return false
+end
+local function PassBadge(s, spell)
+    local key = ns.SpellKey(spell)
+    for i = 1, #s.badges do
+        local bd = s.badges[i]
+        if bd.kind == "stack" and bd.pass and ns.SpellKey(bd.spell) == key then return i end
+    end
+    return nil
+end
+local function PlagueView(b, classOf, s)
+    local i = s and PassBadge(s, b.def.spell)
+    if not i then return false end
+    local list, top, total = {}, 0, 0
+    for k = 1, #s.players do
+        local p = s.players[k]
+        local st = p.badges and p.badges[i]
+        if st and st.eps and st.eps[1] then
+            list[#list + 1] = { p = p, st = st }
+            top = max(top, st.tick or 0)
+            total = total + (st.sec or 0)
         end
     end
-    local tip = { { kind = "head", left = T(b.def.label), right = Short(b.total) } }
-    return { title = format(T("sum.ab.title"), T(b.def.label), #list, Short(b.total)),
-             cols = b.power and { T("sum.ab.coltime"), T("sum.ab.colenergy"), T("sum.ab.colheal") }
-                 or { T("sum.ab.coltime"), T("sum.ab.colheal") },
-             heads = Heads(b, ABOM_SLOTS, b.def.icons), rows = rows, tip = tip, span = 1 }
+    if #list == 0 then return false end
+    tsort(list, function(x, y)
+        local vx, vy = x.st.sec or 0, y.st.sec or 0
+        if vx ~= vy then return vx > vy end
+        return x.p.name < y.p.name
+    end)
+    local bd, rows = s.badges[i], {}
+    for k = 1, #list do
+        local p, st = list[k].p, list[k].st
+        local class = classOf and classOf(p.name) or p.class
+        local lines = ns.StackTips and ns.StackTips.Badge(st, bd) or {}
+        lines[1] = { kind = "head", left = p.name, right = format(T("stk.sec"), Dec(st.sec or 0)), class = class }
+        rows[k] = { who = p.name, class = class, marks = {},
+                    cells = { Dec(st.sec or 0), tostring(#st.eps), Cell(st.tick or 0) },
+                    vals = { st.sec or 0, #st.eps, st.tick or 0 },
+                    tones = { false, false, Heat(st.tick or 0, top) }, lines = lines }
+    end
+    local tip = { { kind = "head", left = T(b.def.label) } }
+    Put(tip, "row", T("sum.ub.carriers"), tostring(#list))
+    Put(tip, "row", T("sum.ub.total"), format(T("stk.sec"), Dec(total)))
+    if top > 0 then Put(tip, "row", T("sum.ub.coltick"), Short(top)) end
+    local cols = { T("sum.ub.colsec"), T("sum.ub.coln"), T("sum.ub.coltick") }
+    return { title = T(b.def.label),
+             cols = cols,
+             heads = {}, rows = rows, tip = tip }
 end
-function Putri.View(b, classOf)
+function Putri.View(b, classOf, s)
     local kind = b.def.kind
     if kind == "oozes" and b.eps then return OozeView(b, classOf) end
     if kind == "abom" and b.drv then return AbomView(b, classOf) end
+    if kind == "plague" then return PlagueView(b, classOf, s) end
     return nil
 end

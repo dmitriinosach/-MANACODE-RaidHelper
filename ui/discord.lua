@@ -38,24 +38,30 @@ local function Place(b, host)
         b:SetPoint("RIGHT", host:GetParent() or host, "TOPRIGHT", -HEAD_PAD, HEAD_Y)
     end
 end
+local docked = false
+function DV.Dock(bar)
+    if not btn or docked then return end
+    docked = true
+    bar:Add(btn)
+end
 function DV.Attach(host)
     if btn then return end
-    local bar = ns.Timeline and ns.Timeline.ToolBar and ns.Timeline.ToolBar()
-    local b = Kit.ToolButton(bar and (host:GetParent() or host) or host)
+    local b = Kit.ToolButton(host:GetParent() or host)
     b:SetLabel(T("dc.btn"))
-    if bar then
-        if not host:IsShown() then b:Hide() end
-        host:HookScript("OnShow", function() b:Show() end)
-        host:HookScript("OnHide", function() b:Hide() end)
-        bar:Add(b)
-    else
-        Place(b, host)
-        b:HookScript("OnShow", function(self) Place(self, host) end)
-    end
+    if not host:IsShown() then b:Hide() end
+    host:HookScript("OnShow", function() b:Show() end)
+    host:HookScript("OnHide", function() b:Hide() end)
     b.tipTitle = T("dc.head")
     b.tip = T("dc.tip")
     b.onClick = Click
     btn = b
+    local bar = ns.Timeline and ns.Timeline.ToolBar and ns.Timeline.ToolBar()
+    if bar then
+        DV.Dock(bar)
+    else
+        Place(b, host)
+        b:HookScript("OnShow", function(self) if not docked then Place(self, host) end end)
+    end
 end
 function DV.Button()
     return btn

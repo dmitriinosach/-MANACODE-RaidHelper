@@ -40,13 +40,14 @@ local PREVIEW_KINDS = { skull = true, death = true, killer = true, hit = true, a
                         stack = true, chased = true, blast = true, emote = true }
 local DP = {}
 ns.DeathPreview = DP
-DP.BEFORE, DP.AFTER, DP.BIN = BEFORE, AFTER, BIN
+DP.BEFORE, DP.AFTER, DP.BIN, DP.AURA_ROWS = BEFORE, AFTER, BIN, AURA_ROWS
 function DP.Wants(kind)
     return kind ~= nil and PREVIEW_KINDS[kind] == true
 end
 local cache = setmetatable({}, { __mode = "k" })
 local warmKeys = setmetatable({}, { __mode = "k" })
 local warmed = setmetatable({}, { __mode = "k" })
+local hasPos = setmetatable({}, { __mode = "k" })
 local sceneFight = nil
 local sceneReady = nil
 local function New(who, at, death)
@@ -489,6 +490,20 @@ function DP.Map(fight, pv, onDone)
         onDone(pv)
     end, true)
 end
+function DP.HasMap(fight)
+    if sceneFight == fight and sceneReady ~= nil then return sceneReady ~= false end
+    if hasPos[fight] then return true end
+    if ns.Store.Bare(fight) then return false end
+    local segs = ns.Encounters.Segs(fight)
+    for k = 1, #segs do
+        local s = segs[k]
+        if next(s.pos or {}) or next(ns.RecCodec.LiveBufs(s, "pos") or {}) then
+            hasPos[fight] = true
+            return true
+        end
+    end
+    return false
+end
 local function PickRows(pv)
     local cover = pv.auraCover
     for k = 1, #pv.spanAura do
@@ -541,7 +556,7 @@ local function KeyOf(who, at)
     return who .. "@" .. floor(at * 10 + 0.5)
 end
 function DP.Anchor(fight, who, at)
-    local s = ns.Summary and ns.Summary.Get(fight)
+    local s = ns.Summary and ns.Summary.Peek(fight)
     local p = s and s.byName and s.byName[who]
     local best
     for k = 1, #(p and p.deathInfo or {}) do
@@ -584,7 +599,7 @@ function DP.Warm(fight)
         warmKeys[fight] = key
     end
     if warmed[fight] or ns.Jobs.Busy(key) or not ns.Index.Peek(fight) then return end
-    ns.Summary.Compute(fight, function(s)
+    ns.Summary.Of(fight, function(s)
         ns.Index.Get(fight, function(idx)
             if not idx then return end
             ns.Jobs.Run(key, function()
@@ -603,6 +618,7 @@ end
 function DP.Reset()
     for k in pairs(cache) do cache[k] = nil end
     for k in pairs(warmed) do warmed[k] = nil end
+    for k in pairs(hasPos) do hasPos[k] = nil end
     ns.Jobs.Cancel(SCENE_KEY)
     sceneFight, sceneReady = nil, nil
 end

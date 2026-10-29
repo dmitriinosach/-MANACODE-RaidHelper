@@ -3,8 +3,8 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 1.7.0
-## X-Date: 2026-10-23
+## Version: 1.8.0
+## X-Date: 2026-10-29
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
 ## SavedVariablesPerCharacter: ManaCodeRaidHelperChar
@@ -22,6 +22,7 @@ locale\threat.lua
 locale\autoinvite.lua
 locale\lang.lua
 locale\enUS.lua
+locale\esES.lua
 data\bosses.lua
 data\effect_defaults.lua
 data\maps.lua
@@ -128,6 +129,7 @@ core\devmarks.lua
 core\gpguild.lua
 core\ledger.lua
 core\rollpen.lua
+core\soft.lua
 core\guildnotes.lua
 core\guildlocks.lua
 core\guildbober.lua
@@ -142,6 +144,7 @@ core\actions.lua
 core\rfury.lua
 core\runeswap.lua
 core\bloodnova.lua
+core\away.lua
 core\tankrole.lua
 core\control.lua
 core\caught.lua
@@ -149,6 +152,7 @@ core\shades.lua
 core\defile.lua
 core\lichmech.lua
 core\tombpull.lua
+core\tombbreak.lua
 core\parry.lua
 core\putri.lua
 core\valkyr.lua
@@ -163,6 +167,7 @@ core\summaryacc.lua
 core\summarydeaths.lua
 core\summaryshed.lua
 core\summarycover.lua
+core\summarypull.lua
 core\summaryveh.lua
 core\summary.lua
 core\deathgrade.lua
@@ -232,6 +237,7 @@ ui\map.lua
 ui\replaylink.lua
 ui\badgetips.lua
 ui\actiontips.lua
+ui\pulltips.lua
 ui\defiletips.lua
 ui\stacktips.lua
 ui\badges.lua
@@ -247,6 +253,7 @@ ui\sumside.lua
 ui\summary.lua
 ui\gpsettings.lua
 ui\faultsroll.lua
+ui\faultssoft.lua
 ui\faults.lua
 ui\gpsignal.lua
 ui\minirows.lua
@@ -324,6 +331,7 @@ lead\rl.lua
 lead\core\locale.lua
 lead\locale\ruRU.lua
 lead\locale\enUS.lua
+lead\locale\esES.lua
 lead\data\specs.lua
 lead\data\templates.lua
 lead\data\slang.lua

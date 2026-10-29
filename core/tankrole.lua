@@ -84,6 +84,9 @@ local function MoreTank(a, b)
     if a.tankCasts ~= b.tankCasts then return a.tankCasts > b.tankCasts end
     return a.npcTaken > b.npcTaken
 end
+local function CanHeal(p)
+    return not ns.Specs or ns.Specs.CanHeal(p.class, p.tree)
+end
 function TR.Roles(s)
     local melee = 0
     local taken = 0
@@ -101,7 +104,7 @@ function TR.Roles(s)
         local p = s.players[i]
         if TR.Is(s, p, melee, taken) then
             tanks[#tanks + 1] = p
-        elseif p.heal > p.dmg then
+        elseif p.heal > p.dmg and CanHeal(p) then
             p.role = "heal"
         end
     end
@@ -110,7 +113,7 @@ function TR.Roles(s)
         local p = tanks[i]
         if i <= TANK_MAX then
             p.role = "tank"
-        elseif p.heal > p.dmg then
+        elseif p.heal > p.dmg and CanHeal(p) then
             p.role = "heal"
         end
     end

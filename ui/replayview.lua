@@ -147,6 +147,7 @@ function View.Refresh()
     if not (api and st.menu) then return end
     Mark(st.rows.figs, ns.ReplayFigs.Kind())
     RoomRow(api.Room())
+    Mark(st.rows.cam, ns.ReplayIsoCam.Preset())
     Mark(st.rows.arrows, ns.ReplayArrowsView.Mode())
     WorldRow()
     st.heal:SetChecked(api.Heal())
@@ -160,6 +161,8 @@ local function Pick(key, opt)
         ns.ReplayFigs.SetKind(opt.key)
     elseif key == "room" then
         if ns.ReplayGeo.Has(api.Room()) then api.SetGeo(opt.key == "vol") end
+    elseif key == "cam" then
+        ns.ReplayIsoCam.SetPreset(opt.key)
     elseif key == "arrows" then
         ns.ReplayArrowsView.SetMode(opt.key)
     elseif key == "world" then
@@ -224,6 +227,7 @@ function View.Build(ui, run, api)
     st.menu = menu
     Row(menu, "figs", "iso.view.figs", Opts("iso.figs.", "iso.tip.figs.", { "chip", "disc", "vol" }))
     Row(menu, "room", "iso.view.room", Opts("iso.geo.", "iso.tip.geo.", { "vol", "flat" }))
+    Row(menu, "cam", "iso.view.cam", Opts("iso.cam.", "iso.tip.cam.", ns.ReplayIsoCam.PRESET_KEYS))
     Row(menu, "arrows", "iso.view.arrows", Opts("iso.arrows.", "iso.tip.arrows.", { "all", "focus", "off" }))
     Row(menu, "world", "iso.view.world", Opts("iso.world.", "iso.tip.world.", { "mine", "both", "phys", "twi" }))
     st.heal = Check(menu, "iso.focusheal", function(on) api.SetHeal(on) end)

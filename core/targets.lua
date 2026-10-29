@@ -210,6 +210,6 @@ function Targets.View(b, classOf)
         rows[i] = { who = who, class = class, cells = cells, vals = vals, tips = tips, marks = {},
                     lines = RowTip(b, who, class, cols) }
     end
-    return { title = format(T("sum.k.title"), T(b.def.label), ns.Short(max(0, b.total))), cols = labels,
-             heads = {}, rows = rows, tip = PanelTip(b, cols), span = 2 }
+    return { title = T(b.def.label), total = ns.Short(max(0, b.total)), cols = labels,
+             heads = {}, rows = rows, tip = PanelTip(b, cols) }
 end

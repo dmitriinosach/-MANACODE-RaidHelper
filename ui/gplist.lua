@@ -7,13 +7,13 @@ local UNKNOWN_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local GPList = {}
 ns.GPList = GPList
 GPList.WIDE = { rowh = 22, headh = 18, whenw = 44, mainw = 92, proofw = 30, hotw = 48, checkw = 0, namew = 120,
-    icon = 16, iconw = 36 }
+    icon = 16 }
 GPList.PAGE = { rowh = 22, headh = 18, whenw = 44, mainw = 92, proofw = 30, hotw = 48, checkw = 24, namew = 120,
-    icon = 16, iconw = 36 }
+    icon = 16 }
 GPList.COMPACT = { rowh = 20, headh = 16, whenw = 0, mainw = 52, proofw = 22, hotw = 38, checkw = 0, namew = 78,
-    icon = 13, iconw = 28, small = true }
-GPList.MINI = { rowh = 18, headh = 14, whenw = 0, mainw = 46, proofw = 18, hotw = 0, checkw = 0, namew = 74,
-    icon = 12, iconw = 24, small = true }
+    icon = 13, small = true }
+GPList.MINI = { rowh = 20, headh = 16, whenw = 0, mainw = 46, proofw = 20, hotw = 0, checkw = 0, namew = 74,
+    icon = 14, small = true }
 local listeners = {}
 function GPList.OnChange(fn)
     listeners[#listeners + 1] = fn
@@ -39,24 +39,45 @@ end
 function GPList.Confirm(text, yes, onYes)
     ns.Kit.Confirm(text, yes, onYes)
 end
-function GPList.CanGP(n)
-    local ok, why = ns.Ledger.Active().Can(n)
+function GPList.CanGP(n, sys)
+    local ok, why = ns.Ledger.Get(sys or ns.Ledger.Key()).Can(n)
     if not ok then ns.Print(ns.T(why or "led.err.noepgp")) end
     return ok
 end
+local function SumOf(n, s)
+    if s == "roll" then return format(ns.T("gp.sum.roll"), n) end
+    return n .. " " .. ns.Ledger.Unit(s)
+end
+function GPList.SumText(by)
+    local parts = {}
+    for i = 1, #ns.Ledger.ORDER do
+        local s = ns.Ledger.ORDER[i]
+        if (by[s] or 0) > 0 then parts[#parts + 1] = SumOf(by[s], s) end
+    end
+    if not parts[1] then return SumOf(0, ns.Ledger.Key()) end
+    return concat(parts, ns.T("gp.sep"))
+end
 function GPList.Issue(fight, batch)
-    if not fight or not batch or not GPList.CanGP() then return end
-    local total, names = 0, 0
+    if ns.ReadOnly or not fight or not batch then return end
+    local total, names, order = {}, {}, {}
     for k = 1, #batch do
         local n = GPList.Pending(batch[k].events)
         if n > 0 then
-            total = total + n
-            names = names + 1
+            local s = batch[k].sys or ns.Ledger.SysOf(batch[k].name)
+            if not total[s] then order[#order + 1] = s end
+            total[s] = (total[s] or 0) + n
+            names[s] = (names[s] or 0) + 1
         end
     end
-    if total == 0 then return end
-    local sys = ns.Ledger.Active()
-    GPList.Confirm(format(ns.T(sys.ask), total, names), ns.T("sum.gp.yes"), function()
+    local asks = {}
+    for i = 1, #ns.Ledger.ORDER do
+        local s = ns.Ledger.ORDER[i]
+        if total[s] and GPList.CanGP(nil, s) then
+            asks[#asks + 1] = format(ns.T(ns.Ledger.Get(s).ask), total[s], names[s])
+        end
+    end
+    if not asks[1] then return end
+    GPList.Confirm(concat(asks, "\n"), ns.T("sum.gp.yes"), function()
         local res = ns.Ledger.Issue(fight, batch)
         if res.why then ns.Print(ns.T(res.why)) end
         if #res.failed > 0 then ns.Print(format(ns.T("gp.notgiven"), concat(res.failed, ", "))) end
@@ -70,7 +91,7 @@ function GPList.IssueKeys(fight, model, keys)
         for e = 1, #item.events do
             if keys[item.events[e].key] then evs[#evs + 1] = item.events[e] end
         end
-        if #evs > 0 then batch[#batch + 1] = { name = item.name, events = evs } end
+        if #evs > 0 then batch[#batch + 1] = { name = item.name, sys = item.sys, events = evs } end
     end
     GPList.Issue(fight, batch)
 end
@@ -85,21 +106,23 @@ function GPList.Marked(model, keys)
     return n
 end
 function GPList.Hot(fight, name, kind, ev)
-    if not fight or not GPList.CanGP() then return end
-    local n = ns.Ledger.HotSum(kind)
+    local sys = ns.Ledger.SysOf(name)
+    if not fight or not GPList.CanGP(nil, sys) then return end
+    local n = ns.Ledger.HotSum(kind, sys)
     local what = ev and format(ns.T("led.hot.of"), ns.Ledger.HotLabel(kind), ev.short or "?") or ns.Ledger.HotLabel(kind)
-    GPList.Confirm(format(ns.T("led.hot.ask"), name, what, n, ns.Ledger.Unit()), ns.T("sum.gp.yes"), function()
+    GPList.Confirm(format(ns.T("led.hot.ask"), name, what, n, ns.Ledger.Unit(sys)), ns.T("sum.gp.yes"), function()
         local fact, why = ns.Ledger.GiveHot(fight, name, kind, ev)
         if why then ns.Print(ns.T(why)) end
     end)
 end
 function GPList.Charge(fight, name, ev)
-    if not fight or not GPList.CanGP() then return end
-    local n = ns.Penalties.Amount(ev.hit.rule, ns.Ledger.Key()) or 0
+    local sys = ns.Ledger.SysOf(name)
+    if not fight or not GPList.CanGP(nil, sys) then return end
+    local n = ns.Penalties.Amount(ev.hit.rule, sys) or 0
     if n <= 0 then return end
     ns.Penalties.Bump(ev.key)
     GPList.Changed()
-    GPList.Issue(fight, { { name = name, events = { { key = ev.key, n = n, short = ev.short } } } })
+    GPList.Issue(fight, { { name = name, sys = sys, events = { { key = ev.key, n = n, short = ev.short } } } })
 end
 function GPList.Undo(key)
     local rec = ns.Ledger.Done(key)
@@ -133,26 +156,27 @@ end
 GPList.HitEvents = HitEvents
 local function HotItems(menu, fight, name, ev)
     local hot = ns.Ledger.HOT
+    local sys = ns.Ledger.SysOf(name)
     for i = 1, #hot do
         local kind = hot[i]
         menu[#menu + 1] = {
             text = format(ns.T(ev and "led.menu.hotfault" or "led.menu.hot"), ns.Ledger.HotLabel(kind),
-                ns.Ledger.HotSum(kind), ns.Ledger.Unit()),
+                ns.Ledger.HotSum(kind, sys), ns.Ledger.Unit(sys)),
             notCheckable = true,
             func = function() GPList.Hot(fight, name, kind, ev) end,
         }
     end
 end
-function GPList.ManualMenu(fight, name)
-    if not fight or not ns.Penalties then return end
+local function ManualItems(menu, fight, name)
     local rules = ns.Penalties.Choices(fight.boss)
-    local menu = { { text = format(ns.T("sum.gp.add"), name), isTitle = true, notCheckable = true } }
+    local sys = ns.Ledger.SysOf(name)
+    menu[#menu + 1] = { text = format(ns.T("sum.gp.add"), name), isTitle = true, notCheckable = true }
     HotItems(menu, fight, name, nil)
     for i = 1, #rules do
         local r = rules[i]
         menu[#menu + 1] = {
-            text = format(ns.T("gp.menu.rule"), ns.Penalties.Reason(r), ns.Penalties.Amount(r, ns.Ledger.Key()) or 0,
-                ns.Ledger.Unit()),
+            text = format(ns.T("gp.menu.rule"), ns.Penalties.Reason(r), ns.Penalties.Amount(r, sys) or 0,
+                ns.Ledger.Unit(sys)),
             notCheckable = true,
             func = function()
                 ns.Penalties.AddManual(fight, name, r.key)
@@ -160,14 +184,19 @@ function GPList.ManualMenu(fight, name)
             end,
         }
     end
+end
+function GPList.ManualMenu(fight, name)
+    if ns.ReadOnly or not fight or not ns.Penalties then return end
+    local menu = {}
+    ManualItems(menu, fight, name)
     OpenMenu(menu)
 end
-function GPList.EventMenu(fight, hit, name)
+local function EventItems(menu, fight, hit, name)
     local rule = hit.rule
-    local sys = ns.Ledger.Key()
-    local unit = ns.Ledger.Unit()
+    local sys = ns.Ledger.SysOf(name)
+    local unit = ns.Ledger.Unit(sys)
     local wipe = ns.Penalties.Amount(rule, sys, "wipe")
-    local menu = { { text = ns.Penalties.Reason(rule), isTitle = true, notCheckable = true } }
+    menu[#menu + 1] = { text = ns.Penalties.Reason(rule), isTitle = true, notCheckable = true }
     local events = HitEvents(hit, name)
     for k = 1, #events do
         local ev = events[k]
@@ -185,7 +214,7 @@ function GPList.EventMenu(fight, hit, name)
             menu[#menu + 1] = {
                 text = format(ns.T("sum.gp.item"), when, ev.n, unit),
                 notCheckable = true,
-                func = function() GPList.Issue(fight, { { name = name, events = { ev } } }) end,
+                func = function() GPList.Issue(fight, { { name = name, sys = sys, events = { ev } } }) end,
             }
         end
         if ev.grade == "yellow" and not done then
@@ -219,6 +248,18 @@ function GPList.EventMenu(fight, hit, name)
             }
         end
     end
+end
+function GPList.EventMenu(fight, hit, name)
+    if ns.ReadOnly then return end
+    local menu = {}
+    EventItems(menu, fight, hit, name)
+    OpenMenu(menu)
+end
+function GPList.RowMenu(fight, hit, name)
+    if ns.ReadOnly or not fight or not ns.Penalties then return end
+    local menu = {}
+    EventItems(menu, fight, hit, name)
+    ManualItems(menu, fight, name)
     OpenMenu(menu)
 end
 function GPList.FirstAt(list)
@@ -278,8 +319,17 @@ local function Given(item)
     return n
 end
 function GPList.Build(fight, summary)
+    local main = ns.Ledger and ns.Ledger.Key() or "gp"
+    local by = {}
+    local function Eval(sys)
+        if not by[sys] then
+            local p, t = {}, {}
+            if ns.Penalties and summary then p, t = ns.Penalties.Evaluate(summary, fight, sys) end
+            by[sys] = { p, t }
+        end
+        return by[sys][1], by[sys][2]
+    end
     local pens, totals = {}, {}
-    if ns.Penalties and summary then pens, totals = ns.Penalties.Evaluate(summary, fight) end
     local hand = {}
     local list = ns.Ledger and ns.Ledger.Hand(fight) or {}
     for i = 1, #list do
@@ -287,22 +337,29 @@ function GPList.Build(fight, summary)
         hand[list[i].who] = by
         by[#by + 1] = list[i]
     end
-    local items, all, pending, ready = {}, {}, 0, 0
+    local items, all, pending, ready, sums = {}, {}, 0, 0, {}
+    local roll = false
     for i = 1, #((summary and summary.players) or {}) do
         local p = summary.players[i]
-        local hits = pens[p.name] or {}
+        local sys = ns.Ledger and ns.Ledger.SysOf(p.name) or main
+        local sp, st = Eval(sys)
+        local hits = sp[p.name] or {}
+        pens[p.name], totals[p.name] = sp[p.name], st[p.name]
         if #hits > 0 or hand[p.name] then
             local events = {}
             for h = 1, #hits do
                 local ev = HitEvents(hits[h], p.name)
                 for e = 1, #ev do events[#events + 1] = ev[e] end
             end
-            local item = { name = p.name, class = p.class, hits = hits, events = events, hand = hand[p.name] or {},
-                total = totals[p.name] or 0, pending = GPList.Pending(events), guards = Guards(p, hits) }
+            local item = { name = p.name, class = p.class, sys = sys, hits = hits, events = events,
+                hand = hand[p.name] or {}, total = st[p.name] or 0, pending = GPList.Pending(events),
+                guards = Guards(p, hits) }
             item.given = Given(item)
             items[#items + 1] = item
             pending = pending + item.pending
+            sums[sys] = (sums[sys] or 0) + item.pending
             if item.pending > 0 then ready = ready + 1 end
+            if sys == "roll" then roll = true end
         end
     end
     tsort(items, function(a, b)
@@ -310,14 +367,30 @@ function GPList.Build(fight, summary)
         return a.name < b.name
     end)
     for i = 1, #items do all[i] = items[i] end
-    local model = { pens = pens, totals = totals, items = items, pending = pending, ready = ready, all = all }
-    if ns.RollPen and ns.Ledger and ns.Ledger.Key() == "roll" then
-        local sums, raid = ns.RollPen.Sums(ns.RollPen.KeysOf(fight)), 0
-        for _, n in pairs(sums) do raid = raid + n end
-        for i = 1, #items do items[i].raid = sums[items[i].name] or 0 end
+    local model = { pens = pens, totals = totals, items = items, pending = pending, ready = ready, all = all,
+        by = sums, main = main }
+    if ns.RollPen and roll then
+        local raidSums, raid = ns.RollPen.Sums(ns.RollPen.KeysOf(fight)), 0
+        for _, n in pairs(raidSums) do raid = raid + n end
+        for i = 1, #items do
+            if items[i].sys == "roll" then items[i].raid = raidSums[items[i].name] or 0 end
+        end
         model.raid = raid
     end
     return model
+end
+function GPList.AllText(model)
+    local n, k = 0, 0
+    for _, v in pairs(model.by or {}) do
+        if v > 0 then n, k = v, k + 1 end
+    end
+    if k > 1 then return ns.T("gpmini.all") end
+    return format(ns.T("sum.gp.all"), n)
+end
+function GPList.Title(model)
+    local text = format(ns.T("sum.gp.title"), model.ready, GPList.SumText(model.by or {}))
+    if (model.raid or 0) > 0 then text = text .. format(ns.T("sum.gp.title.roll"), model.raid) end
+    return text
 end
 function GPList.New(parent, prefix, layout, sized)
     return ns.FaultTable.New(parent, prefix, layout or GPList.WIDE, sized)

@@ -28,6 +28,12 @@ ns.replayFeed = {
         [34477] = true,
         [57933] = true,
     },
+    glyphs = {
+        death = { mark = 8 },
+        wave = { mark = 7 },
+        phase = { heroic = true },
+    },
+    bar = { hero = true, def = true, help = true, dispel = true, rez = true, valkyr = true },
     procs = { [58597] = true },
     hero = {
         [32182] = true,

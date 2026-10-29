@@ -190,7 +190,7 @@ function Loot.ShardTotal(raid)
         lines[#lines + 1] = { kind = "row", left = who, right = format("x%d", by[who]),
                               class = ns.Encounters.ClassOf and ns.Encounters.ClassOf(who) or nil }
     end
-    return { title = title, value = tostring(total), sub = format(ns.T("loot.shards.who"), #order),
+    return { title = title, value = tostring(total), icon = GetItemIcon and GetItemIcon(id) or nil,
              color = "text.accent", lines = lines }
 end
 local DEMO = {

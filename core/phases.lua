@@ -1,5 +1,4 @@
 local _, ns = ...
-local MAX_TAIL = 1
 local WAVE_GAP = 5
 local SETTLE = 2
 local Phases = {}
@@ -159,18 +158,11 @@ function Phases.Marks(fight, res)
     return out
 end
 function Phases.Get(fight)
-    return cache[fight]
+    local res = cache[fight]
+    if res then return res end
+    local s = ns.Summary and ns.Summary.Peek(fight)
+    return s and s.phases or nil
 end
-function Phases.Scan(fight)
-    if cache[fight] then return cache[fight] end
-    local tr = Phases.New(fight)
-    if not tr then return nil end
-    local segs = ns.Encounters.Segs(fight)
-    for si = 1, #segs do
-        for ts, sub, _, _, _, _, _, _, a1 in ns.Store.Events(segs[si], fight.from, fight.to, MAX_TAIL) do
-            ns.Jobs.Step()
-            Phases.Feed(tr, ts, sub, a1)
-        end
-    end
-    return Phases.Done(fight, tr)
+function Phases.Keep(fight, res)
+    cache[fight] = res
 end

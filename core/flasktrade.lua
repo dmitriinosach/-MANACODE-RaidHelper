@@ -108,11 +108,40 @@ local function Ours()
     return n == cur.put and (GetPlayerTradeMoney() or 0) == 0
 end
 local function Arm()
-    local it = cur.item
-    if not it then return nil end
-    local n = Offered(it.id)
-    if n < 1 then return nil end
-    return { item = it, kind = cur.kind, forced = cur.forced, count = n, stock = Stock(it.id) }
+    local list
+    for i = 1, GIVE_SLOTS do
+        local name, _, c = GetTradePlayerItemInfo(i)
+        local id = name and LinkId(GetTradePlayerItemLink(i))
+        local it = id and F.ById(id)
+        if it then
+            list = list or {}
+            local a
+            for k = 1, #list do
+                if list[k].item == it then a = list[k] end
+            end
+            if not a then
+                local ours = it == cur.item
+                a = { item = it, count = 0, stock = Stock(it.id), forced = ours and cur.forced or nil, manual = not ours or nil,
+                      kind = ours and cur.kind or (cur.plan and cur.plan.kind) or "" }
+                list[#list + 1] = a
+            end
+            a.count = a.count + (c or 1)
+        end
+    end
+    return list
+end
+local function Rearm()
+    local list = Arm()
+    if list then
+        cur.armed = list
+    elseif cur.armed then
+        After(0, function()
+            if cur.open and not cur.done and not Arm() then
+                cur.armed = nil
+                Changed()
+            end
+        end)
+    end
 end
 local function TargetEmpty()
     for i = 1, ALL_SLOTS do
@@ -264,6 +293,7 @@ local function TryAccept()
     end
     if not F.Get("auto") or blocked then
         cur.status = "press"
+        cur.press = blocked and "blocked" or nil
         Changed()
         return
     end
@@ -278,6 +308,7 @@ local function TryAccept()
             blocked = true
         end
         cur.status = "press"
+        cur.press = "slow"
         Changed()
     end)
     Changed()
@@ -349,12 +380,20 @@ local function Partner()
     if text and text ~= "" then return text end
     return nil
 end
+local function CheckGuild()
+    local mine = GetGuildInfo and GetGuildInfo("player")
+    local unit = F.UnitOf(cur.partner)
+    if UnitName("npc") == cur.partner then unit = "npc" end
+    cur.guild = unit and GetGuildInfo and GetGuildInfo(unit) or nil
+    cur.otherGuild = mine ~= nil and unit ~= nil and cur.guild ~= mine or nil
+end
 local function OnShow()
     Clear()
     if not F.IsOn() then return end
     local name = Partner()
     if not name then return end
     cur.open, cur.partner = true, name
+    CheckGuild()
     if not (UnitInRaid(name) or UnitInParty(name)) then
         cur.status = "stranger"
         Changed()
@@ -375,19 +414,30 @@ local function OnShow()
     After(DELAY, Ripe)
 end
 local function Complete(s)
-    local a = s.armed
-    if s.done or not a or not s.partner then return end
+    local list = s.armed
+    if s.done or not list or not s.partner then return end
     s.done = true
-    F.Record(s.partner, a.item, a.kind, time(), a.forced, a.count)
+    local now = time()
+    for i = 1, #list do
+        local a = list[i]
+        F.Record(s.partner, a.item, a.kind, now, a.forced, a.count, a.manual)
+    end
+    if blocked then blocked, fails = false, BLOCK_AFTER - 1 end
     Changed()
+end
+local function Gone(list)
+    for i = 1, #list do
+        if Stock(list[i].item.id) < list[i].stock then return true end
+    end
+    return false
 end
 local function OnClosed()
     if not cur.open then return end
     cur.open = false
     if cur.armed and not cur.done then
-        local a, sess = cur.armed, cur
+        local list, sess = cur.armed, cur
         After(STOCK_WAIT, function()
-            if not sess.done and not sess.cancelled and Stock(a.item.id) < a.stock then Complete(sess) end
+            if not sess.done and not sess.cancelled and Gone(list) then Complete(sess) end
         end, true)
     end
     Changed()
@@ -435,6 +485,10 @@ function Trade.Accept()
     if cur.item and Offered(cur.item.id) > (cur.put or 0) then return end
     AcceptTrade()
 end
+function Trade.Cancel()
+    if not cur.open then return end
+    CancelTrade()
+end
 function Trade.Switch(on)
     local ok, why = F.SetOn(on)
     if not ok then
@@ -467,19 +521,20 @@ local function OnEvent(_, event, a, b)
         OnClosed()
     elseif event == "UI_INFO_MESSAGE" or event == "UI_ERROR_MESSAGE" then
         Info(a)
+    elseif event == "RAID_ROSTER_UPDATE" or event == "PARTY_MEMBERS_CHANGED" or event == "PLAYER_ENTERING_WORLD" then
+        if not cur.open then F.Sync() end
     elseif not cur.open then
-        if (event == "RAID_ROSTER_UPDATE" or event == "PARTY_MEMBERS_CHANGED") and F.IsOn() and not F.InGroup() then
-            F.SetOn(false)
-        end
+        return
     elseif event == "TRADE_PLAYER_ITEM_CHANGED" then
         ItemChanged()
-        if cur.item then cur.armed = Arm() end
+        Rearm()
+        Changed()
     elseif event == "TRADE_TARGET_ITEM_CHANGED" or event == "TRADE_MONEY_CHANGED" then
         TryAccept()
     elseif event == "TRADE_ACCEPT_UPDATE" then
         local mine, theirs = a == 1 or a == true, b == 1 or b == true
         cur.accepted = mine
-        if mine or theirs then cur.armed = Arm() end
+        if mine or theirs then Rearm() end
         if cur.accepted and cur.tries then
             fails = 0
             cur.status = "accepted"
@@ -507,4 +562,5 @@ frame:RegisterEvent("PLAYER_REGEN_DISABLED")
 frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 frame:RegisterEvent("RAID_ROSTER_UPDATE")
 frame:RegisterEvent("PARTY_MEMBERS_CHANGED")
+frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("INSPECT_TALENT_READY")

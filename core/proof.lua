@@ -65,7 +65,7 @@ local function Spell(e)
     return Link(e.id, e.spell)
 end
 local function Player(fight, name, s)
-    s = s or (ns.Summary and ns.Summary.Get(fight))
+    s = s or (ns.Summary and ns.Summary.Peek(fight))
     if not s then return nil, nil end
     for i = 1, #s.players do
         if s.players[i].name == name then return s.players[i], s end
@@ -227,6 +227,44 @@ local function Chain(fight, hit, p, s)
         return out
     elseif kind == "mindps" then
         out[1] = format(T("proof.mindps"), Short(info.amount or 0), Short(info.need or 0))
+        return out
+    elseif kind == "mcdamage" then
+        for k = 1, min(3, #hit.events) do
+            local m = hit.events[k].info and hit.events[k].info.mcd
+            if m then
+                local names = {}
+                for i = 1, #(m.top or {}) do
+                    local sp = m.top[i].sp
+                    names[i] = sp == "#melee" and T("sum.ab.melee") or Plain(ns.SpellName(sp))
+                end
+                out[#out + 1] = format(T("proof.mcdamage"), Clock(m.t - fight.from), Plain(m.who), Short(m.n),
+                    concat(names, ", "))
+            end
+        end
+        return out
+    elseif kind == "away" and info.away then
+        local a = info.away
+        local share = ns.Away and ns.Away.Share(a, info.limit or 0) or 0
+        out[1] = format(T("proof.away"), Dec(a.avg or 0), math.floor(share * 100 + 0.5), Dec(a.peak or 0),
+            Clock(a.peakT or 0))
+        return out
+    elseif kind == "tombbreak" and info.tomb then
+        for k = 1, min(3, #hit.events) do
+            local e = hit.events[k].info
+            local st = e and e.tomb
+            if st then
+                local acts, names = st.acts[e.k] or {}, {}
+                for i = 1, #acts do
+                    local a = acts[i]
+                    if a.id >= 0 and #names < 3 then
+                        names[#names + 1] = format(T("proof.tombbreak.act"),
+                            a.id == 0 and T("sum.ab.melee") or Plain(ns.SpellName(a.id)), math.floor(a.h * 100 + 0.5))
+                    end
+                end
+                out[#out + 1] = format(T("proof.tombbreak"), Plain(st.notes[e.k] or "?"), Dec(st.before[e.k] or 0),
+                    Plain(st.dn[e.k] or ""), Dec(st.pts[e.k] or 0), concat(names, ", "))
+            end
+        end
         return out
     elseif kind == "nova" and info.nova then
         out[1] = format(T("proof.nova"), Plain(info.nova.with), Dec(info.nova.yd or 0), #hit.events)

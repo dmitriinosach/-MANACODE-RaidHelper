@@ -52,7 +52,7 @@ local function Themes()
 end
 local function Langs()
     local out = {}
-    local keys = { "auto", "enUS", "ruRU" }
+    local keys = { "auto", "enUS", "ruRU", "esES" }
     for i = 1, #keys do
         out[i] = { key = keys[i], label = "set.lang." .. keys[i], tip = "set.lang.tip" }
     end
@@ -121,11 +121,18 @@ local function RecState()
     if ns.Recorder.IsOn() then key = ns.Recorder.IsPaused() and "set.rec.paused" or "set.rec.on" end
     return T(key)
 end
+local function RecBig()
+    local _, _, bytes = ns.Store.Stats()
+    local _, _, _, warn = ns.Store.LimitRange()
+    return bytes > warn * MB
+end
 local function RecUsed()
     local _, _, bytes = ns.Store.Stats()
     local raids, tries = ns.Store.Count()
     local key = ns.Store.OverLimit() and "set.rec.used.over" or "set.rec.used"
-    return format(T(key), bytes / MB, ns.Store.Limit(), raids, tries)
+    local text = format(T(key), bytes / MB, ns.Store.Limit(), raids, tries)
+    if RecBig() then text = text .. " " .. format(T("set.rec.used.big"), (select(4, ns.Store.LimitRange()))) end
+    return text
 end
 local function SetRec(key, on)
     if key == "autoRaid" and on and ns.RecLock() then
@@ -225,7 +232,7 @@ S.Section("rec", "bosses", {
     order = 25,
     items = BossItems(),
 })
-local mbLo, mbHi, mbDef = ns.Store.LimitRange()
+local mbLo, mbHi, mbDef, mbWarn = ns.Store.LimitRange()
 local function LimitAsk(mb)
     if not ns.Store.Cuts(mb) then return nil end
     local raids = ns.Store.Preview(mb)
@@ -241,9 +248,9 @@ S.Section("rec", "store", {
         { kind = "check", key = "dummy", label = "set.rec.dummy", tip = "set.rec.dummy.tip", order = -1,
           get = function() return ns.Encounters.Dummy() end, set = function(on) ns.Recorder.SetDummy(on) end },
         { kind = "text", key = "used", tick = true, text = RecUsed,
-          token = function() return ns.Store.OverLimit() and "text.bad" or "text.primary" end },
+          token = function() return (ns.Store.OverLimit() or RecBig()) and "text.bad" or "text.primary" end },
         { kind = "slider", key = "mb", label = "set.rec.limit", tip = "set.rec.limit.tip",
-          min = mbLo, max = mbHi, step = 10, default = mbDef,
+          min = mbLo, max = mbHi, step = 10, default = mbDef, red = mbWarn,
           get = function() return ns.Store.Limit() end,
           ask = LimitAsk,
           set = function(v) ns.Store.SetLimit(v) end },

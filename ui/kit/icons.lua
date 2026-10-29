@@ -115,6 +115,42 @@ function Kit.Unbuff(parent, size)
     f:Hide()
     return f
 end
+local INST_INSET = 3
+local SKULL_SHARE = 0.45
+local INST_SKULL_TEX = "Interface\\Minimap\\UI-DungeonDifficulty-Button"
+local INST_SKULL_RATIO = 64 / 44
+function Kit.InstTile(parent)
+    local f = CreateFrame("Button", nil, parent)
+    Kit.Skin(f, "card")
+    f.icon = f:CreateTexture(nil, "ARTWORK")
+    f.icon:SetPoint("TOPLEFT", f, "TOPLEFT", INST_INSET, -INST_INSET)
+    f.icon:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -INST_INSET, INST_INSET)
+    f.size = Kit.Str(f, "GameFontNormalLarge")
+    f.size:SetPoint("CENTER", f, "CENTER", 0, 0)
+    Kit.Text(f.size, "text.primary")
+    Kit.Halo(f.size)
+    f.skull = f:CreateTexture(nil, "OVERLAY")
+    f.skull:SetPoint("CENTER", f, "TOPRIGHT", -INST_INSET, -INST_INSET)
+    f.tipTitle = false
+    f:SetScript("OnEnter", Kit.TipShow)
+    f:SetScript("OnLeave", Kit.TipHide)
+    return f
+end
+function Kit.InstTileSet(f, side, tex, size, heroic)
+    f:SetWidth(side)
+    f:SetHeight(side)
+    f.icon:SetTexture(tex)
+    f.size:SetText(size and tostring(size) or "")
+    Icon.Flag(f.skull, side)
+    if heroic then f.skull:Show() else f.skull:Hide() end
+end
+function Icon.Flag(tex, side)
+    tex:SetTexture(INST_SKULL_TEX)
+    tex:SetTexCoord(0, 0.25, 0.0703125, 0.4140625)
+    local s = floor(side * SKULL_SHARE + 0.5)
+    tex:SetWidth(floor(s * INST_SKULL_RATIO + 0.5))
+    tex:SetHeight(s)
+end
 function Icon.Fold(tex, open)
     tex:SetTexture(FOLD_TEX)
     local a, b = 0.125, 0.875

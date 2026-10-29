@@ -1,10 +1,7 @@
 local _, ns = ...
 local floor = math.floor
-local ceil = math.ceil
 local tsort = table.sort
-local VERSION = 1
-local WEEK = 7 * 86400
-local TOP_LEVEL = 80
+local VERSION = 2
 local LFG = "Interface\\LFGFrame\\LFGIcon-"
 local ICON = {
     IcecrownCitadel = "IcecrownCitadel",
@@ -20,7 +17,6 @@ local ICON = {
 }
 local Lockouts = {}
 ns.Lockouts = Lockouts
-Lockouts.TOP_LEVEL = TOP_LEVEL
 local listeners = {}
 local function Store()
     local db = ns.GetDB()
@@ -32,13 +28,11 @@ local function Store()
     end
     return s
 end
-function Lockouts.Key(name, realm)
-    return name .. "-" .. realm
-end
 function Lockouts.MyKey()
+    local guid = UnitGUID and UnitGUID("player")
+    if type(guid) == "string" and guid ~= "" then return guid end
     local name = UnitName("player")
-    if not name then return nil end
-    return Lockouts.Key(name, GetRealmName and GetRealmName() or "")
+    return name and (name .. "-" .. (GetRealmName and GetRealmName() or "")) or nil
 end
 local function SaveOf(lock)
     local raid = lock.raid and true or nil
@@ -76,7 +70,9 @@ function Lockouts.Snapshot()
     local realm = GetRealmName and GetRealmName() or ""
     local _, class = UnitClass("player")
     local now = time()
+    local key = Lockouts.MyKey()
     local c = {
+        guid = key,
         name = name,
         realm = realm,
         class = class,
@@ -85,12 +81,8 @@ function Lockouts.Snapshot()
         saves = {},
     }
     local locks = ns.Raid.Locks(true)
-    for i = 1, #locks do
-        local v = SaveOf(locks[i])
-        c.saves[#c.saves + 1] = v
-        if v.raid and (not s.reset or v.to < s.reset or s.reset <= now) then s.reset = v.to end
-    end
-    s.chars[Lockouts.Key(name, realm)] = c
+    for i = 1, #locks do c.saves[#c.saves + 1] = SaveOf(locks[i]) end
+    s.chars[key] = c
     Prune(s, now)
     Changed()
     return c
@@ -98,13 +90,6 @@ end
 function Lockouts.Refresh()
     if RequestRaidInfo then RequestRaidInfo() end
     if ns.Raid and ns.Raid.LocksKnown() then Lockouts.Snapshot() end
-end
-function Lockouts.LastReset(now)
-    local s = Store()
-    local r = s and s.reset
-    if not r then return nil end
-    if r <= now then r = r + ceil((now - r + 1) / WEEK) * WEEK end
-    return r - WEEK
 end
 function Lockouts.Remove(key)
     local s = Store()
@@ -117,11 +102,9 @@ function Lockouts.Chars(now)
     if not s then return {} end
     now = now or time()
     Prune(s, now)
-    local mine, last = Lockouts.MyKey(), Lockouts.LastReset(now)
+    local mine = Lockouts.MyKey()
     local out = {}
-    for key, c in pairs(s.chars) do
-        out[#out + 1] = { key = key, char = c, current = key == mine, stale = last ~= nil and (c.at or 0) < last }
-    end
+    for key, c in pairs(s.chars) do out[#out + 1] = { key = key, char = c, current = key == mine } end
     tsort(out, function(a, b)
         if a.current ~= b.current then return a.current end
         local la, lb = a.char.level or 0, b.char.level or 0
@@ -139,30 +122,6 @@ function Lockouts.Saves(c)
         if a.size ~= b.size then return a.size < b.size end
         return (a.heroic and 1 or 0) < (b.heroic and 1 or 0)
     end)
-    return out
-end
-function Lockouts.Summary(map, sizes, now)
-    local out = {}
-    for i = 1, #sizes do out[sizes[i]] = { free = {}, normal = {}, heroic = {} } end
-    local rows = Lockouts.Chars(now)
-    for i = 1, #rows do
-        local c = rows[i].char
-        local taken = {}
-        for k = 1, #c.saves do
-            local v = c.saves[k]
-            local cell = v.map == map and out[v.size]
-            if cell and not taken[v.size] then
-                taken[v.size] = true
-                local list = v.heroic and cell.heroic or cell.normal
-                list[#list + 1] = c.name
-            end
-        end
-        if (c.level or 0) >= TOP_LEVEL then
-            for size, cell in pairs(out) do
-                if not taken[size] then cell.free[#cell.free + 1] = c.name end
-            end
-        end
-    end
     return out
 end
 function Lockouts.Kills(rows)

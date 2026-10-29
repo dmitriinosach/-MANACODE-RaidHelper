@@ -68,6 +68,7 @@ local function read(unit, name)
     local m = ns.Session.Member(name)
     if not m or m.fake or not m.class then return end
     apply({ name = name, class = m.class, unit = unit })
+    ns.Session.AutoPlace(name)
     ns.Session.Changed()
 end
 if root.Specs then

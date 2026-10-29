@@ -16,6 +16,8 @@ ns.pullTimer = {
         "пул через (%d+)",
         "Pull in (%d+)",
         "pull in (%d+)",
+        "Pull en (%d+)",
+        "pull en (%d+)",
     },
     minutes = { "мин", "min" },
     breaks = { ["Перерыв!"] = true, ["Перерыв"] = true, ["Break time!"] = true, ["Break"] = true },

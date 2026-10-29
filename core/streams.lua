@@ -4,6 +4,8 @@ local min = math.min
 local byte = string.byte
 local sub = string.sub
 local POS_HOLD = 5
+local POS_SHARE = 0.3
+local HP_SHARE = 0.45
 local DEATH_WINDOW = 1.5
 local MAP_UNITS = 10000
 local NPC_MARK = 35
@@ -103,11 +105,15 @@ function Streams.Real(segs, who, t)
 end
 local function Tracks(segs, kind, from, to, times)
     local out = {}
+    local total, done = 0, 0
+    for i = 1, #segs do total = total + #ns.Decode.Names(segs[i], kind) end
     for i = 1, #segs do
         local seg = segs[i]
         local names = ns.Decode.Names(seg, kind)
         for k = 1, #names do
             local name = names[k]
+            done = done + 1
+            ns.Jobs.Progress(done - 1, total)
             if not (kind == "hp" and Streams.IsNpc(name)) then
                 local tr = out[name]
                 if not tr then
@@ -116,6 +122,7 @@ local function Tracks(segs, kind, from, to, times)
                 end
                 local iter = kind == "hp" and ns.Decode.Hp or ns.Decode.Pos
                 for ts, a, b in iter(seg, name, from, to) do
+                    ns.Jobs.Step()
                     if ts <= to then
                         local n = #tr.t + 1
                         tr.t[n], tr.a[n], tr.b[n] = ts, a, b
@@ -147,8 +154,11 @@ end
 function Streams.Frames(segs, out, from, to)
     if #segs == 0 then return end
     local times = {}
+    ns.Jobs.Part(0, POS_SHARE)
     local pos = Tracks(segs, "pos", from - POS_HOLD, to, times)
+    ns.Jobs.Part(POS_SHARE, HP_SHARE)
     local hps = Tracks(segs, "hp", from - POS_HOLD, to, times)
+    ns.Jobs.Part(HP_SHARE, 1)
     local list = {}
     for t in pairs(times) do list[#list + 1] = t end
     tsort(list)

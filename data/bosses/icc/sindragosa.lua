@@ -1,5 +1,6 @@
 local _, ns = ...
 ns.summaries[ns.ENC.sindragosa] = {
+    pull = { spells = { 71049 }, id = 31821, tip = "sum.b.pullin", rule = "sindra.aura", lead = 5, after = 3, aura = 48945 },
     badges = {
         { kind = "aura", spell = 69762, tip = "sum.b.unchained" },
         { kind = "stack", spell = 69766, tip = "sum.b.instability" },
@@ -15,7 +16,21 @@ ns.summaries[ns.ENC.sindragosa] = {
         { kind = "hit", spell = 71049, min = 10000, alive = true, grade = "red", tank = "yellow", tip = "sum.b.coldhit" },
         { kind = "hit", spell = 71077, alive = true, grade = "red", tip = "sum.b.tailhit" },
         { kind = "hit", spell = 64623, min = 5000, alive = true, grade = "red", tip = "sum.b.bombhit" },
-        { kind = "pulled", spell = 70126, splash = 70157, grade = "yellow", tip = "sum.b.pulled" },
+        { kind = "pulled", spell = 70126, splash = 70157, red = 4, after = 3, radius = 10, tip = "sum.b.pulled" },
+        { kind = "tombbreak", npc = 36980, beacon = 70126, spell = 70157, bomb = 64623, id = 70157,
+          limit = "sindra.tombbreak", tip = "sum.b.tombbreak",
+          dots = {
+              [47813] = { 6, 3 }, [47843] = { 5, 3 }, [47864] = { 12, 2 }, [47811] = { 5, 3 }, [48160] = { 5, 3 },
+              [48125] = { 6, 3 }, [48300] = { 8, 3 }, [48299] = { 8, 3 }, [48463] = { 5, 3 }, [48468] = { 7, 2 },
+              [55360] = { 4, 3, false, 2 }, [55095] = { 7, 3 }, [55078] = { 7, 3 }, [49001] = { 5, 3 },
+              [42891] = { 4, 3 }, [42833] = { 4, 2 }, [49233] = { 6, 3 }, [49800] = { 8, 2 }, [48574] = { 3, 3 },
+              [48568] = { 5, 3 }, [47465] = { 5, 3 },
+              [12654] = { 2, 2, true }, [12721] = { 6, 1, true }, [31803] = { 5, 3, true }, [53742] = { 5, 3, true },
+              [61840] = { 4, 2, true }, [57970] = { 4, 3, true }, [63468] = { 8, 1, true }, [71023] = { 6, 2, true },
+          },
+          series = { [53190] = 10, [53195] = 10, [42938] = 8, [48466] = 10, [58433] = 6, [52212] = 10, [48819] = 8,
+                     [42926] = 8, [49065] = 20, [50622] = 6, [47818] = 7 },
+          link = { [50526] = { 55078, 55095 }, [55362] = { 55360 } } },
         { kind = "parry", names = { 36853 }, id = 3127, tip = "sum.b.parry" },
     },
     stacks = {
@@ -28,5 +43,6 @@ ns.summaries[ns.ENC.sindragosa] = {
         { kind = "friendly", label = "sum.k.backlash", spells = { 71046 } },
         { kind = "damageTo", label = "sum.k.tomb", names = { 36980 } },
         { kind = "parries", label = "sum.k.parry" },
+        { kind = "pullins", label = "sum.k.pullins" },
     },
 }

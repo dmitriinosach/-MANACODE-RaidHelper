@@ -34,7 +34,8 @@ local Replay = ns.Replay
 local Kit = ns.Kit
 local F = { n = 0, cx = {}, cy = {}, cz = {}, ux = {}, uy = {}, uz = {}, vx = {}, vy = {}, vz = {}, nx = {}, ny = {}, nz = {},
             hu = {}, hv = {}, cu = {}, cv = {}, q = {}, du = {}, dv = {}, kind = {}, shell = {}, flat = {}, floor = {},
-            fx = {}, fy = {}, fz = {}, kz = {}, ringS = {}, ringB = {}, at = {} }
+            fx = {}, fy = {}, fz = {}, kz = {}, ringS = {}, ringB = {}, at = {}, obj = {} }
+local objKey, objFirst, objLast, objNext = {}, {}, {}, {}
 local P = { a1 = {}, b1 = {}, a2 = {}, b2 = {}, sx = {}, sy = {}, over = {}, nxt = {}, rkey = {} }
 local ringList = {}
 local Pr = { n = 0, row = {} }
@@ -109,9 +110,9 @@ local function SetFace(i, row, ring)
     F.fx[i], F.fy[i], F.fz[i] = row[19] or nx, row[20] or ny, row[21] or nz
     F.kz[i] = row[22] or 0
     if ring then
-        F.ringS[i], F.ringB[i], F.at[i] = row[23], row[24], 1
+        F.ringS[i], F.ringB[i], F.at[i], F.obj[i] = row[23], row[24], 1, 0
     else
-        F.ringS[i], F.ringB[i], F.at[i] = nil, nil, row[23] or 1
+        F.ringS[i], F.ringB[i], F.at[i], F.obj[i] = nil, nil, row[23] or 1, row[24] or 0
     end
     F.flat[i] = nz > NZ_FLAT
     F.floor[i] = false
@@ -401,6 +402,7 @@ function Live.Place(cam, room, ppy)
     local cx, cy, cz, ux, uy, uz, vx, vy, vz = F.cx, F.cy, F.cz, F.ux, F.uy, F.uz, F.vx, F.vy, F.vz
     local fx, fy, fz, hu, hv, shell, flat, floorF, kind, kz = F.fx, F.fy, F.fz, F.hu, F.hv, F.shell, F.flat, F.floor, F.kind, F.kz
     local pa1, pb1, pa2, pb2, psx, psy, pover, nxt = P.a1, P.b1, P.a2, P.b2, P.sx, P.sy, P.over, P.nxt
+    local obj = F.obj
     for b = 1, BUCKETS do head[b] = 0 tail[b] = 0 end
     local kscale = BUCKETS / (2 * KEY_MAX)
     local ringS, pf, nRing = F.ringS, st.pf, 0
@@ -457,15 +459,36 @@ function Live.Place(cam, room, ppy)
                     else
                         key = ((cx[i] - vx[i] * h2) * s + (cy[i] - vy[i] * h2) * c) * k + (cz[i] - vz[i] * h2) * t + 0.001
                     end
-                    local b = floor((key + KEY_MAX) * kscale) + 1
-                    if b < 1 then b = 1 elseif b > BUCKETS then b = BUCKETS end
-                    nxt[i] = 0
-                    if tail[b] == 0 then head[b] = i else nxt[tail[b]] = i end
-                    tail[b] = i
+                    local ob = obj[i]
+                    if ob and ob > 0 then
+                        if not flat[i] and (objKey[ob] == nil or key > objKey[ob]) then objKey[ob] = key end
+                        if objKey[ob] == nil then objKey[ob] = key - 1000 end
+                        objNext[i] = 0
+                        if objFirst[ob] == nil then objFirst[ob] = i else objNext[objLast[ob]] = i end
+                        objLast[ob] = i
+                    else
+                        local b = floor((key + KEY_MAX) * kscale) + 1
+                        if b < 1 then b = 1 elseif b > BUCKETS then b = BUCKETS end
+                        nxt[i] = 0
+                        if tail[b] == 0 then head[b] = i else nxt[tail[b]] = i end
+                        tail[b] = i
+                    end
                 end
             end
         end
         end
+    end
+    for ob, key in pairs(objKey) do
+        local b = floor((key + KEY_MAX) * kscale) + 1
+        if b < 1 then b = 1 elseif b > BUCKETS then b = BUCKETS end
+        local i = objFirst[ob]
+        while i and i ~= 0 do
+            nxt[i] = 0
+            if tail[b] == 0 then head[b] = i else nxt[tail[b]] = i end
+            tail[b] = i
+            i = objNext[i]
+        end
+        objKey[ob], objFirst[ob], objLast[ob] = nil, nil, nil
     end
     local nF = F.n
     if Pr.n > 0 then

@@ -45,7 +45,7 @@ local function PageWheel(delta)
     return pane ~= nil and pane:Wheel(delta)
 end
 function View.Title(raid)
-    return format(ns.T("rsum.title"), ns.Raid.Title(raid))
+    return ns.Raid.Title(raid)
 end
 local function Stat(i)
     stats[i] = stats[i] or Badges.Total(content, true)
@@ -112,7 +112,7 @@ local function DrawTotals(totals, w)
     for i = 1, #totals do
         local c = totals[i]
         local f = Stat(i)
-        f:SetModel({ title = c.title, value = c.value, sub = c.sub, subs = c.subs, unbuff = c.unbuff,
+        f:SetModel({ title = c.title, value = c.value, icon = c.icon, sub = c.sub, subs = c.subs, unbuff = c.unbuff,
                      color = Kit.C[c.color] or Kit.C["text.accent"], lines = c.lines })
         list[i] = f
     end
@@ -150,7 +150,7 @@ local function DrawDetails(details, y, w)
         f:SetModel({ title = d.title, rows = Rows(d.rows), empty = d.empty, tip = d.tip, onWheel = PageWheel })
         list[i] = f
     end
-    return Grid.Place(list, MARGIN, y, w, FitW(list, DETAILMIN, w), GAP, true)
+    return Grid.Place(list, MARGIN, y, w, MinW(DETAILMIN), GAP, true)
 end
 local function Inside()
     return not ns.SumSide or ns.SumSide.Inside()

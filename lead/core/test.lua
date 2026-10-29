@@ -35,6 +35,7 @@ local function build(size)
 end
 local function done()
     ns.Session.Invalidate()
+    ns.Session.AutoAll()
     ns.Session.Changed()
 end
 function X.Start(size)
@@ -44,7 +45,7 @@ function X.Start(size)
         return
     end
     if build(size) then
-        ns.say(ns.T("testOn", #fake))
+        ns.say(ns.T("cmdTestOn", #fake))
         done()
     else
         waitSize = size
@@ -97,6 +98,11 @@ function X.Act(key, name, on)
         m.role = (not on) and role or nil
     elseif key == "assist" then
         m.rank = on and 0 or 1
+    elseif key == "leader" then
+        for _, x in ipairs(fake) do
+            if x.rank == 2 then x.rank = 0 end
+        end
+        m.rank = 2
     elseif key == "ml" then
         for _, x in ipairs(fake) do x.ml = false end
         m.ml = true
@@ -114,7 +120,7 @@ f:SetScript("OnEvent", function()
     local size = waitSize
     if build(size) then
         waitSize = nil
-        ns.say(ns.T("testOn", #fake))
+        ns.say(ns.T("cmdTestOn", #fake))
         done()
     end
 end)

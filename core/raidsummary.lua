@@ -404,7 +404,7 @@ local function Build(raid)
     local have = {}
     for k = 1, #fights do
         local f = fights[k]
-        local s = ns.Summary.Peek(f) or ns.Summary.Load(f)
+        local s = ns.Summary.Peek(f)
         if s then
             have[k] = s
             ns.Jobs.Band(step / total, (step + 1) / total)
@@ -415,7 +415,7 @@ local function Build(raid)
         if not have[k] then
             ns.Jobs.Band(step / total, (step + 1) / total)
             step = step + 1
-            have[k] = ns.Summary.Full(fights[k])
+            have[k] = ns.Summary.Now(fights[k])
             ns.Jobs.Label("job.raidsum")
         end
     end

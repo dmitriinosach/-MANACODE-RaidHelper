@@ -46,7 +46,7 @@ local function Pots()
 end
 local function Refresh(row)
     if not Panel.Ctx().group then
-        Panel.Value(row, ns.T("panel.nogroup"), "muted")
+        Panel.Empty(row, "nogroup")
         return
     end
     local RB = ns.RaidBuffs
@@ -54,7 +54,7 @@ local function Refresh(row)
     if ns.FlaskReady then ns.FlaskReady.Tick() end
     local lack, _, _, known = RB.Counts()
     if not known then
-        Panel.Value(row, ns.T("panel.nodata"), "muted")
+        Panel.Empty(row, "none")
         return
     end
     local pot, total = Pots()
@@ -79,7 +79,7 @@ end
 local function Tip(row)
     Refresh(row)
     if not Panel.Ctx().group then
-        return { { kind = "head", left = ns.T("set.panel.row.buffs"), right = ns.T("panel.nogroup") },
+        return { { kind = "head", left = ns.T("set.panel.row.buffs"), right = Panel.EmptyText("nogroup") },
             { kind = "foot", left = ns.T("buffrow.click") } }
     end
     local RB = ns.RaidBuffs
@@ -125,7 +125,7 @@ Panel.Widget({
     Build = function(row)
         Panel.Line(row, ICON_TEX, ns.T("panel.line.buffs"))
         Panel.Reserve(row, format(ns.T("buffrow.lack"), 9) .. format(ns.T("buffrow.pots"), 25, 25))
-        Panel.Value(row, ns.T("panel.nogroup"), "muted")
+        Panel.Empty(row, "nogroup")
     end,
     Update = Refresh,
     Tip = Tip,

@@ -40,6 +40,11 @@ ns.covers = {
     ext = { 33206, 47788, 6940 },
     cast = { [42650] = 4 },
     late = 2,
+    raid = {
+        [64205] = { class = "PALADIN", cd = 120, dur = 10, split = true },
+        [31821] = { class = "PALADIN", cd = 120, dur = 6, aura = true },
+    },
+    auras = { 48945, 48942, 48943, 48947, 54043, 19746, 32223 },
 }
 ns.saving = {
     [45438] = true,

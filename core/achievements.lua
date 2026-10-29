@@ -12,11 +12,9 @@ local HIT_WINDOW = 1.5
 local MAX_TAIL = 6
 local Ach = {}
 ns.Achievements = Ach
-local cache = setmetatable({}, { __mode = "k" })
 local byBoss = {}
 local byKey = nil
 local raidKeys = setmetatable({}, { __mode = "k" })
-local fightKeys = setmetatable({}, { __mode = "k" })
 local IsBoss = ns.IsBossOf
 local function Same(key, boss)
     key = ns.NpcKeyOf(key)
@@ -437,27 +435,8 @@ local function Close(r)
     for i = 1, #r.states do out[#out + 1] = CloseState(r.states[i], r.fight) end
     return out
 end
-local function Build(fight)
-    local r = Prepare(fight)
-    if not r then return {} end
-    local SpellOf = ns.SpellOf
-    local segs = ns.Encounters.Segs(fight)
-    for si = 1, #segs do
-        local seg = segs[si]
-        SegStart(r, seg)
-        for ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a3, a4, a5
-            in ns.Store.Events(seg, r.from, r.to, MAX_TAIL) do
-            ns.Jobs.Step()
-            Feed(r, ts, sub, SpellOf(sub, a1), srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a3, a4, a5)
-        end
-    end
-    return Close(r)
-end
 function Ach.Begin(fight)
-    if cache[fight] then return nil end
-    local r = Prepare(fight)
-    if not r then cache[fight] = {} end
-    return r
+    return Prepare(fight)
 end
 function Ach.Seg(r, seg)
     SegStart(r, seg)
@@ -482,36 +461,7 @@ function Ach.Tail(r, seg, upTo)
     end
 end
 function Ach.Finish(r)
-    local out = Close(r)
-    cache[r.fight] = out
-    return out
-end
-function Ach.Build(fight)
-    local r = cache[fight]
-    if r then return r end
-    r = Build(fight)
-    cache[fight] = r
-    return r
-end
-function Ach.Keep(fight, list)
-    cache[fight] = list
-end
-function Ach.Compute(fight, onDone)
-    if cache[fight] then
-        onDone(cache[fight])
-        return
-    end
-    local key = fightKeys[fight] or {}
-    fightKeys[fight] = key
-    ns.Jobs.Run(key, function()
-        ns.Jobs.Label("job.ach")
-        return Ach.Build(fight)
-    end, function(list)
-        if list then onDone(list) end
-    end, "ach.frame", true)
-end
-function Ach.Reset()
-    for k in pairs(cache) do cache[k] = nil end
+    return Close(r)
 end
 local RANK = { done = 1, fail = 2, short = 3, open = 4, nodata = 5 }
 local function Label(entry)
@@ -614,7 +564,8 @@ function Ach.ForRaid(raid, onDone, got)
     for i = 1, #fights do
         local f = fights[i]
         if #Ach.Defs(f.boss) > 0 then
-            local list = cache[f]
+            local s = ns.Summary.Peek(f)
+            local list = s and s.ach
             if not list then
                 pending[#pending + 1] = f
             else
@@ -674,10 +625,9 @@ function Ach.ForRaid(raid, onDone, got)
         local key = raidKeys[raid] or {}
         raidKeys[raid] = key
         ns.Jobs.Run(key, function()
-            ns.Jobs.Label("job.ach")
             for i = 1, #pending do
                 ns.Jobs.Progress(i - 1, #pending)
-                Ach.Build(pending[i])
+                ns.Summary.Now(pending[i])
             end
             return true
         end, function(ok)

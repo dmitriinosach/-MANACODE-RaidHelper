@@ -4,14 +4,16 @@ local floor = math.floor
 local max = math.max
 local min = math.min
 local Kit = ns.Kit
-local W, H = 290, 214
+local W, H = 300, 240
 local MIN_W, MIN_H = 250, 120
-local MAX_W, MAX_H = 520, 560
-local PAD = 6
-local HEADH = 18
-local TITLEH = 16
-local ROWH = 14
+local MAX_W, MAX_H = 560, 600
+local PAD = 8
+local HEADH = 22
+local TITLEH = 20
+local ROWH = 18
 local GAP = 3
+local WIDE_W = 400
+local FRESH = 180
 local FOOT = 8
 local GRIP = 14
 local LEADW = 30
@@ -19,22 +21,24 @@ local PCTW = 32
 local VIEWGAP = 2
 local VIEWPAD = 12
 local PICK_ICON = 10
-local PICK_MAX = 20
+local PICK_MAX = 10
 local BAR_A = 0.38
 local TICK = 1
 local RETRY = 3
 local WHITE8 = "Interface\\Buttons\\WHITE8X8"
-local VIEWS = { "faults", "dps", "hps", "targets" }
-local KNOWN = { faults = true, dps = true, hps = true, targets = true }
+local VIEWS = { "faults", "dps", "hps", "targets", "rolls" }
+local KNOWN = { faults = true, dps = true, hps = true, targets = true, rolls = true }
 local RATE = { dps = true, hps = true }
 local CHAT_ICON = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\spam.tga"
 local CHAT_SIZE = 12
 local Mini = {}
 ns.ShellMini = Mini
-local frame, titleText, subText, head, restore, close, grip, chat, give, pickBtn
+local frame, titleText, subText, head, restore, close, grip, chat, give, pickBtn, clearBtn
 local headh, titleh, rowh, leadw, pctw = HEADH, TITLEH, ROWH, LEADW, PCTW
 local top = PAD + HEADH + GAP + TITLEH + GAP
 local ft
+local fts = {}
+local rollSeen = 0
 local viewBtns = {}
 local rows
 local pool
@@ -54,6 +58,7 @@ local wasCombat = false
 local phase = 0
 local manualPhase = -1
 local titleBy
+local rollPens
 local classes = {}
 local function Saved()
     local s = ns.GetDB().settings
@@ -107,9 +112,11 @@ end
 local function Slots()
     if not frame then return 1 end
     if Faults() then
-        local L = ns.GPList.MINI
-        local sl = ft and ft.L or L
+        local sl = ft and ft.L or ns.GPList.MINI
         return max(1, floor((frame:GetHeight() - top - FOOT - sl.headh) / sl.rowh))
+    end
+    if View() == "rolls" then
+        return max(1, floor((frame:GetHeight() - top - FOOT - titleh - GAP) * 0.3 / rowh))
     end
     return max(1, floor((frame:GetHeight() - top - FOOT) / rowh))
 end
@@ -134,7 +141,7 @@ end
 local TipHide = Kit.HideLines
 local function RowClick(self)
     local e = self.e
-    if not e or e.kind == "note" then return end
+    if not e or e.kind == "note" or e.kind == "roll" then return end
     if live then
         OpenFull(nil)
     elseif View() == "targets" then
@@ -199,7 +206,7 @@ local function PaintRow(r, e)
     if r.laid ~= e.kind then
         r.laid = e.kind
         r.name:ClearAllPoints()
-        if note or e.kind == "head" then
+        if note or e.kind == "head" or e.kind == "roll" then
             r.name:SetPoint("LEFT", r, "LEFT", 2, 0)
         else
             r.name:SetPoint("LEFT", r.lead, "RIGHT", 0, 0)
@@ -217,7 +224,7 @@ local function PaintRow(r, e)
     Put(r.val, e.val or "")
     Kit.Text(r.val, e.kind == "head" and "text.title" or (e.valTone or "text.secondary"))
     Put(r.pct, e.pct or "")
-    Kit.Text(r.pct, "text.note")
+    Kit.Text(r.pct, e.pctTone or "text.note")
     local fill = e.fill or 0
     if fill > 0 then
         r.bar:SetVertexColor(ns.GPList.ClassRGB(e.class))
@@ -231,10 +238,17 @@ end
 pool = Kit.List(NewRow, PaintRow, { clear = function(r) r.e = nil end })
 rows = pool.rows
 local function DrawFaults()
-    if not ft then
-        ft = ns.GPList.New(frame, "HTP_FailWatchShellMiniFault", ns.GPList.MINI, true)
-        ft.onWheel = function(delta) Wheel(nil, delta) end
+    local wide = frame:GetWidth() >= WIDE_W
+    local key = wide and "wide" or "mini"
+    local t = fts[key]
+    if not t then
+        t = ns.GPList.New(frame, wide and "HTP_FailWatchShellMiniFaultWide" or "HTP_FailWatchShellMiniFault",
+            wide and ns.GPList.COMPACT or ns.GPList.MINI, true)
+        t.onWheel = function(delta) Wheel(nil, delta) end
+        fts[key] = t
     end
+    if ft and ft ~= t then ft:Hide() end
+    ft = t
     ft:ClearAllPoints()
     ft:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -top)
     ft:Draw(fight, model, frame:GetWidth() - PAD * 2, pool.offset, Slots())
@@ -242,18 +256,26 @@ local function DrawFaults()
 end
 local function PaintGive()
     local on = Faults()
-    local by = on and "give" or "sub"
+    local rolls = View() == "rolls"
+    local by = on and "give" or (rolls and "clear" or "sub")
     if titleBy ~= by then
         titleBy = by
-        titleText:SetPoint("RIGHT", on and give or subText, "LEFT", -6, 0)
+        titleText:SetPoint("RIGHT", on and give or (rolls and clearBtn or subText), "LEFT", -6, 0)
+    end
+    if rolls then
+        if ns.RollPen.Count() > 0 then clearBtn:Enable() else clearBtn:Disable() end
+        clearBtn:Show()
+    else
+        clearBtn:Hide()
     end
     if not on then
         give:Hide()
         return
     end
-    local unit = ns.Ledger and ns.Ledger.Unit() or ""
-    give.tip = format(ns.T("gpmini.all.tip"), model.pending, unit, model.ready)
-        .. (model.raid and format(ns.T("sum.gp.title.roll"), model.raid) or "")
+    give.text:SetText(ns.GPList.AllText(model))
+    give:SetWidth(floor(give.text:GetStringWidth() + VIEWPAD + 0.5))
+    give.tip = format(ns.T("gpmini.all.tip"), ns.GPList.SumText(model.by), model.ready)
+        .. ((model.raid or 0) > 0 and format(ns.T("sum.gp.title.roll"), model.raid) or "")
     if model.pending > 0 then give:Enable() else give:Disable() end
     give:Show()
 end
@@ -261,6 +283,7 @@ function Mini.Draw()
     if not frame then return end
     PaintGive()
     local n = Slots()
+    if rollPens then rollPens:Hide() end
     pool:Clamp(Count(), n)
     if Faults() then
         pool:Hide()
@@ -269,6 +292,23 @@ function Mini.Draw()
     end
     if ft then ft:Hide() end
     pool:Draw(list, n)
+    if View() == "rolls" then
+        if not rollPens then rollPens = ns.Badges.Detail(frame, nil, true) end
+        local y = top + n * rowh + GAP
+        local height = frame:GetHeight() - y - FOOT
+        local offset = rollPens.offset or 0
+        local raid, alt = ns.RollPen.Here()
+        if rollPens.raid ~= raid or rollPens.alt ~= alt then offset = 0 end
+        rollPens.raid, rollPens.alt = raid, alt
+        rollPens.fixed = ns.Badges.Reach(rollPens, height)
+        rollPens:SetModel(ns.FaultsRoll.SummaryModel(raid, alt))
+        rollPens.offset = offset
+        rollPens:ClearAllPoints()
+        rollPens:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y)
+        rollPens:Layout(frame:GetWidth() - PAD * 2)
+        rollPens:Redraw()
+        rollPens:Show()
+    end
 end
 local function Title(text, sub)
     Put(titleText, text)
@@ -291,7 +331,7 @@ local function Again()
 end
 local function GPChanged()
     dirty = true
-    if frame and frame:IsShown() and View() == "faults" then Mini.Rebuild() end
+    if frame and frame:IsShown() and (View() == "faults" or View() == "rolls") then Mini.Rebuild() end
 end
 local function Invalidated()
     asked = nil
@@ -331,7 +371,7 @@ local function Pending()
 end
 local function Ask(f)
     local S = ns.Summary
-    local s = S.Get(f)
+    local s = S.Peek(f)
     if s then return s, false end
     if not Calm() or S.Busy(f) then return nil, true end
     if asked == f then
@@ -340,8 +380,8 @@ local function Ask(f)
     else
         asked, tries = f, 0
     end
-    S.Compute(f, Again)
-    s = S.Get(f)
+    S.Of(f, Again)
+    s = S.Peek(f)
     return s, s == nil
 end
 local function Chosen(fights)
@@ -373,6 +413,20 @@ local function FightRows(f, s)
     end
     Title(FightTitle(f), sub)
 end
+local function RollRows()
+    local R, FR = ns.RollPen, ns.FaultsRoll
+    local throws, best = R.Throws(), R.Best()
+    for i = 1, #throws do
+        local t = throws[i]
+        local val = FR.Range(t)
+        if t.pen > 0 then val = val .. " " .. Kit.Hex("text.bad") .. FR.Minus(t.pen) .. "|r" end
+        list[#list + 1] = { kind = "roll", who = t.who, left = FR.Who(t.who), class = ClassOf(t.who), val = val,
+            valTone = "text.bright", pct = tostring(t.net), pctTone = t.net == best and "text.good" or "text.bright",
+            lines = FR.SoftTip(t.who) }
+    end
+    if not throws[1] then Only(ns.T("roll.throws.empty")) end
+    Title(format(ns.T("roll.throws"), #throws))
+end
 local function WantLive()
     local M = ns.Meter
     return RATE[View()] and pickKey == nil and M ~= nil and M.Fighting() or false
@@ -382,6 +436,12 @@ function Mini.Rebuild()
     dirty = false
     wipe(list)
     model = nil
+    if View() == "rolls" then
+        live = false
+        RollRows()
+        Mini.Draw()
+        return
+    end
     live = WantLive() and LiveRows(View() == "hps")
     if live then
         fight = nil
@@ -423,8 +483,8 @@ local function SetView(key, auto)
     Saved().view = key
     pool.offset = 0
     for i = 1, #VIEWS do viewBtns[VIEWS[i]]:SetActive(VIEWS[i] == key) end
-    if RATE[key] then
-        chat.tip = ns.T(key == "hps" and "report.tip.heal" or "report.tip")
+    if RATE[key] or key == "rolls" then
+        chat.tip = ns.T(key == "rolls" and "roll.report.tip" or (key == "hps" and "report.tip.heal" or "report.tip"))
         chat:Show()
     else
         chat:Hide()
@@ -433,19 +493,24 @@ local function SetView(key, auto)
     Mini.Rebuild()
 end
 function Mini.SetView(key)
-    if frame and frame:IsShown() and KNOWN[key] then SetView(key) end
+    if frame and frame:IsShown() and KNOWN[key] then SetView(key, key == View()) end
 end
 function Mini.View()
     return View()
 end
+local function Fighting()
+    local M = ns.Meter
+    if M then return M.Fighting() and true or false end
+    return UnitAffectingCombat("player") and true or false
+end
 local function Watch()
-    local combat = UnitAffectingCombat("player") and true or false
+    local combat = Fighting()
     if combat ~= wasCombat then
         wasCombat = combat
         phase = phase + 1
         if combat then
             pickKey = nil
-            if View() ~= "dps" then SetView("dps", true) end
+            if not RATE[View()] then SetView("dps", true) end
             dirty = true
         end
     end
@@ -453,13 +518,31 @@ local function Watch()
     local top = E and E.Ready() and E.Fights()[1]
     if not top then return end
     local k = TopStamp(top)
-    if seenTop == nil then seenTop = k end
+    if seenTop == nil then seenTop = (time() - (top.to or 0) > FRESH) and k or false end
     if combat or k == seenTop then return end
-    if not (pickKey and ns.Summary.Get(top) or not pickKey and Ask(top)) then return end
+    if not (GetNumRaidMembers() > 0 and ns.Raid.IsLead()) then
+        seenTop = k
+        return
+    end
+    local s = pickKey and ns.Summary.Peek(top) or (not pickKey and Ask(top))
+    if not s then return end
     seenTop = k
     if manualPhase == phase then return end
+    local m = ns.GPList and ns.GPList.Build(top, s)
+    if not (m and m.pending > 0) then return end
     pickKey = nil
     SetView("faults", true)
+end
+local function Rolled()
+    local n = ns.RollPen.Count()
+    local grew = n > rollSeen
+    rollSeen = n
+    if not (frame and frame:IsShown()) then return end
+    if View() == "rolls" then
+        Mini.Rebuild()
+    elseif grew and Calm() and manualPhase ~= phase then
+        SetView("rolls", true)
+    end
 end
 local function Tick(self, elapsed)
     acc = acc + elapsed
@@ -517,7 +600,7 @@ end
 local function ReportLines(n)
     local heal = View() == "hps"
     if live then return ns.ChatReport.Live(n, heal) end
-    local s = fight and ns.Summary.Get(fight)
+    local s = fight and ns.Summary.Peek(fight)
     if not s then return {} end
     return ns.ChatReport.Summary(fight, s, n, heal)
 end
@@ -560,8 +643,10 @@ local function Seat()
     head:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -(PAD + headh + GAP))
     give:SetHeight(titleh)
     give:SetWidth(floor(give.text:GetStringWidth() + VIEWPAD + 0.5))
+    clearBtn:SetHeight(titleh)
+    clearBtn:SetWidth(floor(clearBtn.text:GetStringWidth() + VIEWPAD + 0.5))
     local need = x + (restore:GetWidth() or 0) + (close:GetWidth() or 0) + (chat:GetWidth() or 0) + PAD
-    local minW, minH = min(MAX_W, max(MIN_W, need)), min(MAX_H, max(MIN_H, top + FOOT + rowh * 2))
+    local minW, minH = min(MAX_W, max(MIN_W, need)), min(MAX_H, max(MIN_H, top + FOOT + rowh * 4 + 14))
     frame:SetMinResize(minW, minH)
     if frame:GetWidth() < minW then frame:SetWidth(minW) end
     if frame:GetHeight() < minH then frame:SetHeight(minH) end
@@ -597,7 +682,9 @@ local function BuildHead()
     chat.tip = ns.T("report.tip")
     chat.tipAnchor = "ANCHOR_TOP"
     chat.onClick = function(self)
-        if ns.ProofView then
+        if View() == "rolls" then
+            ns.RollPen.Report()
+        elseif ns.ProofView then
             ns.ProofView.ReportMenu(self, ReportLines, View() == "hps" and "report.menu.heal" or nil)
         end
     end
@@ -628,6 +715,16 @@ local function BuildHead()
         if fight and model then ns.GPList.Issue(fight, model.all) end
     end
     give:Hide()
+    clearBtn = Kit.Button(frame, nil, "quiet")
+    Kit.Bind(clearBtn.text, "GameFontNormalSmall")
+    clearBtn.text:SetText(ns.T("roll.clear"))
+    clearBtn:SetPoint("RIGHT", head, "RIGHT", 0, 0)
+    clearBtn:SetFrameLevel(head:GetFrameLevel() + 2)
+    clearBtn.tipTitle = ns.T("roll.clear")
+    clearBtn.tip = ns.T("roll.clear.tip")
+    clearBtn.tipAnchor = "ANCHOR_TOP"
+    clearBtn.onClick = function() ns.RollPen.Clear() end
+    clearBtn:Hide()
     subText = Kit.Str(head, "GameFontHighlightSmall")
     subText:SetPoint("RIGHT", head, "RIGHT", -2, 0)
     subText:SetJustifyH("RIGHT")
@@ -693,7 +790,11 @@ local function Build()
     Seat()
     local v = View()
     for i = 1, #VIEWS do viewBtns[VIEWS[i]]:SetActive(VIEWS[i] == v) end
-    if RATE[v] then chat.tip = ns.T(v == "hps" and "report.tip.heal" or "report.tip") else chat:Hide() end
+    if RATE[v] or v == "rolls" then
+        chat.tip = ns.T(v == "rolls" and "roll.report.tip" or (v == "hps" and "report.tip.heal" or "report.tip"))
+    else
+        chat:Hide()
+    end
 end
 function Mini.Show(x, y)
     if not frame then Build() end
@@ -706,7 +807,8 @@ function Mini.Show(x, y)
         frame:SetPoint("TOP", UIParent, "TOP", 0, -120)
     end
     pool.offset, asked, seenTop = 0, nil, nil
-    wasCombat = UnitAffectingCombat("player") and true or false
+    rollSeen = ns.RollPen.Count()
+    wasCombat = Fighting()
     frame:Show()
     if View() == "faults" and ns.Panel and ns.Panel.SetAlert then ns.Panel.SetAlert("gp", false) end
     Mini.Rebuild()
@@ -721,10 +823,11 @@ function Mini.Probe()
     if not frame then return nil end
     return { frame = frame, rows = rows, list = list, views = viewBtns, restore = restore, close = close,
              grip = grip, head = head, title = titleText, sub = subText, live = live, fight = fight, chat = chat,
-             give = give, pick = pickBtn, faults = ft, model = model, pickKey = pickKey }
+             give = give, pick = pickBtn, faults = ft, model = model, pickKey = pickKey, clear = clearBtn, rollPens = rollPens }
 end
 if ns.Encounters and ns.Encounters.Invalidate then hooksecurefunc(ns.Encounters, "Invalidate", Invalidated) end
 if ns.GPList and ns.GPList.OnChange then ns.GPList.OnChange(GPChanged) end
+if ns.RollPen then ns.RollPen.OnChange(Rolled) end
 Kit.OnTheme(function()
     if frame and frame:IsShown() then Mini.Draw() end
 end)

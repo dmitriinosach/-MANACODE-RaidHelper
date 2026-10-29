@@ -36,8 +36,8 @@ local COLGAP = 6
 local NAMEGAP = 4
 local CELL_ICON = 12
 local CELL_GAP = 4
-local CELL_PAD = 14
-local CELL_NAME = 12
+local CELL_PAD = 8
+local CELL_NAME = 8
 local CLASS_TEX = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
 local ARROW_TEX = "Interface\\TalentFrame\\UI-TalentArrows"
 local ARROW = { out = { 0, 0.5, 0.5, 0 }, ["in"] = { 0, 0.5, 0, 0.5 } }
@@ -204,6 +204,10 @@ function Badges.Total(parent, sized)
     f.value = Str(f, "GameFontHighlightLarge")
     ns.Kit.Text(f.value, "text.bright")
     f.value:SetPoint("BOTTOMLEFT", TOTAL_L, 7)
+    f.icon = f:CreateTexture(nil, "ARTWORK")
+    f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    f.icon:SetPoint("BOTTOMLEFT", TOTAL_L, 7)
+    f.icon:Hide()
     OneLine(f.value)
     f.sub = Str(f, "GameFontDisableSmall")
     ns.Kit.Text(f.sub, "text.off")
@@ -238,10 +242,23 @@ function Badges.Total(parent, sized)
         local m = self.model
         if not m then return th end
         local inner = width - TOTAL_L - TOTAL_R
+        local icon = m.icon and Pt(self, "GameFontHighlightLarge") or 0
+        local lead = icon > 0 and icon + SUBGAP or 0
+        self.value:ClearAllPoints()
+        self.value:SetPoint("BOTTOMLEFT", TOTAL_L + lead, 7)
+        if icon > 0 then
+            self.icon:SetTexture(m.icon)
+            self.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            self.icon:SetWidth(icon)
+            self.icon:SetHeight(icon)
+            self.icon:Show()
+        else
+            self.icon:Hide()
+        end
         local parts = SubParts(m)
         local _, cutTitle = Fit(self.title, m.title, inner - (m.unbuff and UNBUFF + UNBUFF_EDGE or 0))
-        local vw, cutValue = Fit(self.value, m.value, inner)
-        local room = inner - vw - SUBGAP
+        local vw, cutValue = Fit(self.value, m.value, inner - lead)
+        local room = inner - lead - vw - SUBGAP
         if room < SUBMIN then room = 0 end
         local top, bottom = "", parts[1] or ""
         if #parts > 1 then top, bottom = parts[1], table.concat(parts, "  ", 2) end
@@ -260,6 +277,7 @@ function Badges.Total(parent, sized)
         if #parts > 1 then top, bottom = parts[1], table.concat(parts, "  ", 2) end
         local sub = max(TextNeed(self.subTop, top), TextNeed(self.sub, bottom))
         local body = TextNeed(self.value, m.value) + (sub > 0 and SUBGAP + sub or 0)
+        if m.icon then body = body + Pt(self, "GameFontHighlightLarge") + SUBGAP end
         local head = TextNeed(self.title, m.title) + (m.unbuff and UNBUFF + UNBUFF_EDGE or 0)
         return TOTAL_L + max(head, body) + TOTAL_R
     end
@@ -362,6 +380,7 @@ local function Clip(fs, text, room)
     end
     fs:SetText("…")
 end
+Badges.Clip = Clip
 local function NameRoom(f, row, icon)
     local val = f.valFix or ceil(row.val:GetStringWidth() or 0)
     local left = icon and 3 + ROW_ICON + 3 or 4
@@ -389,12 +408,16 @@ end
 local function DrawCells(f, row, e)
     row.cells = row.cells or {}
     local list = f.cellW and e and e.cells or {}
-    local x0 = 4 + (f.nameCol or 0)
+    local width = f:GetWidth() or 0
+    local x0 = 4 + min(f.nameCol or 0, max(32, floor(width * 0.42)))
     local shown, rest = #list, 0
     if #list > 0 then
-        local fit = max(1, floor(((f:GetWidth() or 0) - 6 - (f.rowR or ROW_R) - x0 - 2) / f.cellW))
+        local room = width - 6 - (f.rowR or ROW_R) - x0 - 2
+        local fit = max(0, floor((room + CELL_PAD) / f.cellW))
         if #list > fit then
-            shown = fit - 1
+            f.probe:SetText(format("+%d", #list))
+            local more = ceil(f.probe:GetStringWidth() or 0) + CELL_GAP
+            shown = max(0, floor((room - more) / f.cellW))
             rest = #list - shown
         end
         row.name:SetPoint("RIGHT", row, "LEFT", x0 - CELL_NAME, 0)
@@ -433,7 +456,13 @@ end
 local function RowEnter(self)
     ShowLines(self)
     local link = self.link
-    if not (link and GameTooltip and GetItemInfo and GetItemInfo(link)) then return end
+    if not (link and GameTooltip) then return end
+    local spell = tonumber(link:match("^spell:(%d+)$"))
+    if spell then
+        if not GetSpellInfo(spell) then return end
+    elseif not (GetItemInfo and GetItemInfo(link)) then
+        return
+    end
     GameTooltip:SetOwner(self, "ANCHOR_NONE")
     GameTooltip:SetHyperlink(link)
     GameTooltip:ClearAllPoints()
@@ -483,7 +512,17 @@ local function Hover(f, on)
     end
 end
 local function HeadEnter(self)
-    ShowLines(self)
+    local spell = self.link and tonumber(self.link:match("^spell:(%d+)$"))
+    local lines = spell and ns.Tip.SpellLines(spell)
+    if lines then
+        local own = self.lines or {}
+        local from = own[1] and own[1].kind == "head" and 2 or 1
+        if own[from] then lines[#lines + 1] = { kind = "sep" } end
+        for i = from, #own do lines[#lines + 1] = own[i] end
+        ns.Tip.Dock(self, lines, self.tipIcon)
+    else
+        ShowLines(self)
+    end
     Hover(self:GetParent(), true)
 end
 local function HeadLeave(self)
@@ -492,9 +531,20 @@ local function HeadLeave(self)
 end
 local function Chrome(f)
     f.edgeR = f.modal and RESERVE or 8
+    f.headIcon = f.head:CreateTexture(nil, "ARTWORK")
+    f.headIcon:SetPoint("TOPLEFT", 10, -6)
+    f.headIcon:Hide()
     f.head:SetScript("OnEnter", HeadEnter)
     f.head:SetScript("OnLeave", HeadLeave)
-    f.head:SetScript("OnMouseUp", function() ExpandOpen(f) end)
+    f.head:SetScript("OnMouseUp", function(self)
+        local spell = self.link and tonumber(self.link:match("^spell:(%d+)$"))
+        if spell and IsShiftKeyDown() then
+            local link = GetSpellLink(spell)
+            if link then ChatEdit_InsertLink(link) end
+            return
+        end
+        ExpandOpen(f)
+    end)
     if f.modal then return end
     local b = CreateFrame("Button", nil, f)
     b:SetFrameLevel(f:GetFrameLevel() + 6)
@@ -523,6 +573,20 @@ local function Chrome(f)
     b:Hide()
     f.expand = b
 end
+local function MechanicHead(f, m)
+    local size = LH(f) - 2
+    if m.icon then
+        f.headIcon:SetTexture(m.icon)
+        f.headIcon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+        f.headIcon:SetWidth(size)
+        f.headIcon:SetHeight(size)
+        f.headIcon:Show()
+    else
+        f.headIcon:Hide()
+    end
+    f.title:SetPoint("TOPLEFT", 10 + (m.icon and size + 4 or 0), -6)
+    f.head.tipIcon, f.head.link = m.icon, m.link
+end
 local function Crown(f, lines)
     local list = f.list
     local over = #list > lines
@@ -541,7 +605,7 @@ local function Crown(f, lines)
     if f.expand then
         if f.over then f.expand:Show() else f.expand:Hide() end
     end
-    f.head:EnableMouse(f.head.lines ~= nil or f.over == true)
+    f.head:EnableMouse(f.head.lines ~= nil or f.head.link ~= nil or f.over == true)
 end
 local function DrawRows(f)
     local list = f.list
@@ -693,6 +757,7 @@ function Badges.Detail(parent, modal, sized)
         Relh(self)
         self.title:SetText(m.title)
         self.model = m
+        MechanicHead(self, m)
         self.head.lines = m.tip
         self.list = m.rows or {}
         self.empty = m.empty
@@ -715,7 +780,7 @@ function Badges.Detail(parent, modal, sized)
         if not m then return 0 end
         local more = self.more:IsShown() and (ceil(self.more:GetStringWidth() or 0) + COLGAP + RESERVE) or 8
         local w = ceil(self.title:GetStringWidth() or 0) + 2
-        return 10 + w + more
+        return 10 + w + more + (m.icon and LH(self) + 2 or 0)
     end
     function f.Layout(self, width)
         Relh(self)
@@ -883,11 +948,18 @@ local function Ordered(marks)
 end
 local function PersonalEnter(self)
     Edge(self, style.hover)
-    ShowLines(self)
 end
 local function PersonalLeave(self)
     Edge(self, self.lit and style.link or style.edge)
     HideTip()
+end
+local function PersonalHeadEnter(self)
+    local t = self:GetParent()
+    Edge(t, style.hover)
+    ShowLines(t)
+end
+local function PersonalHeadLeave(self)
+    PersonalLeave(self:GetParent())
 end
 local function PersonalClick(self, button)
     HideTip()
@@ -946,6 +1018,14 @@ function Badges.Personal(parent, sized)
     t:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     t:SetScript("OnClick", PersonalClick)
     t:SetScript("OnMouseWheel", PersonalWheel)
+    t.head = CreateFrame("Button", nil, t)
+    t.head:SetPoint("TOPLEFT", 0, 0)
+    t.head:SetPoint("TOPRIGHT", 0, 0)
+    t.head:SetHeight(MARKTOP - 2)
+    t.head:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    t.head:SetScript("OnEnter", PersonalHeadEnter)
+    t.head:SetScript("OnLeave", PersonalHeadLeave)
+    t.head:SetScript("OnClick", function(self, button) PersonalClick(t, button) end)
     function t.SetModel(self, m)
         local r, g, b = ClassRGB(m.class)
         Badges.Skin(self, { r, g, b })
@@ -994,12 +1074,15 @@ function Badges.Personal(parent, sized)
         self.name:SetWidth(max(1, inner - vw - NAMEGAP))
         local room = width - PAD - 5
         local x, row = 0, 0
+        local reach = floor((step - size) / 2)
+        self.head:SetHeight(max(1, top - reach))
         for k = 1, self.shown do
             local mk = self.marks[k]
             mk:Resize(size)
             local w = mk:Need()
             if x > 0 and x + w > room then x, row = 0, row + 1 end
             mk:Layout(w)
+            mk:SetHitRectInsets(0, -MARKGAP, -reach, -reach)
             mk:ClearAllPoints()
             mk:SetPoint("TOPLEFT", PAD + x, -(top + row * step))
             x = x + w + MARKGAP
@@ -1248,6 +1331,8 @@ local function WideColumns(f, width)
         if f.slotW[i] > 0 then used = used + f.slotW[i] + WIDE_GAP end
     end
     for r = 1, #f.list do name = max(name, TextW(f, f.list[r].who or "")) end
+    if f.total then name = max(name, TextW(f, format(ns.T("sum.w.total"), f.total))) end
+    f.needW = ceil(6 + (f.rowR or ROW_R) + 4 + 2 + used - COLGAP + NAMEGAP + name)
     f.fold = false
     if width and width - 6 - (f.rowR or ROW_R) - 4 - 2 - used + COLGAP - NAMEGAP < name then
         for c = 1, #f.cols do
@@ -1268,7 +1353,7 @@ local function WideRow(row, e, f)
     row.name:SetPoint("LEFT", (e and e.sub) and WIDE_INDENT or 4, 0)
     for c = 1, #f.cols do
         row.cells[c]:SetText(e and e.cells and e.cells[c] or "")
-        ns.Kit.Tone(row.cells[c], "text.bright")
+        ns.Kit.Tone(row.cells[c], e and e.tones and e.tones[c] or "text.bright")
     end
     for k = 1, #f.heads do
         local mk = e and e.marks and e.marks[k]
@@ -1295,7 +1380,8 @@ local function DrawWide(f)
     local most = max(0, #list - lines)
     f.offset = max(0, min(most, f.offset or 0))
     local h = f.header
-    h.name:SetText("")
+    h.name:SetText(f.total and format(ns.T("sum.w.total"), f.total) or "")
+    h.name:SetTextColor(style.muted[1], style.muted[2], style.muted[3])
     local o, sortable = f.order or {}, #f.cols > 1
     for c = 1, #f.cols do
         local text, cell, arrow = f.headText and f.headText[c] or f.cols[c], h.cells[c], h.arrows[c]
@@ -1433,13 +1519,14 @@ function Badges.Wide(parent, modal, sized)
         Badges.Skin(self, style.detail)
         self.title:SetText(m.title)
         self.model = m
+        MechanicHead(self, m)
         self.head.lines = m.tip
         self.base = m.rows or {}
         self.cols = m.cols or {}
         self.heads = m.heads or {}
+        self.total = m.total
         self.empty = m.empty
         self.onWheel = m.onWheel
-        self.span = m.span
         self.offset = 0
         self.peer = nil
         local sig = tconcat(self.cols, "\1")
@@ -1456,6 +1543,10 @@ function Badges.Wide(parent, modal, sized)
     end
     function f.Redraw(self)
         DrawWide(self)
+    end
+    function f.Need(self)
+        if not self.model then return 0 end
+        return self.needW or 0
     end
     function f.Share(self, source)
         self.order, self.peer, self.preset = source.order or {}, source, source.preset

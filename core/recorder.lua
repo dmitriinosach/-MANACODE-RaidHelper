@@ -2,6 +2,8 @@ local _, ns = ...
 local floor = math.floor
 local band = bit.band
 local find = string.find
+local match = string.match
+local gmatch = string.gmatch
 local KILL_GRACE = 2
 local AUTO_WAIT = 10
 local IDLE_CLOSE = 10
@@ -305,6 +307,36 @@ local function NoteSummon(srcName, srcFlags, dstGUID)
     if not srcName or not dstGUID or not srcFlags then return end
     if band(srcFlags, F_PLAYER) == 0 or band(srcFlags, F_GROUP) == 0 then return end
     ns.GetDB().pets[dstGUID] = srcName
+end
+local function NotePetsIn(used, pets, actors)
+    if type(actors) == "table" then
+        for i = 1, #actors do
+            local g = match(actors[i], "^([^\31]*)\31")
+            if g and pets[g] then used[g] = true end
+        end
+    elseif type(actors) == "string" then
+        local g = match(actors, "^([^\30\31]*)\31")
+        if g and pets[g] then used[g] = true end
+        for h in gmatch(actors, "\30([^\30\31]*)\31") do
+            if pets[h] then used[h] = true end
+        end
+    end
+end
+function Recorder.PrunePets()
+    local db = ns.GetDB()
+    local pets = db.pets
+    if type(pets) ~= "table" or not next(pets) or (ns.RecLock and ns.RecLock()) or db.settings.recChar then return end
+    if type(db.recChars) == "table" then
+        for _, n in pairs(db.recChars) do
+            if (tonumber(n) or 0) > 0 then return end
+        end
+    end
+    local used = {}
+    for _, seg in ns.Store.Segments() do NotePetsIn(used, pets, seg.actors) end
+    if db.live then NotePetsIn(used, pets, db.live.actors) end
+    for g in pairs(pets) do
+        if not used[g] then pets[g] = nil end
+    end
 end
 local function PollFor(enc)
     wipe(pollNow)
@@ -775,6 +807,7 @@ frame:SetScript("OnUpdate", ns.Prof.Wrap("hot.rec", function(_, elapsed)
 end))
 ns.OnReady(function()
     local db = ns.GetDB()
+    Recorder.PrunePets()
     ns.Encounters.SetDummy(db.settings.dummyRec == true)
     ns.RecFilter.spec = db.settings.specRec == true
     if db.recording or db.settings.autoRaid then

@@ -23,9 +23,9 @@ end
 local function Announce(f, s)
     local m = ns.GPList.Build(f, s)
     if #m.items == 0 or m.pending <= 0 then return end
-    if ns.Panel and ns.Panel.SetAlert and not FaultsShown() then ns.Panel.SetAlert("gp", true) end
     if not ns.Raid.IsLead() then return end
-    ns.Print(format(ns.T("gp.signal"), m.ready, ns.Plural(m.ready, ns.T("gp.players")), m.pending, ns.Ledger.Unit(),
+    if ns.Panel and ns.Panel.SetAlert and not FaultsShown() then ns.Panel.SetAlert("gp", true) end
+    ns.Print(format(ns.T("gp.signal"), m.ready, ns.Plural(m.ready, ns.T("gp.players")), ns.GPList.SumText(m.by),
         ns.EncName(f.boss)))
 end
 local function Check(seg)
@@ -35,7 +35,7 @@ local function Check(seg)
     local gp = ns.GetDB().gp
     if gp.signaled == key then return end
     gp.signaled = key
-    ns.Summary.Compute(f, function(s)
+    ns.Summary.Of(f, function(s)
         Announce(f, s)
     end)
 end

@@ -65,13 +65,7 @@ function T.Duration(sec)
     return ns.T("durSec", sec)
 end
 function T.Short(sec)
-    if sec >= 120 and sec % 30 == 0 then
-        local m = sec / 60
-        local s = (m == math.floor(m)) and string.format("%d", m)
-            or (string.format("%d", math.floor(m)) .. "," .. string.format("%d", math.floor((m % 1) * 10 + 0.5)))
-        return ns.T("durMinShort", s)
-    end
-    return ns.T("durSecShort", sec)
+    return string.format("%d:%02d", math.floor(sec / 60), sec % 60)
 end
 function T.HasDBM()
     return DBM and DBM.CreatePizzaTimer and SlashCmdList and SlashCmdList.DEADLYBOSSMODSPULL and true or false

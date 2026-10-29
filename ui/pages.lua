@@ -22,7 +22,7 @@ if TL then
         OnTheme = function() TL.Layout() end,
     })
 end
-if FP then
+if FP and not ns.ReadOnly then
     if GP then
         function GP.Show()
             FP.Open("rules")
@@ -55,8 +55,9 @@ if ns.TestSet then
     ns.OnReady(TestNote)
     ns.OnTestSet(TestNote)
 end
+if ns.ReadOnly then return end
 Shell.Register("gpcfg", {
-    label = "shell.tab.gp",
+    label = "shell.tab.rules",
     order = 110,
     right = true,
     icon = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\gp.tga",

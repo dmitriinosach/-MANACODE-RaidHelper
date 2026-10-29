@@ -22,7 +22,6 @@ local DEFICON = 14
 local LABELH = 10
 local LABEL_SEP = 3
 local SUM_GAP = 4
-local DELAY = 0.15
 local STACK = 3
 local TEXMAX = 170
 local ICONMAX = 18
@@ -55,7 +54,12 @@ local CROSS = 10
 local STRIPMAX = 40
 local GRID_DOT = 2
 local ISO_ANGLE = math.pi / 4
-local MAP_WAIT = 0.5
+local NOTE_PAD = 3
+local LOAD_DOTS = 3
+local LOAD_DOT = 5
+local LOAD_GAP = 4
+local LOAD_PERIOD = 0.9
+local LOAD_LOW = 0.25
 local ROOM_PATH = "Interface\\AddOns\\" .. ADDON .. "\\art\\rooms\\"
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local RAID_ICONS = "Interface\\TargetingFrame\\UI-RaidTargetingIcons"
@@ -74,7 +78,8 @@ local spanL, spanR, spanRow = {}, {}, {}
 local spanN = 0
 local picked = {}
 local want
-local mapBox, mapBg
+local mapBox, mapBg, noteLayer, noteBg, noteFs
+local loadGraph, loadMap = {}, {}
 local mapStrips, stripData, mapPool = {}, {}, {}
 local usedMap, usedStrips = 0, 0
 local cam = { angle = ISO_ANGLE, tilt = 1, persp = 0, zoom = 1, lift = 0, r = 1, a = 0, cx = 0, cy = 0,
@@ -114,6 +119,28 @@ local function Build()
     for i = 1, STRIPMAX do
         mapStrips[i] = mapBox:CreateTexture(nil, "BORDER")
         mapStrips[i]:Hide()
+    end
+    noteLayer = CreateFrame("Frame", nil, mapBox)
+    noteLayer:SetPoint("TOPLEFT", mapBox, "TOPLEFT", 0, 0)
+    noteLayer:SetWidth(MAP)
+    noteLayer:SetHeight(MAP)
+    noteBg = noteLayer:CreateTexture(nil, "BACKGROUND")
+    noteFs = noteLayer:CreateFontString(nil, "OVERLAY")
+    noteFs:SetFontObject(font)
+    noteFs:SetJustifyH("CENTER")
+    noteFs:SetWidth(MAP - NOTE_PAD * 2)
+    for i = 1, LOAD_DOTS do
+        loadGraph[i] = frame:CreateTexture(nil, "OVERLAY")
+        loadMap[i] = noteLayer:CreateTexture(nil, "OVERLAY")
+    end
+    for _, list in ipairs({ loadGraph, loadMap }) do
+        for i = 1, LOAD_DOTS do
+            local t = list[i]
+            t:SetTexture(CIRCLE)
+            t:SetWidth(LOAD_DOT)
+            t:SetHeight(LOAD_DOT)
+            t:Hide()
+        end
     end
     mapBox:Hide()
 end
@@ -524,7 +551,7 @@ local function HasSpots(m)
     return m ~= nil and not m.none and (#m.trX > 0 or #m.nbX > 0 or m.endX ~= nil)
 end
 local function MapNote(m)
-    if not m then return ns.T("prev.map.wait") end
+    if not m or m.none then return ns.T("prev.map.none") end
     if m.note then return ns.T("prev.map.note." .. m.note) end
     if m.away then return format(ns.T("prev.map.away"), m.away) end
     if m.lost then
@@ -564,15 +591,40 @@ local function DrawGrid(m)
         Dot(CIRCLE, m.gx[i], m.gy[i], GRID_DOT, "sem.rep.tick", nil, "BORDER")
     end
 end
+local function MapText(text, spots)
+    if text == "" then
+        noteFs:Hide()
+        noteBg:Hide()
+        return
+    end
+    noteFs:SetText(text)
+    noteFs:SetTextColor(Rgba("tip.dim"))
+    local h = noteFs:GetHeight() or LABELH
+    noteFs:ClearAllPoints()
+    if spots then
+        noteFs:SetPoint("BOTTOMLEFT", noteLayer, "BOTTOMLEFT", NOTE_PAD, NOTE_PAD)
+        local r, g, b = Rgba("tip.bg")
+        noteBg:SetTexture(r, g, b, TAG_ALPHA)
+        noteBg:ClearAllPoints()
+        noteBg:SetPoint("BOTTOMLEFT", noteLayer, "BOTTOMLEFT", 0, 0)
+        noteBg:SetWidth(MAP)
+        noteBg:SetHeight(h + NOTE_PAD * 2)
+        noteBg:Show()
+    else
+        noteFs:SetPoint("LEFT", noteLayer, "LEFT", NOTE_PAD, 0)
+        noteBg:Hide()
+    end
+    noteFs:Show()
+end
 local function DrawMap(pv, x0, y0)
     local p0 = debugprofilestop()
     usedMap, usedStrips = 0, 0
-    local m = pv.map
+    local m = pv and pv.map
     local shown = HasSpots(m)
+    mapBox:ClearAllPoints()
+    mapBox:SetPoint("TOPLEFT", frame, "TOPLEFT", x0, y0)
+    mapBg:SetTexture(Rgba("surface.page"))
     if shown then
-        mapBox:ClearAllPoints()
-        mapBox:SetPoint("TOPLEFT", frame, "TOPLEFT", x0, y0)
-        mapBg:SetTexture(Rgba("surface.page"))
         cam.angle, cam.cx, cam.cy, cam.r = Angle(), m.cx, m.cy, m.half
         cam.zoom = MAP / (2 * max(1, m.half))
         Replay.Aim(cam)
@@ -581,13 +633,13 @@ local function DrawMap(pv, x0, y0)
     end
     for i = usedStrips + 1, STRIPMAX do mapStrips[i]:Hide() end
     for i = usedMap + 1, #mapPool do mapPool[i]:Hide() end
-    if shown then mapBox:Show() else mapBox:Hide() end
+    MapText(m and MapNote(m) or "", shown)
+    mapBox:Show()
     local ms = debugprofilestop() - p0
     View.lastMapMs = ms
     if ns.Prof.on then ns.Prof.Add("prev.map", ms, usedMap + usedStrips) end
-    return shown
 end
-local function SumLine(pv, caption)
+local function SumLine(pv, caption, slot)
     local lines = {}
     if pv.death then
         local kill
@@ -605,12 +657,22 @@ local function SumLine(pv, caption)
         lines[#lines + 1] = caption and (caption .. " - " .. kill) or kill
     end
     lines[#lines + 1] = format(ns.T("prev.sum"), Short(pv.dmgSum), pv.sumSpan, Short(pv.healSum))
-    local note = MapNote(pv.map)
-    if note ~= "" then lines[#lines + 1] = note end
+    if not slot then lines[#lines + 1] = MapNote(pv.map) end
     return table.concat(lines, "\n"), #lines
 end
-local function Draw(pv, caption)
-    usedTex, usedIcon, usedFont, spanN, usedTag, boxN = 0, 0, 0, 0, 0, 0
+local function LineH()
+    sumText:SetWidth(0)
+    sumText:SetText("0")
+    return max(sumText:GetHeight() or 0, 1)
+end
+local function LoadHeight(death, slot)
+    local lines = (death and 2 or 0) + 1 + (slot and 0 or 1)
+    local h = PAD + BOSSH + GAP + DP.AURA_ROWS * AURAH + GAP + FLOWUP + FLOWDN + GAP + HPH + GAP + AXISH + 4
+        + SUM_GAP + max(LineH() * lines, 12) + PAD
+    if slot then h = max(h, PAD + MAP + PAD) end
+    return h
+end
+local function DrawGraph(pv, caption, slot)
     xLeft = PAD + GUTTER
     xRight = TLW - PAD
     xFrom = pv.from
@@ -627,8 +689,9 @@ local function Draw(pv, caption)
     anchorLine:SetHeight(top - hpBottom)
     local r, g, b, a = Rgba(pv.death and "sem.death" or "sem.cursor")
     anchorLine:SetTexture(r, g, b, a)
+    anchorLine:Show()
     local room = TLW - PAD * 2
-    local text, rows = SumLine(pv, caption)
+    local text, rows = SumLine(pv, caption, slot)
     sumText:SetWidth(0)
     sumText:SetText(text)
     local sw, one = sumText:GetStringWidth() or 0, sumText:GetHeight() or 0
@@ -637,11 +700,48 @@ local function Draw(pv, caption)
     Kit.Text(sumText, "text.secondary")
     sumText:ClearAllPoints()
     sumText:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y - SUM_GAP)
-    y = y - SUM_GAP - max(sumText:GetHeight() or 0, one * (ceil(sw / room) + rows - 1), 12)
+    sumText:Show()
+    return y - SUM_GAP - max(sumText:GetHeight() or 0, one * (ceil(sw / room) + rows - 1), 12)
+end
+local function Dots(list, on, parent, cx, cy)
+    local r, g, b, a = Rgba("progress.fill")
+    for i = 1, LOAD_DOTS do
+        local t = list[i]
+        if on then
+            t:SetVertexColor(r, g, b, a)
+            t:ClearAllPoints()
+            t:SetPoint("CENTER", parent, "TOPLEFT", floor(cx + (i - (LOAD_DOTS + 1) / 2) * (LOAD_DOT + LOAD_GAP)), -floor(cy))
+            t:Show()
+        else
+            t:Hide()
+        end
+    end
+end
+local function Pulse(now)
+    local phase = now / LOAD_PERIOD
+    for i = 1, LOAD_DOTS do
+        local k = LOAD_LOW + (1 - LOAD_LOW) * (0.5 + 0.5 * math.cos((phase - i / LOAD_DOTS) * 2 * math.pi))
+        loadGraph[i]:SetAlpha(k)
+        loadMap[i]:SetAlpha(k)
+    end
+end
+local function Draw(w)
+    usedTex, usedIcon, usedFont, spanN, usedTag, boxN = 0, 0, 0, 0, 0, 0
+    local pv = w.pv
+    local y = -PAD
+    if pv then
+        y = DrawGraph(pv, w.caption, w.slot)
+    else
+        anchorLine:Hide()
+        sumText:Hide()
+    end
     local total = TLW
-    if DrawMap(pv, TLW - PAD + MAPGAP, -PAD) then
+    if w.slot then
+        DrawMap(pv, TLW - PAD + MAPGAP, -PAD)
         total = TLW + MAPGAP + MAP
         y = min(y, -PAD - MAP)
+    else
+        mapBox:Hide()
     end
     for i = usedTex + 1, #texPool do texPool[i]:Hide() end
     for i = usedIcon + 1, #iconPool do iconPool[i]:Hide() end
@@ -650,8 +750,19 @@ local function Draw(pv, caption)
         tagFs[i]:Hide()
         tagBg[i]:Hide()
     end
+    local h = max(-y + PAD, w.h or 0)
     frame:SetWidth(total)
-    frame:SetHeight(-y + PAD)
+    frame:SetHeight(h)
+    local mapWait = w.slot and not (pv and pv.map)
+    Dots(loadGraph, not pv, frame, TLW / 2, h / 2)
+    Dots(loadMap, mapWait, noteLayer, MAP / 2, MAP / 2)
+    w.loading = not pv or mapWait
+    if w.loading then
+        Pulse(GetTime())
+        View.loader = true
+        pump:Show()
+    end
+    return total, h
 end
 local function Place(owner)
     local Tip = ns.Tip
@@ -661,25 +772,31 @@ local function Place(owner)
 end
 local function Present(w)
     local p0 = debugprofilestop()
-    Draw(w.pv, w.caption)
-    Place(w.owner)
+    local fw, fh = Draw(w)
+    if fw ~= w.fw or fh ~= w.fh then
+        Place(w.owner)
+        w.fw, w.fh = fw, fh
+        if not View.firstW then View.firstW, View.firstH = fw, fh end
+    end
     frame:Show()
-    w.drawn = true
+    View.done = not w.loading
     local ms = debugprofilestop() - p0
     View.lastMs, View.lastUsed = ms, usedTex + usedIcon + usedFont + usedTag * 2 + usedMap + usedStrips
     if ns.Prof.on then ns.Prof.Add("prev.draw", ms, View.lastUsed) end
 end
 local function Pump()
     local w = want
-    if not w or w.drawn then
+    if not (w and w.loading) then
         pump:Hide()
         return
     end
-    local now = GetTime()
-    if now >= w.showAt and w.pv and (w.mapped or now >= w.showAt + MAP_WAIT) then
-        pump:Hide()
-        Present(w)
-    end
+    Pulse(GetTime())
+end
+local function MapFor(w)
+    if not (w.slot and w.pv and not w.pv.map) then return end
+    DP.Map(w.fight, w.pv, function()
+        if want == w and w.fw then Present(w) end
+    end)
 end
 function View.Enter(mark)
     local fight, at = mark.fight, mark.at
@@ -691,20 +808,24 @@ function View.Enter(mark)
         pump:SetScript("OnUpdate", ns.Prof.Wrap("ui.other", Pump))
     end
     local anchor, death = DP.Anchor(fight, who, at)
-    local w = { owner = mark, who = who, at = anchor, showAt = GetTime() + DELAY }
+    local w = { owner = mark, fight = fight, who = who, at = anchor, slot = DP.HasMap(fight),
+                pv = DP.Peek(fight, who, anchor) }
     if death and (fight.players[who] or 0) > 1 then w.caption = ns.Clock(max(0, anchor - fight.from)) end
+    if not w.pv then w.h = LoadHeight(death, w.slot) end
     want = w
+    View.firstW, View.firstH, View.loader, View.done = nil, nil, false, false
     frame:Hide()
-    pump:Show()
-    DP.Request(fight, who, anchor, death, function(pv)
-        if not (want == w and pv and pv.who == who and pv.at == anchor) then return end
-        w.pv = pv
-        DP.Map(fight, pv, function()
-            if want ~= w then return end
-            w.mapped = true
-            if w.drawn then Present(w) end
+    if w.pv then
+        MapFor(w)
+    else
+        DP.Request(fight, who, anchor, death, function(pv)
+            if not (want == w and pv and pv.who == who and pv.at == anchor) then return end
+            w.pv = pv
+            MapFor(w)
+            if w.fw then Present(w) end
         end)
-    end)
+    end
+    Present(w)
 end
 function View.Leave()
     want = nil

@@ -140,7 +140,7 @@ function Follow.Place(elapsed)
     local up = (fig.top or ICON_LIFT * fig.scale) + ns.ReplayLayersView.BadgesUp(fig) + LABEL_GAP * fig.scale
     st.label:SetPoint("BOTTOM", ui.view, "CENTER", fig.sx, -fig.sy + up)
     st.label:Show()
-    if run.hover == st.k then ui.hoverText:Hide() end
+    if run.hover == st.k then ui.hoverBox:Hide() end
 end
 function Follow.Pick(fight, name)
     local run = st.run

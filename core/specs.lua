@@ -142,20 +142,21 @@ function Specs.Ask(unit)
     NotifyInspect(unit)
     return askUnit == unit
 end
-local healTrees
-local function HealTrees()
-    if healTrees then return healTrees end
-    local classes = ns.Lead and ns.Lead.CLASSES
-    if type(classes) ~= "table" then return nil end
-    healTrees = {}
-    for _, c in ipairs(classes) do
-        local set = {}
-        for _, sp in ipairs(c.specs or {}) do
-            if sp.role == "heal" and sp.tree then set[sp.tree] = true end
-        end
-        healTrees[c.token] = set
-    end
-    return healTrees
+local NONE = {}
+local function HealSet(class)
+    if not class then return nil end
+    return ns.specHeal and ns.specHeal[class] or NONE
+end
+function Specs.HealTree(class, t)
+    local set = t and HealSet(class)
+    if not set then return nil end
+    return set[t] == true
+end
+function Specs.CanHeal(class, t)
+    local set = HealSet(class)
+    if not set then return true end
+    if not next(set) then return false end
+    return t == nil or set[t] == true
 end
 function Specs.Healer(name, class)
     local S = ns.Lead and ns.Lead.Session
@@ -163,8 +164,7 @@ function Specs.Healer(name, class)
         local ok, role = pcall(S.FlaskRole, name)
         if ok and role then return role == "heal" end
     end
-    local trees = HealTrees()
-    local set = trees and class and trees[class]
+    local set = HealSet(class)
     if not set then return nil end
     if not next(set) then return false end
     local t = tree[name]

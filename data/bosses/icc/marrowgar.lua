@@ -6,6 +6,7 @@ ns.summaries[ns.ENC.marrowgar] = {
         { kind = "death", spells = { 69138 }, id = 70825, tip = "sum.b.coldflamedeath" },
         { kind = "death", spells = { 70814 }, id = 70814, tip = "sum.b.saberdeath" },
         { kind = "death", spells = { 69076 }, id = 70836, neutral = true, tip = "sum.b.stormdeath" },
+        { kind = "away", limit = "marrow.away", tip = "sum.b.away" },
     },
     blocks = {
         { kind = "damageTo", label = "sum.k.spikes", names = { 36619 } },

@@ -9,7 +9,7 @@ local W, H = 1180, 652
 local MIN_W, MIN_H = 860, 572
 local TABGAP = 2
 local TABPAD = 12
-local TABMIN = 72
+local TABMIN = 56
 local TABTIGHT = 44
 local ICONTAB = 40
 local ICON = 18
@@ -18,6 +18,7 @@ local GROUPGAP = 8
 local PARTW = 24
 local PARTH = 22
 local PARTPAD = 3
+local ICONPART = ICON + 12
 local INSET = 6
 local GRIP = 16
 local MAX_EDGE = 8
@@ -31,7 +32,7 @@ local entries = {}
 local order = {}
 local commands = {}
 local frame, strip, close, grip, pageBg, zoomOut, zoomIn, about, fold, maxBtn
-local toolGroup, winGroup
+local winGroup, pageGroup, viewGroup
 local current
 local moving
 local sizer
@@ -122,6 +123,7 @@ local function PaintTabs()
     for i = 1, #order do
         local e = order[i]
         if e.tab then PlaceTab(e) end
+        if e.part then e.part:SetActive(e.key == current or (e.def.lit ~= nil and e.def.lit == current)) end
     end
 end
 local function SelectNow(key)
@@ -288,9 +290,15 @@ local function SetScale(v)
     PaintZoom()
     if ns.Settings and ns.Settings.Refresh then ns.Settings.Refresh() end
 end
-local function MakeAct(label, tip, delta, base)
-    local b = Kit.TabPart(toolGroup)
-    Kit.ButtonFont(b, base or "GameFontNormal")
+local function MakeGroup()
+    local g = Kit.Tab(frame)
+    g:EnableMouse(false)
+    g.parts = {}
+    return g
+end
+local function MakeAct(g, label, tip, delta, base)
+    local b = Kit.TabPart(g)
+    Kit.ButtonFont(b, base or "GameFontNormalLarge")
     b:SetText(ns.T(label))
     b.tip = tip and ns.T(tip) or nil
     b.onClick = function() SetScale(Scale() + delta) end
@@ -308,17 +316,11 @@ local function PaintFont()
     if fontLess.hovered then Kit.TipShow(fontLess) end
     if fontMore.hovered then Kit.TipShow(fontMore) end
 end
-local function FontButtons(parts)
-    fontLess = MakeAct("shell.font.less", "shell.font.less.tip", 0, "GameFontNormalSmall")
-    fontMore = MakeAct("shell.font.more", "shell.font.more.tip", 0)
+local function FontButtons()
+    fontLess = MakeAct(viewGroup, "shell.font.less", "shell.font.less.tip", 0, "GameFontNormal")
+    fontMore = MakeAct(viewGroup, "shell.font.more", "shell.font.more.tip", 0)
     fontLess.onClick = function() Kit.SetFontDelta(Kit.FontDelta() - 1) end
     fontMore.onClick = function() Kit.SetFontDelta(Kit.FontDelta() + 1) end
-    local at = 1
-    for i = 1, #parts do
-        if parts[i] == about then at = i + 1 end
-    end
-    table.insert(parts, at, fontMore)
-    table.insert(parts, at, fontLess)
     Kit.OnFont(function()
         PaintFont()
         if ns.Settings and ns.Settings.Refresh then ns.Settings.Refresh() end
@@ -329,29 +331,26 @@ local function SeatGroup(g, x)
     local tt = TabLook()
     local inner = max(0, tt.rim - PARTPAD)
     local pw = PartW()
-    local w = inner * 2 + #g.parts * pw
     local lift = (tt.seat - tt.rim) / 2
+    local h = min(Kit.GrowH(PARTH, "GameFontNormal"), TabH() - tt.rim + 2)
+    local px = inner
+    for _, b in ipairs(g.parts) do
+        local bw = b.icon and not b.glyph and max(pw, ICONPART) or pw
+        b:SetWidth(bw)
+        b:SetHeight(h)
+        b:ClearAllPoints()
+        b:SetPoint("LEFT", g, "LEFT", px, lift)
+        px = px + bw
+    end
+    local w = px + inner
     g:SetWidth(w)
     g:SetHeight(TabH() + tt.seat)
     g:SetFrameLevel(frame:GetFrameLevel() + TABLEVEL)
+    for _, b in ipairs(g.parts) do b:SetFrameLevel(g:GetFrameLevel() + 1) end
     g:ClearAllPoints()
     g:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -x, -tt.seat)
     g:Seat(tt.seat, lift, TabH() + tt.seat)
-    local h = min(Kit.GrowH(PARTH, "GameFontNormal"), TabH() - tt.rim + 2)
-    for i, b in ipairs(g.parts) do
-        b:SetWidth(pw)
-        b:SetHeight(h)
-        b:SetFrameLevel(g:GetFrameLevel() + 1)
-        b:ClearAllPoints()
-        b:SetPoint("LEFT", g, "LEFT", inner + (i - 1) * pw, lift)
-    end
     return x + w + TABGAP
-end
-local function MakeGroup()
-    local g = Kit.Tab(frame)
-    g:EnableMouse(false)
-    g.parts = {}
-    return g
 end
 local function PlaceNote()
     if not frame then return end
@@ -386,48 +385,75 @@ function LayoutTabs()
     local x = tt.x
     local rx = tt.x
     if winGroup then rx = SeatGroup(winGroup, rx) + GROUPGAP end
-    local textW = floor(TABMIN * Kit.FontScale("GameFontNormalSmall", true) + 0.5)
-    for i = 1, #order do
+    local pages = {}
+    for i = #order, 1, -1 do
         local e = order[i]
-        if not e.tab and not e.def.tabless then
-            e.tab = Kit.Tab(frame, e.def.icon, ICON)
-            local key, go = e.key, e.def.go
-            e.tab.onClick = function()
-                if go then
-                    go()
-                elseif current ~= key then
-                    Select(key)
-                end
+        local key, go = e.key, e.def.go
+        local function Click()
+            if go then
+                go()
+            elseif current ~= key then
+                Select(key)
             end
         end
-        if e.tab then
-            e.w = TabWidth(e)
-            if not e.def.icon then textW = max(textW, e.w) end
+        if e.def.right and e.def.icon and not e.def.tabless then
+            if not e.part then
+                e.part = Kit.TabPart(pageGroup, nil, e.def.icon, ICON)
+                e.part.onClick = Click
+            end
+            e.part.tipTitle = Label(e)
+            pages[#pages + 1] = e.part
+        elseif not e.tab and not e.def.tabless then
+            e.tab = Kit.Tab(frame, e.def.icon, ICON)
+            e.tab.onClick = Click
         end
+        if e.tab then e.w = TabWidth(e) end
     end
-    local leftIcons, leftTexts = 0, 0
+    pageGroup.parts = pages
+    if #pages > 0 then
+        rx = SeatGroup(pageGroup, rx) + GROUPGAP
+        pageGroup:Show()
+    else
+        pageGroup:Hide()
+    end
+    local leftIcons, leftTexts, texts = 0, 0, {}
+    local tail = rx
     for i = 1, #order do
         local e = order[i]
         if e.tab and e.def.right then
-            local w = e.def.icon and e.w or textW
-            e.tab:SetWidth(w)
+            e.tab:SetWidth(e.w)
             e.x = rx
-            rx = rx + w + TABGAP
+            rx = rx + e.w + TABGAP
         elseif e.tab then
-            if e.def.icon then leftIcons = leftIcons + e.w + TABGAP else leftTexts = leftTexts + 1 end
+            if e.def.icon then
+                leftIcons = leftIcons + e.w + TABGAP
+            else
+                leftTexts = leftTexts + 1
+                texts[#texts + 1] = e.w
+            end
         end
     end
-    if toolGroup then rx = SeatGroup(toolGroup, rx + GROUPGAP) end
-    local leftW = textW
+    if rx ~= tail then rx = rx - TABGAP + GROUPGAP end
+    rx = SeatGroup(viewGroup, rx)
+    local cap = math.huge
     local frameW = frame:GetWidth() or 0
     if leftTexts > 0 and frameW > 0 then
         local room = floor(frameW - x - rx - GROUPGAP - leftIcons - leftTexts * TABGAP)
-        leftW = max(TABTIGHT, min(textW, floor(room / leftTexts)))
+        tsort(texts)
+        local used = 0
+        for k = 1, #texts do
+            local share = floor((room - used) / (#texts - k + 1))
+            if texts[k] > share then
+                cap = max(TABTIGHT, share)
+                break
+            end
+            used = used + texts[k]
+        end
     end
     for i = 1, #order do
         local e = order[i]
         if e.tab and not e.def.right then
-            local w = e.def.icon and e.w or leftW
+            local w = e.def.icon and e.w or min(e.w, cap)
             e.tab:SetWidth(w)
             if not e.def.icon then
                 e.tab.text:SetWidth(max(1, w - TabLook().rim * 2 - 4))
@@ -581,13 +607,14 @@ local function BuildStrip()
     strip:SetScript("OnDragStart", StartMove)
     strip:SetScript("OnDragStop", StopMove)
     strip:SetScript("OnDoubleClick", function() ToggleMax() end)
-    toolGroup = MakeGroup()
-    zoomOut = MakeAct("shell.scale.less", "shell.scale.less.tip", -SCALE_STEP)
-    zoomIn = MakeAct("shell.scale.more", "shell.scale.more.tip", SCALE_STEP)
-    about = MakeAct("shell.about", nil, 0)
+    pageGroup = MakeGroup()
+    viewGroup = MakeGroup()
+    about = MakeAct(viewGroup, "shell.about", nil, 0)
     about.tipTitle = ns.T("shell.about.tip")
-    toolGroup.parts = { about, zoomOut, zoomIn }
-    FontButtons(toolGroup.parts)
+    FontButtons()
+    zoomOut = MakeAct(viewGroup, "shell.scale.less", "shell.scale.less.tip", -SCALE_STEP)
+    zoomIn = MakeAct(viewGroup, "shell.scale.more", "shell.scale.more.tip", SCALE_STEP)
+    viewGroup.parts = { about, fontLess, fontMore, zoomOut, zoomIn }
     about.onClick = function() if ns.About then ns.About.Toggle() end end
     PaintZoom()
 end
@@ -699,7 +726,8 @@ function Shell.FoldTo(view)
 end
 function Shell.Probe()
     return { frame = frame, strip = strip, maxBtn = maxBtn, fold = fold, grip = grip, sizer = sizer, close = close,
-             acts = { toolGroup, winGroup, about, zoomOut, zoomIn, fold, maxBtn, close } }
+             groups = { winGroup, pageGroup, viewGroup },
+             acts = { winGroup, pageGroup, viewGroup, about, fontLess, fontMore, zoomOut, zoomIn, fold, maxBtn, close } }
 end
 function Shell.IsFolded()
     return ns.ShellMini ~= nil and ns.ShellMini.IsShown()
@@ -773,10 +801,27 @@ function Shell.Actions(source, order)
     tsort(actionSources, function(x, y) return x.order < y.order end)
 end
 function Shell.ActionRows()
-    local out = {}
+    local out, at, copied = {}, {}, {}
     for i = 1, #actionSources do
         local rows = actionSources[i].fn() or {}
-        for k = 1, #rows do out[#out + 1] = rows[k] end
+        for k = 1, #rows do
+            local r = rows[k]
+            local n = r.id and at[r.id]
+            if n then
+                local m = out[n]
+                if not copied[n] then
+                    local c = {}
+                    for f, v in pairs(m) do c[f] = v end
+                    c.items = {}
+                    for j = 1, #m.items do c.items[j] = m.items[j] end
+                    out[n], copied[n], m = c, true, c
+                end
+                for j = 1, #r.items do m.items[#m.items + 1] = r.items[j] end
+            else
+                out[#out + 1] = r
+                if r.id then at[r.id] = #out end
+            end
+        end
     end
     return out
 end

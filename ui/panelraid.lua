@@ -118,12 +118,12 @@ Panel.Widget({
     Build = function(row)
         Panel.Line(row, ICON, ns.T("panel.line.raidtime"))
         Panel.Reserve(row, format(ns.T("panel.raidtime"), "99:59", 99, 99))
-        Panel.Value(row, ns.T("panel.nodata"), "muted")
+        Panel.Empty(row, "noraid")
     end,
     Update = function(row)
         Sync()
         if not Active() then
-            Panel.Value(row, ns.T("panel.nodata"), "muted")
+            Panel.Empty(row, "noraid")
             return
         end
         Panel.Value(row, format(ns.T("panel.raidtime"), Hm(time() - state.start), state.passed, state.total))
@@ -131,7 +131,7 @@ Panel.Widget({
     Tip = function()
         Sync()
         if not Active() then
-            return { { kind = "head", left = ns.T("set.panel.row.raidtime"), right = ns.T("panel.nodata") },
+            return { { kind = "head", left = ns.T("set.panel.row.raidtime"), right = Panel.EmptyText("noraid") },
                 { kind = "sub", left = ns.T("panel.raidtime.empty") } }
         end
         local st, now = state, time()

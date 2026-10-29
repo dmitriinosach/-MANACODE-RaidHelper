@@ -51,12 +51,12 @@ local function Collect(f, s)
 end
 local function Ask(f)
     local S = ns.Summary
-    local s = S.Get(f)
+    local s = S.Peek(f)
     if s or not on or asked == f or UnitAffectingCombat("player") then return s end
     if S.Busy and S.Busy(f) then return nil end
     asked = f
-    S.Compute(f, function() ver = ver + 1 end)
-    return S.Get(f)
+    S.Of(f, function() ver = ver + 1 end)
+    return S.Peek(f)
 end
 local function Refresh()
     local E = ns.Encounters
@@ -84,7 +84,7 @@ local function Tone(x)
     return x.ev.grade == "yellow" and "warn" or "bad"
 end
 local function CanGive(x)
-    return ns.Ledger.Active().Can(x.ev.n)
+    return ns.Ledger.Get(x.item.sys or ns.Ledger.SysOf(x.item.name)).Can(x.ev.n)
 end
 local function GiveShown(row, on)
     if (row.give:IsShown() and true or false) == on then return end
@@ -99,7 +99,7 @@ local function Draw(row)
         GiveShown(row, false)
         row.key = nil
         Panel.Label(row, ns.T("set.panel.row.faults"))
-        Panel.Value(row, ns.T(Panel.Ctx().raid and "panel.none.faults" or "panel.noraid"), "muted")
+        Panel.Empty(row, Panel.Ctx().raid and "none" or "noraid")
         return
     end
     local ev, item = x.ev, x.item
@@ -119,7 +119,7 @@ local function Draw(row)
 end
 local function Give(x)
     if not (x and fight) then return end
-    ns.GPList.Issue(fight, { { name = x.item.name, events = { x.ev } } })
+    ns.GPList.Issue(fight, { { name = x.item.name, sys = x.item.sys, events = { x.ev } } })
 end
 local function Skip(x)
     if not x then return end
@@ -153,15 +153,14 @@ local function TipLines()
     local ok, why = true, nil
     if x then ok, why = CanGive(x) end
     if not ok then lines[#lines + 1] = { kind = "note", left = ns.T(why or "led.err.noepgp"), tone = "bad" } end
-    lines[#lines + 1] = { kind = "foot", left = ns.T("panel.faults.click") }
-    lines[#lines + 1] = { kind = "foot", left = ns.T("panel.faults.skip") }
+    lines[#lines + 1] = { kind = "foot", left = ns.T("panel.faults.foot") }
     return lines
 end
 local function GiveEnter(b)
     local x = Head()
     if not x then return end
     local ok, why = CanGive(x)
-    local lines = { { kind = "head", left = format(ns.T("panel.faults.give.tip"), x.ev.n, ns.Ledger.Unit()) },
+    local lines = { { kind = "head", left = format(ns.T("panel.faults.give.tip"), x.ev.n, ns.Ledger.Unit(x.item.sys)) },
         { kind = "row", class = x.item.class, left = format(ns.T("panel.faults.row"), x.item.name, x.ev.short or "?") } }
     if not ok then lines[#lines + 1] = { kind = "note", left = ns.T(why or "led.err.noepgp"), tone = "bad" } end
     lines[#lines + 1] = { kind = "foot", left = ns.T("panel.faults.skip") }
@@ -218,7 +217,7 @@ Panel.Widget({
     end,
     Tip = function()
         if not Panel.Ctx().raid then
-            return { { kind = "head", left = ns.T("set.panel.row.faults"), right = ns.T("panel.noraid") },
+            return { { kind = "head", left = ns.T("set.panel.row.faults"), right = Panel.EmptyText("noraid") },
                 { kind = "foot", left = ns.T("panel.faults.click") } }
         end
         Refresh()

@@ -40,9 +40,9 @@ function ZB.Finish(st)
 end
 function ZB.Of(fight)
     if not fight then return nil end
+    if ns.Digest and ns.Digest.Has(fight) then return ns.Digest.ZoneBuff(fight) end
     local s = ns.Summary and ns.Summary.Peek(fight)
-    if s then return s.zoneBuff end
-    return ns.Digest and ns.Digest.ZoneBuff(fight) or nil
+    return s and s.zoneBuff or nil
 end
 function ZB.Unbuffed(fight)
     return fight ~= nil and fight.killed == true and ZB.Of(fight) == ZB.OFF

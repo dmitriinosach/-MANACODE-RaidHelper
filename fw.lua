@@ -1,27 +1,31 @@
 local ADDON, ns = ...
 ns.L = {}
 ns.LEN = {}
+ns.LES = {}
 ns.lang = "ruRU"
 ns.langMissing = {}
 local ruKept = {}
+local LANGS = { enUS = true, ruRU = true, esES = true }
+local CLIENT_LANG = { ruRU = "ruRU", esES = "esES", esMX = "esES" }
 function ns.LangSetting()
     local db = ns.GetDB and ns.GetDB()
     local set = db and db.settings and db.settings.lang
-    if set == "enUS" or set == "ruRU" then return set end
+    if LANGS[set] then return set end
     return "auto"
 end
 function ns.LangResolve(set)
     set = set or ns.LangSetting()
-    if set == "enUS" or set == "ruRU" then return set end
-    return GetLocale() == "ruRU" and "ruRU" or "enUS"
+    if LANGS[set] then return set end
+    return CLIENT_LANG[GetLocale()] or "enUS"
 end
 function ns.TIn(lang, key)
+    if lang == "esES" then return ns.LES[key] or ns.LEN[key] or key end
     if lang == "enUS" then return ns.LEN[key] or key end
-    if ns.lang == "enUS" and ruKept[key] then return ruKept[key] end
+    if ns.lang ~= "ruRU" and ruKept[key] then return ruKept[key] end
     return ns.L[key] or key
 end
 function ns.SetLangSetting(set)
-    if set ~= "enUS" and set ~= "ruRU" then set = "auto" end
+    if not LANGS[set] then set = "auto" end
     local db = ns.GetDB()
     if (db.settings.lang or "auto") == set then return end
     local to = ns.LangResolve(set)
@@ -52,19 +56,26 @@ function ns.ApplyLang(lang)
     local missing = {}
     ns.langMissing = missing
     ns.lang = lang
+    local own = lang == "esES" and ns.LES or ns.LEN
     for k in pairs(L) do
-        if ns.LEN[k] == nil then missing[#missing + 1] = k end
+        if own[k] == nil then missing[#missing + 1] = k end
     end
     table.sort(missing)
-    if lang ~= "enUS" then return end
+    if lang == "ruRU" then return end
     for k, v in pairs(ns.LEN) do
         local was = L[k]
         ruKept[k] = was == nil and false or was
         L[k] = v
     end
+    if lang ~= "esES" then return end
+    for k, v in pairs(ns.LES) do
+        local was = L[k]
+        if ruKept[k] == nil then ruKept[k] = was == nil and false or was end
+        L[k] = v
+    end
 end
 function ns.PluralPick(n, one, few, many)
-    if ns.lang == "enUS" then
+    if ns.lang ~= "ruRU" then
         if n == 1 then return one end
         return many
     end
@@ -85,6 +96,7 @@ end
 local DATE_FMT = {
     ruRU = { day = "%d.%m", dayTime = "%d.%m %H:%M", year = "%d.%m.%Y" },
     enUS = { day = "%m/%d", dayTime = "%m/%d %H:%M", year = "%m/%d/%Y" },
+    esES = { day = "%d/%m", dayTime = "%d/%m %H:%M", year = "%d/%m/%Y" },
 }
 function ns.Date(t, kind)
     local set = DATE_FMT[ns.lang] or DATE_FMT.ruRU
@@ -347,7 +359,7 @@ function Jobs.Run(key, fn, onDone, prof, urgent)
         return false
     end
     job = { key = key, co = coroutine.create(fn), done = {}, prof = prof, spent = 0, at = GetTime(),
-            pd = 0, pt = 0, lo = 0, hi = 1, shown = 0 }
+            pd = 0, pt = 0, lo = 0, hi = 1, blo = 0, bhi = 1, shown = 0 }
     if onDone then job.done[1] = onDone end
     jobByKey[key] = job
     if urgent then
@@ -390,16 +402,27 @@ function Jobs.Progress(done, total)
     if job then
         job.pd = done
         job.pt = total
+        job.told = true
     end
 end
 function Jobs.Band(lo, hi)
     local job = running
     if job then
         Frac(job)
-        job.lo = lo
-        job.hi = hi
-        job.pd = 0
-        job.pt = 0
+        job.blo, job.bhi = lo, hi
+        job.lo, job.hi = lo, hi
+        job.pd, job.pt = 0, 0
+        job.told = true
+    end
+end
+function Jobs.Part(a, b)
+    local job = running
+    if job then
+        Frac(job)
+        local w = job.bhi - job.blo
+        job.lo, job.hi = job.blo + w * a, job.blo + w * b
+        job.pd, job.pt = 0, 0
+        job.told = true
     end
 end
 local function Caption(job)
@@ -415,7 +438,7 @@ function Jobs.State()
     for i = 1, n do
         local job = queue[i]
         if job.label then
-            return job.key, Frac(job), Caption(job), n, GetTime() - job.at
+            return job.key, Frac(job), Caption(job), n, GetTime() - job.at, not job.told
         end
     end
     if n > 0 then return queue[1].key, nil, nil, n, GetTime() - queue[1].at end
@@ -588,13 +611,18 @@ function ns.TuneSig()
     end
     return out
 end
-local LIMIT_MB = 250
+local LIMIT_MB = 100
+local LIMIT_V = 2
 local function ApplyDefaults(db)
     if type(db.settings) ~= "table" then db.settings = {} end
     if type(db.settings.ui) ~= "table" then db.settings.ui = {} end
-    if db.settings.lang ~= "enUS" and db.settings.lang ~= "ruRU" then db.settings.lang = "auto" end
+    if not LANGS[db.settings.lang] then db.settings.lang = "auto" end
     if type(db.segments) ~= "table" then db.segments = {} end
     if type(db.settings.limitMB) ~= "number" or db.settings.limitMB <= 0 then db.settings.limitMB = LIMIT_MB end
+    if (tonumber(db.settings.limitV) or 1) < LIMIT_V then
+        if db.settings.limitMB > LIMIT_MB then db.settings.limitMB = LIMIT_MB end
+        db.settings.limitV = LIMIT_V
+    end
     if type(db.settings.autoRaid) ~= "boolean" then db.settings.autoRaid = true end
     if type(db.settings.autoParty) ~= "boolean" then db.settings.autoParty = false end
     if db.settings.tune ~= nil and type(db.settings.tune) ~= "table" then db.settings.tune = nil end

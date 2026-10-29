@@ -16,6 +16,7 @@ local DLG_GOLD = "Interface\\DialogFrame\\UI-DialogBox-Gold-Border"
 local ACH_WOOD = "Interface\\AchievementFrame\\UI-Achievement-WoodBorder"
 local ACH_BG = "Interface\\AchievementFrame\\UI-Achievement-AchievementBackground"
 local LATTICE = "Interface\\AddOns\\" .. ADDON .. "\\lead\\art\\weave_lattice.tga"
+local ROUND = "Interface\\AddOns\\" .. ADDON .. "\\art\\kit\\round"
 local ACCENT = { 0.22, 0.72, 0.32 }
 local WHITE = { 1, 1, 1 }
 local DIMMED = { 0.45, 0.45, 0.45 }
@@ -24,6 +25,7 @@ local OAK = { 0.230, 0.190, 0.130 }
 local AMBER = { 0.62, 0.48, 0.18 }
 local CREAM = { 0.95, 0.91, 0.82 }
 local CREAM2 = { 0.82, 0.75, 0.60 }
+local INSET5 = { left = 5, right = 5, top = 5, bottom = 5 }
 local INSET3 = { left = 3, right = 3, top = 3, bottom = 3 }
 local INSET4 = { left = 4, right = 4, top = 4, bottom = 4 }
 local INSET_DLG = { left = 7, right = 8, top = 8, bottom = 7 }
@@ -148,6 +150,7 @@ Kit.themes.dark = {
             bgFile = TIP_BG, edgeFile = TIP_EDGE,
             tile = true, tileSize = 16, edgeSize = 12, insets = INSET3,
         },
+        backdropRound = { bgFile = WHITE8, edgeFile = ROUND, tile = false, edgeSize = 5, insets = INSET5 },
         bg = { 0.10, 0.11, 0.13, 0.92 },
         bgHover = { 0.17, 0.18, 0.21, 0.95 },
         bgDown = { 0.06, 0.065, 0.08, 0.95 },
@@ -575,6 +578,17 @@ Kit.themes.dark = {
         tool = { 0, 0, 0, 0.5 },
         toolHover = { 1, 1, 1, 0.25 },
     },
+    dev = {
+        kit = { 0.1, 1, 0.1, 0.45 },
+    },
+    pop = {
+        backdrop = {
+            bgFile = WHITE8, edgeFile = TIP_EDGE,
+            tile = true, tileSize = 16, edgeSize = 12, insets = INSET3,
+        },
+        bg = { 0.03, 0.04, 0.05, 1 },
+        border = { 0.55, 0.55, 0.6, 1 },
+    },
 }
 local DLG_PAPER = "Interface\\DialogFrame\\UI-DialogBox-Background"
 local DLG_BORDER = "Interface\\DialogFrame\\UI-DialogBox-Border"
@@ -778,6 +792,10 @@ Kit.themes.scroll = {
         border = rgba(EDGE, 0.85),
         toolHover = { 1, 0.86, 0.42, 0.3 },
     },
+    pop = {
+        bg = { 0.10, 0.07, 0.04, 1 },
+        border = rgba(EDGE, 0.85),
+    },
 }
 Kit.themes.gold = {
     labelKey = "set.theme.gold",
@@ -976,6 +994,10 @@ Kit.themes.gold = {
         veil = { 0.06, 0.045, 0.02, 0.35 },
         border = rgba(GOLD, 0.85),
         toolHover = { 1, 0.82, 0, 0.3 },
+    },
+    pop = {
+        bg = { 0.06, 0.045, 0.02, 1 },
+        border = rgba(GOLD, 0.85),
     },
 }
 local function deepCopy(src)

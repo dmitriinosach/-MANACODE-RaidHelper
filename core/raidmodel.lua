@@ -235,7 +235,7 @@ local function Inline(id, size, spell)
     return format("|T%s:%d:%d:0:0:64:64:5:59:5:59|t", tex, size, size)
 end
 local function Prices(res)
-    local out = { by = {}, c = {} }
+    local out = { by = {}, c = {}, given = ns.RaidCost.Given(res) }
     for i = 1, #res.spent do
         local sp = res.spent[i]
         out.by[sp.item] = sp
@@ -329,6 +329,8 @@ local function SpentRow(res, pr, sp)
     local cost = each and each * sp.n or nil
     local tip = { { kind = "head", left = SpName(sp), right = T("rsum.cat." .. sp.cat) } }
     Put(tip, "note", sp.free and T("rsum.tt.free") or PriceNote(sp, each))
+    local g = sp.id and pr.given[sp.id]
+    if g then Put(tip, "note", format(T("rsum.tt.handout"), g.n, g.c and ns.RaidCost.Gold(g.c) or T("rsum.noprice"))) end
     Put(tip, "sep")
     local by = Pairs(sp.by)
     for k = 1, #by do

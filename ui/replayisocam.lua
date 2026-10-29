@@ -16,6 +16,9 @@ local TILT_MAX = 1
 local START_ANGLE = pi / 4
 local START_TILT = 0.55
 local START_PERSP = 0.3
+local PRESETS = { low = 0.35, mid = START_TILT, high = 0.8 }
+local PRESET_KEYS = { "low", "mid", "high" }
+local PRESET_NEAR = 0.03
 local GEO_WAIT = 0.35
 local TILT_DRAG = 0.004
 local SEEK_STEP = ns.ReplayBar.SEEK_STEP
@@ -27,8 +30,9 @@ local LABEL_MIN = 0.8
 local LABEL_MAX = 1.5
 local HOVER_PX = 14
 local IsoCam = { START_ANGLE = START_ANGLE, START_TILT = START_TILT, START_PERSP = START_PERSP,
-                 TILT_STEP = TILT_STEP }
+                 TILT_STEP = TILT_STEP, PRESETS = PRESETS, PRESET_KEYS = PRESET_KEYS }
 ns.ReplayIsoCam = IsoCam
+local Kit = ns.Kit
 local Replay = ns.Replay
 local Tour = ns.ReplayTour
 local Bar = ns.ReplayBar
@@ -68,10 +72,22 @@ local function ApplyCamera()
     run.marksDirty = true
     run.camDirty = false
 end
+local function Allow(b, on, tip)
+    b.btnDisabled = (not on) or nil
+    b.tip = tip
+    b.kitStyle(b)
+    if b.icon then Kit.Tint(b.icon, on and "text.title" or "text.muted") end
+    if b.hovered then Kit.TipShow(b) end
+end
 local function UpdateCamUi()
     if not ui.modeBtn then return end
     ui.modeBtn.text:SetText(ns.T(run.flat and "iso.cam.2d" or "iso.cam.3d"))
     ui.modeBtn.tip = ns.T(run.flat and "iso.tip.to3d" or "iso.tip.to2d")
+    local nav = ui.nav
+    if nav and nav.tiltmore then
+        Allow(nav.tiltmore, not run.flat, ns.T(run.flat and "iso.tip.tilt2d" or "iso.tip.tiltmore"))
+        Allow(nav.tiltless, not run.flat, ns.T(run.flat and "iso.tip.tilt2d" or "iso.tip.tiltless"))
+    end
     ViewMenu.Refresh()
 end
 local function Saved()
@@ -114,6 +130,18 @@ local function SetView(tilt)
     SaveCamera()
     Geo.Snap(cam, cam.angle, 0, GEO_WAIT)
 end
+local function SetPreset(key)
+    local tilt = PRESETS[key]
+    if tilt then SetView(tilt) end
+end
+local function Preset()
+    if run.flat then return nil end
+    for i = 1, #PRESET_KEYS do
+        local key = PRESET_KEYS[i]
+        if abs(run.tilt3 - PRESETS[key]) <= PRESET_NEAR then return key end
+    end
+    return nil
+end
 local function SetFlat(flat)
     run.flat = flat
     Reframe()
@@ -144,7 +172,7 @@ local function Hover()
     if run.drag or not ui.view:IsMouseOver() then
         if run.hover then
             run.hover = nil
-            ui.hoverText:Hide()
+            ns.ReplayIsoBuild.HoverName(nil)
         end
         return
     end
@@ -160,12 +188,7 @@ local function Hover()
     end
     if best ~= run.hover then
         run.hover = best
-        if best then
-            ui.hoverText:SetText(figs[best].name)
-            ui.hoverText:Show()
-        else
-            ui.hoverText:Hide()
-        end
+        ns.ReplayIsoBuild.HoverName(best and figs[best].name or nil)
     end
     if best then PlaceLabel(figs[best]) end
 end
@@ -271,6 +294,8 @@ IsoCam.SaveCamera = SaveCamera
 IsoCam.LoadCamera = LoadCamera
 IsoCam.Reframe = Reframe
 IsoCam.SetView = SetView
+IsoCam.SetPreset = SetPreset
+IsoCam.Preset = Preset
 IsoCam.SetFlat = SetFlat
 IsoCam.Turn = Turn
 IsoCam.Hover = Hover

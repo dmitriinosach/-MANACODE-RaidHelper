@@ -67,13 +67,19 @@ local function resize(w, h)
     ns.window.PANE_H = math.max(MIN_PANE_H, math.floor(h - EDGE - BOTTOM))
     for _, fn in ipairs(sizers) do fn() end
 end
+local current
+function ns.window:Current()
+    return current
+end
 local function attach(page, key)
+    current = key
     if not host then build() end
     host:ClearAllPoints()
     host:SetAllPoints(page)
     resize(page:GetWidth(), page:GetHeight())
     selectPane(key)
     host:Show()
+    if ns.Pult and ns.Pult.Refresh then ns.Pult.Refresh() end
     if ns.Side and ns.Side.Refresh then ns.Side.Refresh() end
 end
 function ns.window:Pane(key)
@@ -140,6 +146,7 @@ if root.Shell then
         label = function() return ns.T("tabTplRaid") end,
         order = 120,
         right = true,
+        icon = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\tpl.tga",
         lit = "tpl",
         go = function() root.Shell.Open("tpl") end,
     })

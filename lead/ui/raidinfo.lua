@@ -220,6 +220,7 @@ end
 local function collect()
     for i = #lines, 1, -1 do lines[i] = nil end
     local list = ns.Buffs.Members()
+    if #list == 0 then return end
     for _, row in ipairs(ns.Buffs.Rows(list)) do
         addRow(ns.T("effRow_" .. row.key), row.items, CELL, fillBuff, clusterOf)
     end

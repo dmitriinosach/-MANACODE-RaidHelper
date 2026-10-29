@@ -35,6 +35,9 @@ ns.ENC = {
     dummy = 31144,
 }
 local E = ns.ENC
+ns.npcPortraits = {
+    [36609] = "Interface\\Icons\\Achievement_Boss_SvalaSorrowgrave",
+}
 ns.bosses = {
     [36612] = E.marrowgar,
     [36855] = E.deathwhisper,
@@ -102,7 +105,21 @@ ns.bossParts = {
     [33136] = true,
 }
 ns.bossWin = {
-    [E.valithria] = 71196,
+    [E.valithria] = { [71196] = true },
+    [E.saurfang] = { [72928] = true, [70628] = true },
+}
+ns.bossRequires = {
+    [E.deathwhisper] = { E.marrowgar },
+    [E.gunship] = { E.deathwhisper },
+    [E.saurfang] = { E.gunship },
+    [E.festergut] = { E.saurfang },
+    [E.rotface] = { E.saurfang },
+    [E.putricide] = { E.festergut, E.rotface },
+    [E.council] = { E.saurfang },
+    [E.lanathel] = { E.council },
+    [E.valithria] = { E.saurfang },
+    [E.sindragosa] = { E.valithria },
+    [E.lichking] = { E.putricide, E.lanathel, E.sindragosa },
 }
 ns.bossYield = {
     [E.hodir] = true,

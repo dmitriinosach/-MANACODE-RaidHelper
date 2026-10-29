@@ -14,6 +14,7 @@ local STRIP_H = 24
 local STRIP_GAP = 6
 local INFO_GAP = 6
 local SORT_W = 150
+local STRIPE_W = 3
 local SORT_TIME = 10
 local ICON_STEP = 13
 local NAME = "GameFontNormalSmall"
@@ -31,17 +32,20 @@ end
 local function barH()
     return ns.Fit(BASE, BAR_H, 8)
 end
-local pane, strip, bar, barFs, sortBtn
+local pane, strip, bar, barFs, sortBtn, convertBtn
 local boxes = {}
-local ghost, dragFrom
+local ghost, dragFrom, hoverAt
 local menu, menuCatcher, menuMarks, menuBtns, menuSpecs, menuOffs, menuSlots
 local built = false
 local sortUntil, sortWait = 0, false
 local function officer()
-    return ns.Test.Active() or IsRaidLeader() or IsRaidOfficer()
+    return ns.RaidCmd.Officer()
 end
 local function inRaid()
     return ns.Compat.GroupSize() > 0 or ns.Test.Active()
+end
+local function inGroup()
+    return ns.Session.InGroup()
 end
 local function addonVer(name)
     local V = root.Version
@@ -59,14 +63,16 @@ local function specNames(list)
     for _, k in ipairs(list or {}) do out[#out + 1] = ns.T("spec_" .. k) end
     return table.concat(out, ", ")
 end
-local function gsText(name)
+local function gearOf(name)
     local d = GS_Data and GS_Data[GetRealmName()]
     local r = d and d.Players and d.Players[name]
-    local il = (r and r.Average) or ns.Session.Player(name).ilvl
-    local gs = r and r.GearScore
-    local dash = ns.Hex("text.muted") .. "-|r"
-    if not gs and not il then return dash end
-    return (gs or dash) .. " " .. ns.Hex("text.secondary") .. (il and math.floor(il) or "") .. "|r"
+    return r and r.GearScore, (r and r.Average) or ns.Session.Player(name).ilvl
+end
+local function gsText(name)
+    local gs, il = gearOf(name)
+    if gs then return tostring(gs) end
+    if il then return ns.Hex("text.secondary") .. math.floor(il) .. "|r" end
+    return ns.Hex("text.muted") .. "-|r"
 end
 local lockQ, lockLabel
 local function lockTarget()
@@ -121,6 +127,10 @@ local function cardLines(m, p, slot, ver, lock)
             right = p.spec and ns.T("srcShort_" .. (p.specSrc or "hand")) or nil }
     end
     if lock then out[#out + 1] = { kind = "row", left = lock, tone = "bad" } end
+    local gs, il = gearOf(m.name)
+    if gs then out[#out + 1] = { kind = "row", left = ns.T("cardGs"), right = tostring(gs) } end
+    if il then out[#out + 1] = { kind = "row", left = ns.T("cardIlvl"), right = tostring(math.floor(il)) } end
+    if m.away and m.online then out[#out + 1] = { kind = "row", left = ns.T("cellAway"), tone = "dim" } end
     if p.note then out[#out + 1] = { kind = "note", left = ns.T("tipNoteLine", p.note) } end
     if (p.offRolls or 0) > 0 then out[#out + 1] = { kind = "row", left = ns.T("cardDice"), right = tostring(p.offRolls) } end
     local rh = { { kind = "head", left = ns.T("cardRh") },
@@ -134,13 +144,15 @@ local function cardLines(m, p, slot, ver, lock)
     addRows(out, rh)
     addRows(out, ns.Bober.Rows(m.name, m.unit))
     addRows(out, ns.ReadyUI.TipRows(m))
-    out[#out + 1] = { kind = "sep" }
-    out[#out + 1] = { kind = "note", left = ns.T("tipRaidCell") }
     local baked = ns.Bober.Baked()
-    if baked then out[#out + 1] = { kind = "note", left = ns.T("bbTipBaked", baked) } end
+    if baked then
+        out[#out + 1] = { kind = "sep" }
+        out[#out + 1] = { kind = "note", left = ns.T("bbTipBaked", baked) }
+    end
     return out
 end
 local function cardEnter(self)
+    if dragFrom then return end
     if self.lines then
         ns.Kit.Tip.Show(self, self.lines)
     elseif self.member or self.slotIndex then
@@ -192,9 +204,9 @@ end
 local function membersByGroup()
     local out = {}
     for g = 1, GROUPS do out[g] = {} end
-    if not inRaid() then return out end
+    if not inGroup() then return out end
     for _, m in ipairs(ns.Session.Roster()) do
-        if m.index and out[m.sub] then
+        if m.sub and out[m.sub] then
             local list = out[m.sub]
             list[#list + 1] = m
         end
@@ -301,18 +313,20 @@ local function editNote(name)
     end
 end
 local ACTIONS = {
-    { key = "mt", label = "flagMT", on = function(m) return m.role == "MAINTANK" end,
+    { key = "mt", label = "flagMT", raidOnly = true, on = function(m) return m.role == "MAINTANK" end,
       run = function(m, on)
           if on then ClearPartyAssignment("MAINTANK", m.unit) else SetPartyAssignment("MAINTANK", m.unit) end
       end },
-    { key = "ma", label = "flagMA", on = function(m) return m.role == "MAINASSIST" end,
+    { key = "ma", label = "flagMA", raidOnly = true, on = function(m) return m.role == "MAINASSIST" end,
       run = function(m, on)
           if on then ClearPartyAssignment("MAINASSIST", m.unit) else SetPartyAssignment("MAINASSIST", m.unit) end
       end },
-    { key = "assist", label = "flagAssist", lead = true, on = function(m) return m.rank == 1 end,
+    { key = "assist", label = "flagAssist", lead = true, raidOnly = true, on = function(m) return m.rank == 1 end,
       run = function(m, on)
           if on then DemoteAssistant(m.unit) else PromoteToAssistant(m.unit) end
       end },
+    { key = "leader", label = "flagLeader", lead = true, on = function(m) return m.rank == 2 end,
+      run = function(m, on) if not on then PromoteToLeader(m.unit) end end },
     { key = "ml", label = "flagML", lead = true, on = function(m) return m.ml end,
       run = function(m) SetLootMethod("master", m.name) end },
     { key = "kick", label = "menuKick", danger = true, on = function() return false end,
@@ -345,7 +359,7 @@ end
 local function onMarkClick(self)
     local m, cur = menu.member, menu.mark
     closeMenu()
-    if not m or not officer() then return end
+    if not m or not ns.Marks.CanMark() then return end
     local i = self.idx
     if m.fake then ns.Test.Mark(m.name, cur == i and 0 or i) else SetRaidTarget(m.unit, cur == i and 0 or i) end
 end
@@ -387,7 +401,11 @@ local function placeMenu()
     menu.noteBtn:SetWidth(98 + half)
     menu.diceBtn:SetWidth(100 + extra - half)
     menu.diceBtn:ClearAllPoints()
-    menu.diceBtn:SetPoint("TOPLEFT", menu, "TOPLEFT", 112 + half, -228)
+    menu.diceBtn:SetPoint("TOPLEFT", menu, "TOPLEFT", 112 + half, -(136 + (#ACTIONS - 1) * 23))
+end
+local function actionY(k, key)
+    if key == "kick" then return -(136 + #ACTIONS * 23) end
+    return -(136 + (k - 1) * 23)
 end
 local function buildMenu()
     local win = ns.window:Pane("raid"):GetParent()
@@ -463,7 +481,7 @@ local function buildMenu()
     for k, a in ipairs(ACTIONS) do
         local b = ns.MakeKitButton(menu, nil, a.danger and "danger" or nil)
         b:SetSize(202, 20)
-        b:SetPoint("TOPLEFT", menu, "TOPLEFT", 10, a.key == "kick" and -251 or -136 - (k - 1) * 23)
+        b:SetPoint("TOPLEFT", menu, "TOPLEFT", 10, actionY(k, a.key))
         b.text:ClearAllPoints()
         b.text:SetPoint("LEFT", b, "LEFT", 22, 0)
         b.check = b:CreateTexture(nil, "OVERLAY")
@@ -475,7 +493,7 @@ local function buildMenu()
     end
     menu.noteBtn = ns.MakeKitButton(menu)
     menu.noteBtn:SetSize(98, 20)
-    menu.noteBtn:SetPoint("TOPLEFT", menu, "TOPLEFT", 10, -228)
+    menu.noteBtn:SetPoint("TOPLEFT", menu, "TOPLEFT", 10, -(136 + (#ACTIONS - 1) * 23))
     menu.noteBtn:SetText(ns.T("menuNote"))
     menu.noteBtn.onClick = function()
         local m = menu.member
@@ -496,7 +514,7 @@ local function buildMenu()
         end
         self:SetText(ns.T("menuDice", ns.Session.Player(m.name).offRolls or 0))
     end
-    menu:SetHeight(279)
+    menu:SetHeight(136 + #ACTIONS * 23 + 28)
     placeMenu()
     menu.slots, menu.specs, menu.offs, menu.marks, menu.btns = menuSlots, menuSpecs, menuOffs, menuMarks, menuBtns
 end
@@ -544,25 +562,33 @@ local function openMenu(cell, m)
     menu.noteBtn.tipTitle = ns.T("tipNote")
     menu.noteBtn.tip = p.note or ns.T("tipNoteEmpty")
     menu.diceBtn:SetText(ns.T("menuDice", p.offRolls or 0))
-    local canOfficer, canLead = officer(), IsRaidLeader()
+    local raid, canOfficer, canLead, canMark = inRaid(), officer(), ns.RaidCmd.Leader(), ns.Marks.CanMark()
     local cur = m.mark or (m.unit and GetRaidTargetIndex(m.unit))
     menu.mark = cur
     for k, b in ipairs(menuMarks) do
         if cur == k then b.frame:Show() else b.frame:Hide() end
-        b.icon:SetDesaturated(not canOfficer)
+        b.icon:SetDesaturated(not canMark)
+        b.tip = (not canMark) and ns.T("tipNeedOfficer") or nil
     end
     for _, b in ipairs(menuBtns) do
         local a = b.action
         local on = a.on(m)
         b:SetText(ns.T(a.label))
         if on then b.check:Show() else b.check:Hide() end
-        local allowed = a.lead and canLead or (not a.lead and canOfficer)
+        local allowed, why
+        if a.raidOnly and not raid then
+            allowed, why = false, "tipRaidOnly"
+        elseif a.lead or not raid then
+            allowed, why = canLead, "tipNeedLeader"
+        else
+            allowed, why = canOfficer, "tipNeedOfficer"
+        end
         if allowed then
             b:Enable()
             b.tip = nil
         else
             b:Disable()
-            b.tip = ns.T(a.lead and "tipNeedLeader" or "tipNeedOfficer")
+            b.tip = ns.T(why)
         end
         b.onClick = function()
             closeMenu()
@@ -592,6 +618,27 @@ local function openSeat(c)
     if #opts == 0 then return end
     ns.PopupList(c, opts, function(name) S.Assign(i, name) end)
 end
+local function dragTarget()
+    for _, b in ipairs(boxes) do
+        if b:IsShown() and MouseIsOver(b) then
+            for _, c in ipairs(b.cells) do
+                if (c.member or c.slotIndex) and MouseIsOver(c) then return b, c end
+            end
+            return b, nil
+        end
+    end
+end
+local function dropAllowed(from, b, c)
+    if c and c.member then return c.member.index ~= from.index end
+    if c and c.slotIndex then return ns.Session.SlotFits(ns.Session.Template().slots[c.slotIndex], from) end
+    return b.group ~= from.sub and (b.count or 0) < Lay.SEATS
+end
+local function paintDrop(target)
+    if hoverAt == target then return end
+    if hoverAt then hoverAt.hover:Hide() end
+    hoverAt = target
+    if target then target.hover:Show() end
+end
 local function makeGhost()
     ghost = ns.NewFrame("Frame", nil, UIParent)
     ghost:SetSize(130, 20)
@@ -605,30 +652,33 @@ local function makeGhost()
         local s = UIParent:GetEffectiveScale()
         self:ClearAllPoints()
         self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x / s + 70, y / s - 12)
+        if not dragFrom then return end
+        local b, c = dragTarget()
+        if b and dropAllowed(dragFrom, b, c) then paintDrop(c or b) else paintDrop(nil) end
     end)
     ghost:Hide()
+end
+local function moveTo(from, g)
+    if from.fake then ns.Test.Move(from.index, g) else SetRaidSubgroup(from.index, g) end
 end
 local function drop()
     if not dragFrom then return end
     local from = dragFrom
     dragFrom = nil
     ghost:Hide()
+    paintDrop(nil)
     if not officer() then return end
-    for _, b in ipairs(boxes) do
-        if b:IsShown() and MouseIsOver(b) then
-            for _, c in ipairs(b.cells) do
-                if c.member and MouseIsOver(c) then
-                    if c.member.index ~= from.index then
-                        if from.fake then ns.Test.Swap(from.index, c.member.index) else SwapRaidSubgroup(from.index, c.member.index) end
-                    end
-                    return
-                end
-            end
-            if b.group ~= from.sub and (b.count or 0) < 5 then
-                if from.fake then ns.Test.Move(from.index, b.group) else SetRaidSubgroup(from.index, b.group) end
-            end
-            return
-        end
+    local S = ns.Session
+    local b, c = dragTarget()
+    if not b or not dropAllowed(from, b, c) then return end
+    if c and c.member then
+        S.SwapSlots(from.name, c.member.name)
+        if from.fake then ns.Test.Swap(from.index, c.member.index) else SwapRaidSubgroup(from.index, c.member.index) end
+    elseif c and c.slotIndex then
+        S.Assign(c.slotIndex, from.name)
+        if b.group ~= from.sub then moveTo(from, b.group) end
+    else
+        moveTo(from, b.group)
     end
 end
 local function fitCell(c)
@@ -649,8 +699,19 @@ local function newCell(box, k)
     ns.PaintToken(c.bg, "card.sticker")
     c.bg:SetAllPoints()
     c.warn = ns.Fill(c, "BORDER")
-    ns.PaintToken(c.warn, "sem.notReady", 0.16)
-    c.warn:SetAllPoints()
+    ns.PaintToken(c.warn, "text.warn")
+    c.warn:SetWidth(STRIPE_W)
+    c.warn:SetPoint("TOPLEFT", c, "TOPLEFT", 0, 0)
+    c.warn:SetPoint("BOTTOMLEFT", c, "BOTTOMLEFT", 0, 0)
+    c.lock = ns.Fill(c, "BORDER")
+    ns.PaintToken(c.lock, "text.bad")
+    c.lock:SetWidth(STRIPE_W)
+    c.lock:SetPoint("TOPLEFT", c, "TOPLEFT", 0, 0)
+    c.lock:SetPoint("BOTTOMLEFT", c, "BOTTOMLEFT", 0, 0)
+    c.hover = ns.Fill(c, "OVERLAY")
+    ns.PaintToken(c.hover, "text.title", 0.25)
+    c.hover:SetAllPoints()
+    c.hover:Hide()
     c.spec = c:CreateTexture(nil, "ARTWORK")
     c.spec:SetSize(16, 16)
     c.spec:SetPoint("TOPLEFT", c, "TOPLEFT", 3, -2)
@@ -672,6 +733,7 @@ local function newCell(box, k)
     c.dice:SetTexture(ns.DICE_TEX)
     c.gs = ns.Str(c, BASE)
     c.gs:SetJustifyH("LEFT")
+    c.gs:SetWordWrap(false)
     ns.PaintText(c.gs, "text.secondary")
     c.flags = {}
     for i = 1, 3 do
@@ -689,7 +751,7 @@ local function newCell(box, k)
     c:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     c:RegisterForDrag("LeftButton")
     c:SetScript("OnDragStart", function(self)
-        if not self.member or not officer() then return end
+        if not self.member or not self.member.index or not officer() then return end
         dragFrom = self.member
         ghost.text:SetText(self.member.name)
         ghost:SetSize(ns.Wide(NAME, 130), ns.Fit(NAME, 20, 8))
@@ -713,6 +775,7 @@ local function clearCell(c, tok)
     c.spec:Hide()
     c.off:Hide()
     c.warn:Hide()
+    c.lock:Hide()
     c.name:SetText("")
     c.gs:SetText("")
     c.ver:SetText("")
@@ -738,6 +801,7 @@ local function fillGhost(c, i, tpl, tok)
     else
         ns.Icon.Role(c.spec, ns.ROLE_GROUP[slot.role])
     end
+    c.name:SetPoint("RIGHT", c, "RIGHT", -6, 0)
     c.name:SetText(slotLabel(slot))
     ns.Tone(c.name, "text.muted")
     local names = {}
@@ -746,13 +810,16 @@ local function fillGhost(c, i, tpl, tok)
         names[#names + 1] = ns.T("spec_" .. key)
     end
     c.gs:SetText(#names > 0 and table.concat(names, "/") or ns.T("tipAnySpec"))
+    c.gs:ClearAllPoints()
+    c.gs:SetPoint("BOTTOMLEFT", c, "BOTTOMLEFT", 23, 2)
+    c.gs:SetPoint("RIGHT", c, "RIGHT", -4, 0)
     c.tipTitle = ns.T("tipNeed", slotLabel(slot))
     c.tip = slot.specs and specNames(slot.specs) or ns.T("tipAnySpec")
     local fits = 0
     for _, m in ipairs(S.Unassigned()) do
         if S.SlotFits(slot, m) then fits = fits + 1 end
     end
-    c.tipDim = fits > 0 and ns.T("tipSockClick", fits) or nil
+    c.tipDim = (fits > 0 or S.InGroup()) and ns.T("tipSockFits", fits) or nil
 end
 local function fillCell(c, m, tok)
     clearCell(c, tok)
@@ -772,22 +839,31 @@ local function fillCell(c, m, tok)
     end
     local slotI = S.SlotOf(m.name)
     local noSlot = m.work and not slotI
-    c.name:SetText(m.name .. (noSlot and (" " .. ns.Hex("sem.notReady") .. "!|r") or ""))
+    c.name:SetText(m.name)
     local lock = lockText(m.name)
     if lock then
         ns.Tone(c.name, "text.bad")
+        c.lock:Show()
     elseif m.online then
         ns.ClassText(c.name, m.class)
     else
         ns.Tone(c.name, "sem.offline")
     end
-    if noSlot then c.warn:Show() end
+    if noSlot and not lock and not m.dead then c.warn:Show() end
+    local sub = gsText(m.name)
+    if slotI then
+        sub = sub .. "  " .. slotLabel(S.Template().slots[slotI])
+    elseif noSlot then
+        sub = sub .. "  " .. ns.Hex("text.warn") .. ns.T("cardSlotNone") .. "|r"
+    end
+    if m.away and m.online then sub = sub .. "  " .. ns.Hex("text.muted") .. ns.T("cellAway") .. "|r" end
     local exp = ns.Bober.ExpText(m.name, m.unit)
-    c.gs:SetText(gsText(m.name) .. (exp and ("  " .. exp) or ""))
+    if exp then sub = sub .. "  " .. exp end
+    c.gs:SetText(sub)
     local ver = addonVer(m.name)
-    c.ver:SetText(ver and shortVer(ver) or ns.T("verNone"))
-    ns.PaintText(c.ver, ver and "text.secondary" or "text.muted")
-    local x = -18 - (c.ver:GetStringWidth() or 0) - 3
+    c.ver:SetText(ver and shortVer(ver) or "")
+    ns.PaintText(c.ver, "text.secondary")
+    local x = -18 - (ver and ((c.ver:GetStringWidth() or 0) + 3) or 0)
     local rolls = p.offRolls or 0
     if rolls > 0 then
         c.dice:ClearAllPoints()
@@ -816,6 +892,7 @@ local function fillCell(c, m, tok)
             t:Show()
         end
     end
+    c.name:SetPoint("RIGHT", c, "RIGHT", -(4 + #flags * 12), 0)
     local mark = m.mark or (m.unit and GetRaidTargetIndex(m.unit))
     if mark then
         ns.Icon.Mark(c.mark, mark)
@@ -839,6 +916,10 @@ local function newBox(g)
     b.sum:SetPoint("TOPRIGHT", b, "TOPRIGHT", -7, -5)
     b.sum:SetJustifyH("RIGHT")
     ns.PaintText(b.sum, "text.secondary")
+    b.hover = ns.Fill(b, "OVERLAY")
+    ns.PaintToken(b.hover, "text.title", 0.12)
+    b.hover:SetAllPoints()
+    b.hover:Hide()
     b.cells = {}
     for k = 1, 5 do b.cells[k] = newCell(b, k) end
     return b
@@ -877,29 +958,54 @@ local function buildBar()
         sortUntil, sortWait = GetTime() + SORT_TIME, false
         sortStep()
     end
+    convertBtn = ns.MakeKitButton(bar)
+    convertBtn:SetSize(SORT_W, 20)
+    convertBtn:SetText(ns.T("btnConvertRaid"))
+    convertBtn.tipTitle = ns.T("btnConvertRaid")
+    convertBtn.tip = ns.T("tipConvertRaid")
+    convertBtn.onClick = function() ns.RaidCmd.Convert() end
     barFs = ns.Str(bar, BASE)
     barFs:SetJustifyH("LEFT")
     ns.PaintText(barFs, "text.primary")
 end
-local function fillStrip(raid)
+local function fillStrip(group)
     local S = ns.Session
     local open = ns.Side and ns.Side.Open()
-    local un = (raid and not open) and #S.Unassigned() or 0
+    local un, reserve = 0, 0
+    if group and not open then un, reserve = S.UnassignedCounts() end
     local wait = (not open) and #ns.Whisper.Waiting() or 0
-    if un + wait == 0 then
+    if un + reserve + wait == 0 then
         strip:Hide()
         return 0
     end
     strip:SetWidth(ns.window.PANE_W)
     strip:SetHeight(stripH())
-    strip.text:SetText(ns.T("stripLists", un, wait))
+    local unText = tostring(un) .. (reserve > 0 and (" " .. ns.T("unReserve", reserve)) or "")
+    strip.text:SetText(ns.T("stripLists", unText, wait))
     strip:Show()
     return stripH() + STRIP_GAP
+end
+local function placeRight(btn, anchor)
+    btn:ClearAllPoints()
+    if anchor == bar then
+        btn:SetPoint("RIGHT", bar, "RIGHT", -4, 0)
+    else
+        btn:SetPoint("RIGHT", anchor, "LEFT", -6, 0)
+    end
+    btn:Show()
+    return btn
+end
+local function fillConvert(anchor)
+    if not ns.RaidCmd.CanConvert() then
+        convertBtn:Hide()
+        return anchor
+    end
+    return placeRight(convertBtn, anchor)
 end
 local function fillSort(raid)
     if not raid then
         sortBtn:Hide()
-        return
+        return bar
     end
     sortBtn:Show()
     local left = #Lay.Sort(sortList())
@@ -916,22 +1022,30 @@ local function fillSort(raid)
     else
         sortBtn:Enable()
     end
+    return sortBtn
 end
-local function fillBar(raid)
-    fillSort(raid)
+local function fillBar(group, raid)
+    local leftmost = fillConvert(fillSort(raid))
     barFs:ClearAllPoints()
-    barFs:SetPoint("RIGHT", sortBtn, "LEFT", -8, 0)
+    if leftmost ~= bar then
+        barFs:SetPoint("RIGHT", leftmost, "LEFT", -8, 0)
+    else
+        barFs:SetPoint("RIGHT", bar, "RIGHT", -10, 0)
+    end
     barFs:SetPoint("LEFT", bar, "LEFT", 10, 0)
     bar.tipTitle, bar.tip = nil, nil
-    local r = raid and ns.Bober.Ready() and ns.Bober.Raid(ns.Session.Roster())
-    if not raid then
+    bar.predict = false
+    if not group then
         barFs:SetText(ns.Hex("text.muted") .. ns.T("raidSoon") .. "|r")
-        bar.predict = false
         return
     end
+    if not raid then
+        barFs:SetText(ns.Hex("text.muted") .. ns.T("partySoon", (ns.Session.Count())) .. "|r")
+        return
+    end
+    local r = ns.Bober.Ready() and ns.Bober.Raid(ns.Session.Roster())
     if not r then
         barFs:SetText("")
-        bar.predict = false
         return
     end
     bar.tipTitle = ns.T("bbRaidTitle")
@@ -979,8 +1093,9 @@ local function fillBox(b, list, gl, tpl, work, rs)
     local reserve = g > work
     local side = rs and (g <= 2 and "rsDark" or (g <= 5 and "rsLight")) or nil
     local head = reserve and ns.T("grpBoxReserve", g) or ns.T("grpBox", g)
-    local hidden = math.min(#gl, math.max(0, #list + #gl - Lay.SEATS))
-    if hidden > 0 then head = head .. "  " .. ns.Hex("text.muted") .. ns.T("grpHidden", hidden) .. "|r" end
+    if #list > 0 or not reserve then
+        head = head .. " — " .. (reserve and tostring(#list) or (#list .. "/" .. Lay.SEATS))
+    end
     b.head:SetText(head)
     b.side = side
     local border = side and ns.C["card." .. side .. "Edge"] or (reserve and ns.C["card.borderDim"]) or nil
@@ -1003,9 +1118,9 @@ local function refresh()
     if not built or not pane:IsVisible() then return end
     local S = ns.Session
     local tpl = S.Template()
-    local raid = inRaid()
+    local group, raid = inGroup(), inRaid()
     lockTarget()
-    local top = fillStrip(raid)
+    local top = fillStrip(group)
     placeBoxes(top + ns.ReadyUI.FillStrip(pane, top))
     local groups = membersByGroup()
     local ghosts = Lay.Ghosts(tpl, takenSlots(tpl))
@@ -1013,7 +1128,7 @@ local function refresh()
     for g, b in ipairs(boxes) do
         fillBox(b, groups[g], ghosts[g] or {}, tpl, work, rs)
     end
-    fillBar(raid)
+    fillBar(group, raid)
     ns.RaidInfo.Refresh()
 end
 local function onSize()
@@ -1063,5 +1178,9 @@ ns.RaidPane = {
     Menu = function() return menu end,
     BarText = function() return barFs and barFs:GetText() or "" end,
     Bar = function() return bar end,
+    Buttons = function() return sortBtn, convertBtn end,
+    Drop = drop,
+    Hover = function() return hoverAt end,
+    Ghost = function() return ghost end,
 }
 ns.window:OnBuild(build)

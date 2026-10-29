@@ -33,6 +33,7 @@ local function gather()
         ch.lead = g
     end
     g.assign = g.assign or {}
+    g.decided = g.decided or {}
     g.fields = g.fields or { prog = "", reqKind = "none", req = "", loot = "none", time = "" }
     if not ns.Tpl.Exists(g.tpl) then g.tpl = ns.TEMPLATES[1].key end
     return g
@@ -77,6 +78,7 @@ function S.SetTemplate(key)
     g.tpl = key
     g.text = 1
     g.assign = {}
+    g.decided = {}
     S.Invalidate()
     local tpl = S.Template()
     for _, list in ipairs({ known, rest }) do
@@ -86,6 +88,7 @@ function S.SetTemplate(key)
             if i then g.assign[i] = name end
         end
     end
+    S.AutoAll()
     S.Changed()
 end
 function S.Refit(key)
@@ -230,6 +233,7 @@ end
 function S.SetSpec(name, key, src)
     local p = S.Player(name)
     p.spec, p.specSrc = key, key and src or nil
+    S.AutoPlace(name)
     S.Changed()
 end
 function S.SetOff(name, key, src)
@@ -257,7 +261,7 @@ end
 function S.SlotPlayer(i)
     return gather().assign[i]
 end
-function S.Assign(i, name)
+local function put(i, name)
     local g = gather()
     for k, n in pairs(g.assign) do
         if n == name then g.assign[k] = nil end
@@ -276,6 +280,10 @@ function S.Assign(i, name)
         end
         if only then p.spec, p.specSrc = only, "hand" end
     end
+end
+function S.Assign(i, name)
+    put(i, name)
+    gather().decided[name] = true
     S.Changed()
 end
 function S.Unassign(name)
@@ -283,7 +291,42 @@ function S.Unassign(name)
     for k, n in pairs(g.assign) do
         if n == name then g.assign[k] = nil end
     end
+    g.decided[name] = true
     S.Changed()
+end
+function S.Decided(name)
+    return gather().decided[name] and true or false
+end
+local function autoSlot(tpl, m)
+    local assign = gather().assign
+    local grp = ns.Layout.Groups(tpl)
+    local best, score
+    for i, slot in ipairs(tpl.slots) do
+        if not assign[i] and S.SlotFits(slot, m) then
+            local s = (grp[i] == m.sub and 0 or 2) + (slot.specs and 0 or 1)
+            if not score or s < score then best, score = i, s end
+        end
+    end
+    return best
+end
+function S.AutoPlace(name)
+    local g = gather()
+    if not name or g.decided[name] or S.SlotOf(name) then return false end
+    local m = S.Member(name)
+    if not m or not m.work or not S.Player(name).spec then return false end
+    local i = autoSlot(S.Template(), m)
+    if not i then return false end
+    put(i, name)
+    g.decided[name] = true
+    return true
+end
+function S.AutoAll()
+    if not S.InGroup() then return false end
+    local any = false
+    for _, m in ipairs(S.Roster()) do
+        if S.AutoPlace(m.name) then any = true end
+    end
+    return any
 end
 local function roleFits(want, role)
     if want == "hybrid" then return true end
@@ -335,6 +378,30 @@ function S.Unassigned()
     end
     return out
 end
+function S.UnassignedCounts()
+    local work, reserve = 0, 0
+    for _, m in ipairs(S.Unassigned()) do
+        if m.work then work = work + 1 else reserve = reserve + 1 end
+    end
+    return work, reserve
+end
+function S.SwapSlots(a, b)
+    local g = gather()
+    local i, j = S.SlotOf(a), S.SlotOf(b)
+    if not i and not j then return false end
+    local slots = S.Template().slots
+    local ma, mb = S.Member(a), S.Member(b)
+    if not ma or not mb then return false end
+    if i and not S.SlotFits(slots[i], mb) then return false end
+    if j and not S.SlotFits(slots[j], ma) then return false end
+    if i then g.assign[i] = nil end
+    if j then g.assign[j] = nil end
+    if i then g.assign[i] = b end
+    if j then g.assign[j] = a end
+    g.decided[a], g.decided[b] = true, true
+    S.Changed()
+    return true
+end
 function S.Prune()
     local g = gather()
     local raid, party = ns.Compat.GroupSize()
@@ -345,6 +412,9 @@ function S.Prune()
     for _, m in ipairs(roster) do present[m.name] = true end
     for k, n in pairs(g.assign) do
         if not present[n] then g.assign[k] = nil end
+    end
+    for n in pairs(g.decided) do
+        if not present[n] then g.decided[n] = nil end
     end
 end
 function S.Count()
@@ -381,6 +451,7 @@ ns.Listen(f, "RAID_ROSTER_UPDATE")
 ns.Listen(f, "PARTY_MEMBERS_CHANGED")
 ns.Listen(f, "RAID_TARGET_UPDATE")
 ns.Listen(f, "ZONE_CHANGED_NEW_AREA")
+ns.Listen(f, "PARTY_LOOT_METHOD_CHANGED")
 ns.Listen(f, "PLAYER_REGEN_ENABLED")
 f:SetScript("OnEvent", function(self, event)
     if event == "PLAYER_REGEN_ENABLED" then
@@ -390,6 +461,7 @@ f:SetScript("OnEvent", function(self, event)
     S.Invalidate()
     if event == "PARTY_MEMBERS_CHANGED" then S.TryConvert() end
     S.Prune()
+    S.AutoAll()
     S.Changed()
 end)
 function S.FlaskRole(name)

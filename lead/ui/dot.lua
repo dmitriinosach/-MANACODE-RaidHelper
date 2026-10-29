@@ -55,6 +55,9 @@ local function build()
 end
 local function sync()
     if not dot then build() end
-    if ns.Spam.Running() then dot:Show() else dot:Hide() end
+    local on = ns.Spam.Running()
+    if on then dot:Show() else dot:Hide() end
+    if root.Panel and root.Panel.SetBusy then root.Panel.SetBusy("spam", on) end
 end
 ns.Session.OnChange(sync)
+ns.Spam.OnRun(sync)

@@ -1,10 +1,8 @@
 local _, ns = ...
 local max = math.max
-local abs = math.abs
 local tsort = table.sort
-local NEAR = 2
 local WHO_MAX = 10
-local PRIO = { spell = 4, phase = 3, pull = 2, death = 1 }
+local PRIO = { spell = 4, phase = 3, pull = 2, death = 1, event = 1 }
 local MK = { PRIO = PRIO }
 ns.ReplayMarks = MK
 function MK.Defs(boss)
@@ -27,8 +25,8 @@ function MK.New(fight)
             end
         end
     end
-    return { from = fight.from, defs = defs, by = by, want = want, players = fight.players or {}, last = {},
-             lastTs = {}, list = {} }
+    return { from = fight.from, boss = fight.boss, defs = defs, by = by, want = want, players = fight.players or {},
+             last = {}, lastTs = {}, list = {} }
 end
 local function AddWho(list, name)
     if not name or #list >= WHO_MAX then return end
@@ -59,26 +57,18 @@ local function ByTime(a, b)
     if a.t ~= b.t then return a.t < b.t end
     return PRIO[a.kind] > PRIO[b.kind]
 end
-local function Absorb(list, p)
-    local best, bestD
-    for i = 1, #list do
-        local s = list[i]
-        local d = abs(s.t - p.t)
-        if s.kind == "spell" and not s.phase and d <= NEAR and (not bestD or d < bestD) then best, bestD = s, d end
-    end
-    if not best then return false end
-    best.phase = p.label
-    return true
-end
 function MK.Done(mc, L, res)
     local list = mc.list
     local spans = res and res.spans or {}
-    local phases = {}
     for k = 2, #spans do
-        phases[#phases + 1] = { t = spans[k].from, kind = "phase", label = spans[k].label, n = 1, who = {} }
+        list[#list + 1] = { t = spans[k].from, kind = "phase", label = spans[k].label, n = 1, who = {} }
     end
-    for i = 1, #phases do
-        if not Absorb(list, phases[i]) then list[#list + 1] = phases[i] end
+    local def = ns.bossPhases and mc.boss and ns.bossPhases[mc.boss]
+    for kind, times in pairs(res and res.waves or {}) do
+        local w = def and def.waves and def.waves[kind]
+        for i = 1, #times do
+            list[#list + 1] = { t = times[i], kind = "phase", label = w and w.label or kind, wave = i, n = 1, who = {} }
+        end
     end
     list[#list + 1] = { t = 0, kind = "pull", label = "rep.mk.pull", n = 1, who = {} }
     tsort(list, ByTime)

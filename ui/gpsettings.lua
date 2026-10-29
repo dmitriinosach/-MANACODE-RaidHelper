@@ -15,6 +15,8 @@ local MODEW = 96
 local SHORTW = 140
 local RESETW = 90
 local HOTW = 52
+local THRW = 40
+local UNITW = 30
 local MODES = { "once", "each", "grow" }
 local View = {}
 ns.GPSettings = View
@@ -72,10 +74,25 @@ local function FieldOf(box)
     if box.what then return ns.Penalties.SYS[ns.Ledger.Key()][box.what] end
     return box.field
 end
+local function CommitLimit(box, key)
+    local rule = ns.Penalties.Get(key)
+    local d = rule and ns.Penalties.Limits(rule)[box.limit]
+    if not d then return end
+    local text = box:GetText():gsub(",", ".")
+    local value = tonumber(text)
+    if value then value = floor(value * d.scale + 0.5) end
+    if text ~= "" and not value then
+        View.Refresh()
+        return
+    end
+    ns.Penalties.Set(key, d.f, value)
+    Reload()
+end
 local function Commit(box, numeric)
     local key = box.editKey
     box.editKey = nil
     if not key then return end
+    if box.limit then return CommitLimit(box, key) end
     local text = box:GetText()
     local value
     if numeric then
@@ -94,12 +111,12 @@ local function Track(box)
     if font then box:SetFontObject(font) end
     return box
 end
-local function MakeBox(parent, name, width, what, field)
+local function MakeBox(parent, name, width, what, field, limit)
     local numeric = what ~= nil
     local box = Track(ns.Kit.Edit(parent, false, name))
     box:SetWidth(width)
     box:SetHeight(U(20))
-    box.what, box.field = what, field
+    box.what, box.field, box.limit = what, field, limit
     if numeric then box:SetNumeric(true) end
     box:HookScript("OnEditFocusGained", function(self)
         local rule = self:GetParent().rule
@@ -135,10 +152,12 @@ local function OnReset(row)
     if rule and ns.Penalties.Reset(rule.key) then Reload() end
 end
 local function Cols()
-    local c = { text = U(26), num = U(NUMW), mode = U(MODEW), short = U(SHORTW), reset = U(RESETW), ctl = U(20) }
+    local c = { text = U(26), num = U(NUMW), mode = U(MODEW), short = U(SHORTW), reset = U(RESETW), ctl = U(20),
+        thr = U(THRW), unit = U(UNITW) }
+    c.lim = c.thr * 2 + 4 + 4 + c.unit
     local avail = frame and (frame:GetWidth() or 0) - PAD * 2 or 0
     if avail < 100 then avail = 1100 end
-    local rest = c.text + 6 + c.mode + 12 + (c.num + 10) * 3 + c.short + 10 + c.reset
+    local rest = c.text + 6 + c.mode + 12 + (c.num + 10) * 3 + c.lim + 10 + c.short + 10 + c.reset
     c.tw = max(U(150), min(U(TEXTW), avail - rest))
     local x = c.text + c.tw + 6
     c.xMode = x
@@ -149,6 +168,8 @@ local function Cols()
     x = x + c.num + 10
     c.xStep = x
     x = x + c.num + 10
+    c.xLim = x
+    x = x + c.lim + 10
     c.xShort = x
     x = x + c.short + 10
     c.xReset = x
@@ -169,13 +190,14 @@ local function PlaceRow(r, i, c)
     r.mode:ClearAllPoints()
     r.mode:SetPoint("LEFT", c.xMode, 0)
     local at = { { r.gp, c.xSum, c.num }, { r.wipe, c.xWipe, c.num }, { r.step, c.xStep, c.num },
-        { r.short, c.xShort, c.short } }
+        { r.lim1, c.xLim, c.thr }, { r.lim2, c.xLim + c.thr + 4, c.thr }, { r.short, c.xShort, c.short } }
     for k = 1, #at do
         at[k][1]:SetWidth(at[k][3])
         at[k][1]:SetHeight(c.ctl)
         at[k][1]:ClearAllPoints()
         at[k][1]:SetPoint("LEFT", at[k][2], 0)
     end
+    r.unit:SetWidth(c.unit)
     r.reset:SetWidth(c.reset)
     r.reset:SetHeight(c.ctl)
     r.reset:ClearAllPoints()
@@ -200,7 +222,14 @@ local function NewRow(i)
     r.gp = MakeBox(r, "HTP_FailWatchGPCost" .. i, NUMW, "sum")
     r.wipe = MakeBox(r, "HTP_FailWatchGPWipe" .. i, NUMW, "wipe")
     r.step = MakeBox(r, "HTP_FailWatchGPStep" .. i, NUMW, "step")
+    r.lim1 = MakeBox(r, "HTP_FailWatchGPLim1_" .. i, THRW, nil, nil, 1)
+    r.lim2 = MakeBox(r, "HTP_FailWatchGPLim2_" .. i, THRW, nil, nil, 2)
+    r.unit = Kit.Str(r, "GameFontHighlightSmall")
+    r.unit:SetJustifyH("LEFT")
+    r.unit:SetWordWrap(false)
+    ns.Kit.Text(r.unit, "text.note")
     r.short = MakeBox(r, "HTP_FailWatchGPShort" .. i, SHORTW, nil, "short")
+    Kit.HoverLines(r)
     r.reset = ns.MakeButton(r, "HTP_FailWatchGPReset" .. i, "danger")
     Kit.Bind(r.reset.text, "GameFontNormalSmall")
     r.reset.text:SetText(ns.T("gpset.reset"))
@@ -212,10 +241,50 @@ local function SetBox(box, value)
     if not box:HasFocus() then box:SetText(value ~= nil and tostring(value) or "") end
     ns.Kit.Tone(box, "text.bright")
 end
+local function LimitText(v, scale)
+    if not v then return nil end
+    v = v / scale
+    if v == floor(v) then return format("%d", v) end
+    return (format("%.1f", v):gsub("%.0$", ""))
+end
+local function FillLimits(r, rule)
+    local lims = ns.Penalties.Limits(rule)
+    local boxes = { r.lim1, r.lim2 }
+    for k = 1, #boxes do
+        local d = lims[k]
+        if d then
+            boxes[k]:Show()
+            SetBox(boxes[k], LimitText(ns.Penalties.Threshold(rule, k), d.scale))
+        else
+            boxes[k]:Hide()
+        end
+    end
+    r.unit:ClearAllPoints()
+    if #lims == 0 then
+        r.unit:Hide()
+        return
+    end
+    r.unit:SetPoint("LEFT", boxes[#lims], "RIGHT", 4, 0)
+    r.unit:SetText(ns.T("gpset.unit." .. lims[1].unit))
+    r.unit:Show()
+end
+local function RuleLines(rule)
+    local lims = ns.Penalties.Limits(rule)
+    if #lims == 0 then return nil end
+    local out = { { kind = "head", left = ns.T(rule.text) } }
+    for k = 1, #lims do
+        local d = lims[k]
+        out[#out + 1] = { kind = "row", left = ns.T(d.tip or "gpset.col.limit"),
+            right = (LimitText(ns.Penalties.Threshold(rule, k), d.scale) or "—") .. " " .. ns.T("gpset.unit." .. d.unit) }
+    end
+    out[#out + 1] = { kind = "text", left = ns.T("gpset.limit.tip") }
+    return out
+end
 local function FillRow(r, item)
-    local controls = { r.check, r.text, r.mode, r.gp, r.wipe, r.step, r.short, r.reset }
+    local controls = { r.check, r.text, r.mode, r.gp, r.wipe, r.step, r.short, r.reset, r.lim1, r.lim2, r.unit }
     if item.head then
         r.rule = nil
+        r.lines = nil
         for i = 1, #controls do controls[i]:Hide() end
         r.head:SetText(item.head)
         r.head:Show()
@@ -237,6 +306,8 @@ local function FillRow(r, item)
     SetBox(r.wipe, ns.Penalties.Amount(rule, sys, "wipe"))
     SetBox(r.step, ns.Penalties.Amount(rule, sys, "step"))
     SetBox(r.short, ns.Penalties.Short(rule))
+    FillLimits(r, rule)
+    r.lines = RuleLines(rule)
     if ns.Penalties.IsChanged(rule.key) then r.reset:Enable() else r.reset:Disable() end
 end
 list = Kit.List(NewRow, FillRow, { step = WHEEL })
@@ -267,6 +338,7 @@ local function RefreshHead()
     end
     local unit = ns.Ledger.Unit(sys)
     heads.sum:SetText(format(ns.T("gpset.col.sum"), unit))
+    hintText:SetText(format(ns.T("gpset.hint"), ns.Ledger.Label(sys)))
 end
 local function Place()
     local w = floor(frame:GetWidth() or 0)
@@ -330,7 +402,7 @@ local function Place()
     listBox:SetPoint("BOTTOMRIGHT", -PAD, U(30))
     local cols = Cols()
     local at = { rule = cols.text, mode = cols.xMode, sum = cols.xSum, wipe = cols.xWipe, step = cols.xStep,
-        short = cols.xShort }
+        limit = cols.xLim, short = cols.xShort }
     for name, fs in pairs(heads) do
         fs:ClearAllPoints()
         fs:SetPoint("LEFT", frame, "TOPLEFT", PAD + at[name], -(head - U(8)))
@@ -339,6 +411,7 @@ local function Place()
     pageText:SetPoint("BOTTOMRIGHT", -PAD, U(10))
     hintText:ClearAllPoints()
     hintText:SetPoint("BOTTOMLEFT", PAD, U(10))
+    hintText:SetPoint("RIGHT", pageText, "LEFT", -12, 0)
     for i = 1, #list.rows do PlaceRow(list.rows[i], i, cols) end
 end
 function View.Refresh()
@@ -446,6 +519,7 @@ function View.Attach(host)
         { "sum", "" },
         { "wipe", ns.T("gpset.col.wipe") },
         { "step", ns.T("gpset.col.step") },
+        { "limit", ns.T("gpset.col.limit") },
         { "short", ns.T("gpset.col.short") },
     }
     for i = 1, #cols do
@@ -461,7 +535,8 @@ function View.Attach(host)
     ns.Kit.Text(pageText, "text.off")
     hintText = Kit.Str(frame, "GameFontDisableSmall")
     ns.Kit.Text(hintText, "text.off")
-    hintText:SetText(ns.T("gpset.hint"))
+    hintText:SetJustifyH("LEFT")
+    hintText:SetWordWrap(false)
     frame.sized = true
     placed = nil
     Place()

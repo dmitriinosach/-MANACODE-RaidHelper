@@ -1,5 +1,5 @@
 local _, ns = ...
-local max = math.max
+local min, max = math.min, math.max
 local PAD = 6
 local GAP = 3
 local ROWGAP = 4
@@ -11,7 +11,7 @@ local CAP_GAP = 6
 local LIFT = 4
 local TIP_GAP = 4
 local REACH = 6
-local STAY = 0.35
+local STAY = 0.1
 local REFRESH = 0.5
 local PIC = 14
 local PIC_DIM = 0.55
@@ -96,6 +96,7 @@ local function Button(i)
     local b = pool[i]
     if not b then
         b = ns.Kit.Button(fly)
+        ns.Kit.RoundButton(b)
         b:SetHeight(BTN_H)
         b.tipAnchor = "ANCHOR_NONE"
         b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -265,12 +266,28 @@ local function Place()
         fly:SetPoint("TOP" .. side, anchor, "BOTTOM" .. side, 0, -drop)
     end
 end
+local function Box(f)
+    local l, r, b, t = f:GetLeft(), f:GetRight(), f:GetBottom(), f:GetTop()
+    if not (l and r and b and t) or r <= l or t <= b then return nil, 0, 0, 0 end
+    local s = f:GetEffectiveScale()
+    return l * s, r * s, b * s, t * s
+end
+local function OnBridge()
+    local al, ar, ab, at = Box(anchor)
+    local fl, fr, fb, ft = Box(fly)
+    if not (al and fl) then return false end
+    local x, y = GetCursorPosition()
+    if at <= fb or ft <= ab then
+        return x >= min(al, fl) and x <= max(ar, fr) and y >= min(at, ft) and y <= max(ab, fb)
+    end
+    return y >= min(ab, fb) and y <= max(at, ft) and x >= min(ar, fr) and x <= max(al, fl)
+end
 local function OnUpdate(self, elapsed)
     if not host or not host:IsShown() then
         Acts.Hide()
         return
     end
-    if self:IsMouseOver(REACH, -REACH, -REACH, REACH) or (anchor and anchor:IsMouseOver()) then
+    if self:IsMouseOver(REACH, -REACH, -REACH, REACH) or (anchor and (anchor:IsMouseOver() or OnBridge())) then
         away = 0
     else
         away = away + elapsed
@@ -290,7 +307,7 @@ local function Build()
     fly:SetFrameStrata("DIALOG")
     fly:SetClampedToScreen(true)
     fly:EnableMouse(true)
-    ns.Kit.Skin(fly, "float")
+    ns.Kit.Skin(fly, "pop")
     fly.sized = true
     title = ns.Kit.Str(fly, "GameFontNormalSmall")
     title:SetPoint("TOPLEFT", PAD, -PAD)

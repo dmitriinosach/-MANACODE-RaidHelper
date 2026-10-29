@@ -138,19 +138,22 @@ function Sky.Use(room, fight)
     st.minute = m
     st.nightA = Curve(fade.night, m)
     local dayA, cd, cn = Curve(fade.day, m), Curve(fade.cloudDay, m), Curve(fade.cloudNight, m)
-    st.hazePath = dayA >= st.nightA and def.haze.day or def.haze.night
+    st.hazePath = def.haze and (dayA >= st.nightA and def.haze.day or def.haze.night) or nil
     st.hazeA = max(dayA, st.nightA)
-    st.cloudPath = cd >= cn and def.clouds.day or def.clouds.night
+    st.cloudPath = def.clouds and (cd >= cn and def.clouds.day or def.clouds.night) or nil
     st.cloudA = max(cd, cn)
-    SetPath(pools.day, def.bowl.day)
-    SetPath(pools.night, def.bowl.night)
-    SetPath(pools.clouds, st.cloudPath)
-    SetPath(pools.haze, st.hazePath)
+    pools.day.ok, pools.night.ok = false, false
+    if def.bowl then
+        SetPath(pools.day, def.bowl.day)
+        SetPath(pools.night, def.bowl.night)
+    end
+    if st.cloudPath then SetPath(pools.clouds, st.cloudPath) end
+    if st.hazePath then SetPath(pools.haze, st.hazePath) end
     LightAt(def.light, m, "top", st.top)
     LightAt(def.light, m, "mid", st.mid)
     LightAt(def.light, m, "hor", st.hor)
     LightAt(def.light, m, "fog", st.fog)
-    Hex(st.tint, def.clouds.tint or "ffffff")
+    Hex(st.tint, def.clouds and def.clouds.tint or "ffffff")
 end
 local function YOf(e, k, h, phi)
     return h / 2 - (phi + e) * k
@@ -269,7 +272,7 @@ local function Layout(cam, k, drift)
     st.horizon = YOf(e, k, h, 0)
     if full then
         pools.day.used, pools.night.used, pools.grad.used = 0, 0, 0
-        if pools.day.ok then
+        if def.bowl and pools.day.ok then
             Bowl(def, e, k, w, h, top, bot)
         else
             Fallback(e, k, w, h, top)
@@ -280,11 +283,11 @@ local function Layout(cam, k, drift)
     end
     local pan = -cam.angle * 180 / pi - w / (2 * k)
     pools.clouds.used = 0
-    if top > 0 then Clouds(def, e, k, w, h, top, pan + drift / k) end
+    if top > 0 and def.clouds then Clouds(def, e, k, w, h, top, pan + drift / k) end
     HideFrom(pools.clouds, pools.clouds.used + 1)
     if turn then
         pools.haze.used = 0
-        if top > 0 then Haze(def, e, k, w, h, top, pan) end
+        if top > 0 and def.haze then Haze(def, e, k, w, h, top, pan) end
         HideFrom(pools.haze, pools.haze.used + 1)
     end
 end
@@ -303,7 +306,7 @@ function Sky.Place(cam, scene, t, shown)
     end
     local k = cam.h / (2 * HALF)
     local c = def.clouds
-    local drift = c.drift and c.drift > 0 and floor(t / c.drift * c.deg * k) or 0
+    local drift = c and c.drift and c.drift > 0 and floor(t / c.drift * c.deg * k) or 0
     if st.laid and cam.angle == st.angle and cam.tilt == st.tilt and cam.w == st.w and cam.h == st.h
         and drift == st.drift then
         return

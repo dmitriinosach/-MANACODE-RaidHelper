@@ -6,16 +6,34 @@ local min = math.min
 local Kit = ns.Kit
 local GAP = 16
 local PEN_COLS = { { "who", 0 }, { "n", 60 } }
-local ROLL_COLS = { { "who", 0 }, { "n", 54 }, { "pen", 54 }, { "net", 54 } }
+local ROLL_COLS = { { "who", 0 }, { "n", 64 }, { "pen", 54 }, { "net", 54 } }
 local View = {}
 ns.FaultsRoll = View
 local box, pens, rolls
 local m = { bar = 26, rowh = 20, btnh = 20 }
 local where = {}
+local function RowEnter(self)
+    local lines = self.who and View.SoftTip(self.who)
+    if lines then ns.Tip.Show(self, lines) end
+end
+function View.SoftTip(who)
+    local soft = ns.Soft and ns.Soft.Of(who)
+    if not soft then return nil end
+    local lines = { { kind = "head", left = format(ns.T("soft.tip"), who) } }
+    for i = 1, #soft do lines[#lines + 1] = { kind = "row", left = soft[i].text, right = date("%H:%M", soft[i].t) } end
+    return lines
+end
+function View.Who(who)
+    if ns.Soft and ns.Soft.Of(who) then return who .. " " .. Kit.Hex("text.note") .. ns.T("soft.mark") .. "|r" end
+    return who
+end
 local function Row(parent, cols, wheel)
     local r = CreateFrame("Frame", nil, parent)
+    r:EnableMouse(true)
     r:EnableMouseWheel(true)
     r:SetScript("OnMouseWheel", function(_, d) wheel(d) end)
+    r:SetScript("OnEnter", RowEnter)
+    r:SetScript("OnLeave", function() ns.Tip.Hide() end)
     r.cells = {}
     for i = 1, #cols do
         local fs = Kit.Str(r, "GameFontHighlightSmall")
@@ -46,25 +64,70 @@ local function Put(side, r, k)
     r:SetPoint("TOPLEFT", side, "TOPLEFT", 0, -y)
     r:SetPoint("TOPRIGHT", side, "TOPRIGHT", 0, -y)
 end
-local function Minus(n)
+function View.Minus(n)
     return n > 0 and format(ns.T("roll.minus"), n) or "0"
+end
+function View.Range(t)
+    return t.hi ~= 100 and format(ns.T("roll.range"), t.n, t.lo, t.hi) or tostring(t.n)
+end
+local function PaintSummary(row, e)
+    if not row.rollBg then
+        row.rollBg = row:CreateTexture(nil, "BACKGROUND")
+        row.rollBg:SetAllPoints()
+    end
+    local c = Kit.C[e and e.data.rank % 2 == 0 and "row.bgHover" or "row.bg"]
+    row.rollBg:SetTexture(c[1], c[2], c[3], (c[4] or 1) * 0.5)
+    Kit.Text(row.val, "text.bad")
+end
+function View.SummaryModel(raid, alt)
+    local items = raid and ns.RollPen.List(raid, alt) or {}
+    local rows, total = {}, 0
+    for i = 1, #items do
+        local e = items[i]
+        total = total + e.n
+        rows[i] = { who = View.Who(e.who), text = View.Minus(e.n),
+            class = ns.Encounters and ns.Encounters.ClassOf(e.who), lines = View.SoftTip(e.who), data = { rank = i } }
+    end
+    return { title = format(ns.T("roll.summary.title"), View.Minus(total)), rows = rows,
+        empty = ns.T("roll.pens.empty"), fit = true, paint = PaintSummary }
+end
+local summarySource, summaryRaid, summaryAlt
+function View.OpenSummary(fight)
+    if not summarySource then
+        summarySource = ns.Badges.Detail(UIParent, nil, true)
+        summarySource:Hide()
+        ns.GPList.OnChange(function()
+            local current = ns.WidgetModal.Current()
+            if current and current.model == summarySource.model then
+                summarySource:SetModel(View.SummaryModel(summaryRaid, summaryAlt))
+                ns.WidgetModal.Open(summarySource)
+            end
+        end)
+    end
+    if fight then summaryRaid, summaryAlt = ns.RollPen.KeysOf(fight)
+    else summaryRaid, summaryAlt = ns.RollPen.Here() end
+    summarySource:SetModel(View.SummaryModel(summaryRaid, summaryAlt))
+    summarySource:Layout(440)
+    ns.WidgetModal.Open(summarySource)
 end
 local function FillPen(r, item, k)
     Put(pens, r, k)
     Cells(r, PEN_COLS, pens:GetWidth() or 200)
-    r.cells.who:SetText(item.who)
-    r.cells.n:SetText(Minus(item.n))
+    r.who = item.who
+    r.cells.who:SetText(View.Who(item.who))
+    r.cells.n:SetText(View.Minus(item.n))
     Kit.Text(r.cells.n, "text.bad")
 end
 local function FillRoll(r, t, k)
     Put(rolls, r, k)
     Cells(r, ROLL_COLS, rolls:GetWidth() or 300)
-    r.cells.who:SetText(t.who)
-    r.cells.n:SetText(t.hi ~= 100 and format(ns.T("roll.range"), t.n, t.lo, t.hi) or tostring(t.n))
-    r.cells.pen:SetText(Minus(t.pen or 0))
-    r.cells.net:SetText(tostring(t.net or t.n))
-    Kit.Text(r.cells.pen, (t.pen or 0) > 0 and "text.bad" or "text.muted")
-    Kit.Text(r.cells.net, k == 1 and rolls.list.offset == 0 and "text.good" or "text.bright")
+    r.who = t.who
+    r.cells.who:SetText(View.Who(t.who))
+    r.cells.n:SetText(View.Range(t))
+    r.cells.pen:SetText(View.Minus(t.pen))
+    r.cells.net:SetText(tostring(t.net))
+    Kit.Text(r.cells.pen, t.pen > 0 and "text.bad" or "text.muted")
+    Kit.Text(r.cells.net, t.net == ns.RollPen.Best() and "text.good" or "text.bright")
 end
 local function Head(side, cols, prefix)
     side.head = Row(side, cols, function() end)
@@ -86,9 +149,6 @@ function View.Build(parent, btn)
     Kit.Text(box.title, "text.title")
     box.title:SetPoint("TOPLEFT", 0, -2)
     box.title:SetJustifyH("LEFT")
-    box.state = Kit.Str(box, "GameFontHighlightSmall")
-    box.state:SetPoint("TOPRIGHT", 0, -4)
-    box.state:SetJustifyH("RIGHT")
     pens = CreateFrame("Frame", nil, box)
     pens:EnableMouseWheel(true)
     pens:SetScript("OnMouseWheel", function(_, d) Wheel(pens, d) end)
@@ -104,15 +164,15 @@ function View.Build(parent, btn)
     rolls.cap = Kit.Str(rolls, "GameFontNormalSmall")
     Kit.Text(rolls.cap, "text.title")
     rolls.cap:SetPoint("TOPLEFT", 0, 0)
-    rolls.report = btn(rolls, "HTP_FailWatchFaultsRollReport", "main", function()
-        ns.RollPen.Report(where.raid, where.alt)
-    end)
+    rolls.report = btn(rolls, "HTP_FailWatchFaultsRollReport", "main", function() ns.RollPen.Report() end)
     rolls.report.tip = ns.T("roll.report.tip")
     rolls.clear = btn(rolls, "HTP_FailWatchFaultsRollClear", "quiet", function() ns.RollPen.Clear() end)
     rolls.clear.tip = ns.T("roll.clear.tip")
     Head(rolls, ROLL_COLS, "roll.col.")
+    rolls.empty:SetText(ns.T("roll.throws.empty"))
     rolls.list = Kit.List(function() return Row(rolls, ROLL_COLS, function(d) Wheel(rolls, d) end) end, FillRoll, { step = 3 })
     ns.RollPen.OnChange(function() View.Paint() end)
+    if ns.Soft then ns.Soft.OnChange(function() View.Paint() end) end
     return box
 end
 local function Fit(b, text)
@@ -159,16 +219,12 @@ function View.Paint(raid, label, alt)
     if not box or not box:IsVisible() then return end
     if label then where.raid, where.label, where.alt = raid, label, alt end
     box.title:SetText(format(ns.T("roll.title"), where.label or ""))
-    local on = ns.RollPen.Listening()
-    box.state:SetText(on and ns.T("roll.on") or format(ns.T("roll.off"), ns.Ledger.Label("roll")))
-    Kit.Text(box.state, on and "text.good" or "text.muted")
     local pen, sum = ns.RollPen.List(where.raid, where.alt), 0
     for i = 1, #pen do sum = sum + pen[i].n end
     pens.cap:SetText(format(ns.T("roll.pens"), sum))
     Draw(pens, pen, PEN_COLS)
-    local list = ns.RollPen.Throws(where.raid, where.alt)
+    local list = ns.RollPen.Throws()
     rolls.cap:SetText(format(ns.T("roll.throws"), #list))
-    rolls.empty:SetText(ns.T(on and "roll.throws.empty" or "roll.throws.off"))
     Draw(rolls, list, ROLL_COLS)
     if list[1] then rolls.report:Enable() else rolls.report:Disable() end
     if list[1] then rolls.clear:Enable() else rolls.clear:Disable() end

@@ -719,12 +719,11 @@ function M.Done(ctx, L, posAt, ppy, fc, byK)
         local b = ctx.booms[i]
         if b.x then InsertBlast(L, b.t, b.x, b.y, D.blast * ppy, #b.hits, D.boom[1]) end
         if b.trigger then
-            local text = format(ns.T("rep.f.trap"), b.trigger)
-            if fc then ns.ReplayFeedCore.Add(fc, b.t, "boss", D.boom[1], true, b.trigger, text) end
             ctx.marks[#ctx.marks + 1] = { t = b.t - from, kind = "spell", id = D.boom[1], label = "rep.mk.trap", n = 1,
                                           who = { b.trigger } }
         end
     end
+    if fc then M.FeedRows(ctx, fc) end
     for i = 1, #ctx.zoneOut do
         local z = ctx.zoneOut[i]
         if not z.def.spin then AddPool(L, z.from, z.to, z.x, z.y, z.def.r, z.def.tone) end
@@ -904,6 +903,16 @@ function M.LogPos(fight)
         local yw, yh = Scale(marks, t)
         if not yw then return nil, 0 end
         return x * yw, y * yh
+    end
+end
+function M.FeedRows(ctx, fc)
+    local D = ctx.trap
+    if not D then return end
+    for i = 1, #ctx.booms do
+        local b = ctx.booms[i]
+        if b.trigger then
+            ns.ReplayFeedCore.Add(fc, b.t, "boss", D.boom[1], true, b.trigger, format(ns.T("rep.f.trap"), b.trigger))
+        end
     end
 end
 function M.Begin(s, fight)

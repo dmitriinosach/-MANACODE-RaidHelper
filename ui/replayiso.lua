@@ -91,6 +91,7 @@ local function Status()
     run.msSum, run.msN, run.msMax = 0, 0, 0
 end
 local SwapScene
+local UpdateFightNav
 local function WantScene()
     local base = run.base
     local alt = base and base.alt
@@ -214,12 +215,7 @@ local function ApplyFocus()
     LayersView.Focus(run.focus)
     ns.ReplayUnitsView.Focus(run.focus)
     ns.ReplayArrowsView.Focus(run.focus)
-    if run.focus then
-        ui.focus:SetText(format(ns.T("iso.focus"), run.focus))
-        ui.focus:Show()
-    else
-        ui.focus:Hide()
-    end
+    IsoBuild.ShowFocus(run.focus)
     Follow.Apply()
 end
 local function SetFocus(name)
@@ -268,14 +264,42 @@ local function UpdateSceneBtn()
     local b = ui.nav and ui.nav.scene
     if not b then return end
     local base = run.base
+    local was = b:IsShown()
     if not (base and base.alt) then
         b:Hide()
+        if was then IsoBuild.LayoutNav() end
         return
     end
-    b.text:SetText(ns.T(run.scene == base and "iso.scene.base" or "iso.scene.alt"))
-    b.tip = ns.T(run.pin and "iso.tip.scene.pin" or "iso.tip.scene.auto")
+    local onBase = run.scene == base
+    b.label = ns.T(onBase and "iso.scene.base" or "iso.scene.alt")
+    b.icon:SetTexture(onBase and IsoBuild.ICONS.throne or IsoBuild.ICONS.soul)
+    b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    b.tip = format(ns.T(run.pin and "iso.tip.scene.pin" or "iso.tip.scene.auto"), b.label)
     b:SetActive(run.pin ~= nil)
     b:Show()
+    if not was then IsoBuild.LayoutNav() end
+end
+local function StepFight(step)
+    local f = run.fight and ns.FightTree and ns.FightTree.Near(run.fight, step)
+    if f then Iso.Open(f, nil, run.focus) end
+end
+UpdateFightNav = function()
+    if not (ui.prevBtn and ui.nextBtn) then return end
+    local Tree = ns.FightTree
+    local prev = run.fight and Tree and Tree.Near(run.fight, -1)
+    local nxt = run.fight and Tree and Tree.Near(run.fight, 1)
+    if prev then ui.prevBtn:Enable() else ui.prevBtn:Disable() end
+    if nxt then ui.nextBtn:Enable() else ui.nextBtn:Disable() end
+    local alone = not (prev or nxt)
+    if alone == not ui.prevBtn:IsShown() then return end
+    if alone then
+        ui.prevBtn:Hide()
+        ui.nextBtn:Hide()
+    else
+        ui.prevBtn:Show()
+        ui.nextBtn:Show()
+    end
+    ns.ReplaySize.Place()
 end
 SwapScene = function(sc)
     run.scene = sc
@@ -327,7 +351,7 @@ local function UseScene(scene)
     for k = n + 2, #order do order[k] = nil end
     UseFloor(scene.room)
     ResetCamera(false)
-    Bar.Use(scene)
+    if Bar.Use(scene) then IsoBuild.Refit() end
     UpdatePlay()
     ApplySeek()
     SetFocus(run.want)
@@ -338,7 +362,7 @@ local function UseScene(scene)
     Tour.Auto()
 end
 local shared = { ui = ui, run = run, cam = cam, dim = dim, figs = figs, Iso = Iso, Tick = Tick, SetFocus = SetFocus,
-                 SetHeal = SetHeal, UpdateSceneBtn = UpdateSceneBtn, PlaceFloor = PlaceFloor }
+                 SetHeal = SetHeal, UpdateSceneBtn = UpdateSceneBtn, PlaceFloor = PlaceFloor, StepFight = StepFight }
 IsoCam.Bind(shared)
 IsoFigs.Bind(shared)
 IsoBuild.Bind(shared)
@@ -378,7 +402,8 @@ local function LoadFight(fight)
     Soul.Use(nil)
     ns.ReplayFeed.Use(nil)
     Bar.Use(nil)
-    ui.title:SetText(format(ns.T("iso.title"), ns.FightList and ns.FightList.Title(fight) or ns.EncName(fight.boss)))
+    ui.title:SetText(Bar.Title(fight))
+    UpdateFightNav()
     ui.hint:SetText(ns.T("iso.loading"))
     ui.hint:Show()
     ui.gap:Hide()
@@ -452,7 +477,10 @@ function Iso.Shown()
     return run.scene
 end
 function Iso.Now()
-    return run.t, run.playing
+    return run.t, run.playing, run.speed
+end
+function Iso.Title(fight)
+    return Bar.Title(fight)
 end
 function Iso.Toggle()
     if ui.frame and ui.frame:IsShown() then Iso.Hide() else Iso.Show() end
@@ -494,7 +522,9 @@ function Iso.Layout()
              bar = Bar.Probe(), menu = ViewMenu.Probe(), notice = ns.ReplayNoPatchView.Probe(), narrow = run.narrow, zoom = cam.zoom,
              tilt = run.tilt3, flat = run.flat, speed = run.speed, heal = run.focusHeal,
              scene = run.scene and (run.scene == run.base and "base" or "alt") or nil, pin = run.pin, fade = run.fadeA,
-             camR = cam.r, camCx = cam.cx, camCy = cam.cy, gap = run.gapKind or nil }
+             camR = cam.r, camCx = cam.cx, camCy = cam.cy, gap = run.gapKind or nil,
+             title = ui.title:GetText(), titleFs = ui.title, prevBtn = ui.prevBtn, nextBtn = ui.nextBtn, focusX = ui.focusX,
+             focusText = ui.focus, hover = ui.hoverBox, navW = IsoBuild.NAV_W, fight = run.fight }
 end
 if ns.MapView and ns.MapView.SetFight then
     hooksecurefunc(ns.MapView, "SetFight", function(f) picked = f end)

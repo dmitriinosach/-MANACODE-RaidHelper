@@ -27,6 +27,8 @@ local TOL = 0.05
 local MERGE = 2
 local CD_FLOOR = 0.5
 local RANK = { red = 3, yellow = 2, green = 1 }
+local MCD_TOP = 3
+local MELEE = "#melee"
 local GAINED = { SPELL_AURA_APPLIED = true, SPELL_AURA_REFRESH = true, SPELL_AURA_APPLIED_DOSE = true }
 local USE = { SPELL_CAST_SUCCESS = true, SPELL_AURA_APPLIED = true, SPELL_DAMAGE = true, SPELL_MISSED = true }
 local HARM = { SPELL_DAMAGE = true, SPELL_MISSED = true, SPELL_AURA_APPLIED = true, SPELL_PERIODIC_DAMAGE = true }
@@ -64,7 +66,7 @@ local function Norm(amount, resisted, blocked, absorbed, crit)
 end
 function Ctl.Begin(rule, byName, owners, pets, drain)
     local st = { rule = rule, aura = tonumber(rule.aura), byName = byName, owners = owners, pets = pets,
-                 who = {}, procOf = {}, open = 0, lastEnd = -AFTER - 1, n = 0,
+                 who = {}, procOf = {}, open = 0, lastEnd = -AFTER - 1, n = 0, mcd = {},
                  lt = {}, ld = {}, lm = {}, la = {}, lsp = {} }
     for _, id in ipairs(rule.procs or {}) do st.procOf[ns.SpellKey(id)] = true end
     if drain then
@@ -163,6 +165,21 @@ local function Harm(c, sub, dstName, spell, amount)
         set[dstName] = true
     end
 end
+local function Hurt(st, ts, src, dst, sk, amount)
+    local by = st.mcd[src]
+    if not by then
+        by = {}
+        st.mcd[src] = by
+    end
+    local h = by[dst]
+    if not h then
+        h = { n = 0, t = ts, by = {} }
+        by[dst] = h
+    end
+    h.n = h.n + amount
+    local key = sk or MELEE
+    h.by[key] = (h.by[key] or 0) + amount
+end
 function Ctl.Feed(st, ts, sub, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a4, a5, a6, a7, a8)
     local byName = st.byName
     if sub == "FW_WPN" then
@@ -183,6 +200,8 @@ function Ctl.Feed(st, ts, sub, srcName, srcFlags, dstGUID, dstName, dstFlags, a1
     local c = w and w.cur
     local swing = find(sub, "SWING", 1, true) == 1
     local hurt = find(sub, "_DAMAGE", 1, true) ~= nil
+    local held = dst and hurt and not c and srcName ~= dstName and byName[srcName] and st.who[dstName]
+    if held and held.cur then Hurt(st, ts, srcName, dstName, not swing and sk or nil, tonumber(swing and a1 or a4) or 0) end
     local ally = dst or (dstGUID ~= nil and (st.owners[dstGUID] or st.pets[dstGUID]) ~= nil)
         or (dstFlags ~= nil and band(dstFlags, F_PETS) > 0 and band(dstFlags, F_BY_PLAYER) > 0
             and band(dstFlags, F_OURS) > 0)
@@ -349,7 +368,34 @@ local function Drain(st, w, p)
         if #out > 0 then c.drain = out end
     end
 end
+local function TopOf(h)
+    local list = {}
+    for sp, n in pairs(h.by) do list[#list + 1] = { sp = sp, n = n } end
+    tsort(list, function(a, b)
+        if a.n ~= b.n then return a.n > b.n end
+        return tostring(a.sp) < tostring(b.sp)
+    end)
+    for i = #list, MCD_TOP + 1, -1 do list[i] = nil end
+    return list
+end
+local function HurtList(st)
+    for src, by in pairs(st.mcd) do
+        local p = st.byName[src]
+        if p then
+            local list = {}
+            for dst, h in pairs(by) do
+                list[#list + 1] = { who = dst, n = floor(h.n + 0.5), t = h.t, top = TopOf(h) }
+            end
+            tsort(list, function(a, b)
+                if a.n ~= b.n then return a.n > b.n end
+                return a.who < b.who
+            end)
+            p.mcDmg = list
+        end
+    end
+end
 function Ctl.Finish(st, s, till)
+    HurtList(st)
     local classes = {}
     for _, cls in ipairs(st.rule.classes or {}) do classes[cls] = true end
     for name, w in pairs(st.who) do

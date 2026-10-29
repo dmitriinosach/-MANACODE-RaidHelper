@@ -16,11 +16,13 @@ local DEF_W = 220
 local DEF_H = 150
 local MIN_FILL = 0.5
 local ALERT_FADE = 0.5
-local ALERT_Y = 70
-local ALERT_LINE = 26
-local ALERT_SIZE = 20
+local ALERT_TOP = 30
+local ALERT_LINE = 22
+local ALERT_SIZE = 17
 local ALERT_W = 600
 local ALERT_LEVEL = 120
+local ALERT_REAL = 1.2
+local NAV_W = 44
 local FONT = "Fonts\\FRIZQT__.TTF"
 local SOUND = "igMainMenuOptionCheckBoxOn"
 local SOUND_GAP = 2.5
@@ -33,7 +35,7 @@ ns.ReplayBarsView = View
 local RB = ns.ReplayBars
 local Kit = ns.Kit
 local st = { rows = {}, lines = {}, list = {}, alerts = {}, lineA = {}, rowH = 0, rowW = 0, barW = 0, sounds = 0,
-             shown = 0, active = 0, cap = 1, w = 0, h = 0 }
+             shown = 0, active = 0, cap = 1, w = 0, h = 0, viewW = 0, lineW = ALERT_W }
 local function Saved()
     local settings = ns.GetDB().settings
     if type(settings.iso) ~= "table" then settings.iso = {} end
@@ -95,20 +97,36 @@ local function NewRow(parent, i)
     row:Hide()
     return row
 end
+local function PlaceAlerts()
+    local view = st.view
+    if not (view and st.alert) then return end
+    local w = view:GetWidth() or 0
+    if w <= 0 then w = ALERT_W end
+    st.viewW = w
+    local nav = ns.ReplayIsoBuild and ns.ReplayIsoBuild.NAV_W or NAV_W
+    st.lineW = max(100, w - nav)
+    for i = 1, #st.lines do
+        local fs = st.lines[i]
+        fs:ClearAllPoints()
+        fs:SetPoint("TOPLEFT", st.alert, "TOPLEFT", 0, -(ALERT_TOP + (i - 1) * ALERT_LINE))
+        fs:SetWidth(st.lineW)
+    end
+end
 local function BuildAlert(view)
     local f = CreateFrame("Frame", nil, view)
     f:SetAllPoints(view)
     f:SetFrameLevel(max(view:GetFrameLevel() + 1, ALERT_LEVEL))
+    st.view = view
     for i = 1, RB.ALERT_MAX do
         local fs = f:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-        fs:SetFont(STANDARD_TEXT_FONT or FONT, ALERT_SIZE, "THICKOUTLINE")
-        fs:SetPoint("CENTER", f, "CENTER", 0, ALERT_Y - (i - 1) * ALERT_LINE)
-        fs:SetWidth(ALERT_W)
+        fs:SetFont(STANDARD_TEXT_FONT or FONT, ALERT_SIZE, "OUTLINE")
         fs:SetJustifyH("CENTER")
+        fs:SetWordWrap(false)
         fs:Hide()
         st.lines[i] = fs
     end
     st.alert = f
+    PlaceAlerts()
 end
 function View.Build(bars, view)
     if st.bars then return end
@@ -203,9 +221,10 @@ local function AlertText(a)
     end
     return format(ns.T("rep.bars.list"), name, table.concat(list, ", "))
 end
-local function DrawAlerts(t, playing)
+local function DrawAlerts(t, playing, speed)
     if not st.alert then return end
-    local n = RB.Alerts(st.data, t, st.alerts)
+    local keep = max(RB.ALERT_FOR, ALERT_REAL * speed)
+    local n = RB.Alerts(st.data, t, st.alerts, keep)
     for i = 1, #st.lines do
         local fs, a = st.lines[i], st.alerts[i]
         if a then
@@ -215,7 +234,7 @@ local function DrawAlerts(t, playing)
                 fs:Show()
             end
             local r, g, b = View.Color(st.data.tracks[a.k].def.kind, 0)
-            fs:SetTextColor(r, g, b, min(1, (RB.ALERT_FOR - (t - a.t)) / ALERT_FADE))
+            fs:SetTextColor(r, g, b, min(1, (keep - (t - a.t)) / ALERT_FADE))
         elseif st.lineA[i] then
             st.lineA[i] = nil
             fs:Hide()
@@ -242,9 +261,10 @@ function View.Step()
     if not st.data then return end
     local w, h = st.bars:GetWidth(), st.bars:GetHeight()
     if (w and w > 0 and w ~= st.w) or (h and h > 0 and h ~= st.h) then View.Fit() end
-    local t, playing = Iso.Now()
+    local t, playing, speed = Iso.Now()
+    if st.view and (st.view:GetWidth() or 0) ~= st.viewW then PlaceAlerts() end
     DrawBars(t)
-    DrawAlerts(t, playing)
+    DrawAlerts(t, playing, tonumber(speed) or 1)
     st.lastT = t
 end
 local function Root(f)
@@ -262,7 +282,8 @@ function View.Attach()
 end
 function View.Probe()
     return { rows = st.rows, lines = st.lines, shown = st.shown, active = st.active, sounds = st.sounds,
-             data = st.data, rowH = st.rowH, barW = st.barW, list = st.list, cap = st.cap }
+             data = st.data, rowH = st.rowH, barW = st.barW, list = st.list, cap = st.cap,
+             rect = { x = 0, y = ALERT_TOP, w = st.lineW, h = RB.ALERT_MAX * ALERT_LINE }, real = ALERT_REAL }
 end
 if ns.ReplayIso then
     hooksecurefunc(ns.ReplayIso, "Show", View.Attach)

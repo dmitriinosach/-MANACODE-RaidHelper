@@ -21,7 +21,7 @@ local count = 0
 local scanAt
 local dirty = true
 local RAID, PARTY = ns.Units.raid, ns.Units.party
-local FED, FED_EN = ns.T("flaskrow.fed"), ns.LEN and ns.LEN["flaskrow.fed"]
+local FED, FED_EN, FED_ES = ns.T("flaskrow.fed"), ns.LEN and ns.LEN["flaskrow.fed"], ns.LES and ns.LES["flaskrow.fed"]
 local function Cat(id)
     if not id then return nil end
     local c = (ns.consumeCast and ns.consumeCast[id]) or (ns.consumeGen and ns.consumeGen[id])
@@ -82,7 +82,7 @@ local function ReadAuras(m, unit)
         elseif cat == "elixir" then
             m.elix = m.elix + 1
             m.elixEnd = Earlier(m.elixEnd, ends)
-        elseif aura == FED or aura == FED_EN then
+        elseif aura == FED or aura == FED_EN or aura == FED_ES then
             m.food = Earlier(m.food, ends)
         end
     end

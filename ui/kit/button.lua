@@ -6,8 +6,37 @@ local max = math.max
 local min = math.min
 local WHITE8 = "Interface\\Buttons\\WHITE8X8"
 local GLOW_INSET, GLOW_A = 3, 0.10
+local ROUND_FILL = 0.8
 local buttons = {}
 local checks = {}
+local devList = {}
+local devOn = false
+local function DevPaint(f)
+    local t = f.kitDev
+    if not devOn then
+        if t then t:Hide() end
+        return
+    end
+    if not t then
+        t = f:CreateTexture(nil, "OVERLAY")
+        t:SetAllPoints()
+        Kit.Paint(t, "dev.kit")
+        f.kitDev = t
+    end
+    t:Show()
+end
+function Kit.DevTrack(f)
+    devList[#devList + 1] = f
+    if devOn then DevPaint(f) end
+end
+function Kit.DevPaint(on)
+    devOn = on and true or false
+    for i = 1, #devList do DevPaint(devList[i]) end
+    return #devList
+end
+function Kit.DevPainted()
+    return devOn
+end
 local BTN_PAD = 8
 local BTN_FONT = "GameFontNormalSmall"
 local autoW = setmetatable({}, { __mode = "k" })
@@ -53,10 +82,14 @@ function Kit.StyleButton(b)
     end
     if b.tint and not b.btnDisabled then t = b.tint end
     b:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 1)
-    b:SetBackdropBorderColor(br[1], br[2], br[3], br[4] or 1)
+    if b.kitShape then
+        b:SetBackdropBorderColor(min(1, bg[1] / ROUND_FILL), min(1, bg[2] / ROUND_FILL), min(1, bg[3] / ROUND_FILL), bg[4] or 1)
+    else
+        b:SetBackdropBorderColor(br[1], br[2], br[3], br[4] or 1)
+    end
     b.text:SetTextColor(t[1], t[2], t[3])
     if b.icon and b.kind == "icon" then b.icon:SetVertexColor(t[1], t[2], t[3]) end
-    if b.hovered and not b.pressed and not b.btnDisabled then
+    if b.hovered and not b.pressed and not b.btnDisabled and not b.kitShape then
         local g = bt.glow or base.glow
         b.glow:SetTexture(g[1], g[2], g[3], GLOW_A)
         b.glow:Show()
@@ -190,9 +223,10 @@ local function Seat(self, below, lift, height)
 end
 local function Restyle(b)
     local g = Kit.Theme()[b.kitGroup]
-    if b.kitBd ~= g.backdrop then
-        b:SetBackdrop(g.backdrop)
-        b.kitBd = g.backdrop
+    local bd = g[b.kitShape or "backdrop"]
+    if b.kitBd ~= bd then
+        b:SetBackdrop(bd)
+        b.kitBd = bd
     end
     b.kitStyle(b)
 end
@@ -271,6 +305,7 @@ local function Make(parent, group, style, prep, name)
     b:SetScript("OnClick", ClickWrap)
     if prep then prep(b) end
     buttons[#buttons + 1] = b
+    Kit.DevTrack(b)
     Restyle(b)
     return b
 end
@@ -294,6 +329,10 @@ end
 function Kit.ButtonKind(b, kind)
     b.kind = Kit.BUTTON_KINDS[kind] and kind or nil
     b.kitStyle(b)
+end
+function Kit.RoundButton(b)
+    b.kitShape = "backdropRound"
+    Restyle(b)
 end
 function Kit.IconButton(parent, tex, size, name)
     local b = Make(parent, "button", Kit.StyleButton, nil, name)
@@ -400,18 +439,26 @@ end
 local function StylePart(b)
     local tt = Kit.Theme().tab
     local off = b.btnDisabled and Kit.Theme().button.textOff
-    local hot = not off and (b.hovered or b.pressed) and true or false
-    if hot then
-        Kit.Fill(b.fill, tt.fillHover)
+    local on = not off and b.active and true or false
+    local hot = not off and not on and (b.hovered or b.pressed) and true or false
+    if on or hot then
+        Kit.Fill(b.fill, on and tt.fillOn or tt.fillHover)
         b.fill:Show()
     else
         b.fill:Hide()
     end
-    local t = off or (hot and tt.textHover) or tt.text
+    local t = off or (on and tt.textOn) or (hot and tt.textHover) or tt.text
     b.text:SetTextColor(t[1], t[2], t[3])
-    local k = off or (hot and tt.iconHover) or tt.icon
+    local k = off or (on and tt.iconOn) or (hot and tt.iconHover) or tt.icon
     if b.glyph then
         for i = 1, #b.glyph do b.glyph[i]:SetTexture(k[1], k[2], k[3], k[4] or 1) end
+    elseif b.icon then
+        b.icon:SetVertexColor(k[1], k[2], k[3], k[4] or 1)
+    end
+    if b.bar then
+        local c = tt.iconOn
+        b.bar:SetTexture(c[1], c[2], c[3], c[4] or 1)
+        Shown(b.bar, on)
     end
     if b.icon then
         local d = b.pressed and 1 or 0
@@ -425,9 +472,20 @@ local function PrepPart(b)
     b.fill:SetAllPoints()
     b.fill:Hide()
 end
-function Kit.TabPart(parent, glyph)
+function Kit.TabPart(parent, glyph, icon, size)
     local b = Make(parent, "tab", StylePart, PrepPart)
-    if glyph then
+    if icon then
+        b.icon = b:CreateTexture(nil, "OVERLAY")
+        b.icon:SetTexture(icon)
+        b.icon:SetWidth(size or 16)
+        b.icon:SetHeight(size or 16)
+        b.bar = b:CreateTexture(nil, "ARTWORK")
+        b.bar:SetHeight(2)
+        b.bar:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 3, 0)
+        b.bar:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -3, 0)
+        b.bar:Hide()
+        StylePart(b)
+    elseif glyph then
         b.icon = b:CreateTexture(nil, "OVERLAY")
         b.icon:SetWidth(PART_GLYPH)
         b.icon:SetHeight(PART_GLYPH)
@@ -465,6 +523,7 @@ function Kit.Check(parent, name)
     c:SetScript("OnEnter", CheckEnter)
     c:SetScript("OnLeave", Kit.TipHide)
     checks[#checks + 1] = c
+    Kit.DevTrack(c)
     return c
 end
 function Kit.StyleRow(r)
@@ -505,6 +564,7 @@ function Kit.Row(parent, width)
     r:SetScript("OnEnter", RowEnter)
     r:SetScript("OnLeave", RowLeave)
     Kit.StyleRow(r)
+    Kit.DevTrack(r)
     return r
 end
 Kit.OnTheme(function()

@@ -4,6 +4,7 @@ ns.summaries[ns.ENC.putricide] = {
         mechs = {
             { key = "volatile", text = "sum.dd.m.volatile", spells = { 72625 } },
             { key = "gascloud", text = "sum.dd.m.gascloud", spells = { 70701 }, by = "chased" },
+            { key = "plague", text = "sum.dd.m.plague", held = "sum.dd.m.plagueheld", spells = { 72856 }, by = "passed" },
         },
     },
     held = { sec = 1, auras = { [70447] = "root", [71615] = "stun", [71618] = "stun" } },
@@ -19,8 +20,9 @@ ns.summaries[ns.ENC.putricide] = {
         { kind = "death", spells = { 72625 }, id = 72625, neutral = true, tip = "sum.b.oozeblastdeath" },
         { kind = "death", spells = { 70341 }, id = 72869, neutral = true, tip = "sum.b.puddledeath" },
         { kind = "stack", spell = 72507, tip = "sum.b.mutplague" },
+        { kind = "stack", spell = 72856, pass = true, tip = "sum.b.unbound" },
     },
-    stacks = { { spell = 72507 } },
+    stacks = { { spell = 72507 }, { spell = 72856, pass = true } },
     blocks = {
         { kind = "oozes", label = "sum.k.oozes", green = 37697, red = 37562,
           names = { 37697, 37562 },
@@ -30,5 +32,6 @@ ns.summaries[ns.ENC.putricide] = {
         { kind = "abom", label = "sum.k.abom", npc = 38285, enter = 70308, power = true,
           slow = 72876, eat = 72527, names = { 37697, 37562 },
           icons = { slow = 72876, eat = 72527 } },
+        { kind = "plague", label = "sum.k.unbound", spell = 72856 },
     },
 }

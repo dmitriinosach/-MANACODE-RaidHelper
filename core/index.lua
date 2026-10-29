@@ -59,13 +59,14 @@ local function Build(fight)
         times[list] = whoT[name]
     end
     ns.Jobs.Label("job.index")
-    local span, seen = to - from, 0
+    local span, seen, read0 = 0, 0, ns.Store.Read()
+    for o = 1, #segs do span = span + ns.Store.Span(segs[o], from, to) end
     for o = 1, #segs do
         local seg = segs[o]
         for s, at, ci, ts, sub, src, dst, srcGUID, dstGUID in ns.Store.Heads(seg, from, to) do
             ns.Jobs.Step()
             seen = seen + 1
-            if seen % PROGRESS_EVERY == 0 then ns.Jobs.Progress(ts - from, span) end
+            if seen % PROGRESS_EVERY == 0 then ns.Jobs.Progress(ns.Store.Read() - read0, span) end
             if ci > 0 and ci < SPAN_CHUNK and at < SPAN_AT then
                 local key = (o * SPAN_CHUNK + ci) * SPAN_AT + at
                 if sub == "FW_THR" then
@@ -146,32 +147,23 @@ function Index.Line(idx, key)
     return seg, seg.chunks[ci], at
 end
 function Index.Seek(idx, list, t)
-    local T = idx.ts and idx.ts[list]
+    local T = idx.ts[list]
     local lo, hi = 1, #list + 1
     while lo < hi do
         local mid = floor((lo + hi) / 2)
-        local at
-        if T then
-            at = T[mid]
-        else
-            local seg, s, pos = Index.Line(idx, list[mid])
-            at = ns.Decode.TimeAt(seg, s, pos)
-        end
-        if at < t then lo = mid + 1 else hi = mid end
+        if T[mid] < t then lo = mid + 1 else hi = mid end
     end
     return lo
 end
 function Index.Times(idx, list)
-    return idx.ts and idx.ts[list]
+    return idx.ts[list]
 end
 function Index.ReadKey(idx, key, ts, maxTail)
     local seg, s, at = Index.Line(idx, key)
-    if not ts then return ns.Store.Decode(seg, s, at, maxTail) end
     return ns.Decode.At(seg, s, at, floor((ts - seg.t0) * 1000 + 0.5), maxTail)
 end
 function Index.Read(idx, list, i, maxTail)
-    local T = idx.ts and idx.ts[list]
-    return Index.ReadKey(idx, list[i], T and T[i], maxTail)
+    return Index.ReadKey(idx, list[i], idx.ts[list][i], maxTail)
 end
 function Index.Reset()
     wipe(cache)

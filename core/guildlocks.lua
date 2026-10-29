@@ -10,6 +10,7 @@ local WEEK = 7 * 86400
 local DAY = 86400
 local KILL_AGE = 600
 local COLLECT_GAP = 10
+local CHAR_WEIGHT = 8
 local D = ns.guildLocks
 local N = ns.guildNotes
 local GuildLocks = {}
@@ -18,7 +19,7 @@ GuildLocks.VERSION = VERSION
 local MAPS = {}
 do
     local Lower = ns.GuildNotes.Lower
-    for _, tbl in ipairs({ ns.L, ns.LEN }) do
+    for _, tbl in ipairs({ ns.L, ns.LEN, ns.LES }) do
         for k, v in pairs(tbl or {}) do
             local map = type(k) == "string" and k:match("^zone%.(.+)$")
             if map and type(v) == "string" then
@@ -231,9 +232,8 @@ function GuildLocks.SavesOf(name)
 end
 local function Full(name)
     if name == Me() then return ns.Raid.LocksKnown() end
+    if AccountChar(name) then return true end
     local prev = GuildLocks.NextReset(time()) - WEEK
-    local acc = AccountChar(name)
-    if acc and (tonumber(acc.at) or 0) >= prev then return true end
     local ch = ns.GuildSync and ns.GuildSync.Char(name)
     return ch ~= nil and (ch.at or 0) >= prev
 end
@@ -398,7 +398,7 @@ local function Char(name, m, link, raid, gsMin)
     c.rat = c.cur ~= nil and not mine and GB.Outside(c.cur)
     return c
 end
-function GuildLocks.Available(raid, gsMin, all)
+function GuildLocks.Available(raid, gsMin, all, step)
     gsMin = gsMin or GuildLocks.GsMin(raid)
     GuildLocks.Collect()
     local members = ns.GuildNotes.Members()
@@ -419,6 +419,7 @@ function GuildLocks.Available(raid, gsMin, all)
             local chars = {}
             for i = 1, #names do
                 local n = names[i]
+                if step then step(CHAR_WEIGHT) end
                 chars[#chars + 1] = Char(n, members[n], n ~= main and (src[n] or "?") or nil, raid, gsMin)
             end
             tsort(chars, Better)

@@ -13,6 +13,18 @@ local INSET = 1
 local ORDER = 80
 local PREFIX = "act:"
 local CLOCK_PROBE = "00:00"
+local LABEL_GAP = 8
+local ICONS = "Interface\\Icons\\"
+local PICS = {
+    ["break"] = ICONS .. "Spell_Holy_BorrowedTime",
+    pull = ICONS .. "Ability_Warrior_Charge",
+    raid = "Interface\\RaidFrame\\ReadyCheck-Ready",
+    marks = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8",
+    diff = ICONS .. "Ability_Warrior_RallyingCry",
+    flasks = ICONS .. "INV_Alchemy_EndlessFlask_06",
+    server = ICONS .. "INV_Shirt_GuildTabard_01",
+}
+local PIC = ICONS .. "INV_Misc_Note_01"
 local LEVELS = {
     { pad = 6, gap = 4, sep = 8, label = true },
     { pad = 4, gap = 3, sep = 6, label = true },
@@ -63,6 +75,10 @@ local function Collect(v)
     for i = v.n + 1, #v.items do v.items[i], v.seps[i] = nil, nil end
     return row
 end
+local function Title(row)
+    if not row then return "" end
+    return row.short or row.title or row.id or ""
+end
 local function Label(it)
     return it.short or it.label or ""
 end
@@ -92,6 +108,8 @@ local function Button(v, k)
     local b = v.btns[k]
     if b then return b end
     b = ns.Kit.Button(v)
+    Kit.RoundButton(b)
+    b.text:SetWordWrap(false)
     b:SetHeight(CtlH())
     b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     b.onClick = ButtonClick
@@ -194,6 +212,9 @@ local function StatWidth(v)
     return v.stat:GetStringWidth() or 0
 end
 local widths = {}
+local function Start(v)
+    return v.lx + (v.label:GetStringWidth() or 0) + LABEL_GAP
+end
 local function Lay(v)
     for i = 1, v.n do
         local it = v.items[i]
@@ -202,7 +223,8 @@ local function Lay(v)
     v.stat:SetWidth(0)
     v.stat:SetText(v.statText)
     local sw = StatWidth(v)
-    local ROOM = Panel.RowRoom()
+    local x0 = Start(v)
+    local ROOM = Panel.RowRoom() - x0
     local lv, sum
     for k = 1, #LEVELS do
         lv = LEVELS[k]
@@ -219,7 +241,7 @@ local function Lay(v)
         last = last - 1
     end
     v.hidden = v.n - last
-    local x, h = 0, CtlH()
+    local x, h = x0, CtlH()
     for i = 1, v.n do
         local it, c = v.items[i], v.ctl[i]
         if i > last then
@@ -258,7 +280,7 @@ local function Lay(v)
     else
         v.stat:Hide()
     end
-    v:SetWidth(max(1, x))
+    v.need = max(1, x)
 end
 local function ClockOf(d)
     local P = ns.PullTimer
@@ -283,6 +305,11 @@ local function Sync(v, force)
     if v.gen ~= gen or force then
         v.gen = gen
         row = Collect(v)
+        local title = Title(row)
+        if v.label:GetText() ~= title then
+            v.label:SetText(title)
+            relay = true
+        end
         local sig = Sig(v)
         if sig ~= v.sig or force then
             v.sig = sig
@@ -318,6 +345,9 @@ local built = {}
 local function Build(v)
     v.items, v.seps, v.ctl, v.btns, v.checks = {}, {}, {}, {}, {}
     v.n, v.hidden, v.gen, v.statText = 0, 0, -1, ""
+    Fetch()
+    local id = v.def.rowId
+    Panel.Line(v, PICS[id] or PIC, Title(byId[id]))
     v.stat = Kit.Str(v, "GameFontHighlightSmall")
     v.stat:SetJustifyH("LEFT")
     ns.Kit.Text(v.stat, "text.muted")

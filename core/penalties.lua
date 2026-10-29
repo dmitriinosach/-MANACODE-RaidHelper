@@ -13,6 +13,8 @@ local ICONS = {
     mcweapon = "Interface\\Icons\\INV_Sword_04",
     mindmg = "Interface\\Icons\\Ability_Warrior_BattleShout",
     mindps = "Interface\\Icons\\Ability_Warrior_BattleShout",
+    mcdamage = "Interface\\Icons\\Spell_Shadow_ShadowWordDominate",
+    away = "Interface\\Icons\\Ability_Hunter_RunningShot",
     manual = "Interface\\Icons\\INV_Misc_Note_02",
 }
 local SYS = {
@@ -26,10 +28,24 @@ local NUMS = { gp = true, wipe = true, step = true, ep = true, epwipe = true, ep
 local FIELDS = { on = true, mode = true, short = true }
 for f in pairs(NUMS) do FIELDS[f] = true end
 local MODES = { once = true, each = true, grow = true }
+local THRESH = {
+    mindps = { { f = "dps", unit = "kps", scale = 1000 } },
+    mindmg = { { f = "melee", unit = "k", scale = 1000, tip = "sum.tt.needmelee" },
+               { f = "ranged", unit = "k", scale = 1000, tip = "sum.tt.needranged" } },
+    mcdamage = { { f = "min", unit = "k", scale = 1000 } },
+    away = { { f = "yd", unit = "yd", scale = 1 } },
+    tombbreak = { { f = "pts", unit = "pts", scale = 1 } },
+}
+local THR_FIELDS = {}
+for _, list in pairs(THRESH) do
+    for i = 1, #list do THR_FIELDS[list[i].f] = true end
+end
 local Penalties = {}
 ns.Penalties = Penalties
 Penalties.SYS = SYS
 Penalties.NUMS = NUMS
+Penalties.THR_FIELDS = THR_FIELDS
+Penalties.ICONS = ICONS
 local function Store()
     return ns.GetDB().gp
 end
@@ -102,6 +118,21 @@ function Penalties.Amount(rule, sys, what)
     end
     return v
 end
+function Penalties.Limits(rule)
+    return THRESH[rule.kind] or NONE
+end
+function Penalties.Threshold(rule, i)
+    local lim = THRESH[rule.kind]
+    local d = lim and lim[i or 1]
+    return d and tonumber(rule[d.f]) or nil
+end
+local function IsLimit(rule, field)
+    local lim = THRESH[rule.kind]
+    for i = 1, lim and #lim or 0 do
+        if lim[i].f == field then return true end
+    end
+    return false
+end
 function Penalties.Reason(rule)
     return ns.T(rule.text)
 end
@@ -141,16 +172,17 @@ local function Find(rules, key)
     return nil
 end
 function Penalties.Set(key, field, value)
-    if not FIELDS[field] then return false end
     local base = Find(BaseRules(), key)
     if not base then return false end
+    local limit = IsLimit(base, field)
+    if not FIELDS[field] and not limit then return false end
     if field == "on" then value = value and true or false end
     if field == "mode" and not MODES[value] then return false end
     if field == "short" then
         value = ShortText(value)
         if value == "" then value = nil end
     end
-    if NUMS[field] and value ~= nil then
+    if (NUMS[field] or limit) and value ~= nil then
         if type(value) ~= "number" then return false end
         value = math.max(0, floor(value + 0.5))
     end
@@ -162,6 +194,10 @@ function Penalties.Set(key, field, value)
     mine[key] = next(over) and over or nil
     Touch()
     return true
+end
+function Penalties.Get(key)
+    local base = Find(BaseRules(), key)
+    return base and Merge(base, Mine()[key]) or nil
 end
 function Penalties.IsChanged(key)
     local over = Mine()[key]
@@ -222,6 +258,7 @@ function Penalties.Watch(boss)
                 if r.kind == "death" then w.deaths[#w.deaths + 1] = r end
                 if r.kind == "mccast" then ns.SpellSet(r.spells, w.mc) end
                 if r.kind == "mcweapon" and not w.ctl then w.ctl = r end
+                if r.kind == "away" then w.away = r.classes or w.away end
                 if r.kind == "mindmg" then ns.NpcSet(r.targets, w.targets) end
                 if r.kind == "chased" and r.npc then w.npcs[ns.NpcKeyOf(r.npc)] = true end
                 if r.kind == "expect" and r.by then
@@ -251,6 +288,71 @@ local function Applies(rule, fight)
 end
 function Penalties.Applies(rule, fight)
     return Applies(rule, fight)
+end
+local function InClass(rule, p)
+    if not rule.classes then return true end
+    for i = 1, #rule.classes do
+        if rule.classes[i] == p.class then return true end
+    end
+    return false
+end
+local healers = setmetatable({}, WEAK)
+function Penalties.HealedIn(fight, name)
+    local spot = ns.FightTree and ns.FightTree.Spot(fight)
+    local raid = spot and spot.raid
+    if not raid then return nil end
+    local c = healers[raid]
+    if not c then
+        c = { done = setmetatable({}, WEAK), by = {} }
+        healers[raid] = c
+    end
+    local list = ns.FightTree.RaidFights(raid)
+    for k = 1, #list do
+        local f = list[k]
+        if not c.done[f] then
+            local skip = ns.penaltyRoleSkip and ns.penaltyRoleSkip[f.boss]
+            local s = not skip and (ns.Summary and ns.Summary.Peek(f) or (ns.Digest and ns.Digest.Load(f)))
+            if skip then c.done[f] = true end
+            if s then
+                c.done[f] = true
+                local boss = ns.EncName(f.boss)
+                for i = 1, #s.players do
+                    local p = s.players[i]
+                    if p.role == "heal" then
+                        local seen = c.by[p.name] or {}
+                        c.by[p.name] = seen
+                        if not seen[boss] then
+                            seen[boss] = true
+                            seen[#seen + 1] = boss
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return c.by[name]
+end
+local function Healer(fight, p)
+    local bosses = Penalties.HealedIn(fight, p.name)
+    local spec = ns.Specs and ns.Specs.HealTree and ns.Specs.HealTree(p.class, p.tree) and p.tree or nil
+    return bosses, spec
+end
+function Penalties.Spared(s, fight, p)
+    local out = {}
+    if p.role ~= "dps" then return out end
+    local rules = Penalties.Rules(fight.boss)
+    for i = 1, #rules do
+        local r = rules[i]
+        if r.kind == "mindps" and Applies(r, fight) then
+            local dps, need = p.dmg / ns.Totals.Time(s), Penalties.Threshold(r) or 0
+            local bosses, spec
+            if dps < need then bosses, spec = Healer(fight, p) end
+            if bosses or spec then
+                out[#out + 1] = { rule = r, amount = dps, need = need, bosses = bosses or {}, spec = spec, class = p.class }
+            end
+        end
+    end
+    return out
 end
 local function DeathMatch(rule, d)
     local spells = ns.SpellSet(rule.spells)
@@ -382,11 +484,13 @@ local function BadgeEvents(s, p, rule, out, from)
             for k = 1, b.n do
                 local ticks = b.ticks and b.ticks[k]
                 local eg = b.grades and b.grades[k]
-                local yellow = bd.part == "carry" or (ticks and ticks <= 1) or (eg and eg == "yellow")
-                    or (not ticks and not eg and g == "yellow")
-                out[#out + 1] = { t = from + (b.times[k] or 0), grade = yellow and "yellow" or nil,
-                                  hurt = b.cnt and b.cnt[k], grow = b.grow and b.grow[k],
-                                  names = b.cnt and b.notes[k] or nil, ticks = ticks }
+                if eg ~= "green" and eg ~= "none" then
+                    local yellow = bd.part == "carry" or (ticks and ticks <= 1) or (eg and eg == "yellow")
+                        or (not ticks and not eg and g == "yellow")
+                    out[#out + 1] = { t = from + (b.times[k] or 0), grade = yellow and "yellow" or nil,
+                                      hurt = b.cnt and b.cnt[k], grow = b.grow and b.grow[k],
+                                      names = b.cnt and b.notes[k] or nil, ticks = ticks }
+                end
             end
         end
     end
@@ -478,13 +582,29 @@ local function Detect(rule, p, s, fight)
             local sum = 0
             for i = 1, #(rule.targets or {}) do sum = sum + (p.targetDmg[ns.NpcKeyOf(rule.targets[i])] or 0) end
             local melee = ns.IsMelee(p) == true
-            local need = melee and rule.melee or rule.ranged
+            local need = Penalties.Threshold(rule, melee and 1 or 2)
             if need and sum < need then out[1] = { t = nil, amount = sum, need = need, melee = melee } end
         end
     elseif kind == "mindps" then
         if p.role == "dps" and Applies(rule, fight) then
             local dps = p.dmg / ns.Totals.Time(s)
-            if dps < (rule.dps or 0) then out[1] = { t = nil, amount = dps, need = rule.dps } end
+            local need = Penalties.Threshold(rule) or 0
+            if dps < need then
+                local bosses, spec = Healer(fight, p)
+                if not (bosses or spec) then out[1] = { t = nil, amount = dps, need = need } end
+            end
+        end
+    elseif kind == "mcdamage" then
+        local lim = Penalties.Threshold(rule) or 0
+        for i = 1, #(p.mcDmg or {}) do
+            local e = p.mcDmg[i]
+            if e.n > lim then out[#out + 1] = { t = e.t, mcd = e, limit = lim } end
+        end
+    elseif kind == "away" then
+        local st = ns.Away and ns.Away.StatOf(s, p)
+        local lim = Penalties.Threshold(rule) or 0
+        if st and InClass(rule, p) and st.avg > lim then
+            out[1] = { t = nil, grade = "yellow", away = st, limit = lim }
         end
     elseif kind == "runeswap" then
         local c = ns.RuneSwap and ns.RuneSwap.StatOf(s, p)
@@ -499,13 +619,23 @@ local function Detect(rule, p, s, fight)
                 out[#out + 1] = { t = fight.from + c.times[k], grade = "yellow", nova = { with = c.with[k], yd = c.yd[k] } }
             end
         end
+    elseif kind == "tombbreak" then
+        local st = ns.TombBreak and ns.TombBreak.StatOf(s, p)
+        local lim = Penalties.Threshold(rule) or 0
+        local deadly = st and select(4, ns.TombBreak.Shown(st, lim)) or {}
+        for i = 1, #deadly do
+            local k = deadly[i]
+            out[#out + 1] = { t = fight.from + st.times[k], grade = "yellow", tomb = st, k = k, limit = lim }
+        end
     elseif kind == "earlypull" then
         local v = ns.PullTimer and ns.PullTimer.EarlyOf(s, p.name)
         if v then out[1] = { t = s.pull.t, grade = "yellow", early = v.early, sec = v.sec, setter = v.who } end
     end
     if rule.pulled and ns.TombPull then
         local list = ns.TombPull.Of(s, p)
-        for i = 1, #list do out[#out + 1] = { t = list[i].t, grade = "yellow", whom = list[i].whom } end
+        for i = 1, #list do
+            out[#out + 1] = { t = list[i].t, grade = list[i].grade ~= "red" and "yellow" or nil, whom = list[i].whom }
+        end
     end
     if rule.badge then BadgeEvents(s, p, rule, out, fight.from) end
     return out

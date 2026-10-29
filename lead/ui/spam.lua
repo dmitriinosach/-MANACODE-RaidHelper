@@ -17,12 +17,15 @@ local ROW_PAD = 4
 local ROW_EXTRA = 10
 local PANEL_GAP = 8
 local BAR_W = 12
+local TICK_W = 30
+local TICK_EVERY = 0.25
 local STYLE_W = 170
 local STYLE_MIN = 110
 local styleSel, styleCap
-local pane, textSel, delBtn, body, progE, reqSel, reqE, lootSel, timeE, dsE
-local defBtn, tplBtn, preview, counter, chanPool, chanBox
-local textPanel, previewPanel, chanPanel, specsPanel, specsCap, needsCap
+local pane, textSel, delBtn, body, textBox, progE, reqSel, reqE, lootSel, timeE, dsE
+local defBtn, tplBtn, preview, counter, chanPool, chanBox, everyCap, everyE, everySec, ownCheck
+local textPanel, previewPanel, chanPanel, specsPanel, specsCap, needsCap, counterBox
+local previewLines = 2
 local tokenItems, valueUnits, markBtns = {}, {}, {}
 local roleHeads = {}
 local headBg
@@ -71,6 +74,9 @@ local function tokenButton(parent, key, tip)
 end
 local function lineH()
     return ns.Fit(BASE, 20, 2)
+end
+local function textBoxH()
+    return ns.LineH("ChatFontNormal", 3) + 14
 end
 local function unitWidth(items)
     local w = 0
@@ -125,7 +131,11 @@ local function buildText()
     delBtn = ns.MakeKitButton(p)
     delBtn:SetText(ns.T("btnDelete"))
     delBtn:SetWidth(70)
-    delBtn.onClick = function() body:ClearFocus() ns.Spam.DeleteText() end
+    delBtn.onClick = function()
+        body:ClearFocus()
+        local t = ns.Spam.Texts()[ns.Spam.TextIndex()]
+        ns.Kit.Confirm(ns.T("textDeleteAsk", t and t.name or ""), ns.T("btnDelete"), function() ns.Spam.DeleteText() end)
+    end
     local prev
     for _, it in ipairs({ textSel, newBtn, copyBtn, delBtn }) do
         if prev then
@@ -145,9 +155,10 @@ local function buildText()
     ns.PaintText(styleCap, "text.secondary")
     styleCap:SetPoint("RIGHT", styleSel, "LEFT", -GAP, 0)
     local box = ns.NewFrame("Frame", nil, p)
+    textBox = box
     box:SetPoint("TOPLEFT", p, "TOPLEFT", PAD, -(PAD + 28))
     box:SetPoint("TOPRIGHT", p, "TOPRIGHT", -PAD, -(PAD + 28))
-    box:SetHeight(46)
+    box:SetHeight(textBoxH())
     ns.Skin(box, "edit")
     local sc = ns.NewFrame("ScrollFrame", nil, box)
     sc:SetPoint("TOPLEFT", box, "TOPLEFT", 4, -4)
@@ -231,7 +242,8 @@ local function placeText(y)
         styleSel:SetWidth(math.max(STYLE_MIN, math.min(STYLE_W, room)))
     end
     local marksW = 8 * 18
-    local top = PAD + 28 + 46 + LINE_GAP
+    textBox:SetHeight(textBoxH())
+    local top = PAD + 28 + textBoxH() + LINE_GAP
     local h1 = flow(p, tokenItems, PAD, top, w, marksW + GAP)
     for i = 8, 1, -1 do
         local b = markBtns[i]
@@ -255,6 +267,7 @@ local function buildPreview()
     counter = ns.Str(p, BASE)
     counter:SetPoint("TOPRIGHT", p, "TOPRIGHT", -PAD, -PAD)
     local cf = ns.NewFrame("Frame", nil, p)
+    counterBox = cf
     cf:SetPoint("TOPRIGHT", counter, "TOPRIGHT", 2, 2)
     cf:SetPoint("BOTTOMLEFT", counter, "BOTTOMLEFT", -2, -2)
     cf:EnableMouse(true)
@@ -266,9 +279,14 @@ local function buildPreview()
     preview:SetJustifyV("TOP")
     ns.PaintText(preview, "text.primary")
 end
+local function previewNeed()
+    local h = preview.GetStringHeight and preview:GetStringHeight()
+    if type(h) ~= "number" or h <= 0 then return 2 end
+    return math.max(2, math.min(4, math.ceil(h / ns.LineH(BASE) - 0.1)))
+end
 local function placePreview(y)
     local line = ns.Fit(BASE, 16, 2)
-    local pv = ns.Fit(BASE, 28, 0, 2)
+    local pv = ns.Fit(BASE, 28, 0, previewLines)
     previewPanel:ClearAllPoints()
     previewPanel:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -y)
     previewPanel:SetPoint("TOPRIGHT", pane, "TOPRIGHT", 0, -y)
@@ -296,13 +314,51 @@ local function chanRow()
     r.sec:SetPoint("LEFT", r.every, "RIGHT", 3, 0)
     r.sec:SetText(ns.T("sec"))
     ns.PaintText(r.sec, "text.secondary")
+    r.left = ns.Str(r, BASE)
+    r.left:SetPoint("RIGHT", r, "RIGHT", 0, 0)
+    r.left:SetJustifyH("RIGHT")
+    r.left:SetWordWrap(false)
+    ns.PaintText(r.left, "text.title")
     return r
+end
+local function tick(r)
+    local left = r.key and ns.Spam.Left(r.key)
+    local text = left and (math.ceil(left) .. " " .. ns.T("sec")) or ""
+    if r.leftText ~= text then
+        r.leftText = text
+        r.left:SetText(text)
+    end
 end
 local function buildChannels()
     local p = ns.MakePanel(pane)
     chanPanel = p
     local cap = label(p, "chanTitle")
     cap:SetPoint("TOPLEFT", p, "TOPLEFT", PAD, -PAD)
+    everyCap = ns.Str(p, BASE)
+    everyCap:SetText(ns.T("everyAll"))
+    ns.PaintText(everyCap, "text.secondary")
+    everyCap:SetPoint("LEFT", cap, "RIGHT", 16, 0)
+    everyE = ns.MakeEdit(p)
+    everyE:SetWidth(40)
+    everyE:SetHeight(20)
+    everyE:SetNumeric(true)
+    everyE:SetMaxLetters(4)
+    everyE:SetPoint("LEFT", everyCap, "RIGHT", 4, 0)
+    everyE.onChange = nil
+    everyE.onCommit = function(v)
+        ns.Spam.SetEvery(v)
+        everyE:SetValue(tostring(ns.Spam.Every()))
+    end
+    everySec = ns.Str(p, BASE)
+    everySec:SetText(ns.T("sec"))
+    ns.PaintText(everySec, "text.secondary")
+    everySec:SetPoint("LEFT", everyE, "RIGHT", 3, 0)
+    ownCheck = ns.MakeCheck(p)
+    ownCheck:SetPoint("LEFT", everySec, "RIGHT", 14, 0)
+    ownCheck.label:SetText(ns.T("ownEvery"))
+    ownCheck.tipTitle = ns.T("ownEvery")
+    ownCheck.tip = ns.T("tipOwnEvery")
+    ownCheck.onToggle = function(on) ns.Spam.SetOwnEvery(on) end
     chanBox = ns.NewFrame("Frame", nil, p)
     chanPool = ns.NewPool(chanRow)
 end
@@ -351,9 +407,12 @@ local function stepButton(parent, text, role, delta)
 end
 local function buildRoleHead(p, role)
     local h = {}
-    h.name = ns.Str(p, "GameFontNormalSmall")
+    h.col = ns.Str(p, "GameFontNormalSmall")
+    h.col:SetText(ns.T("needShort_" .. role))
+    ns.PaintTitle(h.col)
+    h.name = ns.Str(p, BASE)
     h.name:SetText(ns.T("needShort_" .. role))
-    ns.PaintTitle(h.name)
+    ns.PaintText(h.name, "text.secondary")
     h.minus = stepButton(p, "-", role, -1)
     h.minus:SetPoint("LEFT", h.name, "RIGHT", 6, 0)
     h.val = ns.Str(p, BASE)
@@ -391,7 +450,9 @@ local function buildSpecs()
         t:SetWidth(1)
         colLines[k] = t
     end
-    needsCap = label(p, "needsTitle")
+    needsCap = ns.Str(p, "GameFontNormalSmall")
+    needsCap:SetText(ns.T("needsLine", ns.T("tokNeeds")))
+    ns.PaintTitle(needsCap)
     for _, role in ipairs(ns.Spam.ROLES) do buildRoleHead(p, role) end
     for i, cls in ipairs(ns.CLASSES) do
         local row = { cls = cls, cells = {} }
@@ -441,18 +502,26 @@ local function placeSpecs(y)
     local roles = ns.Spam.ROLES
     local clsW = ns.Wide(BASE, CLS_W)
     local cellW = (paneW() - PAD * 2 - clsW) / #roles
-    local headY = PAD + 28
+    local needsY = PAD + 28
     local headH = ns.Fit(BASE, 20, 2)
+    local headY = needsY + headH + 6
+    needsCap:ClearAllPoints()
+    needsCap:SetPoint("LEFT", p, "TOPLEFT", PAD, -(needsY + headH / 2))
+    local x = PAD + (needsCap:GetStringWidth() or 0) + 10
+    for _, role in ipairs(roles) do
+        local h = roleHeads[role]
+        h.name:ClearAllPoints()
+        h.name:SetPoint("LEFT", p, "TOPLEFT", x, -(needsY + headH / 2))
+        x = x + (h.name:GetStringWidth() or 0) + 6 + STEP_BTN * 2 + ns.Wide(BASE, NEED_W) + 14
+    end
     headBg:ClearAllPoints()
     headBg:SetPoint("TOPLEFT", p, "TOPLEFT", PAD - 4, -(headY - 3))
     headBg:SetPoint("TOPRIGHT", p, "TOPRIGHT", -(PAD - 4), -(headY - 3))
     headBg:SetHeight(headH + 6)
-    needsCap:ClearAllPoints()
-    needsCap:SetPoint("LEFT", p, "TOPLEFT", PAD, -(headY + headH / 2))
     for k, role in ipairs(roles) do
         local h = roleHeads[role]
-        h.name:ClearAllPoints()
-        h.name:SetPoint("LEFT", p, "TOPLEFT", PAD + clsW + (k - 1) * cellW, -(headY + headH / 2))
+        h.col:ClearAllPoints()
+        h.col:SetPoint("LEFT", p, "TOPLEFT", PAD + clsW + (k - 1) * cellW, -(headY + headH / 2))
     end
     local perLine = math.max(1, math.floor(cellW / specW()))
     local heights, natural = {}, 0
@@ -530,6 +599,11 @@ local function refreshChannels()
     chanPool:Reset()
     local colW = (paneW() - PAD * 2) / CHAN_COLS
     local rh = chanRowH()
+    local own = ns.Spam.OwnEvery()
+    local tickW = ns.Spam.Running() and ns.Wide(BASE, TICK_W) or 0
+    if not everyE.focused then everyE:SetValue(tostring(ns.Spam.Every())) end
+    everyE.tip = ns.T("tipEvery", ns.Spam.MinEvery())
+    ownCheck:SetChecked(own)
     for i, c in ipairs(ns.Spam.Channels()) do
         local r = chanPool:Acquire()
         local col = (i - 1) % CHAN_COLS
@@ -537,8 +611,20 @@ local function refreshChannels()
         r:ClearAllPoints()
         r:SetPoint("TOPLEFT", chanBox, "TOPLEFT", col * colW, -rowN * rh)
         r:SetSize(colW - 12, rh)
-        r.check.label:SetWidth(colW - 110)
+        r.key = c.key
+        r.every:ClearAllPoints()
+        r.every:SetPoint("RIGHT", r, "RIGHT", -(16 + tickW), 0)
+        r.left:SetWidth(tickW)
+        tick(r)
+        r.check.label:SetWidth((own and (colW - 110) or (colW - 30)) - tickW)
         r.check.label:SetText(c.label)
+        if own then
+            r.every:Show()
+            r.sec:Show()
+        else
+            r.every:Hide()
+            r.sec:Hide()
+        end
         r.check.tipTitle = c.label
         r.check:SetChecked(ns.Spam.ChanOn(c.key))
         r.check.onToggle = function(on) ns.Spam.SetChanOn(c.key, on) end
@@ -613,7 +699,13 @@ local function refresh()
     local msg, len, fits, short = P.Build()
     preview:SetText(msg)
     local color = fits and (short and "text.title" or "text.primary") or "sem.notReady"
-    counter:SetText(ns.Hex(color) .. len .. "/" .. P.Limit() .. "|r")
+    counter:SetText(ns.Hex(color) .. ns.T("bytesN", len, P.Limit()) .. "|r")
+    counterBox.tip = ns.T("tipBytes") .. (short and ("\n" .. ns.T("tipShort", ns.T("tokNeeds"))) or "")
+    local need = previewNeed()
+    if need ~= previewLines then
+        previewLines = need
+        layout()
+    end
     refreshChannels()
 end
 local function relayout()
@@ -638,9 +730,20 @@ local function build()
         refresh()
     end)
     page:SetScript("OnSizeChanged", function() layout() end)
+    local acc = 0
+    page:SetScript("OnUpdate", function(_, dt)
+        acc = acc + dt
+        if acc < TICK_EVERY then return end
+        acc = 0
+        if not ns.Spam.Running() then return end
+        for _, r in ipairs(chanPool.items) do
+            if r:IsShown() then tick(r) end
+        end
+    end)
     refresh()
 end
 ns.Session.OnChange(refresh)
+ns.Spam.OnRun(refresh)
 ns.OnFont(relayout)
 ns.window:OnSize(relayout)
 ns.SpamPane = { Build = build, Refresh = refresh }

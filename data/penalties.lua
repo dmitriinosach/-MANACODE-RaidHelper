@@ -30,6 +30,8 @@ ns.penaltyPresets = {
             { key = "marrow.posstorm", boss = MARROW, text = "sum.p.marrow.posstorm", kind = "manual", gp = 200 },
             { key = "marrow.cleave", boss = MARROW, text = "sum.p.marrow.cleave", kind = "death",
               spells = { 70814 }, gp = 400 },
+            { key = "marrow.away", boss = MARROW, text = "sum.p.marrow.away", kind = "away", classes = { "HUNTER" },
+              yd = 15, gp = 200, mode = "once" },
             { key = "lady.weapon", boss = LADY, text = "sum.p.lady.weapon", kind = "mcweapon", aura = 71289,
               classes = { "DEATHKNIGHT", "WARRIOR", "ROGUE", "PALADIN", "SHAMAN" },
               procs = { 2818, 2819, 3408, 5760, 8679, 8685, 8688, 11335, 11336, 11337, 11353, 11354, 13218, 13222,
@@ -48,6 +50,7 @@ ns.penaltyPresets = {
               size = 25, heroic = true, gp = 200, mode = "once" },
             { key = "lady.mccast", boss = LADY, text = "sum.p.lady.mccast", kind = "mccast",
               spells = { 10890, 53190 }, gp = 200, unverified = true },
+            { key = "lady.mcdamage", boss = LADY, text = "sum.p.lady.mcdamage", kind = "mcdamage", min = 10000, gp = 200 },
             { key = "lady.shadedeath", boss = LADY, text = "sum.p.lady.shadedeath", kind = "caused", dep = "mech",
               mech = "shade", gp = 200, on = false },
             { key = "gunship.muradin", boss = GUNSHIP, text = "sum.p.gunship.muradin", kind = "death",
@@ -129,6 +132,10 @@ ns.penaltyPresets = {
               spells = { 70126 }, icon = 70126, gp = 200, wipe = 800 },
             { key = "sindra.frostbite", boss = SINDRA, text = "sum.p.sindra.frostbite", kind = "death",
               spells = { 70106 }, gp = 400 },
+            { key = "sindra.tombbreak", boss = SINDRA, text = "sum.p.sindra.tombbreak", kind = "tombbreak", pts = 15,
+              icon = 70157, gp = 200 },
+            { key = "sindra.aura", boss = SINDRA, text = "sum.p.sindra.aura", kind = "manual", badge = true, icon = 31821,
+              gp = 200, wipe = 400 },
             { key = "sindra.quest", boss = SINDRA, text = "sum.p.quest", kind = "manual", gp = 200 },
             { key = "lich.plagueot", boss = LICH, text = "sum.p.lich.plagueot", kind = "manual", gp = 200 },
             { key = "lich.plaguedeath", boss = LICH, text = "sum.p.lich.plaguedeath", kind = "caused", dep = "dispel",
@@ -201,3 +208,4 @@ ns.penaltyPresets = {
     },
 }
 ns.penaltyAny = ANY
+ns.penaltyRoleSkip = { [GUNSHIP] = true, [VALI] = true }

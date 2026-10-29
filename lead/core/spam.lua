@@ -20,6 +20,14 @@ local MAX_NEED = 40
 local running = false
 local nextAt = {}
 local lastFits = true
+local onRun = {}
+function P.OnRun(fn)
+    onRun[#onRun + 1] = fn
+end
+local function ran()
+    for _, fn in ipairs(onRun) do fn(running) end
+    ns.Session.Changed()
+end
 local function slotRole(slot)
     if slot.role ~= "dd" and slot.role ~= "hybrid" then return slot.role end
     local one
@@ -125,7 +133,7 @@ function P.DeleteText()
     P.PickText(1)
 end
 local function plural(n, one, few, many)
-    if ns.Lang() == "enUS" then return n == 1 and one or many end
+    if ns.Lang() ~= "ruRU" then return n == 1 and one or many end
     local d, h = n % 10, n % 100
     if d == 1 and h ~= 11 then return one end
     if d >= 2 and d <= 4 and (h < 12 or h > 14) then return few end
@@ -211,10 +219,6 @@ local function needsText(parts, drop)
     end
     return table.concat(out, style == "slash" and "/" or ", ")
 end
-local function utf8len(s)
-    local _, extra = s:gsub(CONT, "")
-    return #s - extra
-end
 local function reqText()
     local v = ns.Session.Field("req")
     if not v or v == "" or ns.Session.Field("reqKind") == "none" then return "" end
@@ -284,7 +288,7 @@ function P.Build()
     local short = false
     while true do
         local msg = fill(body, needsText(parts, drop))
-        local len = utf8len(msg)
+        local len = #msg
         if len <= MAX_CHARS then return msg, len, true, short end
         local worst, most = nil, 0
         for i, part in ipairs(parts) do
@@ -328,7 +332,7 @@ function P.ChanOn(key) return chanCfg(key).on end
 function P.ChanEvery(key) return chanCfg(key).every end
 function P.SetChanOn(key, on)
     chanCfg(key).on = on and true or false
-    nextAt[key] = nil
+    nextAt[key] = (running and on) and GetTime() or nil
     ns.Session.Changed()
 end
 function P.SetChanEvery(key, sec)
@@ -339,6 +343,29 @@ function P.SetChanEvery(key, sec)
 end
 function P.MinEvery()
     return MIN_EVERY
+end
+local function clampEvery(sec)
+    sec = math.floor(tonumber(sec) or DEF_EVERY)
+    if sec < MIN_EVERY then sec = MIN_EVERY end
+    return sec
+end
+function P.Every()
+    return ns.Store.DB().every or DEF_EVERY
+end
+function P.SetEvery(sec)
+    ns.Store.DB().every = clampEvery(sec)
+    ns.Session.Changed()
+end
+function P.OwnEvery()
+    return ns.Store.DB().ownEvery and true or false
+end
+function P.SetOwnEvery(on)
+    ns.Store.DB().ownEvery = on and true or nil
+    ns.Session.Changed()
+end
+function P.EveryOf(key)
+    if P.OwnEvery() then return chanCfg(key).every end
+    return P.Every()
 end
 local function activeChannels()
     local out = {}
@@ -377,13 +404,13 @@ function P.Start()
         nextAt[c.key] = now + (i - 1) * STAGGER
     end
     ns.Session.TryConvert()
-    ns.Session.Changed()
+    ran()
 end
 function P.Stop()
     if not running then return end
     running = false
     for k in pairs(nextAt) do nextAt[k] = nil end
-    ns.Session.Changed()
+    ran()
 end
 function P.Toggle()
     if running then P.Stop() else P.Start() end
@@ -398,6 +425,11 @@ function P.Next()
     local left = best - GetTime()
     if left < 0 then left = 0 end
     return bestC, left
+end
+function P.Left(key)
+    local t = running and chanCfg(key).on and nextAt[key]
+    if not t then return nil end
+    return math.max(0, t - GetTime())
 end
 local ticker = ns.NewFrame("Frame")
 local acc = 0
@@ -423,10 +455,7 @@ ticker:SetScript("OnUpdate", function(self, dt)
                 lastFits = fits
             end
             if fits then send(c, msg) end
-            nextAt[c.key] = now + chanCfg(c.key).every
+            nextAt[c.key] = now + P.EveryOf(c.key)
         end
     end
 end)
-local guard = ns.NewFrame("Frame")
-ns.Listen(guard, "PLAYER_REGEN_DISABLED")
-guard:SetScript("OnEvent", function() P.Stop() end)

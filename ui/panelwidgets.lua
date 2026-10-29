@@ -145,7 +145,7 @@ Panel.Widget({
         Panel.Line(row, row.eq, ns.T("panel.line.rec"))
         Panel.Reserve(row, format(ns.T("panel.rec.rate"), ns.Num(RATE_PROBE)))
         DrawEq(row)
-        Panel.Value(row, ns.T("panel.rec.none"), "muted")
+        Panel.Empty(row, "zone")
     end,
     Update = function(row, now)
         local dt = now - (row.last or now)
@@ -156,7 +156,7 @@ Panel.Widget({
         if on then
             Panel.Value(row, format(ns.T("panel.rec.rate"), ns.Num(PerSec(row))))
         else
-            Panel.Value(row, ns.T("panel.rec.none"), "muted")
+            Panel.Empty(row, RecState())
         end
     end,
     Tip = RecTip,
@@ -370,17 +370,50 @@ end
 local function FlaskUpdate(row)
     local R = ns.FlaskReady
     if not Panel.Ctx().group then
-        Panel.Value(row, ns.T("panel.nogroup"), "muted")
+        Panel.Empty(row, "nogroup")
         return
     end
     if not R then return end
     R.Tick()
     local ready, total, known = R.Counts()
+    local F = ns.Flasks
+    local given = F and F.IsOn() and format(ns.T("flaskrow.given"), F.Total()) or ""
     if known and total > 0 then
-        Panel.Value(row, format("%d/%d", ready, total), ready >= total and "good" or "warn")
+        Panel.Value(row, format("%d/%d", ready, total) .. given, ready >= total and "good" or "warn")
+    elseif given ~= "" then
+        Panel.Value(row, Panel.EmptyText("none") .. given)
     else
-        Panel.Value(row, ns.T("panel.nodata"), "muted")
+        Panel.Empty(row, "none")
     end
+end
+local FLASK_LIST = 10
+local function HandoutTip(lines)
+    local F = ns.Flasks
+    if not F then return end
+    local on = F.IsOn()
+    local n, people = F.Stats()
+    if not on and n == 0 then return end
+    lines[#lines + 1] = { kind = "row", left = ns.T("flaskrow.handout"),
+                          right = ns.T(on and "flaskrow.on" or "flaskrow.off"), tone = on and "good" or "dim" }
+    lines[#lines + 1] = { kind = "sub", left = ns.T("flaskrow.got"), right = format("%d / %d", n, people) }
+    local R = ns.FlaskReady
+    local list = R and R.Members() or {}
+    local miss = {}
+    for i = 1, #list do
+        local m = list[i]
+        if m.name and F.Count(m.name) == 0 then miss[#miss + 1] = m end
+    end
+    if #miss > 0 then
+        lines[#lines + 1] = { kind = "row", left = ns.T("flaskrow.nogot"), right = tostring(#miss), tone = "warn" }
+        for i = 1, #miss do
+            if i > FLASK_LIST then
+                lines[#lines + 1] = { kind = "sub", left = format(ns.T("flaskrow.more"), #miss - FLASK_LIST) }
+                break
+            end
+            lines[#lines + 1] = { kind = "sub", left = miss[i].name, class = miss[i].class }
+        end
+    end
+    lines[#lines + 1] = { kind = "note", left = ns.T("flaskrow.note") }
 end
 Panel.Widget({
     key = "flasks",
@@ -390,23 +423,32 @@ Panel.Widget({
     Build = function(row)
         Panel.Line(row, FLASK_TEX, ns.T("panel.line.flasks"))
         Panel.Reserve(row, "99/99")
-        Panel.Value(row, ns.T("panel.nogroup"), "muted")
+        Panel.Empty(row, "nogroup")
     end,
     Update = FlaskUpdate,
     Tip = function(row)
         local R = ns.FlaskReady
         FlaskUpdate(row)
         local lines
-        if R and Panel.Ctx().group then
+        local group = Panel.Ctx().group
+        if R and group then
             lines = R.TipRows()
+            HandoutTip(lines)
         else
-            lines = { { kind = "head", left = ns.T("flaskrow.head"), right = ns.T("panel.nogroup") } }
+            lines = { { kind = "head", left = ns.T("flaskrow.head"), right = Panel.EmptyText("nogroup") } }
         end
-        lines[#lines + 1] = { kind = "foot", left = ns.T("buffrow.click") }
+        local toggle = group and ns.FlaskTrade
+        lines[#lines + 1] = { kind = "foot", left = ns.T(toggle and "flaskrow.click" or "buffrow.click") }
         return lines
     end,
     Click = function(row, button)
-        if button == "LeftButton" then OpenCheck() end
+        local T = ns.FlaskTrade
+        if button == "LeftButton" and T and Panel.Ctx().group then
+            T.Switch(not ns.Flasks.IsOn())
+            FlaskUpdate(row)
+        elseif button == "LeftButton" or button == "RightButton" then
+            OpenCheck()
+        end
     end,
 })
 OnTheme()

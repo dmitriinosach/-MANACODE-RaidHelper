@@ -6,17 +6,18 @@ local max = math.max
 local min = math.min
 local sort = table.sort
 local tremove = table.remove
+local tinsert = table.insert
 local format = string.format
 local ICON = 30
 local ORB = 32
 local GAP = 4
 local TOOLGAP = 8
-local PAD = 5
+local PAD = 8
 local Kit = ns.Kit
 local SMALL = "GameFontHighlightSmall"
 local ROW_BASE = 16
 local ROW_H = ROW_BASE
-local ROWGAP = 2
+local ROWGAP = 4
 local CTRL = 16
 local CTRL_GAP = 4
 local CTRL_CUT = 2
@@ -28,12 +29,13 @@ local CORNER = 18
 local CORNER_GAP = 3
 local CORNER_LIFT = 2
 local DOT = 8
-local ORB_DOT = 8
 local JOB_H = 3
 local JOB_IN = 2
 local LONG_JOB = 1
 local VIS_PERIOD = 1
 local SCALE_MIN, SCALE_MAX, SCALE_STEP = 0.60, 1.50, 0.05
+local ZOOM_STEP = 0.10
+local SNAP = 12
 local WHEN = { always = true, group = true, raid = true }
 local DEFAULT_LIST = { "count", "graphs" }
 local GLOW = "Interface\\Buttons\\CheckButtonHilight"
@@ -41,6 +43,14 @@ local WHITE8 = "Interface\\Buttons\\WHITE8X8"
 local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\"
 local ARROWS = { prev = "Interface\\MoneyFrame\\Arrow-Left-Up", next = "Interface\\MoneyFrame\\Arrow-Right-Up" }
 local LINE_TONES = { normal = "text.primary", muted = "text.note", warn = "text.warn", bad = "text.bad", good = "text.good" }
+local EMPTY = {
+    noraid = { key = "panel.noraid", tone = "muted" },
+    nogroup = { key = "panel.nogroup", tone = "muted" },
+    zone = { key = "panel.rec.state.zone", tone = "muted" },
+    none = { key = "panel.none", tone = "muted" },
+    paused = { key = "panel.rec.state.paused", tone = "warn" },
+    off = { key = "panel.rec.state.off", tone = "warn" },
+}
 local GLYPHS = {
     del = { { x = 0, y = 0, w = 9, h = 1 } },
     add = { { x = 0, y = 0, w = 9, h = 1 }, { x = 0, y = 0, w = 1, h = 9 } },
@@ -85,8 +95,9 @@ local acc = {}
 local rows = {}
 local buttons = {}
 local alerts = {}
+local busyParts = {}
 local ctx = { group = false, raid = false }
-local frame, logBtn, strip, dot, job, jobFill, lockGlyph, compactGlyph
+local frame, logBtn, strip, job, jobFill, lockGlyph, compactGlyph, lessGlyph, moreGlyph
 local hoverRow
 local ctrlHot
 local ctrlSide = "RIGHT"
@@ -125,6 +136,15 @@ function Panel.Scale()
     local v = tonumber(Saved().scale) or 1
     return min(SCALE_MAX, max(SCALE_MIN, v)), SCALE_MIN, SCALE_MAX, SCALE_STEP
 end
+local function ByOrder(a, b)
+    local x, y = a.order or 0, b.order or 0
+    if x ~= y then return x < y end
+    return a.key < b.key
+end
+local function KeyOrder(a, b)
+    return ByOrder(widgets[a], widgets[b])
+end
+local sortedList
 local function List()
     local s = Saved()
     if type(s.list) ~= "table" then
@@ -135,6 +155,10 @@ local function List()
         local l = s.list
         for i = #l, 1, -1 do
             if not widgets[l[i]] then tremove(l, i) end
+        end
+        if sortedList ~= l then
+            sortedList = l
+            sort(l, KeyOrder)
         end
     end
     return s.list
@@ -150,11 +174,6 @@ local function InList(key)
         if l[i] == key then return true end
     end
     return false
-end
-local function ByOrder(a, b)
-    local x, y = a.order or 0, b.order or 0
-    if x ~= y then return x < y end
-    return a.key < b.key
 end
 function Panel.Widget(def)
     assert(type(def) == "table" and type(def.key) == "string" and def.Build and def.Update,
@@ -202,6 +221,12 @@ function Panel.Line(row, lead, label)
     FitLine(row)
     row:SetWidth(row.need)
 end
+local function IsEmptyWord(text)
+    for _, e in pairs(EMPTY) do
+        if e.tone == "muted" and ns.T(e.key) == text then return true end
+    end
+    return false
+end
 function Panel.Value(row, text, tone)
     tone = LINE_TONES[tone or ""] and tone or "normal"
     if tone ~= row.tone then
@@ -209,6 +234,9 @@ function Panel.Value(row, text, tone)
         ns.Kit.Text(row.value, LINE_TONES[tone])
     end
     if text == row.shown then return false end
+    if tone == "muted" and not IsEmptyWord(text) then
+        error("Panel.Value: muted only for Panel.Empty words, got " .. tostring(text), 2)
+    end
     row.shown = text
     row.value:SetText(text)
     local w = row.value:GetStringWidth() or 0
@@ -217,6 +245,14 @@ function Panel.Value(row, text, tone)
         FitLine(row)
     end
     return true
+end
+function Panel.Empty(row, word)
+    local e = EMPTY[word]
+    assert(e, "Panel.Empty: unknown word")
+    return Panel.Value(row, ns.T(e.key), e.tone)
+end
+function Panel.EmptyText(word)
+    return ns.T(EMPTY[word].key)
 end
 function Panel.Refit(row)
     if not row.value then return end
@@ -316,7 +352,15 @@ function Panel.Add(key)
     local d = key and widgets[key] or Spare()
     if not d or InList(d.key) then return end
     local l = List()
-    l[#l + 1] = d.key
+    local at = #l + 1
+    for i = 1, #l do
+        local o = widgets[l[i]]
+        if o and ByOrder(d, o) then
+            at = i
+            break
+        end
+    end
+    tinsert(l, at, d.key)
     Changed()
 end
 function Panel.Remove(at)
@@ -332,9 +376,24 @@ function Panel.Step(at, dir)
     l[at] = d.key
     Changed()
 end
-local function SavePlace()
+local function SavePlace(snap)
+    local l, r, t, b = frame:GetLeft(), frame:GetRight(), frame:GetTop(), frame:GetBottom()
+    local W, H = UIParent:GetRight(), UIParent:GetTop()
+    if not (l and r and t and b and W and H) then return end
+    local k = frame:GetScale() or 1
+    W, H = W / k, H / k
+    local h, x = "LEFT", l
+    if l + r > W then h, x = "RIGHT", r - W end
+    local v, y = "BOTTOM", b
+    if t + b > H then v, y = "TOP", t - H end
+    if snap then
+        if abs(x) < SNAP then x = 0 end
+        if abs(y) < SNAP then y = 0 end
+    end
+    local point = v .. h
+    frame:ClearAllPoints()
+    frame:SetPoint(point, UIParent, point, x, y)
     local s = Saved()
-    local point, _, _, x, y = frame:GetPoint()
     s.point, s.x, s.y = point, x, y
 end
 local function DragStart(self)
@@ -346,7 +405,7 @@ local function DragStop(self)
     if not frame.moving then return end
     frame.moving = false
     frame:StopMovingOrSizing()
-    SavePlace()
+    SavePlace(true)
     if self then self.dragAt = GetTime() end
 end
 local function Draggable(f)
@@ -369,7 +428,15 @@ end
 local function FaultsShown()
     return ns.Shell.IsFolded() and ns.ShellMini.View() == "faults"
 end
+function Panel.ToggleMini()
+    if not ns.ShellMini then return end
+    if ns.Shell.IsFolded() then ns.Shell.Hide() else ns.Shell.FoldTo(ns.ShellMini.View()) end
+end
 function Panel.Open(key)
+    if key == "mini" then
+        Panel.ToggleMini()
+        return
+    end
     if key == "gp" and ns.ShellMini then
         if FaultsShown() then ns.Shell.Hide() else ns.Shell.FoldTo("faults") end
         return
@@ -416,6 +483,7 @@ end
 local function IconEnter(b)
     TintIcon(b, true)
     local key = b.def.key
+    if key ~= "timer" and ns.PanelActs then ns.PanelActs.Hide() end
     if key == "timer" then
         IconTipHide()
         Panel.ShowActs(b, frame)
@@ -423,10 +491,12 @@ local function IconEnter(b)
     end
     if key == "log" and compactNow and ns.PanelMenu then
         IconTipHide()
+        alerts.gp = nil
         ns.PanelMenu.Show(b)
         return
     end
     IconTip(b)
+    if key == "gp" then alerts.gp = nil end
 end
 local function IconLeave(b)
     TintIcon(b, false)
@@ -469,6 +539,13 @@ local function MakeIcon(def)
     b.glow:SetTexture(GLOW)
     b.glow:SetBlendMode("ADD")
     b.glow:Hide()
+    b.busyDot = b:CreateTexture(nil, "OVERLAY")
+    b.busyDot:SetWidth(DOT)
+    b.busyDot:SetHeight(DOT)
+    b.busyDot:SetPoint("TOPRIGHT", 1, 1)
+    b.busyDot:SetTexture(ART .. "dot.tga")
+    ns.Kit.Tint(b.busyDot, "sem.rec")
+    b.busyDot:Hide()
     if def.key == "log" then
         b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     else
@@ -538,11 +615,17 @@ local function CtrlTip(b)
     elseif k == "compact" then
         b.tipTitle = ns.T("panel.compact")
         b.tip = ns.T("panel.compact.tip")
+    elseif k == "less" or k == "more" then
+        b.tipTitle = format(ns.T("panel.scale.tip"), floor((Panel.Scale()) * 100 + 0.5))
+        b.tip = ns.T(k == "less" and "shell.scale.less.tip" or "shell.scale.more.tip")
     else
         local key = b.row and b.row.key
         local d = key and Neighbour(key, k == "next" and 1 or -1)
-        b.tipTitle = ns.T(k == "next" and "panel.row.next" or "panel.row.prev")
-        b.tip = d and format(ns.T("panel.row.pick"), ns.T(d.label)) or nil
+        if d then
+            b.tipTitle = format(k == "next" and "%s >" or "< %s", ns.T(d.label))
+        else
+            b.tipTitle = ns.T(k == "next" and "panel.row.next" or "panel.row.prev")
+        end
     end
 end
 local function CtrlEnter(b)
@@ -567,6 +650,8 @@ local function CtrlClick(b)
         Panel.Remove(r.at)
     elseif k == "lock" then
         Panel.SetLocked(not Panel.IsLocked())
+    elseif k == "less" or k == "more" then
+        Panel.Zoom(k == "more" and 1 or -1)
     elseif k == "compact" then
         b.hovered, ctrlHot = false, nil
         PaintGlyph(b)
@@ -651,7 +736,7 @@ local function ShowCtrls(r, on)
     local left = ctrlSide == "LEFT"
     Slot(r.prev, can, left and 2 or 0)
     Slot(r.next, can, 1)
-    Slot(r.del, on and key ~= nil, left and 0 or 2)
+    Slot(r.del, on and key ~= nil, (left or not can) and 0 or 2)
 end
 local function SideOf()
     local r, edge = frame:GetRight(), UIParent:GetRight()
@@ -751,9 +836,6 @@ local function LayTop(compact)
             end
         end
     end
-    local d = compact and ORB_DOT or DOT
-    dot:SetWidth(d)
-    dot:SetHeight(d)
 end
 local function Bare(bare)
     if frame.bare == bare then return end
@@ -831,6 +913,8 @@ local function DressLock()
 end
 local function ShowCorners()
     local on = panelHot and not compactNow
+    Vis(lessGlyph, on)
+    Vis(moreGlyph, on)
     Vis(lockGlyph, on)
     Vis(compactGlyph, on)
 end
@@ -899,15 +983,6 @@ local function StepHover()
     hoverRow = hit
     if hit then ShowCtrls(hit, true) end
 end
-local function StepDot()
-    local R = ns.Recorder
-    if R and R.IsOn() and not (R.IsPaused and R.IsPaused()) then
-        dot:Show()
-        dot:SetAlpha(0.35 + 0.65 * abs(sin(GetTime() * 3)))
-    else
-        dot:Hide()
-    end
-end
 local function Glow(b, on)
     if on then
         b.glow:Show()
@@ -917,15 +992,23 @@ local function Glow(b, on)
     end
 end
 local function StepAlerts()
+    local pulse = 0.35 + 0.65 * abs(sin(GetTime() * 3))
     for i = 1, #buttons do
         local b = buttons[i]
         local on = alerts[b.def.key]
         if compactNow and b == logBtn then on = alerts.log or alerts.gp end
         Glow(b, on and b:IsShown() or false)
+        local busy = busyParts[b.def.key]
+        if compactNow and b == logBtn then busy = next(busyParts) ~= nil end
+        if busy and b:IsShown() then
+            b.busyDot:Show()
+            b.busyDot:SetAlpha(pulse)
+        elseif b.busyDot:IsShown() then
+            b.busyDot:Hide()
+        end
     end
 end
 local function OnUpdate(self, elapsed)
-    StepDot()
     StepAlerts()
     StepHover()
     visAcc = visAcc + elapsed
@@ -968,13 +1051,6 @@ local function ShowProgress()
     if not compactNow and tipOn == logBtn then IconTip(logBtn) end
 end
 local function BuildMarks()
-    dot = logBtn:CreateTexture(nil, "OVERLAY")
-    dot:SetWidth(DOT)
-    dot:SetHeight(DOT)
-    dot:SetPoint("TOPRIGHT", 1, 1)
-    dot:SetTexture(ART .. "dot.tga")
-    ns.Kit.Tint(dot, "sem.rec")
-    dot:Hide()
     job = CreateFrame("Frame", nil, logBtn)
     job:SetPoint("BOTTOMLEFT", JOB_IN, JOB_IN)
     job:SetPoint("BOTTOMRIGHT", -JOB_IN, JOB_IN)
@@ -994,12 +1070,16 @@ local function BuildCorners()
     compactGlyph:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -PAD, CORNER_LIFT)
     lockGlyph = MakeCorner("lock", "unlock")
     lockGlyph:SetPoint("RIGHT", compactGlyph, "LEFT", -CORNER_GAP, 0)
+    moreGlyph = MakeCorner("more", "more")
+    moreGlyph:SetPoint("RIGHT", lockGlyph, "LEFT", -CORNER_GAP, 0)
+    lessGlyph = MakeCorner("less", "less")
+    lessGlyph:SetPoint("RIGHT", moreGlyph, "LEFT", -CORNER_GAP, 0)
     local level = (frame:GetFrameLevel() or 0) + 5
-    compactGlyph:SetFrameLevel(level)
-    lockGlyph:SetFrameLevel(level)
+    for _, b in ipairs({ lessGlyph, moreGlyph, lockGlyph, compactGlyph }) do
+        b:SetFrameLevel(level)
+        b:Hide()
+    end
     DressLock()
-    compactGlyph:Hide()
-    lockGlyph:Hide()
 end
 local function BuildTop()
     for i = 1, #ICONS do buttons[i] = MakeIcon(ICONS[i]) end
@@ -1036,6 +1116,7 @@ local function Build()
     end)
     frame:SetScript("OnShow", ApplyLive)
     Relayout()
+    SavePlace()
 end
 local function Apply()
     if Wanted() then
@@ -1071,21 +1152,25 @@ function Panel.SetScale(v)
     Saved().scale = v ~= 1 and v or nil
     if not frame then return end
     local old = frame:GetScale() or 1
-    local l, t = frame:GetLeft(), frame:GetTop()
+    SavePlace()
     frame:SetScale(v)
-    if l and t and v > 0 then
+    local s = Saved()
+    if s.point and v > 0 then
         local k = old / v
+        s.x, s.y = (s.x or 0) * k, (s.y or 0) * k
         frame:ClearAllPoints()
-        frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", l * k, t * k - UIParent:GetTop() / v)
-        SavePlace()
+        frame:SetPoint(s.point, UIParent, s.point, s.x, s.y)
     end
+end
+function Panel.Zoom(dir)
+    Panel.SetScale((Panel.Scale()) + dir * ZOOM_STEP)
+    if ns.Settings then ns.Settings.Refresh() end
 end
 local function Shift(d)
     local l, t = frame:GetLeft(), frame:GetTop()
     if not (l and t) then return end
     frame:ClearAllPoints()
     frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", l + d, t - d)
-    SavePlace()
 end
 function Panel.SetCompact(on)
     on = on and true or false
@@ -1095,6 +1180,7 @@ function Panel.SetCompact(on)
     if frame then
         if was ~= on then Shift(on and PAD or -PAD) end
         Relayout()
+        if was ~= on then SavePlace() end
     end
     if ns.Settings then ns.Settings.Refresh() end
 end
@@ -1103,6 +1189,12 @@ function Panel.SetAlert(key, on)
 end
 function Panel.HasAlert(key)
     return alerts[key] == true
+end
+function Panel.SetBusy(key, on)
+    busyParts[key] = on and true or nil
+end
+function Panel.IsBusy(key)
+    return busyParts[key] == true
 end
 function Panel.SetLocked(on)
     Saved().locked = on and true or false

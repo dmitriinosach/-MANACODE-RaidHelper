@@ -4,7 +4,7 @@ local format = string.format
 local max = math.max
 local min = math.min
 local MIN_W = 696
-local MIN_H = 420
+local MIN_H = 406
 local MARGIN = 24
 local GRIP = 16
 local MAX_EDGE = 8
@@ -155,10 +155,20 @@ function Size.Place()
     st.foldBtn:ClearAllPoints()
     st.foldBtn:SetPoint("RIGHT", st.maxBtn, "LEFT", -BTN_GAP, 0)
     st.title:SetHeight(st.head + e)
+    local left = st.foldBtn
+    if st.nav then
+        for i = #st.nav, 1, -1 do
+            local b = st.nav[i]
+            b:ClearAllPoints()
+            b:SetPoint("RIGHT", left, "LEFT", -(left == st.foldBtn and CAPTION_GAP or BTN_GAP), 0)
+            b:SetFrameLevel(f:GetFrameLevel() + BTN_LEVEL)
+            if b:IsShown() then left = b end
+        end
+    end
     if st.caption then
         st.caption:ClearAllPoints()
         st.caption:SetPoint("LEFT", f, "TOPLEFT", e + SIDE, y)
-        st.caption:SetPoint("RIGHT", st.foldBtn, "LEFT", -CAPTION_GAP, 0)
+        st.caption:SetPoint("RIGHT", left, "LEFT", -CAPTION_GAP, 0)
     end
     st.grip:ClearAllPoints()
     st.grip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(4 + e), 4 + e)
@@ -196,9 +206,9 @@ local function BuildTitle(frame, close)
     st.title = title
     MaxLook()
 end
-function Size.Bind(frame, close, head, apply, extra, caption)
+function Size.Bind(frame, close, head, apply, extra, caption, nav)
     st.frame, st.apply, st.extra = frame, apply, extra
-    st.head, st.caption = head, caption
+    st.head, st.caption, st.nav = head, caption, nav
     frame:SetScript("OnDragStart", StartMove)
     frame:SetScript("OnDragStop", StopMove)
     BuildGrip(frame)
@@ -285,8 +295,7 @@ function Size.Fold()
     local x, y = Kit.TopLeftOf(f)
     f:Hide()
     Iso.SetPlaying(playing)
-    local fight = Iso.Scene().fight
-    st.strip.label:SetText(format(ns.T("iso.strip"), ns.FightList and ns.FightList.Title(fight) or ns.EncName(fight.boss)))
+    st.strip.label:SetText(ns.ReplayBar.Title(Iso.Scene().fight, true))
     st.shownSec, st.shownPlay = nil, nil
     PaintStrip()
     Kit.StripShow(st.strip, x, y)

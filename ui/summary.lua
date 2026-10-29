@@ -17,6 +17,7 @@ local GPHEAD = 66
 local GPHOVER = 36
 local GPLINE = 28
 local GPGAP = 12
+local GPCAP = 7
 local BTNH = 20
 local BTNPAD = 24
 local BTNMIN = 60
@@ -58,10 +59,12 @@ local function MinW(w)
 end
 local function FitW(list, base, w)
     local m = MinW(base)
-    if Kit.FontDelta() <= 0 then return m end
+    local big = Kit.FontDelta() > 0
     for i = 1, #list do
         local f = list[i]
-        local need = f.Need and f:Need()
+        local need = (big or f.wide) and f.Need and f:Need()
+        local sp = f.span or 1
+        if type(need) == "number" and sp > 1 then need = (need - GAP * (sp - 1)) / sp end
         if type(need) == "number" then m = max(m, need) end
     end
     return math.min(m, w)
@@ -139,6 +142,11 @@ local function Proof(p, test, deaths)
 end
 local function Hidden(def)
     return ns.SumHide ~= nil and fight ~= nil and ns.SumHide.Hidden(fight.boss, def)
+end
+local function TombBadge(st, def)
+    local list, pts, grade = ns.TombBreak.Shown(st, ns.TombBreak.Limit(def))
+    if #list == 0 then return nil, nil end
+    return tostring(floor(pts + 0.5)), grade
 end
 local function DispelMark(d)
     local m = { icon = Icon(d.id), count = tostring(d.n), lines = Tips.Dispel(d) }
@@ -257,6 +265,11 @@ local function Entries(p, s)
                 proof = P and d.n < d.need and Proof(p, P.ByKey(d.rule.key)) or nil }
         end
     end
+    local spared = ns.Penalties and ns.Penalties.Spared(s, fight, p) or {}
+    for k = 1, #spared do
+        list[#list + 1] = { icon = Icon(ns.Penalties.ICONS.mindps), count = Rate(spared[k].amount), verdict = "green",
+            lines = Tips.Spared(spared[k]) }
+    end
     local fired = {}
     for _, hit in ipairs(pens[p.name] or {}) do
         local grade = ns.Penalties.Grade(hit)
@@ -269,8 +282,9 @@ local function Entries(p, s)
     for i = 1, #s.badges do
         local st = p.badges[i]
         local bd = s.badges[i]
-        if st and (st.n > 0 or (st.removed or 0) > 0 or forced[i] ~= nil) and not Hidden(bd) then
-            local shown = bd.low and (st.min or 0) or (bd.kind == "stack" and st.max or st.n)
+        if st and (st.n > 0 or (st.removed or 0) > 0 or forced[i] ~= nil) and not Hidden(bd)
+            and (bd.kind ~= "tombbreak" or TombBadge(st, bd)) then
+            local shown = bd.low and (st.min or 0) or (bd.kind == "stack" and not bd.pass and st.max or st.n)
             local alert = st.cleansed > 0
             local text = alert and format("%d!", shown) or tostring(shown)
             if bd.kind == "stack" and (bd.low and st.min == nil or st.max == 0) then
@@ -283,6 +297,9 @@ local function Entries(p, s)
                 text = format("%d/%d", st.hits, st.n)
                 grade = ns.Actions.Grade(st.n, st.hits, forced[i])
             end
+            if bd.kind == "pullin" then text = format("%d/%d", st.hits, st.n) end
+            if bd.kind == "away" and st.avg then text, grade = tostring(floor(st.avg + 0.5)), ns.Away.Grade(st, bd) end
+            if bd.kind == "tombbreak" then text, grade = TombBadge(st, bd) end
             if bd.shed and st.hangs then
                 local shed = 0
                 for k = 1, #st.hangs do
@@ -462,20 +479,61 @@ local function FailHeadEnter(self)
         { kind = "note", left = ns.T("sum.gp.hint") },
     })
 end
+local function FailFolded()
+    local folded = ns.GetDB().settings.ui.gpFold
+    if folded ~= nil then return folded == true end
+    return not (GetNumRaidMembers() > 0 and ns.Raid.IsLead())
+end
 local function FailLayout(self, width)
     local model = self.model
     local fm = FailMetrics()
-    local top = self.inside and fm.line or fm.sideHead
+    local top = self.inside and fm.line or (fm.sideHead + BTNH + 6)
     local h = top
-    if model and #model.items > 0 then
+    local rows = model and #ns.FaultTable.Rows(model, self.list.filter) or 0
+    local cap = self.inside and GPCAP or rows
+    self.offset = max(0, math.min(self.offset or 0, rows - cap))
+    Kit.Arrow(self.arrow, not FailFolded())
+    local room = width - 14
+    if self.inside then
+        room = width - 36
+        for _, b in ipairs({ self.all, self.pop, self.cfg, self.rolls }) do
+            if b:IsShown() then room = room - b:GetWidth() - 6 end
+        end
+    end
+    if self.titles then
+        ns.FaultTable.Pick(self.title, room, self.titles[1], self.titles[2], self.titles[3])
+        if self.title:GetText() == "" then self.title:SetText(self.titles[3]) end
+    end
+    local more = rows > GPCAP and not FailFolded()
+    if more then
+        FitButton(self.more, format(ns.T("sum.gp.more"), rows))
+        self.more:Show()
+    else
+        self.more:Hide()
+    end
+    if model and #model.items > 0 and not FailFolded() then
         self.list:Show()
-        h = top + 2 + self.list:Draw(fight, model, width)
+        self.listW = width
+        h = top + 2 + self.list:Draw(fight, model, width, self.offset, cap)
+        if more and self.inside then h = h + BTNH + 6 end
     else
         self.list:Hide()
     end
     self:SetWidth(width)
     self:SetHeight(h)
     return h
+end
+local function FailWheel(f, page)
+    return function(delta)
+        local rows = f.model and #ns.FaultTable.Rows(f.model, f.list.filter) or 0
+        local was = f.offset or 0
+        if f.inside and rows > GPCAP then
+            f.offset = max(0, math.min(rows - GPCAP, was - delta))
+        end
+        if f.offset == was then return page(delta) end
+        f.list:Draw(fight, f.model, f.listW or f:GetWidth(), f.offset, GPCAP)
+        return true
+    end
 end
 local function Inside()
     return not ns.SumSide or ns.SumSide.Inside()
@@ -498,30 +556,43 @@ local function FailMode(f, inside)
     f.all:ClearAllPoints()
     f.cfg:ClearAllPoints()
     f.pop:ClearAllPoints()
+    f.rolls:ClearAllPoints()
+    f.more:ClearAllPoints()
     if inside then
         f.all:SetPoint("TOPRIGHT", -6, -4)
         f.pop:SetPoint("RIGHT", f.all, "LEFT", -6, 0)
         f.cfg:SetPoint("RIGHT", f.pop, "LEFT", -6, 0)
+        f.rolls:SetPoint("RIGHT", f.cfg, "LEFT", -6, 0)
+        f.more:SetPoint("BOTTOMRIGHT", -6, 4)
     else
         f.cfg:SetPoint("TOPLEFT", 0, -fm.side)
         f.pop:SetPoint("LEFT", f.cfg, "RIGHT", 6, 0)
+        f.rolls:SetPoint("TOPLEFT", 0, -(fm.sideHead + 2))
+        f.more:SetPoint("LEFT", f.pop, "RIGHT", 6, 0)
         f.all:SetPoint("TOPRIGHT", 0, -fm.side)
     end
     f.head:ClearAllPoints()
     f.head:SetPoint("TOPLEFT", 0, 0)
     f.title:ClearAllPoints()
     f.preset:ClearAllPoints()
+    f.arrow:ClearAllPoints()
     if inside then
-        f.head:SetPoint("RIGHT", f.cfg, "LEFT", -8, 0)
+        if FailFolded() then
+            f.head:SetPoint("TOPRIGHT", -6, 0)
+        else
+            f.head:SetPoint("RIGHT", f.rolls, "LEFT", -8, 0)
+        end
         f.head:SetHeight(fm.line)
-        f.title:SetPoint("LEFT", f.head, "LEFT", 10, 0)
+        f.arrow:SetPoint("LEFT", f.head, "LEFT", 8, 0)
+        f.title:SetPoint("LEFT", f.arrow, "RIGHT", 4, 0)
         f.preset:SetPoint("LEFT", f.title, "RIGHT", GPGAP, 0)
         f.preset:SetPoint("RIGHT", f.head, "RIGHT", 0, 0)
         f.preset:Show()
     else
         f.head:SetPoint("TOPRIGHT", 0, 0)
         f.head:SetHeight(fm.side)
-        f.title:SetPoint("TOPLEFT", f.head, "TOPLEFT", 0, -GPTITLE)
+        f.arrow:SetPoint("TOPLEFT", f.head, "TOPLEFT", 0, -GPTITLE - 2)
+        f.title:SetPoint("TOPLEFT", f.arrow, "TOPRIGHT", 4, 2)
         f.title:SetPoint("TOPRIGHT", f.head, "TOPRIGHT", 0, -GPTITLE)
         f.preset:Hide()
     end
@@ -529,7 +600,7 @@ local function FailMode(f, inside)
     other:Hide()
     f.list = inside and f.wide or f.narrow
     f.list:ClearAllPoints()
-    f.list:SetPoint("TOPLEFT", 0, -((inside and fm.line or fm.sideHead) + 2))
+    f.list:SetPoint("TOPLEFT", 0, -((inside and fm.line or (fm.sideHead + BTNH + 6)) + 2))
 end
 local function FailPanel()
     if failPanel then return failPanel end
@@ -548,18 +619,37 @@ local function FailPanel()
     f.cfg:SetHeight(BTNH)
     f.cfg.tip = ns.T("gpset.pick")
     f.cfg.onClick = function() if ns.FaultsPage then ns.FaultsPage.SystemMenu(f.cfg) end end
-    f.head = CreateFrame("Frame", nil, f)
+    f.rolls = ns.MakeButton(f, "HTP_FailWatchRollSummary", "quiet")
+    f.rolls:SetHeight(BTNH)
+    FitButton(f.rolls, ns.T("roll.summary.button"))
+    f.rolls.tip = ns.T("roll.summary.tip")
+    f.rolls.onClick = function() ns.FaultsRoll.OpenSummary(fight) end
+    f.more = ns.MakeButton(f, "HTP_FailWatchGPMore", "quiet")
+    f.more:SetHeight(BTNH)
+    f.more.tip = ns.T("sum.gp.more.tip")
+    f.more.onClick = OpenPage
+    f.more:Hide()
+    f.head = CreateFrame("Button", nil, f)
     f.head:EnableMouse(true)
     f.head:SetScript("OnEnter", FailHeadEnter)
     f.head:SetScript("OnLeave", function() ns.Tip.Hide() end)
+    f.head:SetScript("OnClick", function()
+        local ui = ns.GetDB().settings.ui
+        ui.gpFold = not FailFolded()
+        ns.Tip.Hide()
+        if Render then Render() end
+    end)
+    f.arrow = f.head:CreateTexture(nil, "ARTWORK")
+    f.arrow:SetWidth(10)
+    f.arrow:SetHeight(10)
     f.title = HeadLine(f, "GameFontNormal")
     ns.Kit.Text(f.title, "text.title")
     f.preset = HeadLine(f, "GameFontHighlightSmall")
     ns.Kit.Text(f.preset, "text.secondary")
     f.narrow = ns.GPList.New(f, "HTP_FailWatchGPRow", ns.GPList.COMPACT, true)
-    f.narrow.onWheel = SideWheel
+    f.narrow.onWheel = FailWheel(f, SideWheel)
     f.wide = ns.GPList.New(f, "HTP_FailWatchGPWide", nil, true)
-    f.wide.onWheel = SideWheel
+    f.wide.onWheel = FailWheel(f, SideWheel)
     f.Layout = FailLayout
     failPanel = f
     return f
@@ -569,14 +659,27 @@ local function FailItem(model)
     local f = FailPanel()
     FailMode(f, Inside())
     if Inside() then Badges.Skin(f, style.red) else Badges.Bare(f) end
-    f.model = model
-    local title = format(ns.T("sum.gp.title"), model.ready, model.pending, ns.Ledger.Unit())
-    if model.raid then title = title .. format(ns.T("sum.gp.title.roll"), model.raid) end
-    f.title:SetText(title)
+    if f.fight ~= fight then f.offset = 0 end
+    f.fight, f.model = fight, model
+    local sums = ns.GPList.SumText(model.by or {})
+    f.titles = { ns.GPList.Title(model), format(ns.T("sum.gp.title"), model.ready, sums), format(ns.T("sum.gp.short"), sums) }
+    f.title:SetText(f.titles[1])
     f.preset:SetText("")
-    FitButton(f.all, format(ns.T("sum.gp.all"), model.pending))
+    FitButton(f.all, ns.GPList.AllText(model))
     FitButton(f.cfg, ns.Ledger.Label())
+    FitButton(f.rolls, ns.T("roll.summary.button"))
     if model.pending > 0 then f.all:Enable() else f.all:Disable() end
+    if ns.ReadOnly or FailFolded() then
+        f.all:Hide()
+        f.cfg:Hide()
+        f.pop:Hide()
+        f.rolls:Hide()
+    else
+        f.all:Show()
+        f.cfg:Show()
+        f.pop:Show()
+        f.rolls:Show()
+    end
     return f
 end
 local function MissedRow(b)
@@ -596,12 +699,15 @@ local function BlockList(b)
             text = format(ns.T("sum.k.gunrow"), Short(v), b.hits[who] or 0, floor(b.secs[who] or 0), b.kills[who] or 0)
         elseif kind == "parries" then
             text = ns.ActionTips.ParryText(b, who, v)
+        elseif kind == "pullins" then
+            text = ns.PullTips.Text(b, who, v)
         else
             text = format("%s  %s%s%%|r", Short(v), ns.Kit.Hex("text.note"), ns.Fixed(v * 100 / max(1, b.total)))
         end
         local known = summary.byName and summary.byName[who]
         local class = ns.Encounters.ClassOf(who) or (known and known.class)
-        local lines = kind == "shades" and ns.ActionTips.Shades(b, who, class) or Tips.Row(b, who, v, class)
+        local lines = kind == "shades" and ns.ActionTips.Shades(b, who, class)
+            or kind == "pullins" and ns.PullTips.Row(summary, b, who, class) or Tips.Row(b, who, v, class)
         list[#list + 1] = { who = who, class = class, v = v, text = text, lines = lines }
     end
     tsort(list, function(a, c) return a.v > c.v end)
@@ -612,19 +718,24 @@ local function BlockList(b)
     end
     return list
 end
-local function BlockTitle(b)
+local function BlockTitle(b, name)
     local kind = b.def.kind
-    local label = ns.T(b.label or b.def.label)
+    local label = name or ns.T(b.label or b.def.label)
     if kind == "casts" then return format(ns.T("sum.k.casts"), label, b.total, b.casts) end
     if kind == "shades" then return format(ns.T("sum.k.shadestitle"), label, b.caught, b.summoned) end
-    local value = (kind == "dispels" or kind == "removed" or kind == "parries") and tostring(b.total) or Short(b.total)
+    local value = (kind == "dispels" or kind == "removed" or kind == "parries" or kind == "pullins") and tostring(b.total)
+        or Short(b.total)
     return format(ns.T("sum.k.title"), label, value)
 end
 local function BlockPanel(s, i, slot)
     local b = s.blocks[i]
     local f = Panel(slot)
+    local mechanic = Tips.Mechanic(b)
     f:SetModel({
-        title = BlockTitle(b),
+        title = BlockTitle(b, mechanic.label),
+        icon = mechanic.icon,
+        link = mechanic.link,
+        tip = mechanic.tip,
         rows = BlockList(b),
         empty = ns.T("sum.k.none"),
         onWheel = PageWheel,
@@ -635,7 +746,7 @@ local function ClassOf(who)
     local known = summary.byName and summary.byName[who]
     return ns.Encounters.ClassOf(who) or (known and known.class)
 end
-local function WidePanel(v, slot)
+local function WidePanel(v, slot, b)
     local f = wides[slot] or Badges.Wide(content, nil, true)
     wides[slot] = f
     local rows = {}
@@ -647,13 +758,24 @@ local function WidePanel(v, slot)
             marks[k] = mk and { icon = Icon(mk.id), count = tostring(mk.n) } or false
         end
         rows[i] = { who = r.who, class = r.class, sub = r.sub, cells = r.cells, vals = r.vals, marks = marks,
-                    lines = r.lines, tips = r.tips }
+                    lines = r.lines, tips = r.tips, tones = r.tones }
     end
     local heads = {}
     for k = 1, #v.heads do heads[k] = v.heads[k] and Icon(v.heads[k]) or false end
-    f:SetModel({ title = v.title, cols = v.cols, heads = heads, rows = rows, tip = v.tip, span = v.span,
+    local mechanic = Tips.Mechanic(b)
+    f:SetModel({ title = v.title, total = v.total, cols = v.cols, heads = heads, rows = rows, tip = v.tip or mechanic.tip,
+                 icon = mechanic.icon, link = mechanic.link,
                  empty = ns.T("sum.k.none"), onWheel = PageWheel })
     return f
+end
+local function DetailGrid(list, y, w)
+    local minW = MinW(DETAILMIN)
+    local fit, cell = Grid.Fit(math.floor(w), minW, GAP)
+    for i = 1, #list do
+        local f = list[i]
+        f.span = (f.wide and fit > 1 and f:Need() > cell) and 2 or 1
+    end
+    return Grid.Place(list, MARGIN, y, w, minW, GAP, true)
 end
 local function DrawBlocks(s, y, w)
     local list = {}
@@ -661,12 +783,15 @@ local function DrawBlocks(s, y, w)
     for i = 1, #s.blocks do
         local b = s.blocks[i]
         if not Hidden(b.def) then
-            local v = (ns.Putri and ns.Putri.View(b, ClassOf)) or (ns.Valkyr and ns.Valkyr.View(b, s, ClassOf))
-                or (ns.Uld and ns.Uld.View(b, s, ClassOf)) or (ns.Targets and ns.Targets.View(b, ClassOf))
+            local v = ns.Putri and ns.Putri.View(b, ClassOf, s)
+            if v == nil then
+                v = (ns.Valkyr and ns.Valkyr.View(b, s, ClassOf)) or (ns.Uld and ns.Uld.View(b, s, ClassOf))
+                    or (ns.Targets and ns.Targets.View(b, ClassOf))
+            end
             if v then
                 nw = nw + 1
-                list[#list + 1] = WidePanel(v, nw)
-            else
+                list[#list + 1] = WidePanel(v, nw, b)
+            elseif v == nil then
                 np = np + 1
                 list[#list + 1] = BlockPanel(s, i, np)
             end
@@ -681,7 +806,7 @@ local function DrawBlocks(s, y, w)
     end
     for i = np + 1, #panels do panels[i]:Hide() end
     for i = nw + 1, #wides do wides[i]:Hide() end
-    return Grid.Place(list, MARGIN, y, w, FitW(list, DETAILMIN, w), GAP, true)
+    return DetailGrid(list, y, w)
 end
 local function DrawFails(y, w)
     local gp = FailItem(gpModel)
@@ -785,11 +910,11 @@ function View.Show(f)
     if not host then return end
     fight = f
     pane.offset = 0
-    summary = ns.Summary.Get(f)
+    summary = ns.Summary.Peek(f)
     host:Show()
     Render()
     if not summary then
-        ns.Summary.Compute(f, function(s)
+        ns.Summary.Of(f, function(s)
             if fight ~= f then return end
             summary = s
             Render()

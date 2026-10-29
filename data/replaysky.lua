@@ -1,6 +1,12 @@
 local _, ns = ...
 local STARS = "Environments\\Stars\\"
 ns.replaySky = {
+    citadel = {
+        fade = { night = { 0, 0 }, day = { 0, 0 }, cloudDay = { 0, 0 }, cloudNight = { 0, 0 } },
+        light = {
+            0, { top = "07060a", mid = "17121a", hor = "2a1a1d", fog = "0d0a0e" },
+        },
+    },
     icecrown = {
         model = STARS .. "IceCrownSky",
         bowl = { day = STARS .. "ICECROWN_SKYBOWLA", night = STARS .. "ICECROWN_SKYBOWLA_NIGHT", u0 = 0.6, u1 = 0.95,

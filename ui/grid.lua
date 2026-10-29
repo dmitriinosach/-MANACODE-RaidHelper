@@ -29,10 +29,14 @@ function Grid.Cells(n, width, minW, gap, flow, spans)
     local i, r = 0, 0
     while i < n do
         r = r + 1
-        local used, count = 0, 0
-        while i + count < n and (count == 0 or used + units[i + count + 1] <= per) do
+        local used, count, wide = 0, 0, false
+        while i + count < n do
+            local u = units[i + count + 1]
+            local cap = (wide or u > 1) and fit or per
+            if count > 0 and used + u > cap then break end
             count = count + 1
-            used = used + units[i + count]
+            used = used + u
+            wide = wide or u > 1
         end
         local across = flow and used or per
         local c = 1
@@ -44,6 +48,8 @@ function Grid.Cells(n, width, minW, gap, flow, spans)
             c = c + u
         end
         i = i + count
+        total = total - used
+        if flow and wide and total > 0 then per = ceil(total / ceil(total / fit)) end
     end
     return out
 end

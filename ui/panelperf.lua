@@ -112,7 +112,7 @@ local function Tip(row)
 end
 Panel.Widget({
     key = "perf",
-    order = 40,
+    order = 90,
     label = "set.panel.row.perf",
     rate = 1,
     Live = function()

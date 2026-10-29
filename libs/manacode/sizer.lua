@@ -24,6 +24,7 @@ local function Measure(self)
     local x, y = Cursor(self)
     local w = min(max(floor(self.w0 + x - self.x0 + 0.5), self.minW), self.maxW)
     local h = min(max(floor(self.h0 + self.y0 - y + 0.5), self.minH), self.maxH)
+    if self.opts.snap then w, h = self.opts.snap(w, h) end
     return w, h
 end
 local function Draw(self, w, h)
@@ -31,7 +32,7 @@ local function Draw(self, w, h)
     self.w, self.h = w, h
     self.outline:SetWidth(w)
     self.outline:SetHeight(h)
-    self.label:SetText(format("%d x %d", w, h))
+    self.label:SetText(self.opts.label and self.opts.label(w, h) or format("%d x %d", w, h))
 end
 local function Follow(outline)
     local self = outline.mcSizer

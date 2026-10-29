@@ -80,6 +80,8 @@ function Hide.Items(boss)
     if not def then return list end
     Collect(list, def.blocks, "block")
     Collect(list, def.badges, "badge")
+    Collect(list, def.cover, "badge")
+    if def.pull then Collect(list, { def.pull }, "badge") end
     cache[boss] = list
     return list
 end

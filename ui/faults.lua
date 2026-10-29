@@ -8,13 +8,13 @@ local Kit = ns.Kit
 local PAD = 12
 local BTNH = 20
 local LOGH = 20
-local TABS = { "give", "rules", "log", "roll" }
+local TABS = { "give", "rules", "log", "roll", "soft" }
 local PREV = "Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Up"
 local NEXT = "Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up"
 local LOGCOLS = { { "time", 44 }, { "who", 110 }, { "what", 0 }, { "sys", 80 }, { "n", 80 }, { "by", 100 } }
 local Page = {}
 ns.FaultsPage = Page
-local frame, sysBtn, give, rules, log, roll
+local frame, sysBtn, give, rules, log, roll, soft
 local tabBtns = {}
 local btns = {}
 local top, bar, foot, logh, btnh = 40, 26, 30, LOGH, BTNH
@@ -271,7 +271,6 @@ local function PaintGive()
     if i > 1 then give.next:Enable() else give.next:Disable() end
     give.open:SetActive(give.list.filter == "open")
     give.all:SetActive(give.list.filter == "all")
-    local unit = ns.Ledger.Unit()
     if not current then
         model = nil
         give.title:SetText(ns.T("gpmini.nofight"))
@@ -291,14 +290,14 @@ local function PaintGive()
     end
     give.title:SetText(format(ns.T("fp.try"), ns.EncName(current.boss), n, total,
         ns.T(current.killed and "fl.win" or "fl.wipe"), ns.Clock(current.to - current.from)))
-    local summary = ns.Summary.Get(current)
+    local summary = ns.Summary.Peek(current)
     if not summary then
         model = nil
         give.list:Hide()
         give.busy:SetText(ns.T("sum.busy"))
         give.busy:Show()
         local f = current
-        ns.Summary.Compute(f, function()
+        ns.Summary.Of(f, function()
             if frame:IsVisible() and current == f then Page.Refresh() end
         end)
         return
@@ -312,10 +311,11 @@ local function PaintGive()
     giveOffset = max(0, min(giveOffset, #rows - give.slots))
     give.list:Draw(current, model, width, giveOffset, give.slots)
     give.list:Show()
-    local total = format(ns.T("fp.pending"), model.pending, unit, model.ready, ns.Plural(model.ready, ns.T("gp.players")))
-    if model.raid then total = total .. format(ns.T("sum.gp.title.roll"), model.raid) end
+    local total = format(ns.T("fp.pending"), ns.GPList.SumText(model.by), model.ready,
+        ns.Plural(model.ready, ns.T("gp.players")))
+    if (model.raid or 0) > 0 then total = total .. format(ns.T("sum.gp.title.roll"), model.raid) end
     give.total:SetText(total)
-    Fit(give.giveAll, format(ns.T("sum.gp.all"), model.pending))
+    Fit(give.giveAll, ns.GPList.AllText(model))
     if model.pending > 0 then give.giveAll:Enable() else give.giveAll:Disable() end
     local marked, count = ns.GPList.Marked(model, give.list.sel), 0
     for _ in pairs(give.list.sel) do count = count + 1 end
@@ -332,11 +332,16 @@ function Page.Refresh()
     if tab == "rules" then rules:Show() else rules:Hide() end
     if tab == "log" then log:Show() else log:Hide() end
     if tab == "roll" then roll:Show() else roll:Hide() end
+    if tab == "soft" then soft:Show() else soft:Hide() end
     if tab == "give" then PaintGive() end
     if tab == "log" then PaintLog() end
     if tab == "roll" then
         ns.FaultsRoll.Place(bar, logh, btnh)
         ns.FaultsRoll.Paint(LogRaid())
+    end
+    if tab == "soft" then
+        ns.FaultsSoft.Place(bar, logh, btnh)
+        ns.FaultsSoft.Paint()
     end
     if tab == "rules" and ns.GPSettings then ns.GPSettings.Refresh() end
 end
@@ -375,6 +380,9 @@ local function Place()
     roll:SetPoint("TOPLEFT", PAD, -top)
     roll:SetPoint("BOTTOMRIGHT", -PAD, PAD)
     ns.FaultsRoll.Place(bar, logh, btnh)
+    soft:SetPoint("TOPLEFT", PAD, -top)
+    soft:SetPoint("BOTTOMRIGHT", -PAD, PAD)
+    ns.FaultsSoft.Place(bar, logh, btnh)
 end
 function Page.Attach(host)
     frame = host
@@ -394,6 +402,7 @@ function Page.Attach(host)
     if ns.GPSettings then ns.GPSettings.Attach(rules) end
     BuildLog()
     roll = ns.FaultsRoll.Build(frame, Btn)
+    soft = ns.FaultsSoft.Build(frame, Btn)
     Place()
     ns.GPList.OnChange(function() Page.Refresh() end)
     Kit.OnFont(function()

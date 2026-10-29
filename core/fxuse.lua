@@ -105,7 +105,7 @@ local function RoleOf(s, name)
 end
 local function Grouped(fight, auras, use, sort)
     local S = ns.Summary
-    local s = fight and S and (S.Peek(fight) or S.Load(fight)) or nil
+    local s = fight and S and S.Peek(fight) or nil
     local groups, order = {}, {}
     for i = 1, #auras do
         local a = auras[i]

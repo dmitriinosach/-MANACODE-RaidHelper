@@ -17,6 +17,7 @@ local FIELD_END = "[,;]"
 local HEAD = "^(-?%d*),(g?)(%d+),([^,;]*),([^,;]*)()"
 local Decode = {}
 ns.Decode = Decode
+Decode.read = 0
 local K = ns.RecCodec.KIND
 local P, Q, N, F, S, X = K.P, K.Q, K.N, K.F, K.S, K.X
 local LAYOUTS = ns.RecCodec.LAYOUTS
@@ -82,21 +83,8 @@ local function Generic(T, s)
     return nil
 end
 local ret = {}
-local function DecodeAt(seg, T, s, at, ms, maxTail)
-    local _, gen, subId, src, dst, pos = match(s, HEAD, at)
-    if not subId then return 0 end
-    local subtype = T.STR[subId] or nil
-    ret[1] = seg.t0 + ms / 1000
-    ret[2] = subtype
-    local AG, AN, AF = T.AG, T.AN, T.AF
-    ret[3] = AG[src] or nil
-    ret[4] = AN[src] or nil
-    ret[5] = AF[src]
-    ret[6] = AG[dst] or nil
-    ret[7] = AN[dst] or nil
-    ret[8] = AF[dst]
-    local n = 8
-    local limit = maxTail and (8 + maxTail) or 64
+local tail = {}
+local function TailInto(T, s, pos, gen, subtype, out, n, limit)
     local ch = byte(s, pos)
     local layout = gen == "" and subtype and LAYOUTS[subtype] or nil
     if not layout then
@@ -113,7 +101,7 @@ local function DecodeAt(seg, T, s, at, ms, maxTail)
                 ch = nil
             end
             n = n + 1
-            if field == "" then ret[n] = nil else ret[n] = Generic(T, field) end
+            if field == "" then out[n] = nil else out[n] = Generic(T, field) end
         end
         return n
     end
@@ -122,7 +110,7 @@ local function DecodeAt(seg, T, s, at, ms, maxTail)
         local kind = layout[li]
         if kind == X then
             n = n + 1
-            ret[n] = nil
+            out[n] = nil
         else
             local field = ""
             if ch == B_COMMA then
@@ -138,28 +126,48 @@ local function DecodeAt(seg, T, s, at, ms, maxTail)
                 end
             end
             if kind == P or kind == Q then
-                ret[n + 1] = T.PI[field] or nil
-                ret[n + 2] = T.PN[field] or nil
-                ret[n + 3] = T.PS[field] or nil
+                out[n + 1] = T.PI[field] or nil
+                out[n + 2] = T.PN[field] or nil
+                out[n + 3] = T.PS[field] or nil
                 n = n + 3
             else
                 n = n + 1
                 if kind == N then
-                    ret[n] = field == "" and 0 or tonumber(field)
+                    out[n] = field == "" and 0 or tonumber(field)
                 elseif field == "" then
-                    ret[n] = nil
+                    out[n] = nil
                 elseif kind == S then
-                    ret[n] = T.STR[field] or nil
+                    out[n] = T.STR[field] or nil
                 elseif kind == F then
-                    ret[n] = tonumber(field)
+                    out[n] = tonumber(field)
                 else
-                    ret[n] = Generic(T, field)
+                    out[n] = Generic(T, field)
                 end
             end
         end
     end
     if n > limit then n = limit end
     return n
+end
+local function DecodeAt(seg, T, s, at, ms, maxTail)
+    local _, gen, subId, src, dst, pos = match(s, HEAD, at)
+    if not subId then return 0 end
+    local subtype = T.STR[subId] or nil
+    ret[1] = seg.t0 + ms / 1000
+    ret[2] = subtype
+    local AG, AN, AF = T.AG, T.AN, T.AF
+    ret[3] = AG[src] or nil
+    ret[4] = AN[src] or nil
+    ret[5] = AF[src]
+    ret[6] = AG[dst] or nil
+    ret[7] = AN[dst] or nil
+    ret[8] = AF[dst]
+    return TailInto(T, s, pos, gen, subtype, ret, 8, maxTail and (8 + maxTail) or 64)
+end
+function Decode.Tail(seg, s, pos, gen, sub, maxTail)
+    local n = TailInto(Decode.Tables(seg), s, pos, gen, sub, tail, 0, maxTail)
+    if n == 0 then return nil end
+    return unpack(tail, 1, n)
 end
 local function ChunkStart(chunk)
     return tonumber(match(chunk, "^(-?%d*)")) or 0
@@ -257,6 +265,7 @@ local function Next(w)
             else
                 w.ms = w.ms + (tonumber(match(line, "^(-?%d*)")) or 0)
             end
+            Decode.read = Decode.read + #line
             return line, 1, 0, w.ms
         end
         w.ci = w.ci + 1
@@ -265,8 +274,22 @@ local function Next(w)
             w.done = true
             return nil, 0, 0, 0
         end
+        Decode.read = Decode.read + #chunk
         w.s, w.pos = chunk, 1
     end
+end
+function Decode.Span(seg, from, to)
+    local chunks = seg.chunks
+    local stopMs = to and (to - seg.t0) * 1000 + SEEK_SLACK or nil
+    local n = 0
+    for ci = FirstChunk(seg, from), #chunks do
+        local chunk = chunks[ci]
+        if stopMs and ChunkStart(chunk) > stopMs then return n end
+        n = n + #chunk
+    end
+    local buf = seg.buf
+    for i = 1, buf and #buf or 0 do n = n + #buf[i] end
+    return n
 end
 function Decode.Events(seg, from, to, maxTail)
     local T = Decode.Tables(seg)
@@ -280,6 +303,23 @@ function Decode.Events(seg, from, to, maxTail)
             if (not fromMs or ms >= fromMs) and (not toMs or ms <= toMs) then
                 local n = DecodeAt(seg, T, s, at, ms, maxTail)
                 if n > 0 then return unpack(ret, 1, n) end
+            end
+        end
+    end
+end
+function Decode.Scan(seg)
+    local T = Decode.Tables(seg)
+    local STR, AN, AG, AF = T.STR, T.AN, T.AG, T.AF
+    local w = Walk(seg, nil, nil)
+    local t0 = seg.t0
+    return function()
+        while true do
+            local s, at, _, ms = Next(w)
+            if not s then return nil end
+            local _, gen, subId, src, dst, pos = match(s, HEAD, at)
+            if subId then
+                return s, pos, gen, t0 + ms / 1000, STR[subId] or nil, AG[src] or nil, AN[src] or nil, AF[src],
+                    AG[dst] or nil, AN[dst] or nil, AF[dst]
             end
         end
     end

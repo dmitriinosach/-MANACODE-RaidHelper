@@ -10,6 +10,7 @@ local VALUE_W = 64
 local LABEL_W = 200
 local GAP = 10
 local EPS = 0.0001
+local DANGER_A = 0.55
 local function Snap(s, v)
     v = tonumber(v) or s.lo
     if v < s.lo then v = s.lo elseif v > s.hi then v = s.hi end
@@ -24,6 +25,23 @@ local function Show(s, v)
     if type(f) == "string" then return format(f, v) end
     if math.abs(v - floor(v)) < EPS then return format("%d", v) end
     return format("%.1f", v)
+end
+local function PaintValue(s, v)
+    local token = "text.primary"
+    if s.off then token = "text.off" elseif s.red and v > s.red then token = "text.bad" end
+    Kit.Text(s.value, token)
+end
+local function PlaceDanger(s)
+    local w = s.bar:GetWidth() or 0
+    if not s.red or s.red >= s.hi or w <= 0 then
+        s.danger:Hide()
+        return
+    end
+    local k = (s.red - s.lo) / (s.hi - s.lo)
+    s.danger:ClearAllPoints()
+    s.danger:SetPoint("LEFT", s.track, "LEFT", floor(w * max(0, k) + 0.5), 0)
+    s.danger:SetPoint("RIGHT", s.track, "RIGHT", 0, 0)
+    s.danger:Show()
 end
 local function PaintThumb(s)
     local token = "slider.thumb"
@@ -43,6 +61,7 @@ local function OnValue(bar, raw)
     local s = bar.owner
     local v = Snap(s, raw)
     s.value:SetText(Show(s, v))
+    PaintValue(s, v)
     if s.quiet or v == s.cur then return end
     s.cur = v
     if s.onChange then s.onChange(v) end
@@ -79,6 +98,7 @@ local function SetValue(self, v)
     self.quiet = nil
     self.cur, self.committed = v, v
     self.value:SetText(Show(self, v))
+    PaintValue(self, v)
 end
 local function GetValue(self)
     return self.cur
@@ -91,12 +111,13 @@ local function SetRange(self, lo, hi, step)
     self.bar:SetValueStep(self.step)
     self.quiet = nil
     SetValue(self, self.cur or lo)
+    PlaceDanger(self)
 end
 local function Enable(self)
     self.off = nil
     self.bar:Enable()
     Kit.Text(self.label, "text.primary")
-    Kit.Text(self.value, "text.primary")
+    PaintValue(self, self.cur)
     PaintThumb(self)
 end
 local function Disable(self)
@@ -104,7 +125,7 @@ local function Disable(self)
     self.dragging = nil
     self.bar:Disable()
     Kit.Text(self.label, "text.off")
-    Kit.Text(self.value, "text.off")
+    PaintValue(self, self.cur)
     PaintThumb(self)
 end
 local sliders = setmetatable({}, { __mode = "k" })
@@ -123,6 +144,7 @@ Kit.OnFont(function()
 end)
 function Kit.Slider(parent, spec)
     local s = CreateFrame("Frame", nil, parent)
+    Kit.DevTrack(s)
     Kit.AutoH(s, "GameFontHighlightSmall")
     s:SetHeight(Kit.Space.ctl)
     s.valueW = spec.valueW or VALUE_W
@@ -156,12 +178,18 @@ function Kit.Slider(parent, spec)
     s.fill:SetPoint("LEFT", s.track, "LEFT", 0, 0)
     s.fill:SetPoint("RIGHT", s.thumb, "CENTER", 0, 0)
     Kit.Paint(s.fill, "slider.fill")
+    s.danger = bar:CreateTexture(nil, "BORDER")
+    s.danger:SetHeight(TRACK_H)
+    Kit.Paint(s.danger, "text.bad", DANGER_A)
+    s.danger:Hide()
+    bar:SetScript("OnSizeChanged", function() PlaceDanger(s) end)
     bar:SetScript("OnValueChanged", OnValue)
     bar:SetScript("OnMouseDown", OnDown)
     bar:SetScript("OnMouseUp", OnUp)
     bar:SetScript("OnEnter", OnEnter)
     bar:SetScript("OnLeave", OnLeave)
     s.fmt = spec.fmt
+    s.red = spec.red
     s.cur = spec.min
     s.SetValue = SetValue
     s.GetValue = GetValue

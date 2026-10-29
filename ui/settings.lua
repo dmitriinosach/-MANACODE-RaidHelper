@@ -328,7 +328,8 @@ local function BuildChoice(r, it)
     end
 end
 local function BuildSlider(r, it)
-    local s = Kit.Slider(r, { min = it.min or 0, max = it.max or 1, step = it.step, fmt = it.fmt, labelW = BASE.LABEL_W })
+    local s = Kit.Slider(r, { min = it.min or 0, max = it.max or 1, step = it.step, fmt = it.fmt, red = it.red,
+        labelW = BASE.LABEL_W })
     r.Place = function()
         s:ClearAllPoints()
         s:SetPoint("LEFT", r, "TOPLEFT", 0, -ROW / 2)
@@ -883,6 +884,7 @@ Kit.OnFont(function()
     PlaceNav()
     Layout()
 end)
+if ns.ReadOnly then return end
 ns.Shell.Register("settings", {
     label = "shell.tab.settings",
     order = 100,

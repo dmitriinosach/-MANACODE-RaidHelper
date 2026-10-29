@@ -8,6 +8,7 @@ local MELEE = "#melee"
 local MAP_UNITS = 10000
 local OPEN_MAX = 60
 local SAME = 0.1
+local PASS = 0.6
 local SUBS = { SPELL_AURA_APPLIED = true, SPELL_AURA_REMOVED = true, SPELL_DISPEL = true,
                SPELL_CAST_SUCCESS = true, SWING_DAMAGE = true, SWING_MISSED = true }
 local DD = {}
@@ -22,6 +23,10 @@ function DD.Begin(fight, def, s)
         w.mechs[i] = { def = m, spells = ns.SpellSet(m.spells), srcs = ns.NpcSet(m.srcs) }
         for k = 1, #(m.srcs or {}) do w.srcs[ns.NpcKeyOf(m.srcs[k])] = true end
         if m.by == "chased" then w.chase = w.chase or {} end
+        if m.by == "passed" then
+            w.carry = w.carry or {}
+            for sk in pairs(w.mechs[i].spells) do w.carry[sk] = {} end
+        end
     end
     return w
 end
@@ -240,18 +245,62 @@ local function Chaser(w, p, k)
     end
     return nil
 end
-local function Mech(w, p, d)
+local function CarryAt(eps, t, direct)
+    local back = direct and PASS or SAME
+    for k = #(eps or {}), 1, -1 do
+        local ep = eps[k]
+        if ep.t <= t + SAME and ep.t + ep.d >= t - back then return ep end
+    end
+    return nil
+end
+local function GaveTo(eps, to, t)
+    for k = #(eps or {}), 1, -1 do
+        local ep = eps[k]
+        if ep.e == "pass" and ep.by == to and abs(ep.t + ep.d - t) <= PASS then return ep end
+    end
+    return nil
+end
+local function Passer(w, m, p, d, from)
+    local k = d.killer
+    local direct = (k.key and m.spells[k.key]) and true or false
+    for sk in pairs(m.spells) do
+        local carry = w.carry and w.carry[sk] or {}
+        local ep = CarryAt(carry[p.name], d.t - from, direct)
+        if ep then
+            local giver = ep.fr
+            local gave = giver and GaveTo(carry[giver], p.name, ep.t)
+            local prev = gave and gave.fr
+            local before = prev and GaveTo(carry[prev], giver, gave.t)
+            if before and gave.d > before.d then return true, giver, gave.d end
+            return true, nil, nil
+        end
+    end
+    return false, nil, nil
+end
+local function Mech(w, fight, p, d)
     local k = d.killer
     for i = 1, #w.mechs do
         local m = w.mechs[i]
         local def = m.def
-        local hit = (k.key and m.spells[k.key]) or (k.srcKey and m.srcs[k.srcKey] and (not def.melee or k.key == MELEE))
+        local hit = def.by ~= "passed"
+            and ((k.key and m.spells[k.key]) or (k.srcKey and m.srcs[k.srcKey] and (not def.melee or k.key == MELEE)))
         local led
         if hit and def.by == "chased" then led = Chaser(w, p, k) end
         if hit and led ~= false
             and (not def.ride or (ns.Summary.Unseated and ns.Summary.Unseated(w.s, p, d.t, def.ride))) then
             local by = def.by == "tank" and Holder(w, p, d, def.srcs or {}) or led or nil
             return { kind = "mech", key = def.key, text = def.text, by = by, src = k.src }
+        end
+    end
+    for i = 1, #w.mechs do
+        local m = w.mechs[i]
+        local def = m.def
+        if def.by == "passed" then
+            local on, by, held = Passer(w, m, p, d, fight.from)
+            if on then
+                return { kind = "mech", key = def.key, text = by and def.held or def.text, by = by, src = k.src,
+                         held = held }
+            end
         end
     end
     return nil
@@ -291,7 +340,7 @@ function DD.Run(s, fight)
             if d.mc then
                 dep = { kind = "mc", by = d.mc.by }
             elseif w and d.killer then
-                dep = Dispel(w, fight, e.p, d) or Tank(w, fight, list, e.p, d) or Mech(w, e.p, d)
+                dep = Dispel(w, fight, e.p, d) or Tank(w, fight, list, e.p, d) or Mech(w, fight, e.p, d)
             end
             if dep then Pin(d, dep) end
         end
@@ -338,6 +387,7 @@ function DD.What(dep)
     end
     if dep.kind == "tank" then return format(T("sum.dd.tank"), dep.by or "?") end
     if dep.kind == "mc" then return format(T("sum.dg.mc"), dep.by or "?") end
+    if dep.kind == "mech" and dep.held then return format(T(dep.text or "sum.dd.m.none"), Dec(dep.held)) end
     return T(dep.text or "sum.dd.m.none")
 end
 function DD.Text(d)

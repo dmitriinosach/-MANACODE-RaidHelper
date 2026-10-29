@@ -5,6 +5,7 @@ local tsort, concat = table.sort, table.concat
 local HOUR = 3600
 local ALCH_DUR = 7000
 local EVENING = 8 * HOUR
+local TOUCH = 600
 local RECENT = 12 * HOUR
 local PICK = 3
 local AURAS = 40
@@ -129,6 +130,9 @@ local function Count(j, name)
     end
     return n
 end
+function Flasks.Count(name)
+    return Count(Flasks.Journal(), name)
+end
 function Flasks.KindOf(role, class)
     if role == "tank" or role == "sp" or role == "ap" then return role end
     if role == "heal" then return "sp" end
@@ -196,7 +200,7 @@ local function SummaryRole(p, class)
 end
 local function FromRecord(name, class)
     local E, S = ns.Encounters, ns.Summary
-    if not (E and S and E.Ready and E.Ready() and S.Load) then return nil end
+    if not (E and S and E.Ready and E.Ready() and S.Peek) then return nil end
     local j = Flasks.Journal()
     local now = time()
     local fights = E.Fights()
@@ -210,7 +214,7 @@ local function FromRecord(name, class)
     end
     tsort(picked, function(a, b) return a.from > b.from end)
     for i = 1, min(PICK, #picked) do
-        local s = S.Load(picked[i])
+        local s = S.Peek(picked[i])
         local p = s and s.byName and s.byName[name]
         local role = p and SummaryRole(p, class or p.class)
         if role then return role, class or p.class end
@@ -320,11 +324,11 @@ function Flasks.Decide(name, now, stock)
     plan.give = true
     return plan
 end
-function Flasks.Record(name, item, kind, now, forced, count)
+function Flasks.Record(name, item, kind, now, forced, count, manual)
     now = now or time()
     local j = Flasks.Journal(now)
     local c = count and count > 1 and count or nil
-    j.list[#j.list + 1] = { n = name, i = item.id, k = kind, t = now, f = forced or nil, c = c }
+    j.list[#j.list + 1] = { n = name, i = item.id, k = kind, t = now, f = forced or nil, c = c, m = manual or nil }
     j.last = now
     Notify()
 end
@@ -341,6 +345,12 @@ function Flasks.Stats()
     end
     return n, people
 end
+function Flasks.Total()
+    local j = Flasks.Journal()
+    local n = 0
+    for i = 1, #j.list do n = n + (j.list[i].c or 1) end
+    return n
+end
 function Flasks.Rows()
     local j = Flasks.Journal()
     local rows, byName = {}, {}
@@ -348,12 +358,13 @@ function Flasks.Rows()
         local e = j.list[i]
         local r = byName[e.n]
         if not r then
-            r = { name = e.n, n = 0, items = {}, last = 0 }
+            r = { name = e.n, n = 0, hand = 0, items = {}, last = 0 }
             byName[e.n] = r
             rows[#rows + 1] = r
         end
         local c = e.c or 1
         r.n = r.n + c
+        if e.m then r.hand = r.hand + c end
         r.items[e.i] = (r.items[e.i] or 0) + c
         r.last = max(r.last, e.t)
     end
@@ -379,10 +390,66 @@ end
 function Flasks.IsOn()
     return on
 end
+local function Leader()
+    local n = GetNumRaidMembers() or 0
+    for i = 1, n do
+        local name, rank = GetRaidRosterInfo(i)
+        if rank == 2 then return name end
+    end
+    if n > 0 or (GetNumPartyMembers() or 0) == 0 then return nil end
+    local li = GetPartyLeaderIndex() or 0
+    if li > 0 then return UnitName("party" .. li) end
+    return UnitName("player")
+end
+local function Save(force)
+    local db = ns.GetDB()
+    if not on then
+        db.flaskOn = nil
+        return
+    end
+    local s, now, key = db.flaskOn, time(), Leader()
+    if not force and type(s) == "table" and s.key == (key or s.key) and now - (s.t or 0) < TOUCH then return end
+    db.flaskOn = { t = now, key = key or (type(s) == "table" and s.key or nil) }
+end
 function Flasks.SetOn(v)
     if v and not Flasks.InGroup() then return false, "group" end
     local was = on
     on = v and true or false
+    Save(true)
     if was ~= on then Notify() end
     return true, nil
+end
+function Flasks.Sync()
+    local grp = Flasks.InGroup()
+    if on then
+        if grp then Save(false) else Flasks.SetOn(false) end
+        return
+    end
+    local db = ns.GetDB()
+    local s = db.flaskOn
+    if type(s) ~= "table" then return end
+    if time() - (s.t or 0) >= EVENING then
+        db.flaskOn = nil
+        return
+    end
+    if not grp then return end
+    local key = Leader()
+    if s.key and key and s.key ~= key then
+        db.flaskOn = nil
+        return
+    end
+    on = true
+    Save(false)
+    Notify()
+end
+function Flasks.Bags()
+    local out, seen = {}, {}
+    for i = 1, #ns.flaskKinds do
+        local it = Flasks.Item(ns.flaskKinds[i])
+        if it and not seen[it] then
+            seen[it] = true
+            out[#out + 1] = { item = it, n = GetItemCount(it.id) or 0 }
+        end
+    end
+    return out
 end

@@ -161,7 +161,8 @@ function Tips.pulled(st, def)
     Head(out, T(def.tip))
     Put(out, "row", T("sum.tt.entombed"), tostring(#st.notes), nil, "bad")
     for k = 1, min(TIMES, st.n) do
-        Put(out, "sub", Clock(st.times[k]), st.whom and st.whom[k] or nil)
+        Put(out, "sub", Clock(st.times[k]), st.whom and st.whom[k] or nil, nil,
+            st.grades and st.grades[k] == "red" and "bad" or "warn")
     end
     More(out, st.n)
     return out
@@ -316,6 +317,23 @@ function Tips.nova(st, def)
         Put(out, "sub", Clock(st.times[k]), right, nil, st.bad and st.bad[k] and "warn" or "dim")
     end
     More(out, st.n)
+    return out
+end
+function Tips.away(st, def)
+    local out = {}
+    local far = ns.Away.Grade(st, def) == "yellow"
+    Head(out, T(def.tip))
+    Put(out, "row", T(far and "sum.tt.away.far" or "sum.tt.away.in"), nil, nil, far and "warn" or "good")
+    ns.BadgeTips.AwayBody(out, st, ns.Away.Limit(def))
+    return out
+end
+function Tips.tombbreak(st, def)
+    local out = {}
+    local lim = ns.TombBreak.Limit(def)
+    local list = ns.TombBreak.Shown(st, lim)
+    Head(out, T(def.tip), format("x%d", #list))
+    ns.BadgeTips.TombSum(out, st, lim)
+    for i = 1, min(3, #list) do ns.BadgeTips.TombBody(out, st, list[i], #list > 1) end
     return out
 end
 function Tips.Shades(b, who, class)

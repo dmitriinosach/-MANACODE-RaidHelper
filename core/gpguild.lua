@@ -13,6 +13,7 @@ local MAX_TEXT = 200
 local MAX_SHORT = 64
 local MAX_KEY = 48
 local MAX_NUM = 100000
+local MAX_THR = 99999999
 local MAX_VER = 1000000
 local MAX_BUF = 8
 local SEND_GAP = 0.3
@@ -28,12 +29,13 @@ local FNV_BASIS = 2166136261
 local FNV_LOW = 403
 local FNV_HIGH = 16777216
 local ORDER = { "on", "mode", "gp", "wipe", "step", "ep", "epwipe", "epstep", "dkp", "dkpwipe", "dkpstep", "short",
-    "roll", "rollwipe", "rollstep" }
+    "roll", "rollwipe", "rollstep", "dps", "melee", "ranged", "min", "yd" }
 local RSET = {}
 for i = 1, #ORDER do RSET[ORDER[i]] = true end
 local MODES = { once = true, each = true, grow = true }
 local NUMS = { gp = true, wipe = true, step = true, ep = true, epwipe = true, epstep = true, dkp = true, dkpwipe = true,
     dkpstep = true, roll = true, rollwipe = true, rollstep = true }
+local THRS = ns.Penalties.THR_FIELDS
 local ESC = { ["~"] = "~t", [";"] = "~s", [","] = "~c", ["="] = "~e", [":"] = "~o" }
 local UNESC = { t = "~", s = ";", c = ",", e = "=", o = ":" }
 local BLOCK = "%-FW%-.-%-FW%-"
@@ -125,6 +127,12 @@ local function Encode(f, v)
         if v < 0 or v > MAX_NUM then return nil end
         return tostring(v)
     end
+    if THRS[f] then
+        if type(v) ~= "number" then return nil end
+        v = floor(v + 0.5)
+        if v < 0 or v > MAX_THR then return nil end
+        return tostring(v)
+    end
     local t = Text(v, f == "short" and MAX_SHORT or MAX_TEXT)
     if t == "" then return nil end
     return Esc(t)
@@ -141,6 +149,10 @@ local function Decode(f, s)
         local n = tonumber(s)
         if n > MAX_NUM then return nil end
         return n
+    end
+    if THRS[f] then
+        if #s > 8 or not s:match("^%d+$") then return nil end
+        return tonumber(s)
     end
     local t = Unesc(s)
     t = t and Text(t, f == "short" and MAX_SHORT or MAX_TEXT)

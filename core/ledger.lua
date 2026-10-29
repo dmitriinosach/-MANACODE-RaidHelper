@@ -11,7 +11,6 @@ local EP_MEMO = 30
 local HOT = { "slack", "death", "wipe" }
 local HOT_SUM = { slack = 200, death = 400, wipe = 800 }
 local HOT_ROLL = { slack = 5, death = 10, wipe = 20 }
-local LEGACY = { s = "gp", old = true }
 local Ledger = {}
 ns.Ledger = Ledger
 Ledger.HOT = HOT
@@ -157,6 +156,20 @@ end
 function Ledger.Active()
     return SYSTEMS[Ledger.Key()]
 end
+function Ledger.Guild(name)
+    if not IsInGuild() then return false end
+    local G = ns.GuildNotes
+    if not (G and G.Loaded()) then
+        if G then G.Ask() end
+        return nil
+    end
+    return G.Member(name) ~= nil
+end
+function Ledger.SysOf(name)
+    local key = Ledger.Key()
+    if key ~= "roll" and name and Ledger.Guild(name) == false then return "roll" end
+    return key
+end
 function Ledger.Label(key)
     return ns.T(SYSTEMS[key or Ledger.Key()].label)
 end
@@ -176,11 +189,7 @@ function Ledger.Select(key)
 end
 function Ledger.Done(key)
     local db = ns.GetDB()
-    local rec = db.faults and db.faults.done[key]
-    if rec then return rec end
-    local old = db.gpIssued
-    if old and old[key] then return LEGACY end
-    return nil
+    return db.faults and db.faults.done[key] or nil
 end
 function Ledger.Pending(events)
     local n = 0
@@ -257,15 +266,16 @@ local function Write(fight, name, sys, fact, want, reason, kind, keys, hot)
 end
 function Ledger.Issue(fight, batch)
     local res = { given = {}, failed = {} }
-    local sys = Ledger.Active()
-    local ok, why = sys.Can(1)
-    if not ok then
-        res.why = why
-        return res
-    end
+    local can, used = {}, {}
     local done = Store().done
     for b = 1, #batch do
         local item = batch[b]
+        local sys = SYSTEMS[item.sys or Ledger.SysOf(item.name)]
+        if can[sys] == nil then
+            local ok, why = sys.Can(1)
+            can[sys] = ok and true or false
+            if not ok and not res.why then res.why = why end
+        end
         local open, want = {}, 0
         for e = 1, #item.events do
             local ev = item.events[e]
@@ -274,7 +284,8 @@ function Ledger.Issue(fight, batch)
                 want = want + ev.n
             end
         end
-        if want > 0 then
+        if want > 0 and can[sys] then
+            used[sys] = true
             local reason = Ledger.ReasonOf(fight.boss, open)
             local fact, why = sys.Give(item.name, reason, want)
             if why and not res.why then res.why = why end
@@ -291,11 +302,13 @@ function Ledger.Issue(fight, batch)
                         r = Ledger.ReasonOf(fight.boss, { ev }) }
                 end
                 Write(fight, item.name, sys, fact, want, reason, "rule", keys)
-                res.given[#res.given + 1] = { name = item.name, n = fact, want = want }
+                res.given[#res.given + 1] = { name = item.name, n = fact, want = want, s = sys.key }
             end
         end
     end
-    if sys.Flush then sys.Flush() end
+    for sys in pairs(used) do
+        if sys.Flush then sys.Flush() end
+    end
     Changed()
     return res
 end
@@ -308,8 +321,8 @@ end
 function Ledger.GiveHot(fight, name, kind, ev)
     if not HOT_SUM[kind] then return nil, "led.err.kind" end
     if ev and Ledger.Done(ev.key) then return nil, "led.err.done" end
-    local sys = Ledger.Active()
-    local want = Ledger.HotSum(kind)
+    local sys = SYSTEMS[Ledger.SysOf(name)]
+    local want = Ledger.HotSum(kind, sys.key)
     if want <= 0 then return nil, "led.err.zero" end
     local ok, why = sys.Can(want)
     if not ok then return nil, why end
@@ -342,7 +355,7 @@ local function RowOf(key)
 end
 function Ledger.Undo(key)
     local rec = Store().done[key]
-    if not rec then return false, Ledger.Done(key) and "led.err.unknown" or "led.err.none" end
+    if not rec then return false, "led.err.none" end
     if type(rec.n) ~= "number" or not rec.who then return false, "led.err.unknown" end
     local sys = SYSTEMS[rec.s]
     if not sys then return false, "led.err.unknown" end

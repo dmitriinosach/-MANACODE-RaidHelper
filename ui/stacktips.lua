@@ -37,7 +37,7 @@ local function Mixed(eps)
 end
 local function Ending(ep)
     local e = ep.e
-    if e == "disp" or e == "hand" or e == "self" then return format(T("stk.e." .. e), ep.by or "?") end
+    if e == "disp" or e == "hand" or e == "self" or e == "pass" then return format(T("stk.e." .. e), ep.by or "?") end
     return T("stk.e." .. tostring(e))
 end
 local function Held(ep)
@@ -45,7 +45,27 @@ local function Held(ep)
     if ep.pk > 1 and pd < d then return format(T("stk.peakat"), ep.pk, d, pd) end
     return format(T("stk.peak"), ep.pk, d)
 end
+local function Dec(v)
+    local s = format("%.1f", v):gsub("%.0$", "")
+    return ns.Dec(s)
+end
+local function Passed(st, def)
+    local eps = st.eps
+    local n = #eps
+    local out = { { kind = "head", left = T(def.tip) } }
+    Put(out, "row", T("stk.pass.n"), format(Plural(n, T("stk.times")), n))
+    Put(out, "row", T("stk.pass.sec"), format(T("stk.sec"), Dec(st.sec or 0)))
+    if st.tick then Put(out, "row", T("stk.pass.tick"), ns.Short(st.tick)) end
+    for k = 1, min(ROWS, n) do
+        local e = eps[k]
+        local left = format("%s–%s (%s)", Clock(e.t), Clock(e.t + e.d), format(T("stk.sec"), Dec(e.d)))
+        Put(out, "sub", left, Ending(e), e.tk and ns.Short(e.tk) or nil, e.e == "died" and "bad" or nil)
+    end
+    if n > ROWS then Put(out, "sub", (format(T("sum.tip.more"), n - ROWS):gsub("^%s+", ""))) end
+    return out
+end
 function StackTips.Badge(st, def)
+    if def.pass then return Passed(st, def) end
     local eps = st.eps
     local out = {}
     out[1] = { kind = "head", left = T(def.tip) }

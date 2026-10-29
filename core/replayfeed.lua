@@ -92,17 +92,17 @@ function FC.New(fight)
         veh = {}, dead = {}, stoneT = {}, last = {}, heroAt = -1e9, auraIds = {}, helpIds = {},
         aim = aim, aimAt = {}, btT = {}, btN = {},
         r = { n = 0, t = {}, kind = {}, icon = {}, imp = {}, key = {}, head = {}, obj = {}, who = {}, text = {},
-              tip = {} },
+              tip = {}, lane = {} },
     }
 end
-local function Row(fc, ts, kind, icon, imp, key, head, obj, who, text, tip)
+local function Row(fc, ts, kind, icon, imp, key, head, obj, who, text, tip, lane)
     local r = fc.r
     if r.n >= RAW_LIMIT then return end
     local n = r.n + 1
     r.n = n
     r.t[n], r.kind[n], r.icon[n], r.imp[n] = ts - fc.from, kind, icon or 0, imp and true or false
     r.key[n], r.head[n], r.obj[n], r.who[n] = key, head, obj, who
-    r.text[n], r.tip[n] = text, tip or text
+    r.text[n], r.tip[n], r.lane[n] = text, tip or text, lane or who
 end
 function FC.Add(fc, ts, kind, icon, imp, who, text)
     Row(fc, ts, kind, icon, imp, false, text, false, who, text)
@@ -225,8 +225,7 @@ local function Dispel(fc, ts, sub, who, dst, dstFlags, a1, a2, a4, a5)
     if sub == "SPELL_STOLEN" then tip = tip .. "\n" .. ns.T("rep.f.stolen") end
     local icon = tonumber(a4) or tonumber(a1)
     Row(fc, ts, "dispel", icon, fc.keyDisp[ns.SpellKey(a4) or 0] == true, "x|" .. what, ns.T("rep.f.dispel.head"),
-        what, on,
-        text, tip)
+        what, on, text, tip, who)
 end
 local function Kick(fc, ts, who, dst, a1, a2, a5)
     local what = type(a5) == "string" and a5 or "?"
@@ -364,6 +363,13 @@ local function Names(names)
     for i = 1, NAMES_MAX do out[i] = names[i] end
     return format(ns.T("rep.f.more"), concat(out, ", "), #names - NAMES_MAX)
 end
+local function BarRow(r, i)
+    local bar = ns.replayFeed.bar
+    local kind = r.kind[i]
+    if bar[kind] then return true end
+    if kind == "death" then return bar.rez == true and type(r.icon[i]) == "number" end
+    return bar.valkyr == true and r.key[i] == "v|"
+end
 local function Merge(L, r, order)
     local open, cnt, names, seen, tips, heads, objs = {}, {}, {}, {}, {}, {}, {}
     local n = 0
@@ -385,6 +391,8 @@ local function Merge(L, r, order)
             L.fdT[n], L.fdIcon[n], L.fdText[n], L.fdImp[n], L.fdKind[n] = r.t[i], r.icon[i], r.text[i], r.imp[i],
                 r.kind[i]
             L.fdWho[n] = r.who[i] or false
+            L.fdLane[n] = r.lane[i] or false
+            L.fdEv[n] = BarRow(r, i)
             cnt[n], names[n], seen[n], tips[n] = 1, {}, {}, { r.tip[i] }
             local who = r.who[i]
             if who then
@@ -411,6 +419,54 @@ local function Merge(L, r, order)
     end
     L.nf = n
 end
+local kept = setmetatable({}, { __mode = "k" })
+function FC.Pack(L)
+    return { lang = ns.lang, n = L.nf or 0, t = L.fdT, icon = L.fdIcon, text = L.fdText, tip = L.fdTip, imp = L.fdImp,
+             kind = L.fdKind, who = L.fdWho, all = L.fdAll or {}, ev = L.fdEv or {} }
+end
+function FC.Peek(fight)
+    local f = kept[fight]
+    if f and f.lang == ns.lang then return f end
+    local s = ns.Summary and ns.Summary.Peek(fight)
+    f = s and s.feed
+    if f and f.lang == ns.lang then
+        kept[fight] = f
+        return f
+    end
+    return nil
+end
+function FC.Keep(fight, f)
+    kept[fight] = f
+end
+function FC.Reuse(L, f, res)
+    local rows = {}
+    for i = 1, f.n do rows[i] = { t = f.t[i], i = i } end
+    local bar = ns.replayFeed.bar
+    for k = 2, res and #res.spans or 0 do
+        local sp = res.spans[k]
+        if sp.key == "gone" then rows[#rows + 1] = { t = sp.from, label = ns.T(sp.label) } end
+    end
+    tsort(rows, function(a, b)
+        if a.t ~= b.t then return a.t < b.t end
+        return (a.i or 1e9) < (b.i or 1e9)
+    end)
+    L.fdT, L.fdIcon, L.fdText, L.fdImp, L.fdKind, L.fdTip = {}, {}, {}, {}, {}, {}
+    L.fdWho, L.fdAll, L.fdEv = {}, {}, {}
+    for n = 1, #rows do
+        local r = rows[n]
+        local i = r.i
+        if i then
+            L.fdT[n], L.fdIcon[n], L.fdText[n], L.fdImp[n], L.fdKind[n] = f.t[i], f.icon[i], f.text[i], f.imp[i], f.kind[i]
+            L.fdTip[n], L.fdWho[n], L.fdEv[n] = f.tip[i], f.who[i] or false, f.ev[i] or false
+            if f.all[i] then L.fdAll[n] = f.all[i] end
+        else
+            L.fdT[n], L.fdIcon[n], L.fdText[n], L.fdImp[n], L.fdKind[n] = r.t, "phase", r.label, true, "phase"
+            L.fdTip[n], L.fdWho[n], L.fdEv[n] = r.label, false, bar.phase == true
+        end
+    end
+    L.nf = #rows
+    L.feedRaw = f.n
+end
 function FC.Done(fc, L, res)
     for guid in pairs(fc.aimAt) do AimFlush(fc, guid, nil) end
     Phases(fc, res)
@@ -419,7 +475,7 @@ function FC.Done(fc, L, res)
     local death = ns.T("rep.f.death.head")
     for i = 1, r.n do
         local who = r.who[i]
-        if r.kind[i] == "def" and who and L.tanks[who] then r.imp[i] = true end
+        if (r.kind[i] == "def" or r.kind[i] == "help") and who and L.tanks[who] then r.imp[i] = true end
         local feigned = r.head[i] == death and who and ns.Encounters.ClassOf(who) == "HUNTER"
             and not ns.Encounters.RealDeath(fc.fight, who, fc.from + r.t[i])
         if not feigned then order[#order + 1] = i end
@@ -430,7 +486,7 @@ function FC.Done(fc, L, res)
         return a < b
     end)
     L.fdT, L.fdIcon, L.fdText, L.fdImp, L.fdKind, L.fdTip = {}, {}, {}, {}, {}, {}
-    L.fdWho, L.fdAll = {}, {}
+    L.fdWho, L.fdAll, L.fdEv, L.fdLane = {}, {}, {}, {}
     Merge(L, r, order)
     L.feedRaw = r.n
 end

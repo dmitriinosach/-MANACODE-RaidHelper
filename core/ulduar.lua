@@ -65,8 +65,9 @@ local function SanityView(b, s, classOf)
     local label = T(b.def.label)
     local tip = { { kind = "head", left = label, right = tostring(#rows) } }
     Put(tip, "row", T("sum.uld.insanecount"), tostring(insane), nil, insane > 0 and "bad" or nil)
-    return { title = format(T("sum.k.title"), label, #rows), cols = { T("sum.uld.min"), T("sum.uld.fin") },
-             heads = { icon }, rows = out, tip = tip, span = 1 }
+    local cols = { T("sum.uld.min"), T("sum.uld.fin") }
+    return { title = format(T("sum.k.title"), label, #rows), cols = cols,
+             heads = { icon }, rows = out, tip = tip }
 end
 local function Held(eps)
     local sec, peak = 0, 0
@@ -108,8 +109,9 @@ local function StacksView(b, s, classOf)
     end
     local label = T(b.def.label)
     local tip = { { kind = "head", left = label, right = format(T("sum.tt.sec"), floor(whole + 0.5)) } }
-    return { title = format(T("sum.k.title"), label, #rows), cols = { T("sum.uld.peak"), T("sum.uld.time"), T("sum.tt.count") },
-             heads = {}, rows = out, tip = tip, span = 1 }
+    local cols = { T("sum.uld.peak"), T("sum.uld.time"), T("sum.tt.count") }
+    return { title = format(T("sum.k.title"), label, #rows), cols = cols,
+             heads = {}, rows = out, tip = tip }
 end
 function Uld.View(b, s, classOf)
     local kind = b.def.kind

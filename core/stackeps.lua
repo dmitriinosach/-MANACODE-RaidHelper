@@ -4,6 +4,7 @@ local abs = math.abs
 local LINK = 0.5
 local END_SLACK = 1
 local DEATH_NEAR = 2
+local PASS = 0.6
 local SEP = "\31"
 local AURA = {
     SPELL_AURA_APPLIED = true, SPELL_AURA_APPLIED_DOSE = true,
@@ -15,13 +16,15 @@ StackEps.subs = {
     SPELL_AURA_APPLIED = true, SPELL_AURA_APPLIED_DOSE = true, SPELL_AURA_REMOVED_DOSE = true,
     SPELL_AURA_REMOVED = true, SPELL_DISPEL = true, SPELL_STOLEN = true, UNIT_DIED = true, FW_STACK = true,
 }
+local SUBS_TICK = { SPELL_PERIODIC_DAMAGE = true }
+for k in pairs(StackEps.subs) do SUBS_TICK[k] = true end
 local function Round(v)
     return floor(v * 10 + 0.5) / 10
 end
 function StackEps.Begin(fight, def, s)
     local list = def.stacks
     if type(list) ~= "table" or not list[1] then return nil end
-    local idx, over, any = {}, {}, false
+    local idx, over, pass, any = {}, {}, {}, false
     for k = 1, #list do
         local e = list[k]
         local key = ns.SpellKey(e.spell)
@@ -32,7 +35,7 @@ function StackEps.Begin(fight, def, s)
                 any = true
             end
         end
-        if key then over[key] = e.over end
+        if key then over[key], pass[key] = e.over, e.pass or nil end
     end
     if not any then return nil end
     local lost = {}
@@ -42,7 +45,8 @@ function StackEps.Begin(fight, def, s)
         if key and idx[key] then lost[key] = i end
     end
     return { from = fight.from, to = fight.to, idx = idx, over = over, lap = list.lap, byName = s.byName,
-             open = {}, last = {}, immune = {}, eps = {}, subs = StackEps.subs, lost = lost, orphan = {} }
+             open = {}, last = {}, immune = {}, eps = {}, subs = next(pass) and SUBS_TICK or StackEps.subs, lost = lost,
+             orphan = {}, pass = pass, pend = {}, gone = {} }
 end
 local function Orphan(r, ts, who, spell)
     local key = who .. SEP .. spell
@@ -63,7 +67,9 @@ local function Close(r, ts, who, spell, how, by)
     if not o then return end
     r.open[key] = nil
     if o.cur == o.pk then o.pd = o.pd + (ts - o.since) end
-    local ep = { t = Round(o.at - r.from), d = Round(ts - o.at), pk = o.pk, pd = Round(o.pd), e = how, by = by }
+    local ep = { t = Round(o.at - r.from), d = Round(ts - o.at), pk = o.pk, pd = Round(o.pd), e = how, by = by,
+                 fr = o.fr, tk = o.tk }
+    o.ep = ep
     local list = r.eps[key]
     if not list then
         list = {}
@@ -101,10 +107,63 @@ local function ImmuneHow(im, who)
     if im.by and im.by ~= who then return "hand", im.by end
     return "self", im.spell
 end
+local function Prune(list, ts)
+    local n = 0
+    for k = 1, #list do
+        if ts - list[k].t <= PASS then
+            n = n + 1
+            list[n] = list[k]
+        end
+    end
+    for k = #list, n + 1, -1 do list[k] = nil end
+end
+local function Queue(tbl, spell, ts)
+    local list = tbl[spell]
+    if not list then
+        list = {}
+        tbl[spell] = list
+    end
+    Prune(list, ts)
+    return list
+end
+local function Took(r, ts, who, spell)
+    local o = r.open[who .. SEP .. spell]
+    local gone = Queue(r.gone, spell, ts)
+    for k = #gone, 1, -1 do
+        local g = gone[k]
+        if g.who ~= who then
+            local c = r.last[g.who .. SEP .. spell]
+            if c and c.ep.e == "fade" then c.ep.e, c.ep.by = "pass", who end
+            o.fr = g.who
+            table.remove(gone, k)
+            return
+        end
+    end
+    local pend = Queue(r.pend, spell, ts)
+    pend[#pend + 1] = { who = who, t = ts, o = o }
+end
+local function Gave(r, ts, who, spell)
+    local at = r.open[who .. SEP .. spell].at
+    local pend = Queue(r.pend, spell, ts)
+    for k = 1, #pend do
+        local e = pend[k]
+        if e.who ~= who and e.t >= at then
+            e.o.fr = who
+            if e.o.ep then e.o.ep.fr = who end
+            table.remove(pend, k)
+            Close(r, ts, who, spell, "pass", e.who)
+            return true
+        end
+    end
+    local gone = Queue(r.gone, spell, ts)
+    gone[#gone + 1] = { who = who, t = ts }
+    return false
+end
 local function Aura(r, ts, sub, who, spell, n)
     local o = r.open[who .. SEP .. spell]
     if sub == "SPELL_AURA_APPLIED" then
         Set(r, ts, who, spell, n or 1)
+        if r.pass[spell] and not o then Took(r, ts, who, spell) end
     elseif sub == "SPELL_AURA_APPLIED_DOSE" then
         Set(r, ts, who, spell, n or ((o and o.cur or 0) + 1))
     elseif sub == "SPELL_AURA_REMOVED_DOSE" then
@@ -114,7 +173,7 @@ local function Aura(r, ts, sub, who, spell, n)
         if im and abs(ts - im.t) <= LINK then
             local how, by = ImmuneHow(im, who)
             Close(r, ts, who, spell, how, by)
-        else
+        elseif not (r.pass[spell] and Gave(r, ts, who, spell)) then
             Close(r, ts, who, spell, "fade")
         end
     elseif r.lost[spell] then
@@ -152,6 +211,15 @@ function StackEps.Feed(r, ts, sub, src, dst, a1, a2, a5, sk, a4)
         end
     elseif sub == "UNIT_DIED" then
         if dst and r.byName[dst] then Died(r, ts, dst) end
+    elseif sub == "SPELL_PERIODIC_DAMAGE" then
+        if not (dst and sk and r.pass[sk]) then return end
+        local key, v = dst .. SEP .. sk, tonumber(a4) or 0
+        local o = r.open[key]
+        if not o then
+            local c = r.last[key]
+            o = c and ts - c.t <= LINK and c.ep or nil
+        end
+        if o and v > (o.tk or 0) then o.tk = v end
     end
 end
 local function Lap(res, lap, ep)
@@ -183,6 +251,16 @@ local function Label(r, res, ep)
         if res.spans[k].key == key then ep.ph = res.spans[k].label end
     end
 end
+local function Carried(r, s, st, who, spell, list)
+    local sec, tk = 0, 0
+    for k = 1, #list do
+        sec = sec + list[k].d
+        if (list[k].tk or 0) > tk then tk = list[k].tk end
+    end
+    st.sec, st.tick = Round(sec), tk > 0 and tk or nil
+    local carry = s.dd and s.dd.carry and s.dd.carry[spell]
+    if carry then carry[who] = list end
+end
 function StackEps.Finish(r, s)
     for key, o in pairs(r.open) do
         local who, spell = key:match("^(.-)" .. SEP .. "(.*)$")
@@ -204,6 +282,7 @@ function StackEps.Finish(r, s)
             local st = p.badges[i]
             st.eps = list
             st.over = r.over[spell]
+            if r.pass[spell] then Carried(r, s, st, who, spell, list) end
         end
     end
     if next(r.lost) then StackEps.Lost(r, s) end

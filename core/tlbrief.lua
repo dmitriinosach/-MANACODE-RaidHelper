@@ -6,7 +6,6 @@ local DEATH_BACK = 20
 local DEATH_AHEAD = 5
 local BD = {}
 ns.TimelineBriefData = BD
-local feeds = setmetatable({}, { __mode = "k" })
 local faults = setmetatable({}, { __mode = "k" })
 local asked = setmetatable({}, { __mode = "k" })
 local feedAsk = setmetatable({}, { __mode = "k" })
@@ -26,34 +25,47 @@ local function Pick()
     end
     return pick
 end
-function BD.Feed(fight, fn)
-    local have = feeds[fight]
-    if have or not ns.ReplayFeedCore or feedAsk[fight] then return have end
-    feedAsk[fight] = true
+local function Pass(fight, s, fn)
     ns.Jobs.Run("tl.brief.feed", function()
         local FC = ns.ReplayFeedCore
         local fc = FC.New(fight)
-        local ph = not ns.Phases.Get(fight) and ns.Phases.New(fight) or nil
         local segs = ns.Encounters.Segs(fight)
         for o = 1, #segs do
             for ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, _, a4, a5
                 in ns.Store.Events(segs[o], fight.from, fight.to, MAX_TAIL) do
                 ns.Jobs.Step()
-                if ph then ns.Phases.Feed(ph, ts, sub, a1) end
                 FC.Event(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4, a5)
             end
         end
-        local res = ph and ns.Phases.Done(fight, ph) or ns.Phases.Get(fight)
         local L = { tanks = {} }
-        FC.Done(fc, L, res)
-        return { n = L.nf or 0, t = L.fdT, icon = L.fdIcon, text = L.fdText, tip = L.fdTip, imp = L.fdImp,
-                 kind = L.fdKind, who = L.fdWho, all = L.fdAll or {} }
+        for i = 1, #s.players do
+            if s.players[i].role == "tank" then L.tanks[s.players[i].name] = true end
+        end
+        FC.Done(fc, L, s.phases)
+        return FC.Pack(L)
     end, function(f)
         feedAsk[fight] = nil
         if not f then return end
-        feeds[fight] = f
+        ns.ReplayFeedCore.Keep(fight, f)
         fn(f)
     end, "tl.brief", true)
+end
+function BD.Feed(fight, fn)
+    local FC = ns.ReplayFeedCore
+    if not FC or not ns.Summary then return nil end
+    local have = FC.Peek(fight)
+    if have then return have end
+    if feedAsk[fight] and (ns.Summary.Busy(fight) or ns.Jobs.Busy("tl.brief.feed")) then return nil end
+    feedAsk[fight] = true
+    local s = ns.Summary.Peek(fight)
+    if s then
+        Pass(fight, s, fn)
+    else
+        ns.Summary.Of(fight, function()
+            feedAsk[fight] = nil
+            fn(FC.Peek(fight))
+        end)
+    end
     return nil
 end
 local function Mine(f, i, who)
@@ -73,11 +85,11 @@ function BD.FeedFor(f, who)
     return out
 end
 function BD.Faults(fight, who, fn)
-    local s = ns.Summary and ns.Summary.Get(fight)
+    local s = ns.Summary and ns.Summary.Peek(fight)
     if not s then
         if ns.Summary and asked[fight] == nil then
             asked[fight] = true
-            ns.Summary.Compute(fight, function()
+            ns.Summary.Of(fight, function()
                 asked[fight] = false
                 fn()
             end)

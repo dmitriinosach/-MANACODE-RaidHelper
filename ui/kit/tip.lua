@@ -171,17 +171,28 @@ local function Tone(token)
     return c[1], c[2], c[3]
 end
 local function Fill(fs, text, font, justify, r, g, b)
-    fs:SetFontObject(Kit.FontFor(font, tipSized) or _G[font])
+    local object = Kit.FontFor(font, tipSized) or _G[font]
+    local path, size, flags
+    if object and object.GetFont then path, size, flags = object:GetFont() end
+    fs:SetFontObject(object)
+    if path and size then fs:SetFont(path, size, flags) end
+    fs:ClearAllPoints()
     fs:SetWidth(0)
+    fs:SetHeight(0)
+    fs:SetWordWrap(false)
+    fs:SetNonSpaceWrap(false)
     fs:SetJustifyH(justify)
     if not pcall(fs.SetText, fs, text) then
-        fs:SetFontObject(_G[font])
+        local stock = _G[font]
+        local file, pt, opts
+        if stock and stock.GetFont then file, pt, opts = stock:GetFont() end
+        fs:SetFontObject(stock)
+        if file and (size or pt) then fs:SetFont(file, size or pt, opts) end
         fs:SetText(text)
     end
     fs:SetTextColor(r, g, b)
-    fs:ClearAllPoints()
     fs:Show()
-    return fs:GetStringWidth() or 0, fs:GetHeight() or 0
+    return fs:GetStringWidth() or 0, fs:GetStringHeight() or 0
 end
 local function Measure(i, l, lead, w)
     local L, M, R = Pooled(tipLines, i), Pooled(tipMids, i), Pooled(tipRights, i)
@@ -225,8 +236,9 @@ local function Measure(i, l, lead, w)
         local room = TIP_MAXW * Kit.FontScale("GameFontHighlight", tipSized) - lead2
         if spec.wrap and m.lw > room then
             local one = m.h
+            L:SetWordWrap(true)
             L:SetWidth(room)
-            m.h = max(L:GetHeight() or 0, one * ceil(m.lw / room))
+            m.h = max(L:GetStringHeight() or 0, one * ceil(m.lw / room))
             m.lw = room
         end
         if m.lw + lead2 > w.wide then w.wide = m.lw + lead2 end
@@ -288,7 +300,7 @@ local function Layout(lines, icon, owner)
             y = y - TIP_SEP
         else
             y = y - m.gap
-            local point, base = "BOTTOMRIGHT", y - m.h
+            local point, base = "TOPRIGHT", y
             local L = tipLines[i]
             if i == 1 and icon then
                 L:SetPoint("LEFT", tipIcon, "RIGHT", 6, 0)
@@ -483,6 +495,38 @@ function Tip.Around(owner, extra)
     else
         Tip.Block(owner, extra)
     end
+end
+local SCAN = "ManaCodeRaidHelperSpellScan"
+local scan
+function Tip.SpellLines(id)
+    if not (id and GetSpellInfo(id)) then return nil end
+    scan = scan or CreateFrame("GameTooltip", SCAN, nil, "GameTooltipTemplate")
+    scan:SetOwner(UIParent, "ANCHOR_NONE")
+    scan:ClearLines()
+    scan:SetHyperlink("spell:" .. id)
+    local out = {}
+    for i = 1, scan:NumLines() or 0 do
+        local l, r = _G[SCAN .. "TextLeft" .. i], _G[SCAN .. "TextRight" .. i]
+        local text = l and l:GetText()
+        if text and text ~= "" then
+            local right = r and r:IsShown() and r:GetText() or nil
+            if right == "" then right = nil end
+            if i == 1 then
+                out[#out + 1] = { kind = "head", left = text, right = right }
+            else
+                local _, g, b = l:GetTextColor()
+                if g > 0.6 and b < 0.4 then
+                    out[#out + 1] = { kind = "text", left = text, rgb = Kit.GameColor("tip.title") }
+                elseif right then
+                    out[#out + 1] = { kind = "row", left = text, right = right }
+                else
+                    out[#out + 1] = { kind = "text", left = text }
+                end
+            end
+        end
+    end
+    scan:Hide()
+    return #out > 0 and out or nil
 end
 function Tip.Docked()
     if tipFrame and dockSide and tipFrame:IsShown() then return tipFrame, dockSide end

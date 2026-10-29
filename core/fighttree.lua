@@ -106,7 +106,7 @@ local function Put(st, f, rk)
         raid.encs[#raid.encs + 1] = enc
     end
     enc.fights[#enc.fights + 1] = f
-    if f.killed then enc.passed = true end
+    if f.killed or f.progress then enc.passed = true end
     if f.from > enc.last then enc.last = f.from end
     enc.deaths = enc.deaths + (f.deaths or 0)
 end

@@ -131,6 +131,122 @@ function Buffed.End(p, fight)
         e.sec = math.floor(e.sec + 0.5)
     end
 end
+local Clash = { SPELL = 10060, BY = { 32182, 2825 }, FULL = 15, NEAR = 0.5, LAND = 1, SLACK = 1 }
+local function ClashSets()
+    if Clash.by then return Clash.key, Clash.by end
+    local by = {}
+    for i = 1, #Clash.BY do by[SpellKey(Clash.BY[i]) or Clash.BY[i]] = true end
+    Clash.key, Clash.by = SpellKey(Clash.SPELL) or Clash.SPELL, by
+    return Clash.key, by
+end
+local function Tenth(x)
+    return math.floor(x * 10 + 0.5) / 10
+end
+local function Lost(rec, hero, fight, kind)
+    local st = rec.st
+    local f = st.fate[rec.k]
+    f[kind], f.h, f.id = true, Tenth(hero.t - fight.from), hero.id
+    st[kind] = (st[kind] or 0) + 1
+end
+local function Flush(c, ts, fight)
+    ts = math.min(ts, fight.to)
+    local rec, h = c.rec, c.hero
+    if rec and c.on and h then
+        local d = ts - math.max(c.mark or c.on, c.on, h.t)
+        local f = rec.st.fate[rec.k]
+        if d > 0 then f.u, f.uid = (f.u or 0) + d, h.id end
+    end
+    c.mark = ts
+end
+local function Settle(c, fight)
+    local cast = c.cast
+    c.cast = nil
+    if cast and cast.hero then Lost(cast, cast.hero, fight, "miss") end
+end
+local function Hold(c, ts)
+    local rec = c.rec
+    if rec and c.on then
+        local st = rec.st
+        local f = st.fate[rec.k]
+        f.s = Tenth(math.max(0, ts - c.on))
+        f.u = f.u and Tenth(f.u)
+        if f.u == 0 then f.u, f.uid = nil, nil end
+        if f.u then st.under = (st.under or 0) + 1 end
+    end
+    c.rec, c.on = nil, nil
+end
+local function Link(c, rec, ts)
+    c.rec, c.on = rec, ts
+    rec.st.fate[rec.k].s = 0
+end
+function Clash.Cast(st, k, dst, ts, fight)
+    local c = dst.clash or {}
+    dst.clash = c
+    Flush(c, ts, fight)
+    Settle(c, fight)
+    st.fate = st.fate or {}
+    st.fate[k] = { s = 0 }
+    if c.hero then
+        st.fate[k].over = true
+        st.over = (st.over or 0) + 1
+        st.grade = "yellow"
+    end
+    local rec = { st = st, k = k, t = ts, hero = c.hero }
+    if c.on and not c.rec and ts - c.on <= Clash.NEAR then
+        Link(c, rec, c.on)
+        return
+    end
+    Hold(c, ts)
+    c.cast = rec
+end
+function Clash.Aura(fight, sub, ts, sk, id, dst)
+    local key, by = ClashSets()
+    if sk ~= key and not by[sk] then return end
+    local put = sub == "SPELL_AURA_APPLIED" or sub == "SPELL_AURA_REFRESH"
+    if not put and sub ~= "SPELL_AURA_REMOVED" then return end
+    local c = dst.clash
+    if not c and not put then return end
+    c = c or {}
+    dst.clash = c
+    Flush(c, ts, fight)
+    if by[sk] then
+        if not put then
+            c.hero = nil
+            return
+        end
+        c.hero = { t = ts, id = id }
+        local g = c.gone
+        c.gone = nil
+        if g and ts - g.t <= Clash.NEAR then Lost(g.rec, c.hero, fight, "cut") end
+        return
+    end
+    if put then
+        local cast = c.cast
+        if cast and ts - cast.t > Clash.LAND then Settle(c, fight) cast = nil end
+        Hold(c, ts)
+        c.cast = nil
+        if cast then Link(c, cast, ts) else c.on = ts end
+        return
+    end
+    local rec, on = c.rec, c.on
+    Hold(c, ts)
+    if not rec or ts - on >= Clash.FULL - Clash.SLACK then return end
+    local h = c.hero
+    if h and ts - h.t <= Clash.NEAR then
+        Lost(rec, h, fight, "cut")
+    else
+        c.gone = { t = ts, rec = rec }
+    end
+end
+function Clash.End(p, fight)
+    local c = p.clash
+    if not c then return end
+    Flush(c, fight.to, fight)
+    Settle(c, fight)
+    Hold(c, fight.to)
+    p.clash = nil
+end
+Buffed.Clash = Clash
 Buffed.ROD_AURA = { 69762 }
 Buffed.ROD_CAST = { 72762 }
 Buffed.ROD_SKIP = { [61969] = true }

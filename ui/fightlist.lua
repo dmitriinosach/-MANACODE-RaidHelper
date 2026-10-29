@@ -1,4 +1,4 @@
-local _, ns = ...
+local ADDON, ns = ...
 local format = string.format
 local floor = math.floor
 local max = math.max
@@ -13,7 +13,7 @@ local RAIDH = 36
 local ENCH = 20
 local ENCX = 0
 local ENCNAME = 5
-local WIPEH = 15
+local WIPEH = 17
 local WIPEX = 8
 local HEADH = 16
 local LISTGAP = 8
@@ -26,37 +26,34 @@ local PCOLW = floor(COLW / PCOLS)
 local WHEEL = 2
 local ICON = 26
 local ICONX = 5
-local HCW = 11
-local HCH = 12
-local FOLDSZ = 8
-local FOLDHIT = 16
-local FOLDX = ICONX + ICON + 3
-local TEXTX = FOLDX + FOLDSZ + 2
+local HCX = 3
+local TEXTX = ICONX + ICON + 7
 local TEXTTOP = -5
 local INFOTOP = -19
 local FITKEY = nil
 local RAIDR = 7
-local OKSZ = 11
+local OKSZ = 13
 local TIPMAX = 10
 local OKX = -6
 local UBSZ = 12
 local UBGAP = 3
-local DOT = 4
-local DOTGAP = 2
+local DOT = 7
+local DOTGAP = 3
 local DOTS = 5
-local DOTX = 22
+local DOTX = 21
+local DOTPAD = 2
 local NAVBTN = ns.Kit.Space.tool
 local NAVGAP = 4
-local PLAYSZ = 10
+local PLAYSZ = 13
 local PLAYW = PLAYSZ + 4
-local DELSZ = 9
-local DELHIT = 12
+local DELSZ = 12
+local DELHIT = 14
 local LFG = "Interface\\LFGFrame\\LFGIcon-"
 local SKULL = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8"
 local READY = "Interface\\RAIDFRAME\\ReadyCheck-Ready"
 local NOTREADY = "Interface\\RAIDFRAME\\ReadyCheck-NotReady"
 local CLASS_TEX = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
-local DEL_TEX = "Interface\\Buttons\\UI-MinusButton-Up"
+local DEL_TEX = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\del"
 local MAP_ICON = {
     IcecrownCitadel = LFG .. "IcecrownCitadel",
     TheRubySanctum = LFG .. "RubySanctum",
@@ -77,6 +74,13 @@ local INST_ICON = {
     ["Око Вечности"] = LFG .. "Malygos",
     ["Обсидиановое святилище"] = LFG .. "ChamberOfAspects",
     ["Логово Ониксии"] = LFG .. "OnyxiaEncounter",
+    ["Ciudadela de la Corona de Hielo"] = LFG .. "IcecrownCitadel",
+    ["El Sagrario Rubí"] = LFG .. "RubySanctum",
+    ["Prueba del Cruzado"] = LFG .. "ArgentRaid",
+    ["Prueba del Gran Cruzado"] = LFG .. "ArgentRaid",
+    ["El Ojo de la Eternidad"] = LFG .. "Malygos",
+    ["El Sagrario Obsidiana"] = LFG .. "ChamberOfAspects",
+    ["Guarida de Onyxia"] = LFG .. "OnyxiaEncounter",
     ["Icecrown Citadel"] = LFG .. "IcecrownCitadel",
     ["The Ruby Sanctum"] = LFG .. "RubySanctum",
     ["Ulduar"] = LFG .. "Ulduar",
@@ -101,6 +105,8 @@ local rowW = COLW
 local treeH, playerLines, sideH = 0, 0, 0
 local fight, player
 local nav, navPrev, navNext, navNo, navOut
+local headTitle
+local tools
 local faults, faultsFor, faultsSum, asked
 local openEnc
 local Tips = {}
@@ -167,7 +173,13 @@ local function Outcome(f)
     return format(ns.T(f.killed and "fl.tip.try.win" or "fl.tip.try.wipe"), Clock(f.to - f.from))
 end
 local function DelShade(row, over)
-    if row.del then row.del:SetAlpha((over or row.picked) and 1 or 0) end
+    if not row.del then return end
+    if row.kind == "raid" then
+        row.del:SetAlpha(over and 1 or 0)
+        row.info:SetAlpha(over and 0 or 1)
+        return
+    end
+    row.del:SetAlpha((over or row.picked) and 1 or 0)
 end
 local function OnEnter(self)
     self.hover:Show()
@@ -196,7 +208,7 @@ local function Measure()
     WIDTH = floor(FL.WIDTH * m.wk + 0.5)
     COLW = WIDTH - GUTTER
     PCOLW = floor(COLW / PCOLS)
-    RAIDH, ENCH, WIPEH = 36 + 2 * g, 20 + g, 15 + g
+    RAIDH, ENCH, WIPEH = 36 + 2 * g, 20 + g, 17 + g
     HEADH, PHEADH, PROW = 16 + g, 16 + g, 15 + g
     INFOTOP = TEXTTOP - LINE - 2
     STEP.raid, STEP.enc, STEP.wipe = RAIDH + 2, ENCH + 1, WIPEH + 1
@@ -251,43 +263,20 @@ local function RaidShown(raid)
     local view = ns.RaidSummaryView
     return view ~= nil and view.ShownKey() == raid.key
 end
-local function FoldKey(raid, index)
-    Folds()[raid.key] = not Folded(raid, index)
+local function FoldRaid(row)
+    local line = row.line
+    Folds()[line.raid.key] = not Folded(line.raid, line.index)
     Redraw()
 end
-local function FoldRaid(row)
-    FoldKey(row.line.raid, row.line.index)
-end
-local function OnRaid(row, button)
+local function OnRaid(row)
     local line = row.line
     local show = ns.Timeline and ns.Timeline.ShowRaid
-    if line.raid.party then show = nil end
-    if button == "RightButton" then
-        Del.RaidMenu(row)
-        return
-    end
-    if not show then
+    if line.raid.party or not show or RaidShown(line.raid) then
         FoldRaid(row)
         return
     end
-    if RaidShown(line.raid) then return end
     Folds()[line.raid.key] = false
     show(line.raid)
-end
-local function FoldClick(self)
-    ns.Tip.Hide()
-    FoldRaid(self.row)
-end
-local function FoldEnter(self)
-    self.row.hover:Show()
-    DelShade(self.row, true)
-    local line = self.row.line
-    ns.Tip.Show(self, { Line(ns.T(Folded(line.raid, line.index) and "fl.tip.raid.open" or "fl.tip.raid.fold")) })
-end
-local function FoldLeave(self)
-    self.row.hover:Hide()
-    DelShade(self.row, false)
-    ns.Tip.Hide()
 end
 local function OnEnc(row, button)
     if button == "RightButton" then
@@ -299,7 +288,7 @@ end
 local function DelEnter(self)
     self.row.hover:Show()
     self:SetAlpha(1)
-    Kit.Tint(self.tex, "sem.wipe")
+    Kit.Tint(self.tex, "text.primary")
     ns.Tip.Show(self, { Line(ns.T("fl.del.tip")) })
 end
 local function DelLeave(self)
@@ -338,17 +327,43 @@ local function DelButton(r)
     r.del = b
     return b
 end
+local function RaidDelEnter(self)
+    self.row.hover:Show()
+    DelShade(self.row, true)
+end
+local function RaidDelLeave(self)
+    self.row.hover:Hide()
+    DelShade(self.row, false)
+end
+local function RaidDelClick(self)
+    ns.Tip.Hide()
+    Del.AskRaid(self.row.line.raid)
+end
+local function RaidDel(r)
+    local b = Kit.Button(r, nil, "danger")
+    b:SetHeight(16)
+    b:SetText(ns.T("fl.del.tip"))
+    b:SetWidth(math.ceil(b.text:GetStringWidth()) + 16)
+    b.row = r
+    b.onClick = RaidDelClick
+    b:HookScript("OnEnter", RaidDelEnter)
+    b:HookScript("OnLeave", RaidDelLeave)
+    b:SetAlpha(0)
+    r.del = b
+end
 local function RaidGeom(r)
     r:SetHeight(RAIDH)
     r.name:SetHeight(LINE)
     r.name:ClearAllPoints()
-    r.name:SetPoint("TOPLEFT", FOLDX, TEXTTOP)
+    r.name:SetPoint("TOPLEFT", TEXTX, TEXTTOP)
     r.score:SetHeight(LINE)
     r.score:ClearAllPoints()
     r.score:SetPoint("TOPRIGHT", -RAIDR, TEXTTOP)
     r.info:SetHeight(LINE)
     r.info:ClearAllPoints()
-    r.info:SetPoint("TOPLEFT", FOLDX, INFOTOP)
+    r.info:SetPoint("TOPLEFT", TEXTX, INFOTOP)
+    r.del:ClearAllPoints()
+    r.del:SetPoint("LEFT", r.info, "LEFT", -2, 0)
 end
 local function RaidRow()
     local r = NewRow(treeBox, "raid", COLW, RAIDH)
@@ -363,39 +378,22 @@ local function RaidRow()
     r.icon:SetHeight(ICON)
     r.icon:SetPoint("LEFT", ICONX, 0)
     r.hc = r:CreateTexture(nil, "OVERLAY")
-    r.hc:SetWidth(HCW)
-    r.hc:SetHeight(HCH)
-    r.hc:SetPoint("TOPLEFT", r.icon, "TOPLEFT", -2, 2)
-    Kit.Icon.Heroic(r.hc)
+    r.hc:SetPoint("CENTER", r.icon, "TOPRIGHT", -HCX, -HCX)
+    Kit.Icon.Flag(r.hc, ICON)
     r.size = r:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     r.size:SetJustifyH("RIGHT")
     r.size:SetPoint("BOTTOMRIGHT", r.icon, "BOTTOMRIGHT", 2, -1)
     r.size:SetShadowOffset(1, -1)
     r.size:SetShadowColor(Kit.Color("text.shadow"))
     Kit.Text(r.size, "text.primary")
-    r.foldBtn = CreateFrame("Button", nil, r)
-    r.foldBtn:SetWidth(FOLDHIT)
-    r.foldBtn:SetHeight(FOLDHIT)
-    r.foldBtn:SetPoint("BOTTOMRIGHT", -RAIDR + 4, 2)
-    r.foldBtn:RegisterForClicks("LeftButtonUp")
-    r.foldBtn.row = r
-    r.foldBtn:SetScript("OnClick", FoldClick)
-    r.foldBtn:SetScript("OnEnter", FoldEnter)
-    r.foldBtn:SetScript("OnLeave", FoldLeave)
-    r.fold = r.foldBtn:CreateTexture(nil, "ARTWORK")
-    r.fold:SetWidth(FOLDSZ + 2)
-    r.fold:SetHeight(FOLDSZ + 2)
-    r.fold:SetPoint("CENTER")
-    Kit.Tint(r.fold, "text.title")
-    DelButton(r):SetPoint("RIGHT", r.foldBtn, "LEFT", 0, 0)
     r.name = Label(r, "GameFontNormalSmall", LINE)
     Kit.Text(r.name, "text.title")
     r.score = Label(r, "GameFontHighlightSmall", LINE, "RIGHT")
     r.info = Label(r, "GameFontHighlightSmall", LINE)
     Kit.Text(r.info, "text.primary")
+    RaidDel(r)
     RaidGeom(r)
     r.onClick = OnRaid
-    r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     return r
 end
 local function EncGeom(r)
@@ -429,7 +427,7 @@ local function EncRow()
     r.ok:SetHeight(OKSZ)
     r.ok:SetPoint("RIGHT", OKX, 0)
     r.play = ns.ReplayLink.Mini(r, PLAYSZ)
-    r.play:SetPoint("RIGHT", r.ok, "LEFT", -DOTGAP, 0)
+    r.play:SetPoint("RIGHT", r.ok, "LEFT", OKSZ - OKX - DOTX, 0)
     DelButton(r):SetPoint("RIGHT", r.play, "LEFT", 0, 0)
     r.ub = Kit.Unbuff(r, UBSZ)
     r.ub:SetPoint("RIGHT", r.del, "LEFT", -UBGAP, 0)
@@ -487,7 +485,6 @@ local function PaintRaid(r, line)
     r.icon:SetTexture(MAP_ICON[raid.map or ""] or INST_ICON[raid.name or ""] or (LFG .. "Raid"))
     r.size:SetText(raid.size and tostring(raid.size) or "")
     if raid.heroic then r.hc:Show() else r.hc:Hide() end
-    Kit.Icon.Fold(r.fold, not Folded(raid, line.index))
     local on = RaidShown(raid)
     r.picked = on
     DelShade(r)
@@ -496,7 +493,7 @@ local function PaintRaid(r, line)
     r.score:SetText(format("%d/%d", raid.passed, raid.total))
     Tone(r.score, raid.passed > 0 and "sem.win" or "sem.wipe")
     Fit(r.name, RaidName(raid), rowW - TEXTX - RAIDR - r.score:GetStringWidth() - 6)
-    Fit(r.info, When(raid), rowW - FOLDX - (RAIDR - 4) - FOLDHIT - DELHIT - 2)
+    Fit(r.info, When(raid), rowW - TEXTX - RAIDR)
 end
 local function PaintEnc(r, line, spot)
     local enc = line.enc
@@ -508,7 +505,7 @@ local function PaintEnc(r, line, spot)
     if on then Kit.Paint(r.bg, "sem.pick", 0.14) else Kit.Paint(r.bg, "sem.enc") end
     local unbuff = enc.passed and ns.ZoneBuff and ns.ZoneBuff.Unbuffed(ns.FightTree.Decisive(enc))
     if unbuff then r.ub:Show() else r.ub:Hide() end
-    local base = DOTX + PLAYW + DELHIT + (unbuff and UBSZ + UBGAP or 0)
+    local base = DOTX + PLAYW + DELHIT + DOTPAD + (unbuff and UBSZ + UBGAP or 0)
     local wipes = ns.FightTree.Wipes(enc)
     local dots = wipes > DOTS and 1 or wipes
     for i = 1, DOTS do
@@ -529,8 +526,8 @@ local function PaintEnc(r, line, spot)
     local w = r.wipes
     if wipes > 0 then
         w:ClearAllPoints()
-        w:SetPoint("RIGHT", -(base - DOTGAP), 0)
-        w:SetWidth(right - base + DOTGAP * 2)
+        w:SetPoint("RIGHT", -(base - DOTPAD), 0)
+        w:SetWidth(right - DOTGAP - base + DOTPAD * 2)
         w:Show()
     else
         w:Hide()
@@ -670,11 +667,11 @@ local function Reveal(f)
 end
 local function Faults(f)
     if not (ns.Summary and ns.Penalties) then return nil end
-    local s = ns.Summary.Get(f)
+    local s = ns.Summary.Peek(f)
     if not s then
         if asked ~= f or not (ns.Summary.Busy and ns.Summary.Busy(f)) then
             asked = f
-            ns.Summary.Compute(f, function()
+            ns.Summary.Of(f, function()
                 asked = nil
                 if fight == f and side then FL.DrawPlayers() end
             end)
@@ -847,6 +844,13 @@ local function NavTip(b, f, n)
         b.tip = nil
     end
 end
+function FL.FitTitle()
+    if not headTitle then return end
+    local room = COLW - (nav:IsShown() and nav:GetWidth() + NAVGAP * 2 or 0)
+    headTitle:SetWidth(0)
+    local w = headTitle:GetStringWidth()
+    headTitle:SetWidth(max(1, min(floor(w) + 2, room)))
+end
 local function DrawNav()
     if not nav then return end
     ns.ReplayLink.SetFight(fight)
@@ -855,17 +859,32 @@ local function DrawNav()
     if not spot then
         nav:SetWidth(1)
         nav:Hide()
+        FL.FitTitle()
         return
     end
     local total = #spot.enc.fights
-    navNo:SetText(format("%d/%d", spot.n, total))
-    navNo:SetWidth(navNo:GetStringWidth() + 2)
-    NavTip(navPrev, spot.enc.fights[spot.n - 1], spot.n - 1)
-    NavTip(navNext, spot.enc.fights[spot.n + 1], spot.n + 1)
     navOut:SetText(format("%s %s", ns.T(fight.killed and "fl.win" or "fl.wipe"), Clock(fight.to - fight.from)))
     Tone(navOut, fight.killed and "sem.win" or "sem.wipe")
-    nav:SetWidth(NAVBTN * 2 + NAVGAP * 4 + navNo:GetWidth() + navOut:GetStringWidth())
+    navOut:ClearAllPoints()
+    if total > 1 then
+        navNo:SetText(format("%d/%d", spot.n, total))
+        navNo:SetWidth(navNo:GetStringWidth() + 2)
+        NavTip(navPrev, spot.enc.fights[spot.n - 1], spot.n - 1)
+        NavTip(navNext, spot.enc.fights[spot.n + 1], spot.n + 1)
+        navPrev:Show()
+        navNo:Show()
+        navNext:Show()
+        navOut:SetPoint("LEFT", navNext, "RIGHT", NAVGAP * 2, 0)
+        nav:SetWidth(NAVBTN * 2 + NAVGAP * 4 + navNo:GetWidth() + navOut:GetStringWidth())
+    else
+        navPrev:Hide()
+        navNo:Hide()
+        navNext:Hide()
+        navOut:SetPoint("LEFT", nav, "LEFT", 0, 0)
+        nav:SetWidth(navOut:GetStringWidth() + 2)
+    end
     nav:Show()
+    FL.FitTitle()
 end
 Redraw = function()
     if not side then return end
@@ -897,35 +916,41 @@ local function AttachNav(host, title, status)
     navNext:SetPoint("LEFT", navNo, "RIGHT", NAVGAP, 0)
     navOut = Label(nav, "GameFontHighlightSmall", LINE)
     navOut:SetPoint("LEFT", navNext, "RIGHT", NAVGAP * 2, 0)
+    nav:SetPoint("LEFT", title, "RIGHT", NAVGAP * 2, 0)
     nav:Hide()
-    local bar = Kit.ToolBar(host, "LEFT", title, "RIGHT", NAVGAP * 2, 0)
-    bar:Add(nav)
-    bar:Add(ns.ReplayLink.Head(host))
-    bar:Add(ns.ReplayLink.SaveHead(host))
-    if ns.ThreatView then bar:Add(ns.ThreatView.Head(host)) end
+    headTitle = title
+    title:SetWordWrap(false)
+    title:SetJustifyH("LEFT")
+    tools = Kit.ToolBar(host, "LEFT", title, "LEFT", WIDTH, 0)
+    tools:Add(ns.ReplayLink.Head(host))
+    if not ns.ReadOnly then tools:Add(ns.ReplayLink.SaveHead(host)) end
+    if ns.ThreatView then tools:Add(ns.ThreatView.Head(host)) end
+    if ns.SumSide then tools:Add(ns.SumSide.Head(host)) end
     if ns.SumHide then ns.SumHide.Head(host) end
-    if status then status:SetPoint("LEFT", bar.tail, "RIGHT", NAVGAP, 0) end
+    if status then status:SetPoint("LEFT", tools.tail, "RIGHT", NAVGAP, 0) end
 end
 Tips.raid = function(r)
     local raid = r.line.raid
-    local out = { Line(RaidName(raid)) }
-    if raid.size then
-        out[#out + 1] = Line(format(ns.T("fl.tip.size"), raid.size), "tip.dim")
-        out[#out + 1] = Line(format(ns.T("fl.tip.diff"), ns.T(raid.heroic and "fl.diff.hc" or "fl.diff.nm")),
-            raid.heroic and "tip.body" or "tip.dim")
+    local kind = ns.T(raid.heroic and "fl.diff.hc" or "fl.diff.nm")
+    if raid.size then kind = format(ns.T("fl.tip.kind"), raid.size, kind) end
+    local wipes, kills, off = 0, 0, 0
+    for i = 1, #raid.encs do
+        local enc = raid.encs[i]
+        wipes = wipes + ns.FightTree.Wipes(enc)
+        if enc.passed then
+            kills = kills + 1
+            if ns.ZoneBuff and ns.ZoneBuff.Unbuffed(ns.FightTree.Decisive(enc)) then off = off + 1 end
+        end
     end
-    out[#out + 1] = Line(format(ns.T("fl.tip.when"), ns.Date(raid.from, "dayTime"), ns.Date(raid.to, "dayTime")),
-        "tip.dim")
-    out[#out + 1] = Line(raid.id and format(ns.T("fl.tip.lock"), raid.id) or ns.T("fl.tip.nolock"), "tip.dim")
-    out[#out + 1] = Line(format(ns.T("fl.tip.passed"), raid.passed, raid.total, raid.tries,
-        raid.deaths))
-    local fold = Folded(raid, r.line.index)
-    out[#out + 1] = Line(ns.T(fold and "fl.tip.raid.open" or "fl.tip.raid.fold"), "text.primary", true)
-    if ns.Timeline and ns.Timeline.ShowRaid and not raid.party and not RaidShown(raid) then
-        out[#out + 1] = Line(ns.T("rsum.fl.tip.open"), "text.primary", true)
-    end
-    out[#out + 1] = Line(ns.T("fl.tip.raid.menu"), "text.primary")
-    return out
+    if off > 0 then kind = kind .. ", " .. format(ns.T("zb.raid"), off, kills) end
+    local tail = ns.Date(raid.to) == ns.Date(raid.from) and Hour(raid.to) or ns.Date(raid.to, "dayTime")
+    return {
+        Line(RaidName(raid)),
+        Line(kind, raid.heroic and "tip.body" or "tip.dim"),
+        Line(raid.id and format(ns.T("fl.tip.lock"), raid.id) or ns.T("fl.tip.nolock"), "tip.dim"),
+        Line(format(ns.T("fl.tip.when"), ns.Date(raid.from, "dayTime"), tail), "tip.dim"),
+        Line(format(ns.T("fl.tip.passed"), raid.passed, raid.total, wipes)),
+    }
 end
 Tips.enc = function(r)
     local enc = r.line.enc
@@ -946,21 +971,18 @@ Tips.enc = function(r)
         out[#out + 1] = Line(format(ns.T("fl.tip.enc.line"), i, ns.T(f.killed and "fl.win" or "fl.wipe"),
             Clock(f.to - f.from), f.deaths or 0, Hour(f.from)), token)
     end
+    for i = n, 1, -1 do
+        local f = enc.fights[i]
+        if f.progress then
+            out[#out + 1] = Line(format(ns.T("fl.tip.enc.progress"), ns.EncName(f.progress)), "tip.body")
+            break
+        end
+    end
     out[#out + 1] = Line(ns.T(enc.passed and "fl.tip.enc.kill" or "fl.tip.enc.last"), "text.primary", true)
     if ns.FightTree.Wipes(enc) > 0 then out[#out + 1] = Line(ns.T("fl.tip.enc.wipes"), "text.primary") end
     out[#out + 1] = Line(ns.T("fl.tip.enc.nav"), "text.primary")
     out[#out + 1] = Line(ns.T("fl.tip.enc.menu"), "text.primary")
     return out
-end
-Tips.wipe = function(r)
-    local f, n = r.line.fight, r.line.n
-    return {
-        Line(format(ns.T("fl.try.title"), ns.EncName(f.boss), n)),
-        Line(format(ns.T("fl.tip.enc.line"), n, ns.T("fl.wipe"), Clock(f.to - f.from), f.deaths or 0,
-            Hour(f.from)), "sem.wipe"),
-        Line(ns.T("fl.tip.wipe.open"), "text.primary", true),
-        Line(ns.T("fl.tip.wipe.menu"), "text.primary"),
-    }
 end
 function Del.Land(key, lost)
     local TL = ns.Timeline
@@ -1031,16 +1053,6 @@ end
 function Del.AskRaid(raid)
     Del.Ask(format(ns.T("fl.del.raid.ask"), RaidName(raid), ns.Date(raid.from), raid.tries),
         ns.FightTree.RaidFights(raid), Del.RaidSegs(raid))
-end
-function Del.RaidMenu(row)
-    local raid, index = row.line.raid, row.line.index
-    ns.Tip.Hide()
-    Kit.Menu({
-        { text = RaidName(raid), isTitle = true },
-        { text = ns.T(Folded(raid, index) and "fl.menu.open" or "fl.menu.fold"),
-          func = function() FoldKey(raid, index) end },
-        { text = ns.T("fl.menu.raid.del"), func = function() Del.AskRaid(raid) end },
-    }, row)
 end
 function Del.EncMenu(row)
     local enc = row.line.enc
@@ -1129,6 +1141,9 @@ local function Regeom()
     if nav then
         navNo:SetHeight(LINE)
         navOut:SetHeight(LINE)
+        tools.x = WIDTH
+        tools:Layout()
+        DrawNav()
     end
     for kind, pool in pairs(pools) do
         for i = 1, #pool do GEOM[kind](pool[i]) end

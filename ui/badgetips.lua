@@ -11,12 +11,59 @@ local ABIL_TOP = 10
 local BLOCK_TOP = 5
 local REST_KEY = "#rest"
 local GLYPH = "|T%s:14:14:0:0:64:64:5:59:5:59|t "
+local MELEE_ICON = "Interface\\Icons\\INV_Sword_04"
 local Tips = {}
 ns.BadgeTips = Tips
 local function T(key)
     return ns.T(key)
 end
 local Short = ns.Short
+function Tips.Mechanic(b)
+    local d = b.def
+    local label = T(b.label or d.label)
+    local spells, seen = {}, {}
+    local ids = d.spells or (d.spell and { d.spell }) or {}
+    for i = 1, #ids do
+        local id = tonumber(ids[i])
+        local key = id and ns.SpellKey(id)
+        if key and not seen[key] then
+            spells[#spells + 1], seen[key] = id, true
+        end
+    end
+    local id = spells[1]
+    local name = id and ns.SpellName(id)
+    local known = name and name:sub(1, 1) ~= "#"
+    local spellLink = id and GetSpellLink(id)
+    if #spells == 1 and known and (d.kind == "taken" or d.kind == "friendly") then
+        label = format(T("sum.k.damagefrom"), spellLink or name)
+    elseif #spells == 1 and known and d.kind == "dispels" then
+        label = format(T("sum.k.dispelspell"), spellLink or name)
+    end
+    local npc = d.npc or d.src or (d.names and d.names[1])
+    local icon = npc and ns.npcPortraits and ns.npcPortraits[npc]
+    local add = npc and ns.replayData and ns.replayData.adds[npc]
+    icon = icon or ns.SpellIcon(id or (type(add) == "number" and add or nil))
+    if #spells == 1 and not npc then
+        return { label = label, icon = icon, link = "spell:" .. id }
+    end
+    local lines = { { kind = "head", left = label } }
+    for i = 1, #spells do
+        local spell = spells[i]
+        local link = GetSpellLink(spell)
+        lines[#lines + 1] = { kind = "row", left = link or ns.SpellName(spell) }
+    end
+    if npc then
+        local names = {}
+        for i = 1, #(d.names or { npc }) do
+            local name = ns.NpcName(d.names and d.names[i] or npc)
+            if name ~= "" and name:sub(1, 1) ~= "#" and not names[name] then
+                lines[#lines + 1] = { kind = "row", left = name }
+                names[name] = true
+            end
+        end
+    end
+    return { label = label, icon = icon, tip = lines, link = #spells == 1 and ("spell:" .. id) or nil }
+end
 function Tips.Rate(n)
     if n >= 1e3 then return ns.Dec(format("%.2f", n / 1e3)) .. ns.T("num.k") end
     return tostring(floor(n + 0.5))
@@ -206,10 +253,13 @@ function Tips.Player(p, s)
     local out = {}
     local sec = ns.Totals.Time(s)
     Head(out, p.name, T("sum.tt.role." .. p.role), p.class)
+    if p.deaths > 0 then Put(out, "row", T("sum.tt.deaths"), tostring(p.deaths), nil, "bad") end
+    if p.interrupts > 0 then Put(out, "row", T("sum.tt.kicks"), tostring(p.interrupts)) end
     if p.tree and p.class and p.treeBy then
         Put(out, "row", T("sum.tt.spec"), T("spec." .. p.class .. "." .. p.tree))
-        Put(out, "sub", T("sum.tt.spec." .. p.treeBy), nil, nil, "dim")
+        if p.treeBy == "insp" then Put(out, "sub", T("sum.tt.spec.insp"), nil, nil, "dim") end
     end
+    Effective(out, p, s)
     if p.role == "heal" then
         Put(out, "row", T("sum.tt.heal"), Rate(p.heal, sec), Short(p.heal))
         NoIdle(out, p.heal, s)
@@ -224,12 +274,6 @@ function Tips.Player(p, s)
         Abilities(out, p.dmgBy, p.petBy, p.dmg, p.abRest)
         if p.role == "tank" and p.heal > 0 then Put(out, "row", T("sum.tt.heal"), Rate(p.heal, sec), Short(p.heal)) end
     end
-    Effective(out, p, s)
-    if p.deaths > 0 or p.interrupts > 0 then
-        Put(out, "sep")
-        if p.deaths > 0 then Put(out, "row", T("sum.tt.deaths"), tostring(p.deaths), nil, "bad") end
-        if p.interrupts > 0 then Put(out, "row", T("sum.tt.kicks"), tostring(p.interrupts)) end
-    end
     Put(out, "foot", T("sum.tt.foot"))
     return out
 end
@@ -240,6 +284,26 @@ end
 local function Buffs(st, def)
     local out = {}
     Head(out, format(T(def.tip), ns.SpellName(def.spells[1])), format("x%d", st.n))
+    local fate = st.fate
+    for _, kind in ipairs(fate and { "over", "under", "cut", "miss" } or {}) do
+        if (st[kind] or 0) > 0 then
+            Put(out, "row", T("sum.b.clash." .. kind), tostring(st[kind]), nil, kind == "over" and "warn" or nil)
+        end
+    end
+    local function Sec(x)
+        return x % 1 == 0 and format("%d", x) or ns.Fixed(x)
+    end
+    local function Fate(k)
+        local f = fate and fate[k]
+        if not f then return nil end
+        local at = f.h and ns.Dec(ns.Clock(f.h, true, true))
+        local sec, full = Sec(f.s), ns.SummaryShed.Buffed.Clash.FULL
+        local tone = f.over and "warn" or nil
+        if f.cut then return format(T("sum.b.clash.cutAt"), ns.SpellName(f.id), at, sec), tone end
+        if f.miss and at then return format(T("sum.b.clash.missAt"), ns.SpellName(f.id), at), tone end
+        if f.u then return format(T("sum.b.clash.with"), sec, full, ns.SpellName(f.uid), Sec(f.u)), tone end
+        return format(T("sum.b.clash.held"), sec, full), nil
+    end
     local enc = ns.Encounters
     local function Class(who)
         return who and enc and enc.ClassOf and enc.ClassOf(who) or nil
@@ -263,6 +327,8 @@ local function Buffs(st, def)
             local pull = st.pulled ~= nil and st.pulled[k] == true
             out[#out + 1] = { kind = "row", left = who, right = Signed(st.times[k]),
                               mid = pull and T("sum.tt.pull") or nil, tone = pull and "good" or nil, class = Class(who) }
+            local text, tone = Fate(k)
+            if text then Put(out, "sub", text, nil, nil, tone) end
             shown = shown + 1
         else
             out[#out + 1] = { kind = "row", left = who, right = #order > 1 and format("x%d", #list) or nil,
@@ -271,7 +337,12 @@ local function Buffs(st, def)
                 if shown >= TIMES then break end
                 local k = list[j]
                 local pull = st.pulled ~= nil and st.pulled[k] == true
-                Put(out, "sub", Signed(st.times[k]), pull and T("sum.tt.pull") or nil, nil, pull and "good" or nil)
+                local text, tone = Fate(k)
+                if text then
+                    Put(out, "sub", Signed(st.times[k]), text, nil, tone)
+                else
+                    Put(out, "sub", Signed(st.times[k]), pull and T("sum.tt.pull") or nil, nil, pull and "good" or nil)
+                end
                 shown = shown + 1
             end
         end
@@ -285,8 +356,7 @@ function Tips.Cons(list)
     local name = e.id and GetItemInfo and GetItemInfo(e.id) or e.item
     Head(out, name or "?", format("x%d", #list))
     for k = 1, min(TIMES, #list) do
-        local pre = list[k].t < 0
-        Put(out, "sub", Signed(list[k].t), pre and T("sum.tt.pull") or nil, nil, pre and "good" or nil)
+        Put(out, "sub", Signed(list[k].t))
     end
     if #list > TIMES then Put(out, "sub", (format(T("sum.tip.more"), #list - TIMES):gsub("^%s+", ""))) end
     return out
@@ -336,6 +406,7 @@ end
 function Tips.Badge(st, def)
     local kind = def.kind
     if kind == "given" or kind == "got" then return Buffs(st, def) end
+    if kind == "pullin" and ns.PullTips then return ns.PullTips.Badge(st, def) end
     if def.shed and st.hangs and ns.Penalties then return Shed(st, def) end
     if kind == "stack" and st.eps and st.eps[1] and ns.StackTips then return ns.StackTips.Badge(st, def) end
     if kind == "lost" and st.lost and ns.StackTips then return ns.StackTips.Lost(st, def) end
@@ -733,6 +804,68 @@ function Tips.Missed(b)
     Put(out, "sub", T("sum.tt.hits"), tostring(b.missHits))
     return out
 end
+function Tips.McHurt(out, m, from)
+    Put(out, "row", Clock(m.t - from) .. " " .. tostring(m.who), Short(m.n), nil, "bad")
+    for i = 1, #(m.top or {}) do
+        local e = m.top[i]
+        local name = e.sp == "#melee" and T("sum.ab.melee") or ns.SpellName(e.sp)
+        Put(out, "sub", name, Short(e.n))
+    end
+end
+function Tips.AwayBody(out, st, lim)
+    local share = ns.Away and ns.Away.Share(st, lim) or 0
+    Put(out, "row", T("sum.tt.limit"), format(T("sum.tt.yd"), Dec(lim, 0)), nil, "dim")
+    Put(out, "text", format(T("sum.tt.away"), Dec(st.avg or 0, 1), floor(share * 100 + 0.5), Dec(st.peak or 0, 1),
+        Clock(st.peakT or 0)), nil, nil, st.avg > lim and "warn" or nil)
+end
+function Tips.TombSum(out, st, lim)
+    local _, pts = ns.TombBreak.Shown(st, lim)
+    Put(out, "row", T("sum.tt.tb.pts"), format(T("sum.tt.tb.of"), Dec(pts, 0), Dec(lim, 0)), nil, "warn")
+end
+function Tips.TombBody(out, st, k, many)
+    local dead = st.dead[k] or 0
+    local before = format(T("sum.tt.tb.before"), Dec(st.before[k] or 0, 1))
+    if many then
+        Put(out, "row", format(T("sum.tt.tb.tomb"), st.notes[k] or "?"), Dec(st.pts[k] or 0, 1), before, "warn")
+    else
+        Put(out, "row", format(T("sum.tt.tb.tomb"), st.notes[k] or "?"), before, nil, "warn")
+    end
+    Put(out, "row", T("sum.tt.tb.dead"), dead > 0 and st.dn[k] or T("sum.tt.tb.nodead"), nil, dead > 0 and "bad" or "good")
+    if st.src[k] == "land" then
+        Put(out, "note", T("sum.tt.tb.src.land"))
+    elseif st.src[k] == "def" then
+        Put(out, "note", T("sum.tt.tb.src.def"))
+    end
+    local acts = st.acts[k] or {}
+    if #acts == 0 then return end
+    Put(out, "sub", T("sum.tt.tb.col.ab"), T("sum.tt.tb.col.pts"), T("sum.tt.tb.col.hp"), "dim")
+    for i = 1, #acts do
+        local a = acts[i]
+        local name
+        if a.id == -1 then
+            name = T("sum.tt.tb.rest")
+        else
+            name = a.id == 0 and (format(GLYPH, MELEE_ICON) .. T("sum.ab.melee")) or (Glyph(a.id) .. ns.SpellName(a.id))
+        end
+        if a.kind == "dot" then
+            name = format(T("sum.tt.tb.dot"), name)
+        elseif a.kind == "series" then
+            name = format(T("sum.tt.tb.series"), name)
+        end
+        if a.n > 1 then name = format(T("sum.tt.tb.times"), name, a.n) end
+        Put(out, "sub", name, Dec(a.pts, 1), format(T("sum.tt.tb.hp"), floor(a.h * 100 + 0.5), Short(a.hp)),
+            a.h < 0.1 and "bad" or "warn")
+    end
+end
+function Tips.Spared(sp)
+    local out = {}
+    Head(out, ns.Penalties.Reason(sp.rule))
+    Put(out, "row", T("sum.tt.needdps"), format(T("sum.tt.ofs"), Short(sp.amount), Short(sp.need)))
+    Put(out, "row", T("sum.tt.healer"), nil, nil, "good")
+    if sp.spec and sp.class then Put(out, "sub", T("sum.tt.healspec"), T("spec." .. sp.class .. "." .. sp.spec)) end
+    if #sp.bosses > 0 then Put(out, "sub", T("sum.tt.healedon"), concat(sp.bosses, ", ")) end
+    return out
+end
 function Tips.Hit(fight, hit, reason)
     local out = {}
     Head(out, reason)
@@ -746,6 +879,20 @@ function Tips.Hit(fight, hit, reason)
     elseif info and info.need then
         local key = info.melee == nil and "sum.tt.needdps" or (info.melee and "sum.tt.needmelee" or "sum.tt.needranged")
         Put(out, "row", T(key), format(T("sum.tt.ofs"), Short(info.amount or 0), Short(info.need)), nil, "bad")
+    elseif info and info.tomb then
+        Tips.TombSum(out, info.tomb, info.limit or 0)
+        for k = 1, min(3, #hit.events) do
+            local e = hit.events[k].info
+            if e and e.tomb then Tips.TombBody(out, e.tomb, e.k, e.tomb.n > 1) end
+        end
+    elseif info and info.mcd then
+        Put(out, "row", T("sum.tt.limit"), Short(info.limit or 0), nil, "dim")
+        for k = 1, min(TIMES, #hit.events) do
+            local m = hit.events[k].info and hit.events[k].info.mcd
+            if m then Tips.McHurt(out, m, fight.from) end
+        end
+    elseif info and info.away then
+        Tips.AwayBody(out, info.away, info.limit or 0)
     elseif info and info.early then
         Put(out, "row", T("sum.pt.early"), format(T("sum.pt.sec"), Dec(info.early, 1)), nil, "warn")
         Put(out, "row", T("sum.pt.timer"), format(T("sum.pt.by"), info.sec, info.setter or "?"), nil, "dim")
@@ -811,20 +958,21 @@ function Tips.Hit(fight, hit, reason)
 end
 function Tips.GPRow(item, reasonOf)
     local out = {}
+    local unit = ns.Ledger and ns.Ledger.Unit(item.sys) or T("led.unit.gp")
     Head(out, item.name, nil, item.class)
     for i = 1, #item.hits do
         local hit = item.hits[i]
         local sum = 0
         for k = 1, #hit.events do sum = sum + hit.events[k].n end
-        Put(out, "row", reasonOf(hit.rule), format(T("sum.tt.gp"), sum, ns.Ledger and ns.Ledger.Unit() or T("led.unit.gp")), format("x%d", #hit.events))
+        Put(out, "row", reasonOf(hit.rule), format(T("sum.tt.gp"), sum, unit), format("x%d", #hit.events))
         for k = 1, #(hit.shed or {}) do
             Put(out, "sub", ns.Penalties.ShedText(hit.shed[k].hangs, true), nil, nil,
                 ns.Penalties.Grade(hit) == "yellow" and "warn" or nil)
         end
     end
     Put(out, "sep")
-    Put(out, "row", T("sum.tt.gptotal"), format(T("sum.tt.gp"), item.total, ns.Ledger.Unit()))
-    Put(out, "row", T("sum.tt.gppending"), format(T("sum.tt.gp"), item.pending, ns.Ledger.Unit()), nil,
+    Put(out, "row", T("sum.tt.gptotal"), format(T("sum.tt.gp"), item.total, unit))
+    Put(out, "row", T("sum.tt.gppending"), format(T("sum.tt.gp"), item.pending, unit), nil,
         item.pending > 0 and "bad" or "good")
     Put(out, "foot", T("sum.tt.footrow"))
     return out

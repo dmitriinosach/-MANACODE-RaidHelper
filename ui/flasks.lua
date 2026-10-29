@@ -18,7 +18,7 @@ local View = {}
 ns.FlaskView = View
 local pop, title, who, line, warn, glow, glowTex
 local kindBtn = {}
-local forceBtn, acceptBtn
+local forceBtn, acceptBtn, cancelBtn
 local function Word(n, key)
     return ns.Plural and ns.Plural(n, T(key)) or T(key)
 end
@@ -38,9 +38,32 @@ function View.LogLines()
             parts[#parts + 1] = F.ItemName(F.ById(id) or { id = id, name = tostring(id) }) .. " x" .. c
         end
         table.sort(parts)
-        out[#out + 1] = format(T("flask.log.row"), r.name, r.n, concat(parts, ", "), date("%H:%M", r.last))
+        local hand = r.hand > 0 and format(T("flask.log.hand"), r.hand) or ""
+        out[#out + 1] = format(T("flask.log.row"), r.name, r.n, concat(parts, ", "), date("%H:%M", r.last)) .. hand
     end
+    out[#out + 1] = T("flask.log.note")
     return out
+end
+local function Short(it)
+    return T("flask.short." .. it.key)
+end
+function View.BagLine()
+    local list = F.Bags()
+    local parts = {}
+    for i = 1, #list do
+        local e = list[i]
+        local s = Short(e.item) .. " " .. e.n
+        parts[i] = e.n > 0 and s or (Kit.Hex("text.warn") .. s .. "|r")
+    end
+    return format(T("flask.bags"), concat(parts, ", "))
+end
+function View.AnnounceText()
+    local norm = F.Norm(UnitName("player") or "")
+    return format(T("flask.say"), norm)
+end
+function View.Announce()
+    if not F.IsOn() or not F.InGroup() then return end
+    SendChatMessage(View.AnnounceText(), (GetNumRaidMembers() or 0) > 0 and "RAID" or "PARTY")
 end
 function View.PrintLog()
     local lines = View.LogLines()
@@ -73,6 +96,17 @@ local function WhoText(s)
     if not p.kind then return format(T("flask.pop.who.none"), p.name, p.n, p.norm) .. alch end
     return format(T("flask.pop.who"), p.name, T("flask.kind." .. p.kind), T("flask.src." .. (p.src or "hand")),
         p.n, p.norm) .. alch
+end
+local function HandText(s)
+    local parts
+    for i = 1, #(s.armed or {}) do
+        local a = s.armed[i]
+        if a.manual then
+            parts = parts or {}
+            parts[#parts + 1] = F.ItemName(a.item) .. " x" .. a.count
+        end
+    end
+    return parts and format(T("flask.st.hand"), concat(parts, ", ")) or nil
 end
 local function Layout()
     local U = ns.Kit.FontGrow
@@ -108,7 +142,16 @@ local function Layout()
     acceptBtn:SetHeight(bh)
     acceptBtn:ClearAllPoints()
     acceptBtn:SetPoint("TOPLEFT", pad + half + gap, y)
-    y = y - bh - pad
+    y = y - bh
+    if cancelBtn:IsShown() then
+        y = y - gap
+        cancelBtn:SetWidth(inner)
+        cancelBtn:SetHeight(bh)
+        cancelBtn:ClearAllPoints()
+        cancelBtn:SetPoint("TOPLEFT", pad, y)
+        y = y - bh
+    end
+    y = y - pad
     pop:SetHeight(-y)
 end
 local function Label(parent, token)
@@ -145,6 +188,7 @@ local function Build()
     end
     forceBtn = Btn(T("flask.btn.force"), T("flask.btn.force.tip"), Trade.Force)
     acceptBtn = Btn(T("flask.btn.accept"), T("flask.btn.accept.tip"), Trade.Accept)
+    cancelBtn = Btn(T("flask.btn.cancel"), T("flask.btn.cancel.tip"), Trade.Cancel)
     glow = CreateFrame("Frame", nil, pop)
     glowTex = glow:CreateTexture(nil, "OVERLAY")
     glowTex:SetTexture(GLOW)
@@ -184,8 +228,16 @@ function View.Refresh()
     who:SetText(WhoText(s))
     line:SetText(StatusText(s))
     local p = s.plan
-    if p and p.warn == "own" then
-        warn:SetText(format(T("flask.warn.own"), p.name, p.has or 0))
+    local notes = {}
+    if s.otherGuild then
+        notes[#notes + 1] = format(T("flask.warn.guild"), s.partner, s.guild or T("flask.guild.none"))
+    end
+    if p and p.warn == "own" then notes[#notes + 1] = format(T("flask.warn.own"), p.name, p.has or 0) end
+    if s.status == "press" and s.press then notes[#notes + 1] = T("flask.press." .. s.press) end
+    local hand = HandText(s)
+    if hand then notes[#notes + 1] = hand end
+    if #notes > 0 then
+        warn:SetText(concat(notes, "\n"))
         warn:Show()
     else
         warn:Hide()
@@ -193,6 +245,8 @@ function View.Refresh()
     local kind = s.kind or (p and p.kind)
     for k, b in pairs(kindBtn) do b:SetActive(k == kind) end
     local placed = (s.put or 0) > 0
+    local st = s.status or "wait"
+    if not placed and not s.armed and st ~= "wait" and st ~= "split" then cancelBtn:Show() else cancelBtn:Hide() end
     if p and not placed and p.item and p.n < p.limit and s.status ~= "combat" and s.status ~= "stranger" then
         forceBtn:Enable()
     else
@@ -210,7 +264,11 @@ function View.IsShown()
     return pop ~= nil and pop:IsShown() and true or false
 end
 function View.Buttons()
-    return { kindBtn.tank, kindBtn.sp, kindBtn.ap, forceBtn, acceptBtn }
+    return { kindBtn.tank, kindBtn.sp, kindBtn.ap, forceBtn, acceptBtn, cancelBtn }
+end
+function View.Note()
+    if not pop or not warn:IsShown() then return "" end
+    return warn:GetText() or ""
 end
 function View.Lines()
     if not pop then return "", "" end
@@ -237,13 +295,25 @@ local function Rows()
                 id = "toggle",
                 label = T("flask.act.toggle"),
                 title = T("set.cat.flasks"),
-                tip = T("flask.act.toggle.tip"),
+                tip = function() return T("flask.act.toggle.tip") .. "\n\n" .. View.BagLine() end,
                 state = function()
                     local on = F.IsOn()
                     if not on and not F.InGroup() then return false, T("flask.act.nogroup"), false end
                     return true, nil, on
                 end,
                 run = function() Switch(not F.IsOn()) end,
+            },
+            {
+                id = "say",
+                label = T("flask.act.say"),
+                title = T("flask.act.say"),
+                tip = function() return format(T("flask.act.say.tip"), View.AnnounceText()) end,
+                state = function()
+                    if not F.InGroup() then return false, T("flask.act.nogroup"), false end
+                    if not F.IsOn() then return false, T("flask.act.say.off"), false end
+                    return true, nil, false
+                end,
+                run = View.Announce,
             },
             {
                 id = "log",
@@ -299,7 +369,7 @@ local function Pcs(v)
     return format(T("flask.unit.pcs"), v)
 end
 if S and S.Category then
-    S.Category("flasks", { label = "set.cat.flasks", sub = "set.cat.flasks.sub", order = 75, group = "lead" })
+    S.Category("flasks", { label = "set.cat.flasks", sub = "set.cat.flasks.sub", order = 75, group = "other" })
     S.Section("flasks", "state", {
         label = "flask.set.state",
         order = 10,
@@ -310,6 +380,11 @@ if S and S.Category then
             { kind = "button", key = "toggle", tick = true, tip = "flask.set.toggle.tip",
               text = function() return T(F.IsOn() and "flask.set.toggle.off" or "flask.set.toggle.on") end,
               run = function() Switch(not F.IsOn()) end },
+            { kind = "button", key = "say", tick = true, text = "flask.act.say",
+              tip = function() return format(T("flask.act.say.tip"), View.AnnounceText()) end,
+              enabled = function() return F.IsOn() and F.InGroup() end,
+              run = View.Announce },
+            { kind = "text", key = "bags", tick = true, text = View.BagLine, token = "text.secondary" },
             { kind = "text", key = "given", tick = true, text = View.Given, token = "text.primary" },
             { kind = "button", key = "log", text = "flask.set.log", tip = LogTip, run = View.PrintLog },
             { kind = "button", key = "reset", text = "flask.set.reset", confirm = "flask.set.reset.ask",

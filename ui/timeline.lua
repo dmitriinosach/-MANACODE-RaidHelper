@@ -82,6 +82,10 @@ local usedBlocks, usedBars = 0, 0
 local fight, player, data
 local lead, tail = 0, 0
 local SelectPlayer
+local function SetTitle(text)
+    titleText:SetText(text)
+    if ns.FightList and ns.FightList.FitTitle then ns.FightList.FitTitle() end
+end
 local viewFrom, viewTo = 0, 1
 local dragging, dragX, dragFrom, dragY, dragScroll
 local auraRows = {}
@@ -936,7 +940,7 @@ function SelectPlayer(name)
     hitRows, healRows = {}, {}
     if ns.EffectPanel then ns.EffectPanel.SetSource(fight, name, nil) end
     BuildAuraRows()
-    titleText:SetText(format("%s — %s", ns.EncName(fight.boss), name))
+    SetTitle(format("%s — %s", ns.EncName(fight.boss), name))
     TL.RefreshLists()
     Redraw()
     if ns.Store.Bare(fight) then return end
@@ -966,7 +970,7 @@ local function SelectFight(f)
     hitRows, healRows = {}, {}
     if ns.EffectPanel then ns.EffectPanel.SetTimeline(false) end
     BuildAuraRows()
-    titleText:SetText(ns.FightList and ns.FightList.Title(f) or ns.EncName(f.boss))
+    SetTitle(ns.FightList and ns.FightList.Title(f) or ns.EncName(f.boss))
     if ns.MapView then ns.MapView.SetFight(f) end
     if ns.RaidSummaryView then ns.RaidSummaryView.Hide() end
     if ns.ThreatView then ns.ThreatView.Hide() end
@@ -1127,6 +1131,7 @@ local function BuildTools()
         toolBar = Kit.ToolBar(frame, "RIGHT", frame, "TOPRIGHT", -MARGIN, -19)
         local gear = ns.SumHide and ns.SumHide.HeadFrame()
         if gear then toolBar:Add(gear) end
+        if ns.DiscordView and ns.DiscordView.Dock then ns.DiscordView.Dock(toolBar) end
         statusText:SetPoint("RIGHT", toolBar.tail, "LEFT", 0, 0)
         local fxBtn = toolBar:Add(Kit.ToolButton(frame, "HTP_FailWatchFxToggle"))
         fxBtn:SetLabel(ns.T("tl.btn.fx"))
@@ -1304,7 +1309,7 @@ function TL.ShowRaid(raid)
     ruler:Hide()
     canvas:GetParent():Hide()
     statusText:SetText("")
-    titleText:SetText(ns.RaidSummaryView.Title(raid))
+    SetTitle(ns.RaidSummaryView.Title(raid))
     ns.RaidSummaryView.Show(raid)
     TL.RefreshLists()
 end
@@ -1342,7 +1347,7 @@ function TL.ShowThreat(f)
     ruler:Hide()
     canvas:GetParent():Hide()
     statusText:SetText("")
-    titleText:SetText(format(ns.T("thr.view.title"), ns.EncName(f.boss)))
+    SetTitle(format(ns.T("thr.view.title"), ns.EncName(f.boss)))
     ns.ThreatView.Show(f)
     TL.RefreshLists()
 end

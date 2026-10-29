@@ -4,11 +4,23 @@ local ns = root.Lead
 local R = {}
 ns.RaidCmd = R
 local DIFFS = { 1, 2, 3, 4 }
+local LOOT = { "freeforall", "roundrobin", "master", "group", "needbeforegreed" }
+local THRESH = { 2, 3, 4 }
+R.LOOT, R.THRESH = LOOT, THRESH
+local testLoot, testThresh = "group", 2
+local function testActive()
+    return ns.Test ~= nil and ns.Test.Active()
+end
+local function testOnly()
+    return testActive() and ns.Compat.GroupSize() == 0
+end
 function R.Officer()
+    if testActive() then return true end
     local raid = ns.Compat.GroupSize()
     return raid > 0 and (IsRaidLeader() or IsRaidOfficer()) and true or false
 end
 function R.Leader()
+    if testActive() then return true end
     local raid, party = ns.Compat.GroupSize()
     if raid > 0 then return IsRaidLeader() and true or false end
     if party > 0 then return IsPartyLeader() and true or false end
@@ -16,7 +28,71 @@ function R.Leader()
 end
 function R.Ready()
     if not R.Officer() then return false end
+    if testOnly() then return true end
     DoReadyCheck()
+    return true
+end
+function R.CanConvert()
+    if testActive() then return false end
+    local raid, party = ns.Compat.GroupSize()
+    return raid == 0 and party > 0 and IsPartyLeader() and true or false
+end
+function R.Convert()
+    if not R.CanConvert() then return false end
+    ConvertToRaid()
+    return true
+end
+function R.LootMethod()
+    if testOnly() then return testLoot, UnitName("player") end
+    local method, pm, rm = GetLootMethod()
+    local master
+    if method == "master" then
+        if rm then
+            master = GetRaidRosterInfo(rm)
+        elseif pm == 0 then
+            master = UnitName("player")
+        elseif pm then
+            master = UnitName("party" .. pm)
+        end
+    end
+    return method or "group", master
+end
+function R.LootThreshold()
+    if testOnly() then return testThresh end
+    return GetLootThreshold() or 2
+end
+function R.CanLoot()
+    if R.Leader() then return true end
+    return false, ns.T("tipNeedLeader")
+end
+function R.CanThreshold()
+    if R.Leader() then return true end
+    local method, master = R.LootMethod()
+    if method == "master" and master == UnitName("player") then return true end
+    return false, ns.T("tipNeedLeaderOrMaster")
+end
+function R.SetLoot(method, master)
+    if not R.CanLoot() then return false end
+    if testOnly() then
+        testLoot = method
+        ns.Session.Changed()
+        return true
+    end
+    if method == "master" then
+        SetLootMethod("master", master or UnitName("player"))
+    else
+        SetLootMethod(method)
+    end
+    return true
+end
+function R.SetThreshold(n)
+    if not R.CanThreshold() then return false end
+    if testOnly() then
+        testThresh = n
+        ns.Session.Changed()
+        return true
+    end
+    SetLootThreshold(n)
     return true
 end
 function R.ReadyAndOpen()
@@ -149,7 +225,7 @@ function R.Rows()
             },
         } },
         marksRow(),
-        { id = "diff", title = ns.T("actDiffRow"), items = diffs },
+        { id = "diff", title = ns.T("actDiffRow"), short = ns.T("actDiffRowShort"), items = diffs },
     }
 end
 if root.Shell and root.Shell.Actions then root.Shell.Actions(R.Rows) end

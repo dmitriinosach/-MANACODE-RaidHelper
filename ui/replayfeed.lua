@@ -53,11 +53,10 @@ local function Clock(sec)
     return format("%d:%02d", floor(sec / 60), sec % 60)
 end
 local function SetIcon(tex, icon)
-    if icon == "death" then
-        Kit.Icon.Mark(tex, 8)
-    elseif icon == "wave" then
-        Kit.Icon.Mark(tex, 7)
-    elseif icon == "phase" then
+    local g = type(icon) == "string" and ns.replayFeed.glyphs[icon]
+    if g and g.mark then
+        Kit.Icon.Mark(tex, g.mark)
+    elseif g and g.heroic then
         Kit.Icon.Heroic(tex)
     else
         local id = tonumber(icon)
