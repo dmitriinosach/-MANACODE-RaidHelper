@@ -39,6 +39,9 @@ function Report.Channel()
     local c = Saved().ch
     return KNOWN[c or ""] and c or "RAID"
 end
+function Report.SetChannel(c)
+    if KNOWN[c or ""] then Saved().ch = c end
+end
 function Report.Lines(head, sec, list, n)
     tsort(list, function(a, b)
         if a.v ~= b.v then return a.v > b.v end

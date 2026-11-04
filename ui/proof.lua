@@ -63,71 +63,62 @@ local function PaintSetting(b)
     b.text:SetText(label)
     b.tipTitle = label
 end
-function View.Menu(anchor)
-    local menu = { { text = T("proof.menu"), isTitle = true, notCheckable = true } }
-    local cur = ns.Proof.Channel()
-    for i = 1, #ns.Proof.CHANNELS do
-        local c = ns.Proof.CHANNELS[i]
-        menu[#menu + 1] = {
-            text = ns.Proof.Label(c),
-            checked = c == cur,
-            func = function()
-                ns.Proof.SetChannel(c)
-                for k = 1, #settings do PaintSetting(settings[k]) end
-            end,
-        }
+local function ChannelCells(list, can, whisper)
+    local out = {}
+    for i = 1, #list do
+        local c = list[i]
+        local off = can ~= nil and not can(c)
+        local tip
+        if off then tip = T("report.off." .. c) elseif c == "WHISPER" then tip = whisper end
+        out[i] = { key = c, label = T("report.ch." .. c), disabled = off, tip = tip }
     end
-    menu[#menu + 1] = { text = T("proof.menu.view"), isTitle = true, notCheckable = true }
-    local view = ns.Proof.View()
-    for i = 1, #VIEWS do
-        local v = VIEWS[i]
-        menu[#menu + 1] = {
-            text = T("proof.view." .. v),
-            checked = v == view,
-            func = function()
-                ns.Proof.SetView(v)
-                for k = 1, #settings do PaintSetting(settings[k]) end
-            end,
-        }
+    return out
+end
+function View.Menu(anchor)
+    local P = ns.Proof
+    local function Repaint()
+        for k = 1, #settings do PaintSetting(settings[k]) end
     end
     ns.Tip.Hide()
-    ns.Kit.Menu(menu, anchor)
+    ns.Kit.Menu(function()
+        local views = {}
+        for i = 1, #VIEWS do views[i] = { key = VIEWS[i], label = T("proof.view." .. VIEWS[i]) } end
+        return {
+            { text = T("proof.menu"), isTitle = true },
+            { text = T("report.menu.ch"), seg = ChannelCells(P.CHANNELS, nil, T("proof.ch.WHISPER")), value = P.Channel(),
+              func = function(c) P.SetChannel(c) Repaint() end },
+            { text = T("proof.menu.view"), seg = views, value = P.View(), func = function(v) P.SetView(v) Repaint() end },
+        }
+    end, anchor)
 end
 function View.ReportMenu(anchor, build, title, now)
     local R = ns.ChatReport
-    local menu = { { text = T(title or "report.menu"), isTitle = true, notCheckable = true } }
-    local cur = R.Channel()
-    for i = 1, #R.CHANNELS do
-        local c = R.CHANNELS[i]
-        menu[#menu + 1] = {
-            text = T("report.ch." .. c),
-            checked = c == cur,
-            disabled = not R.Can(c),
-            func = function()
-                local lines = build(R.Size())
-                if #lines < 2 then
-                    ns.Print(T("report.none"))
-                    return
-                end
-                if now then R.SendNow(lines, c) else R.Send(lines, c) end
-            end,
-        }
-    end
-    menu[#menu + 1] = { text = T("report.menu.n"), isTitle = true, notCheckable = true }
-    local n = R.Size()
-    for i = 1, #R.SIZES do
-        local k = R.SIZES[i]
-        menu[#menu + 1] = {
-            text = format(T("report.n"), k),
-            checked = k == n,
-            func = function()
-                R.SetSize(k)
-                View.ReportMenu(anchor, build, title, now)
-            end,
-        }
+    local function Send()
+        local lines = build(R.Size())
+        if #lines < 2 then
+            ns.Print(T("report.none"))
+            return
+        end
+        if now then R.SendNow(lines, R.Channel()) else R.Send(lines, R.Channel()) end
     end
     ns.Tip.Hide()
-    ns.Kit.Menu(menu, anchor)
+    ns.Kit.Menu(function()
+        local c = R.Channel()
+        local sizes = {}
+        for i = 1, #R.SIZES do sizes[i] = { key = R.SIZES[i], label = tostring(R.SIZES[i]) } end
+        local to = UnitExists("target") and UnitIsPlayer("target") and UnitName("target") or nil
+        local can = R.Can(c)
+        local menu = {
+            { text = T(title or "report.menu"), isTitle = true },
+            { text = T("report.menu.n"), seg = sizes, value = R.Size(), func = R.SetSize },
+            { text = T("report.menu.ch"), seg = ChannelCells(R.CHANNELS, R.Can, to and format(T("report.tip.whisper"), to)),
+              value = c, func = R.SetChannel },
+            { text = T("report.send"), kind = "main", disabled = not can, tip = not can and T("report.off." .. c) or nil,
+              func = Send },
+        }
+        if ns.Proof.Slow(c) then menu[#menu + 1] = { text = format(T("chat.slow"), T("report.ch." .. c)), note = "text.warn" } end
+        return menu
+    end, anchor)
 end
 function View.ReportButton(parent, build)
     local b = ns.Kit.Button(parent, nil, "quiet")

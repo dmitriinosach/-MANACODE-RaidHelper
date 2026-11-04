@@ -584,6 +584,9 @@ function Proof.SetView(v)
     ns.GetDB().gp.proofView = v
     return true
 end
+function Proof.Slow(c)
+    return not FAST[c or ""]
+end
 function Proof.Label(c)
     return T("proof.ch." .. tostring(c))
 end

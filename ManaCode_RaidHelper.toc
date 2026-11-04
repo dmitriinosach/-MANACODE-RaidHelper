@@ -224,6 +224,7 @@ ui\kit\anim.lua
 ui\kit\window.lua
 ui\kit\tip.lua
 ui\kit\button.lua
+ui\kit\segments.lua
 ui\kit\select.lua
 ui\kit\edit.lua
 ui\kit\scroll.lua

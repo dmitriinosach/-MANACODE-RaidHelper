@@ -6,6 +6,9 @@ local ARROW_W, ARROW_H = 11, 6
 local ROW_H, ROW_GAP, LIST_PAD = 20, 2, 6
 local HEAD_H = 18
 local MENU_W = 160
+local SEG_W, SEG_CAP_GAP = 210, 10
+local max = math.max
+local ceil = math.ceil
 local list, catcher, openOn, head
 local pool = {}
 local used = 0
@@ -48,6 +51,33 @@ local function AcquireCheck()
     end
     c:Show()
     return c
+end
+local segs, segUsed = {}, 0
+local function AcquireSeg()
+    segUsed = segUsed + 1
+    local p = segs[segUsed]
+    if not p then
+        p = { seg = Kit.Segments(list), cap = Kit.Str(list, "GameFontNormalSmall") }
+        p.cap:SetJustifyH("LEFT")
+        p.cap:SetWordWrap(false)
+        Kit.Text(p.cap, "list.head")
+        segs[segUsed] = p
+    end
+    p.seg:Show()
+    p.cap:Show()
+    return p
+end
+local notes, noteUsed = {}, 0
+local function AcquireNote()
+    noteUsed = noteUsed + 1
+    local fs = notes[noteUsed]
+    if not fs then
+        fs = Kit.Str(list, "GameFontNormalSmall")
+        fs:SetJustifyH("LEFT")
+        notes[noteUsed] = fs
+    end
+    fs:Show()
+    return fs
 end
 local function EnsureList(sel)
     local win = RootOf(sel)
@@ -93,21 +123,34 @@ local function ShowList(sel, options, value, onPick, owner, title)
     openOn = owner
     used = 0
     checkUsed = 0
+    segUsed = 0
+    noteUsed = 0
     local rowH = Kit.GrowH(ROW_H, "GameFontNormalSmall")
     local headH = Kit.GrowH(HEAD_H, "GameFontNormalSmall")
-    local y = LIST_PAD
     local w = (sel and sel:GetWidth() or MENU_W) - LIST_PAD * 2
     if title then
         head:SetText(title)
         head:Show()
-        y = y + headH
         local need = head:GetStringWidth() + 8
         if need > w then w = need end
     else
         head:Hide()
     end
+    local rows, capW = {}, 0
     for _, opt in ipairs(options or {}) do
-        if opt.check ~= nil then
+        if opt.seg then
+            local p = AcquireSeg()
+            p.cap:SetText(opt.label or "")
+            p.seg:SetCells(opt.seg, opt.value)
+            p.seg.onPick = opt.onSeg
+            capW = max(capW, ceil(p.cap:GetStringWidth() or 0) + SEG_CAP_GAP)
+            rows[#rows + 1] = { seg = p, need = p.seg:Measure(Kit.FontGrow(SEG_W, "GameFontNormalSmall")) }
+        elseif opt.note then
+            local fs = AcquireNote()
+            fs:SetText(opt.label or "")
+            Kit.Text(fs, opt.note)
+            rows[#rows + 1] = { note = fs }
+        elseif opt.check ~= nil then
             local c = AcquireCheck()
             c:SetWidth(rowH)
             c:SetHeight(rowH)
@@ -119,13 +162,20 @@ local function ShowList(sel, options, value, onPick, owner, title)
                 Kit.SelectClose()
                 onPick(opt.key, opt)
             end
-            c:ClearAllPoints()
-            c:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PAD, -y)
             local need = rowH + 2 + c.label:GetStringWidth() + 8
             if need > w then w = need end
-            y = y + rowH + ROW_GAP
+            rows[#rows + 1] = { check = c }
         else
             local b = Acquire()
+            Kit.ButtonKind(b, opt.kind)
+            b.text:ClearAllPoints()
+            if opt.kind then
+                b.text:SetPoint("CENTER", b, "CENTER", 0, 0)
+                b.text:SetJustifyH("CENTER")
+            else
+                b.text:SetPoint("LEFT", b, "LEFT", 8, 0)
+                b.text:SetJustifyH("LEFT")
+            end
             b:SetText(opt.label or opt.key)
             b.tip = opt.tip
             b.tipTitle = opt.tipTitle
@@ -139,15 +189,45 @@ local function ShowList(sel, options, value, onPick, owner, title)
             Kit.StyleButton(b)
             local need = b.text:GetStringWidth() + 22
             if need > w then w = need end
-            b:ClearAllPoints()
-            b:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PAD, -y)
-            y = y + rowH + ROW_GAP
+            rows[#rows + 1] = { button = b }
         end
+    end
+    for i = 1, #rows do
+        local r = rows[i]
+        if r.seg and capW + r.need > w then w = capW + r.need end
     end
     for i = used + 1, #pool do pool[i]:Hide() end
     for i = checkUsed + 1, #checks do checks[i]:Hide() end
-    if used + checkUsed == 0 then Kit.SelectClose() return end
-    for i = 1, used do pool[i]:SetWidth(w) end
+    for i = segUsed + 1, #segs do segs[i].seg:Hide() segs[i].cap:Hide() end
+    for i = noteUsed + 1, #notes do notes[i]:Hide() end
+    if used + checkUsed + segUsed == 0 then Kit.SelectClose() return end
+    local y = LIST_PAD + (title and headH or 0)
+    for i = 1, #rows do
+        local r = rows[i]
+        local f, h
+        if r.seg then
+            local s, cap = r.seg.seg, r.seg.cap
+            s:Place(w - capW)
+            s:ClearAllPoints()
+            s:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PAD + capW, -y)
+            cap:ClearAllPoints()
+            cap:SetPoint("LEFT", list, "TOPLEFT", LIST_PAD + 2, -(y + (s.cells[1]:GetHeight() + 6) / 2))
+            h = s:GetHeight()
+        elseif r.note then
+            f = r.note
+            f:SetWidth(w - 4)
+            h = ceil(f:GetStringHeight() or 0)
+            f:ClearAllPoints()
+            f:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PAD + 2, -y)
+        else
+            f = r.check or r.button
+            if r.button then f:SetWidth(w) end
+            f:ClearAllPoints()
+            f:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PAD, -y)
+            h = rowH
+        end
+        y = y + h + ROW_GAP
+    end
     list:SetWidth(w + LIST_PAD * 2)
     local h = y - ROW_GAP + LIST_PAD
     list:SetHeight(h)
@@ -218,6 +298,8 @@ function Kit.Select(parent)
     return b
 end
 function Kit.Menu(items, anchor)
+    local build
+    if type(items) == "function" then build, items = items, items() end
     local options, title, value = {}, nil, {}
     for i = 1, #items do
         local it = items[i]
@@ -227,7 +309,12 @@ function Kit.Menu(items, anchor)
             options[#options + 1] = { key = i, label = it.text, disabled = true, tipTitle = false }
         else
             options[#options + 1] = { key = i, label = it.text, disabled = it.disabled, tip = it.tip, tipTitle = false,
-                                      check = it.checked }
+                                      check = it.checked, seg = it.seg, value = it.value, note = it.note, kind = it.kind,
+                                      onSeg = it.seg and function(k)
+                                          it.value = k
+                                          if it.func then it.func(k) end
+                                          Kit.Menu(build or items, anchor)
+                                      end }
         end
     end
     ShowList(anchor, options, value, function(key)
