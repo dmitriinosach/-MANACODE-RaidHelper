@@ -13,6 +13,7 @@ local FLOOR_FIT = 2.6
 local ATLAS_MAX = 4
 local MAX_STRIPS = 6
 local MAX_SLICES = 3
+local THRONE_SLICES = 4
 local BUCKETS = 256
 local KEY_MAX = 140
 local MIN_PX = 2
@@ -28,22 +29,32 @@ local RING_POOL = 400
 local RING_ALPHA_MIN = 0.02
 local RING_STONE = "sem.room.stone"
 local RING_ICE = "sem.room.ice"
+local IMP_CELL = 11
+local IMP_STRETCH = 0.2
+local THRONE_NEAR = 0.5
+local THRONE_PIC = "pic"
+local THRONE_FACES = "faces"
+local THRONE_DEFAULT = THRONE_PIC
+local HUGE = 1e9
 local Live = {}
 ns.ReplayLive = Live
 local Replay = ns.Replay
 local Kit = ns.Kit
 local F = { n = 0, cx = {}, cy = {}, cz = {}, ux = {}, uy = {}, uz = {}, vx = {}, vy = {}, vz = {}, nx = {}, ny = {}, nz = {},
             hu = {}, hv = {}, cu = {}, cv = {}, q = {}, du = {}, dv = {}, kind = {}, shell = {}, flat = {}, floor = {},
-            fx = {}, fy = {}, fz = {}, kz = {}, ringS = {}, ringB = {}, at = {}, obj = {} }
+            fx = {}, fy = {}, fz = {}, kz = {}, ringS = {}, ringB = {}, at = {}, obj = {}, th = {} }
 local objKey, objFirst, objLast, objNext = {}, {}, {}, {}
 local P = { a1 = {}, b1 = {}, a2 = {}, b2 = {}, sx = {}, sy = {}, over = {}, nxt = {}, rkey = {} }
 local ringList = {}
 local Pr = { n = 0, row = {} }
 local PROP_CELL = 8
 local head, tail = {}, {}
+local Th = { on = false, l = 0, t = 0, w = 0, h = 0, u0 = 0, v0 = 0, u1 = 0, v1 = 0, depth = 0, path = "", level = 0 }
+local throneImp
+local spireImp
 local st = { floors = {}, bases = {}, overs = {}, rings = {}, used = { [POOL_BASE] = 0, [POOL_OVER] = 0, [POOL_FLOOR] = 0, [POOL_RING] = 0 },
              calls = 0, pieces = 0, hidden = 0, ringOk = false, t = 0, pfDone = -1, texA = {}, texIce = {}, path = {}, on = {},
-             atlasPaths = {}, nAtlas = 1 }
+             atlasPaths = {}, nAtlas = 1, thPaths = {}, spPaths = {}, spA = 1, thA = 1, thMode = THRONE_DEFAULT }
 function Live.Build(view, level)
     st.view = view
     local top = CreateFrame("Frame", nil, view)
@@ -51,6 +62,14 @@ function Live.Build(view, level)
     top:SetFrameLevel(level)
     top:SetAlpha(OVER_ALPHA)
     st.top = top
+    st.spire = view:CreateTexture(nil, "BORDER")
+    st.spire:Hide()
+    local thTop = CreateFrame("Frame", nil, view)
+    thTop:SetAllPoints(view)
+    st.thTop = thTop
+    st.thOver = thTop:CreateTexture(nil, "ARTWORK")
+    st.thOver:SetAlpha(OVER_ALPHA)
+    st.thOver:Hide()
     for k = 1, RING_POOL do
         st.rings[k] = view:CreateTexture(nil, "BORDER")
         st.rings[k]:Hide()
@@ -67,8 +86,17 @@ function Live.Build(view, level)
         st.overs[k] = top:CreateTexture(nil, "ARTWORK")
         st.overs[k]:Hide()
     end
+    st.thBase = view:CreateTexture(nil, "ARTWORK")
+    st.thBase:Hide()
 end
 local pools = { st.bases, st.overs, st.floors, st.rings }
+local function Off(tex)
+    if tex and st.on[tex] then
+        tex:Hide()
+        st.on[tex] = nil
+        st.calls = st.calls + 1
+    end
+end
 function Live.HideAll()
     local on = st.on
     for p = 1, 4 do
@@ -82,6 +110,10 @@ function Live.HideAll()
         end
         st.used[p] = 0
     end
+    Off(st.thOver)
+    Off(st.thBase)
+    Off(st.spire)
+    Th.on = false
 end
 function Live.Release()
     Live.HideAll()
@@ -89,11 +121,19 @@ function Live.Release()
         local list = pools[p]
         for k = 1, #list do list[k]:SetTexture(nil) end
     end
+    if st.thOver then
+        st.thOver:SetTexture(nil)
+        st.thBase:SetTexture(nil)
+        st.spire:SetTexture(nil)
+    end
     st.room, st.data, st.ringOk, st.pf, st.pfScene, st.pfDone = nil, nil, false, nil, nil, -1
     st.atlasPath, st.propsPath, st.nAtlas = nil, nil, 1
     for tex in pairs(st.path) do st.path[tex] = nil end
     for k = #st.atlasPaths, 1, -1 do st.atlasPaths[k] = nil end
+    for k = #st.thPaths, 1, -1 do st.thPaths[k] = nil end
+    for k = #st.spPaths, 1, -1 do st.spPaths[k] = nil end
     Pr.n = 0
+    throneImp, spireImp = nil, nil
 end
 local function SetFace(i, row, ring)
     F.cx[i], F.cy[i], F.cz[i] = row[1], row[2], row[3]
@@ -115,6 +155,7 @@ local function SetFace(i, row, ring)
         F.ringS[i], F.ringB[i], F.at[i], F.obj[i] = nil, nil, row[23] or 1, row[24] or 0
     end
     F.flat[i] = nz > NZ_FLAT
+    F.th[i] = nil
     F.floor[i] = false
 end
 local function Load(d)
@@ -123,6 +164,12 @@ local function Load(d)
     for k = 1, #faces do
         n = n + 1
         SetFace(n, faces[k])
+    end
+    local tf = st.thMode == THRONE_FACES and d.tfaces or {}
+    for k = 1, #tf do
+        n = n + 1
+        SetFace(n, tf[k])
+        F.th[n] = true
     end
     local pieces = d.ring and d.ring.pieces or {}
     for k = 1, #pieces do
@@ -143,6 +190,24 @@ local function Load(d)
     end
     F.n = n
     for i = n + 1, #F.cx do F.cx[i] = nil end
+end
+function Live.SetThrone(mode)
+    mode = (mode == THRONE_PIC or mode == THRONE_FACES) and mode or THRONE_DEFAULT
+    if mode == st.thMode then return end
+    st.thMode = mode
+    if st.data then Load(st.data) end
+end
+function Live.ThroneMode()
+    return st.thMode, st.data ~= nil and st.data.tfaces ~= nil
+end
+local function LoadImp(im, base, paths, tex)
+    for s = 1, im.sheets do
+        local p = s > 1 and base .. s or base
+        if not tex:SetTexture(p) then return nil end
+        paths[s] = p
+        st.path[tex] = p
+    end
+    return im
 end
 function Live.Use(room)
     if room and room == st.room then return true end
@@ -180,6 +245,8 @@ function Live.Use(room)
     else
         Pr.n = 0
     end
+    throneImp = d.throne and LoadImp(d.throne, d.art .. "_throne", st.thPaths, st.thBase) or nil
+    spireImp = throneImp and d.spire and LoadImp(d.spire, d.art .. "_spire", st.spPaths, st.spire) or nil
     for k = 2, #st.floors do st.floors[k]:SetTexture(fl) end
     for k = 1, #st.overs do
         local p = paths[(k - 1) % nA + 1]
@@ -277,7 +344,7 @@ local function Pieces(i, pool, hw, hh)
         local gV2 = max(0, I21 * A2 + I22 * B2 - 1)
         local du, dv = F.du[i], F.dv[i]
         nu = nil
-        for k = 1, MAX_SLICES do
+        for k = 1, F.th[i] and THRONE_SLICES or MAX_SLICES do
             local h2k = h2 / k
             local remV, remU = dv - h2k * gV2, du - h2k * gU2
             if remV > EPS and remU > EPS then
@@ -321,35 +388,117 @@ local function Pieces(i, pool, hw, hh)
         end
     end
 end
-local function PlaceProp(p, l, t, w, h, hw, hh)
+local function Fit(tex, l, t, w, h, u0, v0, u1, v1, hw, hh)
     local x0, x1 = max(l, -hw), min(l + w, hw)
     local y0, y1 = max(t, -hh), min(t + h, hh)
-    if x1 - x0 < 1 or y1 - y0 < 1 then return end
-    local used = NextTex(POOL_BASE, 1)
-    local tex = st.bases[used]
-    if not tex then return end
-    if st.path[tex] ~= st.propsPath then
-        tex:SetTexture(st.propsPath)
-        st.path[tex] = st.propsPath
-        st.calls = st.calls + 1
-    end
-    local o = 4 + PROP_CELL * P.pk
-    local row = Pr.row[p]
-    local u0, v0, u1, v1 = row[o], row[o + 1], row[o + 2], row[o + 3]
+    if x1 - x0 < 1 or y1 - y0 < 1 then return false end
     local a0, a1 = u0 + (u1 - u0) * (x0 - l) / w, u0 + (u1 - u0) * (x1 - l) / w
     local b0, b1 = v0 + (v1 - v0) * (y0 - t) / h, v0 + (v1 - v0) * (y1 - t) / h
     tex:SetPoint("TOPLEFT", st.view, "CENTER", x0, -y0)
     tex:SetWidth(x1 - x0)
     tex:SetHeight(y1 - y0)
     tex:SetTexCoord(a0, b0, a0, b1, a1, b0, a1, b1)
+    st.calls = st.calls + 4
+    return true
+end
+local function SetPath(tex, path)
+    if st.path[tex] ~= path then
+        tex:SetTexture(path)
+        st.path[tex] = path
+        st.calls = st.calls + 1
+    end
+end
+local function On(tex)
     if not st.on[tex] then
         tex:Show()
         st.on[tex] = true
         st.calls = st.calls + 1
     end
-    st.calls = st.calls + 4
+end
+local function PlaceProp(p, l, t, w, h, hw, hh)
+    if min(l + w, hw) - max(l, -hw) < 1 or min(t + h, hh) - max(t, -hh) < 1 then return end
+    local used = NextTex(POOL_BASE, 1)
+    local tex = st.bases[used]
+    if not tex then return end
+    SetPath(tex, st.propsPath)
+    local o = 4 + PROP_CELL * P.pk
+    local row = Pr.row[p]
+    Fit(tex, l, t, w, h, row[o], row[o + 1], row[o + 2], row[o + 3], hw, hh)
+    On(tex)
     st.used[POOL_BASE] = used
     st.pieces = st.pieces + 1
+end
+local function ImpRect(im, cam, ox, oy, zp, k)
+    local twoPi = 2 * math.pi
+    local n, tilts, tilt = im.n, im.tilts, cam.tilt
+    local ti, best = 1, HUGE
+    for j = 1, #tilts do
+        local d = abs(tilts[j] - tilt)
+        if d < best then ti, best = j, d end
+    end
+    local o = ((ti - 1) * n + floor(((cam.angle % twoPi) / twoPi) * n + 0.5) % n) * IMP_CELL + 1
+    local cells = im.cells
+    if cells[o] == 0 then return nil, 0, 0, 0, 0, 0 end
+    local c, s = cam.c, cam.s
+    local f = max(IMP_STRETCH, cells[o + 9] * tilt - cells[o + 10] * k)
+    local sx = ox + (im.x * c - im.y * s) * zp
+    local sy = oy + ((im.x * s + im.y * c) * tilt - im.z * k) * zp
+    return o, sx - cells[o + 7] * zp, sy - cells[o + 8] * zp * f, cells[o + 5] * zp, cells[o + 6] * zp * f, sy
+end
+local function PlaceThrone(cam, ox, oy, zp, k, hw, hh)
+    Th.on = false
+    local im, tex = throneImp, st.thBase
+    local o, l, t, w, h, sy
+    if im then o, l, t, w, h, sy = ImpRect(im, cam, ox, oy, zp, k) end
+    local cells = im and im.cells
+    if o then
+        Th.u0, Th.v0, Th.u1, Th.v1, Th.path = cells[o + 1], cells[o + 2], cells[o + 3], cells[o + 4], st.thPaths[cells[o]]
+        SetPath(tex, Th.path)
+    end
+    if not o or not Fit(tex, l, t, w, h, Th.u0, Th.v0, Th.u1, Th.v1, hw, hh) then
+        Off(tex)
+        Off(st.thOver)
+        return
+    end
+    Th.on, Th.l, Th.t, Th.w, Th.h, Th.depth = true, l, t, w, h, sy
+    local d = sqrt(im.x * im.x + im.y * im.y)
+    local toCam = d > 0 and (im.x * cam.s + im.y * cam.c) / d or 0
+    SetPath(st.thOver, Th.path)
+    Fit(st.thOver, l, t, w, h, Th.u0, Th.v0, Th.u1, Th.v1, hw, hh)
+    if st.thMode == THRONE_FACES then
+        Off(tex)
+        Off(st.thOver)
+        return
+    end
+    local near = min(1, max(0, toCam / THRONE_NEAR))
+    local a = floor((1 - (1 - OVER_ALPHA) * near * near * (3 - 2 * near)) * 100 + 0.5) / 100
+    if st.thA ~= a then
+        tex:SetAlpha(a)
+        st.thA = a
+        st.calls = st.calls + 1
+    end
+    On(tex)
+end
+local function PlaceSpire(cam, ox, oy, zp, k, hw, hh)
+    local im, tex = spireImp, st.spire
+    if not im or not im.far or st.thMode == THRONE_FACES then return Off(tex) end
+    local d = sqrt(im.x * im.x + im.y * im.y)
+    local far = d > 0 and -(im.x * cam.s + im.y * cam.c) / d or 1
+    local a = (far - im.far[1]) / (im.far[2] - im.far[1])
+    if a <= 0 then return Off(tex) end
+    local o, l, t, w, h = ImpRect(im, cam, ox, oy, zp, k)
+    if not o then return Off(tex) end
+    local cells = im.cells
+    SetPath(tex, st.spPaths[cells[o]])
+    if not Fit(tex, l, t, w, h, cells[o + 1], cells[o + 2], cells[o + 3], cells[o + 4], hw, hh) then return Off(tex) end
+    a = min(1, a)
+    a = floor(a * a * (3 - 2 * a) * 100 + 0.5) / 100
+    if st.spA ~= a then
+        tex:SetAlpha(a)
+        st.spA = a
+        st.calls = st.calls + 1
+    end
+    On(tex)
 end
 local function Shade(from, to, alpha, ice)
     local list, texA, texIce = st.rings, st.texA, st.texIce
@@ -402,7 +551,7 @@ function Live.Place(cam, room, ppy)
     local cx, cy, cz, ux, uy, uz, vx, vy, vz = F.cx, F.cy, F.cz, F.ux, F.uy, F.uz, F.vx, F.vy, F.vz
     local fx, fy, fz, hu, hv, shell, flat, floorF, kind, kz = F.fx, F.fy, F.fz, F.hu, F.hv, F.shell, F.flat, F.floor, F.kind, F.kz
     local pa1, pb1, pa2, pb2, psx, psy, pover, nxt = P.a1, P.b1, P.a2, P.b2, P.sx, P.sy, P.over, P.nxt
-    local obj = F.obj
+    local obj, thF = F.obj, F.th
     for b = 1, BUCKETS do head[b] = 0 tail[b] = 0 end
     local kscale = BUCKETS / (2 * KEY_MAX)
     local ringS, pf, nRing = F.ringS, st.pf, 0
@@ -452,7 +601,9 @@ function Live.Place(cam, room, ppy)
                     Pieces(i, POOL_OVER, hw, hh)
                 else
                     local key
-                    if kind[i] == 3 then
+                    if thF[i] then
+                        key = (cx[i] * s + cy[i] * c) * k
+                    elseif kind[i] == 3 then
                         key = ((cx[i] + fx[i] * h2) * s + (cy[i] + fy[i] * h2) * c) * k + kz[i] * t - 0.002
                     elseif flat[i] then
                         key = ((cx[i] * s + cy[i] * c) * k + cz[i] * t) - abs((ux[i] * s + uy[i] * c) * k + uz[i] * t) * h1 - abs((vx[i] * s + vy[i] * c) * k + vz[i] * t) * h2
@@ -514,6 +665,8 @@ function Live.Place(cam, room, ppy)
             end
         end
     end
+    PlaceThrone(cam, ox, oy, zp, k, hw, hh)
+    PlaceSpire(cam, ox, oy, zp, k, hw, hh)
     PlaceRing(nRing, hw, hh)
     for b = 1, BUCKETS do
         local i = head[b]
@@ -543,6 +696,29 @@ end
 function Live.Stats()
     return st.pieces, st.calls, st.hidden, F.n
 end
+function Live.Throne()
+    if not Th.on or st.thMode == THRONE_FACES then return nil, 0, 0, 0, 0 end
+    return Th.depth, Th.l, Th.t, Th.l + Th.w, Th.t + Th.h
+end
+function Live.ThroneOver(level)
+    local tex = st.thOver
+    if not tex then return end
+    if not level or not Th.on then
+        if st.on[tex] then
+            tex:Hide()
+            st.on[tex] = nil
+        end
+        return
+    end
+    if Th.level ~= level then
+        st.thTop:SetFrameLevel(level)
+        Th.level = level
+    end
+    if not st.on[tex] then
+        tex:Show()
+        st.on[tex] = true
+    end
+end
 function Live.Textures()
-    return st.bases, st.overs, st.floors, st.used, st.rings
+    return st.bases, st.overs, st.floors, st.used, st.rings, st.spire, st.thOver, st.thBase
 end

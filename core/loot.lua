@@ -7,7 +7,12 @@ local WINDOW = 1800
 local KEEP_DAYS = 30
 local MAX_ROWS = 3000
 local DUP = 1
+local WON_GAP = 60
+local BAG_PACK = 5
+local BAG_BEFORE = 3
+local BAG_AFTER = 5
 local QUALITY = { ffa335ee = 4, ffff8000 = 5, ffe6cc80 = 6 }
+local EMBLEMS = { [49426] = true, [47241] = true, [45624] = true, [40753] = true, [40752] = true }
 local SKIP = {
     [49426] = true, [47241] = true, [45624] = true, [40753] = true, [40752] = true,
     [34057] = true,
@@ -15,6 +20,10 @@ local SKIP = {
 local Loot = {}
 ns.Loot = Loot
 local gems
+local sets = {}
+local pend = {}
+local bagAt = {}
+local lastInst
 function Loot.Skip(id)
     if SKIP[id] then return true end
     if not gems then
@@ -39,6 +48,8 @@ local function Pattern(fmt)
 end
 local OTHER = { Pattern(LOOT_ITEM_MULTIPLE), Pattern(LOOT_ITEM) }
 local SELF = { Pattern(LOOT_ITEM_SELF_MULTIPLE), Pattern(LOOT_ITEM_SELF) }
+local WON = Pattern(LOOT_ROLL_WON)
+local YOU_WON = Pattern(LOOT_ROLL_YOU_WON)
 local function Store()
     local db = ns.GetDB()
     if type(db.loot) ~= "table" then db.loot = {} end
@@ -59,6 +70,14 @@ function Loot.Parse(msg)
             if link and link:find("|Hitem:", 1, true) then return UnitName("player"), link, tonumber(n) or 1 end
         end
     end
+    if WON then
+        local who, link = msg:match(WON)
+        if who and link and link:find("|Hitem:", 1, true) then return who, link, 1, true end
+    end
+    if YOU_WON then
+        local link = msg:match(YOU_WON)
+        if link and link:find("|Hitem:", 1, true) then return UnitName("player"), link, 1, true end
+    end
     return nil, nil, 1
 end
 function Loot.Item(link)
@@ -67,20 +86,56 @@ function Loot.Item(link)
     local color = link:match("|c(%x%x%x%x%x%x%x%x)")
     return id, name, color and QUALITY[color:lower()] or 0
 end
+local function Zone(R)
+    if R.InZone() then
+        lastInst = (GetInstanceInfo()) or ""
+        return lastInst
+    end
+    if lastInst and ((GetNumRaidMembers() or 0) > 0 or (GetNumPartyMembers() or 0) > 0) then return lastInst end
+    return nil
+end
+local function Claimed(who, id, t)
+    for i = #pend, 1, -1 do
+        local e = pend[i]
+        if t - e.t > WON_GAP then
+            table.remove(pend, i)
+        elseif e.who == who and e.id == id then
+            table.remove(pend, i)
+            return true
+        end
+    end
+    return false
+end
+local function Bag(list, who, t)
+    bagAt[who] = t
+    for i = #list, 1, -1 do
+        local e = list[i]
+        if e.t < t - BAG_BEFORE then break end
+        if e.who == who then e.bag = true end
+    end
+end
 function Loot.OnChat(msg)
     if type(msg) ~= "string" or ns.RecLock() then return end
     local R = ns.Recorder
-    if not (R and R.IsOn() and R.InZone()) then return end
-    local who, link, n = Loot.Parse(msg)
+    if not (R and R.IsOn()) then return end
+    local inst = Zone(R)
+    if not inst then return end
+    local who, link, n, won = Loot.Parse(msg)
     if not who then return end
     local id, name, q = Loot.Item(link)
-    if not id or q < MIN_QUALITY or Loot.Skip(id) then return end
+    if not id then return end
     who = who:match("^([^%-]+)") or who
     local t = R.Now()
     local list = Store()
+    if EMBLEMS[id] and n >= BAG_PACK then return Bag(list, who, t) end
+    if q < MIN_QUALITY or Loot.Skip(id) then return end
+    if not won and Claimed(who, id, t) then return end
     local last = list[#list]
     if last and last.who == who and last.id == id and t - last.t < DUP then return end
-    list[#list + 1] = { t = t, who = who, id = id, n = n, name = name, q = q, inst = (GetInstanceInfo()) or "" }
+    local e = { t = t, who = who, id = id, n = n, name = name, q = q, inst = inst, won = won or nil,
+                bag = (bagAt[who] and t - bagAt[who] <= BAG_AFTER) or nil }
+    list[#list + 1] = e
+    if won then pend[#pend + 1] = e end
     if #list > MAX_ROWS then table.remove(list, 1) end
 end
 function Loot.Prune()
@@ -92,23 +147,53 @@ function Loot.Prune()
     end
     ns.GetDB().loot = keep
 end
+function Loot.Table(boss)
+    local s = sets[boss]
+    if s == nil then
+        local all = ns.lootBoss or {}
+        local list = all[boss] or (ns.bosses and all[ns.bosses[boss]])
+        s = false
+        if list then
+            s = {}
+            for i = 1, #list do s[list[i]] = true end
+        end
+        sets[boss] = s
+    end
+    return s or nil
+end
+local function Owner(e, fights)
+    local best
+    for i = 1, #fights do
+        local f = fights[i]
+        if f.killed and f.to <= e.t and e.t < f.to + WINDOW and (not best or f.to > best.to)
+            and (not f.raid or f.raid.name == e.inst) then
+            local set = Loot.Table(f.boss)
+            if set and set[e.id] then best = f end
+        end
+    end
+    return best
+end
 function Loot.ForFight(fight)
     local out = {}
     if not (fight and fight.killed) then return out end
     local inst = fight.raid and fight.raid.name
+    local set = Loot.Table(fight.boss)
     local stop = fight.to + WINDOW
     local fights = ns.Encounters.Fights() or {}
-    for i = 1, #fights do
-        local f = fights[i]
-        if f ~= fight and f.from > fight.to and f.from < stop
-            and (not inst or not f.raid or f.raid.name == inst) then
-            stop = f.from
+    if not set then
+        for i = 1, #fights do
+            local f = fights[i]
+            if f ~= fight and f.from > fight.to and f.from < stop
+                and (not inst or not f.raid or f.raid.name == inst) then
+                stop = f.from
+            end
         end
     end
     local list = Store()
     for i = 1, #list do
         local e = list[i]
-        if e.t >= fight.to and e.t < stop and (not inst or e.inst == inst) and not Loot.Skip(e.id) then
+        if e.t >= fight.to and e.t < stop and not e.bag and (not inst or e.inst == inst) and not Loot.Skip(e.id)
+            and (not set or (set[e.id] and Owner(e, fights) == fight)) then
             out[#out + 1] = e
         end
     end
@@ -192,49 +277,6 @@ function Loot.ShardTotal(raid)
     end
     return { title = title, value = tostring(total), icon = GetItemIcon and GetItemIcon(id) or nil,
              color = "text.accent", lines = lines }
-end
-local DEMO = {
-    { id = 50274, name = "Осколок Льда Тьмы", q = 5, n = 2 },
-    { id = 49908, name = "Первозданный саронит", q = 4, n = 1 },
-    { id = 50415, name = "Бринтролл, Костяной арбитр", q = 4, n = 1 },
-    { id = 50363, name = "Воля Смертоносного", q = 4, n = 1 },
-}
-function Loot.HasDemo()
-    local list = Store()
-    for i = 1, #list do
-        if list[i].demo then return true end
-    end
-    return false
-end
-function Loot.ClearDemo()
-    local list, keep, n = Store(), {}, 0
-    for i = 1, #list do
-        if list[i].demo then n = n + 1 else keep[#keep + 1] = list[i] end
-    end
-    ns.GetDB().loot = keep
-    return n
-end
-function Loot.Demo()
-    Loot.ClearDemo()
-    local fights = ns.Encounters.Fights() or {}
-    local kill
-    for i = 1, #fights do
-        local f = fights[i]
-        if f.killed and (not kill or f.to > kill.to) then kill = f end
-    end
-    if not kill then return nil end
-    local names = {}
-    for name in pairs(kill.players or {}) do names[#names + 1] = name end
-    tsort(names)
-    if #names == 0 then names[1] = UnitName("player") end
-    local list = Store()
-    for i = 1, #DEMO do
-        local d = DEMO[i]
-        local name = GetItemInfo and GetItemInfo(d.id) or d.name
-        list[#list + 1] = { t = kill.to + 10 * i, who = names[(i - 1) % #names + 1], id = d.id, n = d.n,
-                            name = name, q = d.q, inst = kill.raid and kill.raid.name or "", demo = true }
-    end
-    return kill
 end
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("CHAT_MSG_LOOT")

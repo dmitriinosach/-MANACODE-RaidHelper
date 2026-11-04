@@ -34,6 +34,7 @@ end
 local host, content, busy, art
 local pane
 local shownKey, asking
+local keep
 local stats, panels, tiles = {}, {}, {}
 local awardHead
 local gpPanel, lootPanel, laid
@@ -47,12 +48,19 @@ end
 function View.Title(raid)
     return ns.Raid.Title(raid)
 end
+local function ChatCtx()
+    local raid = shownKey and ns.RaidSummary.Find(shownKey)
+    return raid and ns.ChatReport.RaidCtx(raid) or ""
+end
 local function Stat(i)
     stats[i] = stats[i] or Badges.Total(content, true)
     return stats[i]
 end
 local function Panel(i)
-    panels[i] = panels[i] or Badges.Detail(content, nil, true)
+    if not panels[i] then
+        panels[i] = Badges.Detail(content, nil, true)
+        Badges.ChatHead(panels[i], ChatCtx)
+    end
     return panels[i]
 end
 local function Progress()
@@ -168,7 +176,10 @@ local function SidePanel(panel, parent, d, out)
         if panel then panel:Hide() end
         return panel
     end
-    panel = panel or Badges.Detail(parent, nil, true)
+    if not panel then
+        panel = Badges.Detail(parent, nil, true)
+        Badges.ChatHead(panel, ChatCtx)
+    end
     panel:SetParent(parent)
     panel:SetModel({ title = d.title, rows = Rows(d.rows), empty = d.empty, onWheel = SideWheel, fit = d.fit })
     out[#out + 1] = panel
@@ -255,6 +266,10 @@ Render = function()
     Mark("awards", top, y)
     content:SetHeight(max(host:GetHeight(), y + MARGIN))
     pane:Rescroll()
+    if keep then
+        pane:ScrollTo(keep)
+        keep = nil
+    end
 end
 function View.Attach(frame)
     host = frame
@@ -272,7 +287,7 @@ function View.Attach(frame)
 end
 function View.Show(raid)
     if not host or not raid then return end
-    if shownKey ~= raid.key then pane.offset = 0 end
+    if shownKey ~= raid.key then pane.offset, keep = 0, nil end
     if shownKey ~= raid.key or not host:IsShown() then ns.RaidSummary.Retry(raid) end
     shownKey = raid.key
     host:Show()
@@ -302,6 +317,14 @@ function View.Tiles()
 end
 function View.IsShown()
     return host ~= nil and host:IsShown() and shownKey ~= nil
+end
+function View.Offset()
+    return pane and pane.offset or 0
+end
+function View.ScrollTo(y)
+    if not (pane and shownKey) then return end
+    local raid = ns.RaidSummary.Find(shownKey)
+    if raid and ns.RaidSummary.Get(raid) then pane:ScrollTo(y) else keep = y end
 end
 function View.ShownKey()
     if not View.IsShown() then return nil end

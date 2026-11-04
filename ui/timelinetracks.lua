@@ -2,8 +2,10 @@ local _, ns = ...
 local floor = math.floor
 local max = math.max
 local min = math.min
-local HANDLEH = 7
+local HANDLE = 12
+local HANDLEPAD = 2
 local TRACKMAX = 600
+local ROWMAX = 72
 local TT = {}
 ns.TimelineTracks = TT
 local canvas, tracks, folded
@@ -18,58 +20,42 @@ local function SetHeight(key, height)
     ui.trackH[key] = height
     ns.Timeline.Redraw()
 end
-local function PlaceHandle(index, bound)
-    local track = tracks[index]
+local function HandleDown(self, button)
+    if button == "RightButton" then
+        SetHeight(self.key, nil)
+        return
+    end
+    local _, y = GetCursorPosition()
+    resize = { key = self.key, min = self.min, h = self.h0, per = self.per, y = y / self:GetEffectiveScale() }
+end
+local function PlaceHandle(index, spot, gutter, size)
     local h = handles[index]
     if not h then
-        h = CreateFrame("Frame", nil, canvas)
-        h:SetHeight(HANDLEH)
-        h:EnableMouse(true)
-        h:SetFrameLevel(canvas:GetFrameLevel() + 6)
-        h.tex = h:CreateTexture(nil, "OVERLAY")
-        h.tex:SetAllPoints()
-        h:SetScript("OnEnter", function(self)
-            ns.Kit.Shade(self.tex, "surface.handle")
-            self.tipTitle, self.tipAnchor = ns.T("tl.track.size"), "ANCHOR_CURSOR"
-            ns.Kit.TipShow(self)
-        end)
-        h:SetScript("OnLeave", function(self)
-            if not resize then ns.Kit.Shade(self.tex, "surface.clear") end
-            ns.Kit.TipHide()
-        end)
-        h:SetScript("OnMouseDown", function(self, button)
-            if button == "RightButton" then
-                SetHeight(self.key, nil)
-                return
-            end
-            resize = { key = self.key, min = self.min, h = self.h0,
-                       y = GetCursorPosition() / self:GetEffectiveScale() }
-        end)
-        h:SetScript("OnMouseUp", function() resize = nil end)
+        h = ns.Kit.Grip(canvas, size, "v")
+        h:SetFrameLevel(canvas:GetFrameLevel() + 12)
+        h.tipTitle = ns.T("tl.track.size")
+        h.onDown = HandleDown
+        h.onUp = function() resize = nil end
         handles[index] = h
     end
-    h.key = track.key
-    h.min = track.min or (18 + ns.Kit.Grow().g)
-    h.h0 = bound.h
-    if not resize or resize.key ~= track.key then
-        ns.Kit.Shade(h.tex, "surface.clear")
-    end
-    h:SetWidth(canvas:GetWidth())
+    h:SetWidth(size)
+    h:SetHeight(size)
+    h.key, h.min, h.h0, h.per = spot.key, spot.min or (18 + ns.Kit.Grow().g), spot.h0, spot.per
     h:ClearAllPoints()
-    h:SetPoint("TOPLEFT", canvas, "TOPLEFT", 0,
-        -(bound.hy + bound.full - floor(HANDLEH / 2)))
+    h:SetPoint("BOTTOMRIGHT", canvas, "TOPLEFT", gutter - HANDLEPAD - 1, -(spot.bottom - HANDLEPAD))
     h:Show()
 end
-function TT.PlaceHandles(bounds)
-    for i = 1, #tracks do
-        local track = tracks[i]
-        local fits = bounds[i].hy + bounds[i].full < canvas:GetHeight()
-        if track.rows or folded(track.key) or not fits then
-            if handles[i] then handles[i]:Hide() end
-        else
-            PlaceHandle(i, bounds[i])
+function TT.PlaceHandles(spots, gutter)
+    local size = HANDLE + ns.Kit.Grow().g
+    local used = 0
+    for i = 1, #spots do
+        local s = spots[i]
+        if s.bottom <= canvas:GetHeight() and s.bottom >= size + HANDLEPAD and s.bottom - s.top >= size then
+            used = used + 1
+            PlaceHandle(used, s, gutter, size)
         end
     end
+    for i = used + 1, #handles do handles[i]:Hide() end
 end
 function TT.HideHandles()
     for _, h in pairs(handles) do h:Hide() end
@@ -80,8 +66,10 @@ function TT.Drag(self)
         resize = nil
         return true
     end
-    local y = GetCursorPosition() / self:GetEffectiveScale()
-    local hh = max(resize.min, min(TRACKMAX, floor(resize.h + resize.y - y)))
+    local _, cy = GetCursorPosition()
+    local y = cy / self:GetEffectiveScale()
+    local hh = max(resize.min, min(resize.per and ROWMAX * resize.per or TRACKMAX, floor(resize.h + resize.y - y)))
+    if resize.per then hh = floor(hh / resize.per) end
     local ui = ns.GetDB().settings.ui
     if type(ui.trackH) ~= "table" then ui.trackH = {} end
     if ui.trackH[resize.key] ~= hh then

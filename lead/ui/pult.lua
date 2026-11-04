@@ -10,12 +10,12 @@ local CHIP_ROW = 22
 local LABEL_W = 48
 local SEL_H = 20
 local SEL_ROW = 24
+local SPAM_GAP = 12
 local BASE = "GameFontHighlightSmall"
 local CAPF = "GameFontNormalSmall"
-local pult, sel, count, countCap, testFs, roles, nextFs, runBtn, spamCap, raidCap, raidFold, readyBtn, buffBtn
-local breakLbl, pullLbl, lootCap, lootSel, threshCap, threshSel, raidEnd
+local pult, sel, count, countCap, testFs, roles, lastRole, nextFs, runBtn, sendBtn, spamCap, raidCap, readyBtn, buffBtn
+local breakLbl, pullLbl, lootCap, lootSel, threshCap, threshSel
 local timerPool, timerW
-local openOn = {}
 local built = false
 local function tplOptions()
     local out = {}
@@ -26,20 +26,6 @@ local function tplOptions()
 end
 local function tab()
     return ns.window.Current and ns.window:Current() or "raid"
-end
-local function sectionOpen(name)
-    local cur = tab()
-    if cur == "raid" or cur == nil then return true end
-    return openOn[cur .. ":" .. name] or false
-end
-local function toggleSection(name)
-    local cur = tab()
-    if cur == "raid" then return end
-    openOn[cur .. ":" .. name] = not openOn[cur .. ":" .. name] or nil
-end
-local function foldText(fold, open)
-    fold:SetText(open and "-" or "+")
-    fold.tipTitle = ns.T(open and "tipFoldClose" or "tipFoldOpen")
 end
 local function lootOptions()
     local out = {}
@@ -139,7 +125,7 @@ local function lootRows(top)
     return y + SEL_ROW
 end
 local function showRaid(on)
-    for _, f in ipairs({ readyBtn, buffBtn, lootCap, lootSel, threshCap, threshSel }) do
+    for _, f in ipairs({ raidCap, raidCap.rule, readyBtn, buffBtn, lootCap, lootSel, threshCap, threshSel }) do
         if on then f:Show() else f:Hide() end
     end
     if not on then
@@ -164,26 +150,45 @@ local function refresh()
         r.val:SetText(have .. "/" .. total[grp])
         ns.PaintText(r.val, need[grp] == 0 and "sem.ready" or "text.primary")
     end
-    local can = ns.RaidCmd.Officer()
-    local open = sectionOpen("raid")
-    if tab() == "raid" then raidFold:Hide() else raidFold:Show() end
-    foldText(raidFold, open)
-    showRaid(open)
-    local dy = -20
-    if open then
+    local cur = tab()
+    local onRaid = cur == "raid" or cur == nil
+    showRaid(onRaid)
+    if onRaid then
+        local can = ns.RaidCmd.Officer()
         setState(readyBtn, can, ns.T("tipNeedOfficer"))
-        local h = timerRows(can)
-        h = lootRows(h)
-        dy = -(h + 20)
+        local h = lootRows(timerRows(can))
+        if ns.PultMarks then ns.PultMarks.Place(buffBtn, -(h + 20)) end
     end
-    local marksOpen = sectionOpen("marks")
-    if ns.PultMarks then
-        ns.PultMarks.SetCollapsed(not marksOpen, function()
-            toggleSection("marks")
-            refresh()
-        end)
-        ns.PultMarks.Place(open and buffBtn or raidCap, dy)
+    if ns.PultMarks then ns.PultMarks.SetHidden(not onRaid) end
+    local msg, opt
+    if ns.SpamPane and ns.SpamPane.PultBlocks then msg, opt = ns.SpamPane.PultBlocks() end
+    local onSpam = cur == "spam" and msg ~= nil
+    local top = lastRole
+    if msg then
+        if onSpam then
+            msg:ClearAllPoints()
+            msg:SetPoint("TOPLEFT", top, "BOTTOMLEFT", 0, -SPAM_GAP)
+            msg:Show()
+            top = msg
+        else
+            msg:Hide()
+        end
     end
+    spamCap:ClearAllPoints()
+    spamCap:SetPoint("TOPLEFT", top, "BOTTOMLEFT", 0, -(onSpam and SPAM_GAP or 20))
+    local under = spamCap
+    if opt then
+        if onSpam then
+            opt:ClearAllPoints()
+            opt:SetPoint("TOPLEFT", spamCap, "BOTTOMLEFT", 0, -8)
+            opt:Show()
+            under = opt
+        else
+            opt:Hide()
+        end
+    end
+    nextFs:ClearAllPoints()
+    nextFs:SetPoint("TOPLEFT", under, "BOTTOMLEFT", 0, -8)
     local P = ns.Spam
     if P.Running() then
         runBtn:SetText(ns.T("btnStop"))
@@ -207,6 +212,21 @@ local function refresh()
             runBtn:Disable()
             runBtn.tip = ns.T(P.Blocker() or "tipNoChannels")
         end
+    end
+    runBtn:ClearAllPoints()
+    if onSpam and (P.Fits() or not P.Running()) then
+        nextFs:Hide()
+        runBtn:SetPoint("TOPLEFT", under, "BOTTOMLEFT", 0, -8)
+    else
+        nextFs:Show()
+        runBtn:SetPoint("TOPLEFT", nextFs, "BOTTOMLEFT", 0, -6)
+    end
+    if P.CanSendNow() then
+        sendBtn:Enable()
+        sendBtn.tip = ns.T("tipSendNow")
+    else
+        sendBtn:Disable()
+        sendBtn.tip = ns.T(ns.Test.Active() and "tipTestSpam" or "tipNoChannels")
     end
 end
 local function fitRows()
@@ -261,6 +281,7 @@ local function build()
         roles[grp] = r
         prev = r.label
     end
+    lastRole = prev
     spamCap = ns.Caption(pult, ns.T("pultSpam"), w)
     spamCap:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -20)
     nextFs = ns.Str(pult, BASE)
@@ -268,20 +289,21 @@ local function build()
     nextFs:SetWidth(w)
     nextFs:SetJustifyH("LEFT")
     ns.PaintText(nextFs, "text.primary")
+    local sendW = math.floor(w * 0.42)
     runBtn = ns.MakeKitButton(pult)
     runBtn:SetPoint("TOPLEFT", nextFs, "BOTTOMLEFT", 0, -6)
-    runBtn:SetWidth(w)
-    runBtn:SetHeight(26)
+    runBtn:SetWidth(w - sendW - 6)
+    runBtn:SetHeight(24)
     runBtn.onClick = function() ns.Spam.Toggle() end
-    raidCap = ns.Caption(pult, ns.T("pultRaid"), w - 24)
+    sendBtn = ns.MakeKitButton(pult)
+    sendBtn:SetPoint("LEFT", runBtn, "RIGHT", 6, 0)
+    sendBtn:SetWidth(sendW)
+    sendBtn:SetHeight(24)
+    sendBtn:SetText(ns.T("btnSendNow"))
+    sendBtn.tipTitle = ns.T("btnSendNow")
+    sendBtn.onClick = function() ns.Spam.SendNow() end
+    raidCap = ns.Caption(pult, ns.T("pultRaid"), w)
     raidCap:SetPoint("TOPLEFT", runBtn, "BOTTOMLEFT", 0, -20)
-    raidFold = ns.MakeKitButton(pult)
-    raidFold:SetSize(18, 16)
-    raidFold:SetPoint("LEFT", raidCap, "LEFT", w - 18, 0)
-    raidFold.onClick = function()
-        toggleSection("raid")
-        refresh()
-    end
     readyBtn = ns.MakeKitButton(pult)
     readyBtn:SetPoint("TOPLEFT", raidCap, "BOTTOMLEFT", 0, -8)
     readyBtn:SetWidth(w)
@@ -330,7 +352,9 @@ local function tagged()
 end
 ns.Pult = {
     Build = build, Refresh = refresh, Tagged = tagged,
-    Parts = function() return raidCap, raidFold, readyBtn, buffBtn, lootSel, threshSel, timerPool end,
+    Parts = function() return raidCap, readyBtn, buffBtn, lootSel, threshSel, timerPool end,
+    Width = function() return built and pult:GetWidth() - PAD * 2 or 0 end,
+    Run = function() return runBtn, sendBtn end,
     Chips = function() return timerPool end,
 }
 ns.window:OnBuild(build)

@@ -24,6 +24,7 @@ local HIT = 3
 local RESERVE = 24
 local ROW_R = 6
 local EXPAND_TEX = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\expand.tga"
+local CHAT_TEX = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\spam.tga"
 local PERSONALH = 58
 local PERSONAL_R = 7
 local CLASS_ICON = 22
@@ -44,7 +45,8 @@ local ARROW = { out = { 0, 0.5, 0.5, 0 }, ["in"] = { 0, 0.5, 0, 0.5 } }
 local ARROW_SIZE = 16
 local ARROW_EDGE = 4
 local ARROW_DIP = 8
-local MARKGAP = 7
+local MARKGAP = 3
+local MARKNUM = 3
 local WIDE_ICON = 12
 local WIDE_GAP = 6
 local WIDE_INDENT = 16
@@ -529,6 +531,104 @@ local function HeadLeave(self)
     HideTip()
     Hover(self:GetParent(), false)
 end
+local function Reportable(f)
+    if not (f.chatCtx and f.chat) or f.cellW then return false end
+    local list = f.list
+    for i = 1, #list do
+        if list[i].class and not list[i].sub then return true end
+    end
+    return false
+end
+local function ChatRows(f)
+    local out = {}
+    for i = 1, #f.list do
+        local e = f.list[i]
+        if f.wide then
+            if not e.sub then
+                local cells, rest = e.cells or {}, {}
+                for c = 2, #f.cols do rest[#rest + 1] = cells[c] end
+                out[#out + 1] = { who = e.who, val = cells[1] or "", rest = rest }
+            end
+        else
+            out[#out + 1] = { who = e.who, val = e.text or "", rest = { e.note } }
+        end
+    end
+    return out
+end
+local function ChatLines(f, n)
+    local R = ns.ChatReport
+    local m = f.model
+    if not (R and m) then return {} end
+    local title = m.title or ""
+    if f.wide and #f.cols > 1 then title = format("%s (%s)", title, tconcat(f.cols, ", ")) end
+    return R.Detail(title, f.chatCtx(), ChatRows(f), n)
+end
+local function ChatButton(f)
+    local b = CreateFrame("Button", nil, f)
+    b:SetFrameLevel(f:GetFrameLevel() + 6)
+    b:SetWidth(EXPAND_BOX)
+    b:SetHeight(EXPAND_BOX)
+    b:SetHitRectInsets(-HIT, -HIT, -HIT, -HIT)
+    b.plate = b:CreateTexture(nil, "BACKGROUND")
+    b.plate:SetAllPoints()
+    ns.Kit.Paint(b.plate, "surface.hover")
+    b.tex = b:CreateTexture(nil, "ARTWORK")
+    b.tex:SetWidth(EXPAND)
+    b.tex:SetHeight(EXPAND)
+    b.tex:SetPoint("CENTER", 0, 0)
+    b.tex:SetTexture(CHAT_TEX)
+    ns.Kit.Tint(b.tex, "text.bright")
+    b:SetScript("OnEnter", function(self)
+        ns.Kit.Paint(self.plate, "surface.selected")
+        ns.Kit.Tint(self.tex, "text.title")
+        ns.Tip.Dock(self, { { kind = "head", left = ns.T("report.btn") } })
+    end)
+    b:SetScript("OnLeave", function(self)
+        ns.Kit.Paint(self.plate, "surface.hover")
+        ns.Kit.Tint(self.tex, "text.bright")
+        HideTip()
+    end)
+    b:SetScript("OnClick", function(self)
+        if ns.ProofView then
+            ns.ProofView.ReportMenu(self, function(n) return ChatLines(f, n) end, "report.menu.detail", true)
+        end
+    end)
+    b:Hide()
+    f.chat = b
+end
+function Badges.ChatHead(f, ctx)
+    f.chatCtx = ctx
+end
+local function ExpandLit(b, on)
+    ns.Kit.Paint(b.plate, on and "surface.selected" or "surface.hover")
+    ns.Kit.Tint(b.tex, on and "text.title" or "text.bright")
+end
+function Badges.Expand(parent, onClick, hover)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetFrameLevel(parent:GetFrameLevel() + 6)
+    b:SetWidth(EXPAND_BOX)
+    b:SetHeight(EXPAND_BOX)
+    b:SetHitRectInsets(-HIT, -HIT, -HIT, -HIT)
+    b.plate = b:CreateTexture(nil, "BACKGROUND")
+    b.plate:SetAllPoints()
+    b.tex = b:CreateTexture(nil, "ARTWORK")
+    b.tex:SetWidth(EXPAND)
+    b.tex:SetHeight(EXPAND)
+    b.tex:SetPoint("CENTER", 0, 0)
+    b.tex:SetTexture(EXPAND_TEX)
+    ExpandLit(b, false)
+    b:SetScript("OnEnter", function(self)
+        if hover then hover(true) else ExpandLit(self, true) end
+        ns.Tip.Dock(self, { { kind = "head", left = ns.T("sum.k.all") } })
+    end)
+    b:SetScript("OnLeave", function(self)
+        if hover then hover(false) else ExpandLit(self, false) end
+        HideTip()
+    end)
+    b:SetScript("OnClick", function() onClick() end)
+    b:Hide()
+    return b
+end
 local function Chrome(f)
     f.edgeR = f.modal and RESERVE or 8
     f.headIcon = f.head:CreateTexture(nil, "ARTWORK")
@@ -546,32 +646,10 @@ local function Chrome(f)
         ExpandOpen(f)
     end)
     if f.modal then return end
-    local b = CreateFrame("Button", nil, f)
-    b:SetFrameLevel(f:GetFrameLevel() + 6)
-    b:SetWidth(EXPAND_BOX)
-    b:SetHeight(EXPAND_BOX)
-    b:SetHitRectInsets(-HIT, -HIT, -HIT, -HIT)
+    local b = Badges.Expand(f, function() ExpandOpen(f) end, function(on) Hover(f, on) end)
     b:SetPoint("TOPRIGHT", -EXPAND_R, -3)
-    b.plate = b:CreateTexture(nil, "BACKGROUND")
-    b.plate:SetAllPoints()
-    ns.Kit.Paint(b.plate, "surface.hover")
-    b.tex = b:CreateTexture(nil, "ARTWORK")
-    b.tex:SetWidth(EXPAND)
-    b.tex:SetHeight(EXPAND)
-    b.tex:SetPoint("CENTER", 0, 0)
-    b.tex:SetTexture(EXPAND_TEX)
-    ns.Kit.Tint(b.tex, "text.bright")
-    b:SetScript("OnEnter", function(self)
-        Hover(f, true)
-        ns.Tip.Dock(self, { { kind = "head", left = ns.T("sum.k.all") } })
-    end)
-    b:SetScript("OnLeave", function()
-        Hover(f, false)
-        HideTip()
-    end)
-    b:SetScript("OnClick", function() ExpandOpen(f) end)
-    b:Hide()
     f.expand = b
+    ChatButton(f)
 end
 local function MechanicHead(f, m)
     local size = LH(f) - 2
@@ -591,8 +669,23 @@ local function Crown(f, lines)
     local list = f.list
     local over = #list > lines
     f.over = (over or f.cut == true) and not f.modal
-    local right = over and RESERVE or 8
+    local x = EXPAND_R
+    if Reportable(f) then
+        f.chat:ClearAllPoints()
+        f.chat:SetPoint("TOPRIGHT", -x, -3)
+        f.chat:Show()
+        x = x + EXPAND_BOX + EXPAND_R
+    elseif f.chat then
+        f.chat:Hide()
+    end
+    if f.expand then
+        f.expand:ClearAllPoints()
+        f.expand:SetPoint("TOPRIGHT", -x, -3)
+        if f.over then x = x + EXPAND_BOX + EXPAND_R end
+    end
+    local right = x > EXPAND_R and x or 8
     if f.modal then right = RESERVE end
+    f.headR = right
     if over then
         f.more:SetText(format(ns.T("sum.k.more"), f.offset + 1, min(#list, f.offset + lines), #list))
         f.more:SetPoint("TOPRIGHT", -right, -6)
@@ -778,7 +871,8 @@ function Badges.Detail(parent, modal, sized)
     function f.Need(self)
         local m = self.model
         if not m then return 0 end
-        local more = self.more:IsShown() and (ceil(self.more:GetStringWidth() or 0) + COLGAP + RESERVE) or 8
+        local right = self.headR or 8
+        local more = self.more:IsShown() and (ceil(self.more:GetStringWidth() or 0) + COLGAP + max(right, RESERVE)) or right
         local w = ceil(self.title:GetStringWidth() or 0) + 2
         return 10 + w + more + (m.icon and LH(self) + 2 or 0)
     end
@@ -834,7 +928,7 @@ end
 local function MarkClick(self, button)
     if ns.ProofView and ns.ProofView.Click(self, button) then return end
     local owner = self.owner or self:GetParent()
-    if ns.ReplayLink and ns.ReplayLink.Shift(self.fight, self.at, self.who or (owner and owner.who)) then return end
+    if ns.ReplayLink and ns.ReplayLink.Click(self.fight, self.at, self.who or (owner and owner.who), button) then return end
     if self.onClick then
         self.onClick(self, button)
     elseif ns.TimelineLinks then
@@ -850,9 +944,9 @@ function Badges.Mark(parent, size)
     b:EnableMouse(true)
     b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     b.ring = b:CreateTexture(nil, "BACKGROUND")
-    b.ring:SetWidth(size + 4)
-    b.ring:SetHeight(size + 4)
-    b.ring:SetPoint("LEFT", -2, 0)
+    b.ring:SetWidth(size + 2)
+    b.ring:SetHeight(size + 2)
+    b.ring:SetPoint("LEFT", -1, 0)
     b.pairGlow = b:CreateTexture(nil, "BORDER")
     b.pairGlow:SetPoint("TOPLEFT", -3, 3)
     b.pairGlow:SetPoint("BOTTOMRIGHT", 1, -3)
@@ -925,8 +1019,8 @@ function Badges.Mark(parent, size)
         if self.size == s then return end
         self.size = s
         self:SetHeight(s)
-        self.ring:SetWidth(s + 4)
-        self.ring:SetHeight(s + 4)
+        self.ring:SetWidth(s + 2)
+        self.ring:SetHeight(s + 2)
         self.icon:SetWidth(s)
         self.icon:SetHeight(s)
     end
@@ -974,6 +1068,21 @@ end
 local function PersonalWheel(self, delta)
     if self.onWheel then self.onWheel(delta) end
 end
+local markNum = {}
+local function MarkNum(probe)
+    local file, size = probe:GetFont()
+    local key = tostring(file) .. ":" .. tostring(size)
+    local w = markNum[key]
+    if w then return w end
+    local dw = 0
+    for i = 0, 9 do
+        probe:SetText(tostring(i))
+        dw = max(dw, probe:GetStringWidth() or 0)
+    end
+    w = ceil(dw)
+    markNum[key] = w
+    return w
+end
 local function PersonalMetrics(t)
     if not t.sized then return MARK, MARKTOP, MARKROW, PERSONALH, 22 end
     local v, s = Pt(t, "GameFontNormal"), Pt(t, "GameFontDisableSmall")
@@ -981,6 +1090,7 @@ local function PersonalMetrics(t)
     local subTop = max(6 + v + 4, 16 + floor(n * 0.575))
     local mark = max(MARK, c + 6)
     local top = max(5 + CLASS_ICON, 16 + ceil(n * 0.6), subTop + s) + 4
+    top = max(top, 5 + floor(CLASS_ICON / 2) + ceil(n * 0.6) + ARROW_SIZE + ARROW_EDGE - ARROW_DIP)
     return mark, top, mark + 10, top + mark + 6, subTop
 end
 function Badges.Personal(parent, sized)
@@ -1011,6 +1121,8 @@ function Badges.Personal(parent, sized)
     t.sub:SetPoint("TOPRIGHT", -PERSONAL_R, -22)
     OneLine(t.sub)
     t.sub:SetJustifyH("RIGHT")
+    t.probe = Str(t, "GameFontHighlightSmall")
+    t.probe:Hide()
     t.marks = {}
     t.shown = 0
     t:SetScript("OnEnter", PersonalEnter)
@@ -1055,6 +1167,7 @@ function Badges.Personal(parent, sized)
             local mk = self.marks[k]
             if not mk then
                 mk = Badges.Mark(self, MARK)
+                mk.count:SetPoint("LEFT", mk.icon, "RIGHT", MARKNUM, 0)
                 self.marks[k] = mk
             end
             mk:SetModel(list[k])
@@ -1072,19 +1185,20 @@ function Badges.Personal(parent, sized)
         local vw = Fit(self.value, self.valueText or "", inner)
         Fit(self.sub, self.subText or "", inner)
         self.name:SetWidth(max(1, inner - vw - NAMEGAP))
-        local room = width - PAD - 5
+        local cell = 1 + size + MARKNUM + MarkNum(self.probe)
+        local room = width - PAD - PERSONAL_R - 1
         local x, row = 0, 0
         local reach = floor((step - size) / 2)
         self.head:SetHeight(max(1, top - reach))
         for k = 1, self.shown do
             local mk = self.marks[k]
             mk:Resize(size)
-            local w = mk:Need()
+            local w = max(cell, 1 + size + MARKNUM + ceil(mk.count:GetStringWidth() or 0))
             if x > 0 and x + w > room then x, row = 0, row + 1 end
-            mk:Layout(w)
-            mk:SetHitRectInsets(0, -MARKGAP, -reach, -reach)
+            mk:Layout(w - 1)
+            mk:SetHitRectInsets(-1, -MARKGAP, -reach, -reach)
             mk:ClearAllPoints()
-            mk:SetPoint("TOPLEFT", PAD + x, -(top + row * step))
+            mk:SetPoint("TOPLEFT", PAD + 1 + x, -(top + row * step))
             x = x + w + MARKGAP
         end
         local h = base + row * step
@@ -1117,6 +1231,8 @@ local function WideKey(e, c)
 end
 local sortDesc = true
 local function GroupBefore(x, y)
+    if x.pin ~= y.pin then return x.pin end
+    if x.pin then return x.at < y.at end
     local a, b = x.key, y.key
     if a ~= b then
         if a == nil then return false end
@@ -1138,7 +1254,7 @@ local function WideOrder(f)
         if e.sub and g then
             g[#g + 1] = e
         else
-            groups[#groups + 1] = { e, at = i, key = WideKey(e, o.col) }
+            groups[#groups + 1] = { e, at = i, key = WideKey(e, o.col), pin = e.pin == true }
         end
     end
     sortDesc = o.dir ~= "asc"
@@ -1177,6 +1293,10 @@ local function WideSlots(row, n, m)
             tex:SetTexture(SORT_TEX)
             tex:Hide()
             row.arrows[c] = tex
+            local ic = row:CreateTexture(nil, "ARTWORK")
+            ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            ic:Hide()
+            row.colTex[c] = ic
         else
             hit:SetScript("OnEnter", CellEnter)
             hit:SetScript("OnLeave", HideTip)
@@ -1215,7 +1335,7 @@ local function NewWideRow(f, k)
     row.name:SetWordWrap(false)
     row.cells, row.icons, row.counts, row.hits = {}, {}, {}, {}
     if k == 0 then
-        row.isHead, row.arrows, row.wide = true, {}, f
+        row.isHead, row.arrows, row.colTex, row.wide = true, {}, {}, f
     end
     return row
 end
@@ -1237,6 +1357,9 @@ local function SlotWidth(f, i)
     if not any then return 0 end
     return WIDE_ICON + 2 + ceil(w) + 2
 end
+local function ColIcon(f)
+    return max(WIDE_ICON, LH(f) - 4)
+end
 local function WidePlace(f, row)
     local nc, ns2 = #f.cols, #f.heads
     WideSlots(row, nc, ns2)
@@ -1247,7 +1370,10 @@ local function WidePlace(f, row)
         else
             row.cells[c]:Hide()
             row.hits[c]:Hide()
-            if row.arrows then row.arrows[c]:Hide() end
+            if row.arrows then
+                row.arrows[c]:Hide()
+                row.colTex[c]:Hide()
+            end
         end
     end
     for k = ns2 + 1, #row.icons do
@@ -1322,7 +1448,7 @@ local function WideColumns(f, width)
             local s = f.list[r].cells and f.list[r].cells[c]
             if s and s ~= "" then w = max(w, TextW(f, s)) end
         end
-        data[c], head[c] = w, TextW(f, f.cols[c]) + arrow
+        data[c], head[c] = w, (f.colIcons[c] and ColIcon(f) or TextW(f, f.cols[c])) + arrow
         f.colW[c] = ceil(max(w, head[c])) + 2
         used = used + f.colW[c] + COLGAP
     end
@@ -1337,7 +1463,7 @@ local function WideColumns(f, width)
     if width and width - 6 - (f.rowR or ROW_R) - 4 - 2 - used + COLGAP - NAMEGAP < name then
         for c = 1, #f.cols do
             local text, w = nil, 0
-            if head[c] > data[c] then text, w = Fold(f, f.cols[c]) end
+            if head[c] > data[c] and not f.colIcons[c] then text, w = Fold(f, f.cols[c]) end
             if text then
                 f.headText[c] = text
                 f.colW[c] = ceil(max(w + arrow, data[c])) + 2
@@ -1385,13 +1511,26 @@ local function DrawWide(f)
     local o, sortable = f.order or {}, #f.cols > 1
     for c = 1, #f.cols do
         local text, cell, arrow = f.headText and f.headText[c] or f.cols[c], h.cells[c], h.arrows[c]
+        local icon, tex, size = f.colIcons[c], h.colTex[c], ColIcon(f)
+        if icon then
+            text = ""
+            tex:SetTexture(icon)
+            tex:SetWidth(size)
+            tex:SetHeight(size)
+            tex:ClearAllPoints()
+            tex:SetPoint("BOTTOMRIGHT", cell, "BOTTOMRIGHT", 0, (LH(f) - size) / 2)
+            tex:Show()
+        else
+            tex:Hide()
+        end
         cell:SetText(text)
-        h.hits[c]:EnableMouse(sortable)
+        h.hits[c]:EnableMouse(sortable or (icon and true or false))
         if sortable and o.col == c then
             ns.Kit.Tone(cell, "text.title")
             local last = text:match("\n(.*)$") or text
             arrow:ClearAllPoints()
-            arrow:SetPoint("BOTTOMRIGHT", cell, "BOTTOMRIGHT", -(ceil(TextW(f, last)) + 2), (LH(f) - SORT_ICON) / 2)
+            arrow:SetPoint("BOTTOMRIGHT", cell, "BOTTOMRIGHT", -((icon and size or ceil(TextW(f, last))) + 2),
+                (LH(f) - SORT_ICON) / 2)
             local tc = SORT_ARROW[o.dir] or SORT_ARROW.desc
             arrow:SetTexCoord(tc[1], tc[2], tc[3], tc[4])
             ns.Kit.Tint(arrow, "text.title")
@@ -1421,7 +1560,7 @@ local function DrawWide(f)
         local e = k <= lines and list[k + f.offset]
         if e then
             row.name:SetText(e.who)
-            row.name:SetTextColor(ClassRGB(e.class))
+            if e.tone then ns.Kit.Tone(row.name, e.tone) else row.name:SetTextColor(ClassRGB(e.class)) end
             WideRow(row, e, f)
             row:Show()
         else
@@ -1450,8 +1589,9 @@ local function SortTip(self)
     local f = self:GetParent().wide
     local o = f.order or {}
     local state = o.col == self.col and (o.dir == "asc" and "sum.sort.asc" or "sum.sort.desc") or "sum.sort.none"
-    ns.Tip.Dock(self, { { kind = "head", left = f.cols[self.col] or "" },
-        { kind = "row", left = ns.T("sum.sort"), right = ns.T(state) } })
+    local lines = { { kind = "head", left = f.cols[self.col] or "" } }
+    if #f.cols > 1 then lines[2] = { kind = "row", left = ns.T("sum.sort"), right = ns.T(state) } end
+    ns.Tip.Dock(self, lines, f.colIcons[self.col] or nil)
 end
 SortEnter = function(self)
     local h = self:GetParent()
@@ -1512,7 +1652,7 @@ function Badges.Wide(parent, modal, sized)
     f.probe = Str(f, "GameFontHighlightSmall")
     f.probe:Hide()
     f.header = NewWideRow(f, 0)
-    f.list, f.rows, f.cols, f.heads, f.order = {}, {}, {}, {}, {}
+    f.list, f.rows, f.cols, f.heads, f.order, f.colIcons = {}, {}, {}, {}, {}, {}
     f.lineCount = 0
     WideGrow(f, LINES)
     function f.SetModel(self, m)
@@ -1524,6 +1664,7 @@ function Badges.Wide(parent, modal, sized)
         self.base = m.rows or {}
         self.cols = m.cols or {}
         self.heads = m.heads or {}
+        self.colIcons = m.colIcons or {}
         self.total = m.total
         self.empty = m.empty
         self.onWheel = m.onWheel

@@ -900,10 +900,13 @@ local function FixSpans(scene, c, res)
     local rows = nil
     local room = scene.room
     local defs = c.goneDefs
+    local away = {}
+    c.L.away = away
     for i = 1, defs and #defs or 0 do
         local def, list = defs[i], c.goneAt[i]
         for j = 1, #list do
             local from, to = GoneSpan(c, list[j], def)
+            away[#away + 1] = { from = from - c.from, to = min(to, c.to) - c.from, at = list[j] - c.from }
             local air = def.at and room
             local n = AddFixed(c, air and "pin" or "gone", from, min(to, c.to))
             fx.empty[n] = def.empty == true
@@ -1221,6 +1224,13 @@ function Layers.Build(scene)
     local Read = ns.Store.Read
     ns.Jobs.Part(0, WALK_SHARE)
     local NpcKey, SpellOf = ns.NpcKey, ns.SpellOf
+    local preWin = fc and ns.replayFeed and ns.replayFeed.preWin
+    for o = 1, preWin and #segs or 0 do
+        for ts, sub, srcGUID, src, srcFlags, dstGUID, dst, _, a1, a2
+            in ns.Store.Events(segs[o], fight.from - preWin, fight.from - 0.001, MAX_TAIL) do
+            FC.Pre(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, a1, a2, nil)
+        end
+    end
     for o = 1, #segs do
         for ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, _, a4, a5
             in ns.Store.Events(segs[o], fight.from, fight.to, MAX_TAIL) do

@@ -27,19 +27,24 @@ function View.Lines(ask)
     local out = { { kind = "head", left = format(T("proof.tip.head"), ns.Proof.Label(ns.Proof.Channel()),
         T("proof.view." .. ns.Proof.View())) } }
     View.Preview(ask, out)
-    out[#out + 1] = { kind = "foot", left = T("proof.tip.btn") }
+    out[#out + 1] = { kind = "foot", key = "rmb", left = T("proof.tip.btn") }
     return out
 end
 function View.Enter(mark)
     if not (mark.proof and ns.Proof) then return false end
     hovered = mark
+    local lines = mark.lines or {}
+    local feet = #lines + 1
+    while feet > 1 and lines[feet - 1].kind == "foot" do feet = feet - 1 end
     local out = {}
-    for i = 1, #(mark.lines or {}) do out[i] = mark.lines[i] end
+    for i = 1, feet - 1 do out[i] = lines[i] end
     if Ctrl() then
         out[#out + 1] = { kind = "sep" }
         View.Preview(mark.proof, out)
     end
-    out[#out + 1] = { kind = "foot", left = format(T("proof.tip.ctrl"), ns.Proof.Label(ns.Proof.Channel())) }
+    for i = feet, #lines do out[#out + 1] = lines[i] end
+    out[#out + 1] = { kind = "foot", key = "ctrl", left = format(T("proof.tip.ctrl"), ns.Proof.Label(ns.Proof.Channel())) }
+    if not Ctrl() then out[#out + 1] = { kind = "foot", key = "Ctrl", left = T("proof.tip.hold") } end
     ns.Tip.Dock(mark, out, mark.tipIcon)
     return true
 end
@@ -88,7 +93,7 @@ function View.Menu(anchor)
     ns.Tip.Hide()
     ns.Kit.Menu(menu, anchor)
 end
-function View.ReportMenu(anchor, build, title)
+function View.ReportMenu(anchor, build, title, now)
     local R = ns.ChatReport
     local menu = { { text = T(title or "report.menu"), isTitle = true, notCheckable = true } }
     local cur = R.Channel()
@@ -97,13 +102,14 @@ function View.ReportMenu(anchor, build, title)
         menu[#menu + 1] = {
             text = T("report.ch." .. c),
             checked = c == cur,
+            disabled = not R.Can(c),
             func = function()
                 local lines = build(R.Size())
                 if #lines < 2 then
                     ns.Print(T("report.none"))
                     return
                 end
-                R.Send(lines, c)
+                if now then R.SendNow(lines, c) else R.Send(lines, c) end
             end,
         }
     end
@@ -116,7 +122,7 @@ function View.ReportMenu(anchor, build, title)
             checked = k == n,
             func = function()
                 R.SetSize(k)
-                View.ReportMenu(anchor, build, title)
+                View.ReportMenu(anchor, build, title, now)
             end,
         }
     end

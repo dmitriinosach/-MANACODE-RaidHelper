@@ -13,7 +13,7 @@ local B_SEMI = 59
 local B_S = 115
 local B_B = 98
 local B_G = 103
-local FIELD_END = "[,;]"
+local FIELD = "^([^,;]*)()"
 local HEAD = "^(-?%d*),(g?)(%d+),([^,;]*),([^,;]*)()"
 local Decode = {}
 ns.Decode = Decode
@@ -89,17 +89,9 @@ local function TailInto(T, s, pos, gen, subtype, out, n, limit)
     local layout = gen == "" and subtype and LAYOUTS[subtype] or nil
     if not layout then
         while ch == B_COMMA and n < limit do
-            local start = pos + 1
-            local stop = find(s, FIELD_END, start)
             local field
-            if stop then
-                field = strsub(s, start, stop - 1)
-                ch = byte(s, stop)
-                pos = stop
-            else
-                field = strsub(s, start)
-                ch = nil
-            end
+            field, pos = match(s, FIELD, pos + 1)
+            ch = byte(s, pos)
             n = n + 1
             if field == "" then out[n] = nil else out[n] = Generic(T, field) end
         end
@@ -114,16 +106,8 @@ local function TailInto(T, s, pos, gen, subtype, out, n, limit)
         else
             local field = ""
             if ch == B_COMMA then
-                local start = pos + 1
-                local stop = find(s, FIELD_END, start)
-                if stop then
-                    field = strsub(s, start, stop - 1)
-                    ch = byte(s, stop)
-                    pos = stop
-                else
-                    field = strsub(s, start)
-                    ch = nil
-                end
+                field, pos = match(s, FIELD, pos + 1)
+                ch = byte(s, pos)
             end
             if kind == P or kind == Q then
                 out[n + 1] = T.PI[field] or nil
@@ -149,9 +133,7 @@ local function TailInto(T, s, pos, gen, subtype, out, n, limit)
     if n > limit then n = limit end
     return n
 end
-local function DecodeAt(seg, T, s, at, ms, maxTail)
-    local _, gen, subId, src, dst, pos = match(s, HEAD, at)
-    if not subId then return 0 end
+local function DecodeHead(seg, T, s, ms, maxTail, gen, subId, src, dst, pos)
     local subtype = T.STR[subId] or nil
     ret[1] = seg.t0 + ms / 1000
     ret[2] = subtype
@@ -163,6 +145,11 @@ local function DecodeAt(seg, T, s, at, ms, maxTail)
     ret[7] = AN[dst] or nil
     ret[8] = AF[dst]
     return TailInto(T, s, pos, gen, subtype, ret, 8, maxTail and (8 + maxTail) or 64)
+end
+local function DecodeAt(seg, T, s, at, ms, maxTail)
+    local _, gen, subId, src, dst, pos = match(s, HEAD, at)
+    if not subId then return 0 end
+    return DecodeHead(seg, T, s, ms, maxTail, gen, subId, src, dst, pos)
 end
 function Decode.Tail(seg, s, pos, gen, sub, maxTail)
     local n = TailInto(Decode.Tables(seg), s, pos, gen, sub, tail, 0, maxTail)
@@ -236,21 +223,16 @@ local function Walk(seg, from, to)
     return { seg = seg, ci = FirstChunk(seg, from) - 1, s = nil, pos = 1, ms = 0, bi = 0, done = false,
              stopMs = to and (to - seg.t0) * 1000 + SEEK_SLACK or nil }
 end
-local function Next(w)
-    if w.done then return nil, 0, 0, 0 end
+local function Line(w)
+    if w.done then return nil, 0, 0, false end
     local seg = w.seg
     while true do
         local s = w.s
         if s then
             local at = w.pos
-            if at > 1 then
-                w.ms = w.ms + (tonumber(match(s, "^(-?%d*)", at)) or 0)
-            else
-                w.ms = ChunkStart(s)
-            end
             local nx = find(s, ";", at, true)
             if nx then w.pos = nx + 1 else w.s = nil end
-            return s, at, w.ci, w.ms
+            return s, at, w.ci, at == 1
         end
         if w.bi > 0 or w.ci >= #seg.chunks then
             local buf = seg.buf
@@ -258,15 +240,10 @@ local function Next(w)
             local line = buf and buf[w.bi]
             if not line then
                 w.done = true
-                return nil, 0, 0, 0
-            end
-            if w.bi == 1 then
-                w.ms = ChunkStart(line)
-            else
-                w.ms = w.ms + (tonumber(match(line, "^(-?%d*)")) or 0)
+                return nil, 0, 0, false
             end
             Decode.read = Decode.read + #line
-            return line, 1, 0, w.ms
+            return line, 1, 0, w.bi == 1
         end
         w.ci = w.ci + 1
         local chunk = seg.chunks[w.ci]
@@ -277,6 +254,13 @@ local function Next(w)
         Decode.read = Decode.read + #chunk
         w.s, w.pos = chunk, 1
     end
+end
+local function Next(w)
+    local s, at, ci, abs = Line(w)
+    if not s then return nil, 0, 0, 0 end
+    local d = tonumber(match(s, "^(-?%d*)", at)) or 0
+    if abs then w.ms = d else w.ms = w.ms + d end
+    return s, at, ci, w.ms
 end
 function Decode.Span(seg, from, to)
     local chunks = seg.chunks
@@ -298,10 +282,15 @@ function Decode.Events(seg, from, to, maxTail)
     local toMs = to and (to - seg.t0) * 1000 + 1 or nil
     return function()
         while true do
-            local s, at, _, ms = Next(w)
+            local s, at, _, abs = Line(w)
             if not s then return nil end
-            if (not fromMs or ms >= fromMs) and (not toMs or ms <= toMs) then
-                local n = DecodeAt(seg, T, s, at, ms, maxTail)
+            local d, gen, subId, src, dst, pos = match(s, HEAD, at)
+            if not subId then d = match(s, "^(-?%d*)", at) end
+            d = tonumber(d) or 0
+            local ms = abs and d or w.ms + d
+            w.ms = ms
+            if subId and (not fromMs or ms >= fromMs) and (not toMs or ms <= toMs) then
+                local n = DecodeHead(seg, T, s, ms, maxTail, gen, subId, src, dst, pos)
                 if n > 0 then return unpack(ret, 1, n) end
             end
         end

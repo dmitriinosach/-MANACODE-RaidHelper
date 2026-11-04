@@ -173,8 +173,7 @@ local function IconOf(id)
     if not id or id == 0 then return nil end
     local tex = iconOf[id]
     if tex == nil then
-        local _, _, icon = GetSpellInfo(id)
-        tex = icon or false
+        tex = ns.SpellIcon(id) or false
         iconOf[id] = tex
     end
     return tex or nil

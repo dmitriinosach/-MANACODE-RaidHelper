@@ -559,7 +559,7 @@ function Acts.Covers(s, p, d)
         local bd = s.badges[i]
         if (bd.kind == "cc" or bd.kind == "wrath") and bd.spells then
             for k = 1, #bd.spells do
-                if bd.spells[k] == duty.spell then return i end
+                if bd.spells[k] == duty.spell then return i, duty.id end
             end
         end
     end

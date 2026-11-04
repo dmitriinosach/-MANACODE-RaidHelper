@@ -33,6 +33,7 @@ local SWING_KEY = Acc.SWING_KEY
 local MELEE_ID = 6603
 local LIVE = { aura = true, ticks = true, stack = true, hit = true, chased = true, applied = true }
 local LOW_END = 3
+local EDGE = 0.001
 local ET_SUBS = { UNIT_DIED = true, SPELL_RESURRECT = true, SPELL_CAST_SUCCESS = true }
 local Summary = {}
 ns.Summary = Summary
@@ -132,11 +133,15 @@ local function NewSummary(fight, def)
         s.players[#s.players + 1] = p
     end
     local blocks = def.blocks or {}
-    s.hurt, s.castSet, s.cureSet = {}, {}, {}
+    s.hurt, s.castSet, s.cureSet, s.laidSet = {}, {}, {}, {}
     for i = 1, #blocks do
         local bd = blocks[i]
         local b = { def = bd, total = 0, by = {}, split = {}, names = {} }
         ns.NpcSet(bd.names, b.names)
+        if bd.kind == "removed" or bd.kind == "dispels" then
+            b.laid, b.ids = {}, {}
+            ns.SpellSet(bd.spells or { bd.spell }, s.laidSet)
+        end
         if bd.npc and bd.kind == "abom" then
             s.rides[NpcKeyOf(bd.npc)] = true
             s.apart[NpcKeyOf(bd.npc)] = true
@@ -273,7 +278,7 @@ local function Finish(s, fight)
     end)
 end
 local function Given(s, fight, p, dst, sk, id, ts)
-    if ts < s.lead or ts > fight.to then return end
+    if ts < s.lead or ts > fight.to + EDGE then return end
     local i = s.given[sk]
     local bd = s.badges[i]
     local st = p.badges[i]
@@ -415,6 +420,7 @@ local function Build(fight)
     local pets = ns.GetDB().pets or {}
     local ctl = watch.ctl and ns.MindCtl.Begin(watch.ctl, byName, owners, pets, def.mcDrain)
     local from, to = fight.from - LEAD, fight.to + TAIL
+    local lo, hi = fight.from - EDGE, fight.to + EDGE
     local scan = fight.from - SHIELD_LEAD
     local segs = ns.Encounters.Segs(fight)
     local tt = ns.Totals.Begin(byName, owners, pets, fight)
@@ -464,10 +470,10 @@ local function Build(fight)
         if rs and rs.subs[sub] then ns.RuneSwap.Feed(rs, ts, sub, srcGUID, srcName, dstGUID, dstName, a1, a4, a5) end
         if bn and bn.subs[sub] then ns.BloodNova.Feed(bn, ts, dstName, sk) end
         if zb and zb.subs[sub] then ns.ZoneBuff.Feed(zb, ts, sub, a1, a2) end
-        if TR.SUBS[sub] and ts >= from and ts <= fight.to then TR.Feed(s, byName, fight.boss, ts, sub, dstName, a1, a2, a3, a4, a5, a6, a7) end
-        if sub == "FW_ACH" and ts >= fight.from and ts <= to then
+        if TR.SUBS[sub] and ts >= from and ts <= hi then TR.Feed(s, byName, fight.boss, ts, sub, dstName, a1, a2, a3, a4, a5, a6, a7) end
+        if sub == "FW_ACH" and ts >= lo and ts <= to then
             Earned(s, byName, id, srcName, ts)
-            if ts <= fight.to then ns.RaidPart.Got(rp, id, srcName, ts) end
+            if ts <= hi then ns.RaidPart.Got(rp, id, srcName, ts) end
         end
         if ts >= from and ts <= to then
             if et and ET_SUBS[sub] then ns.EffTime.Feed(et, ts, sub, srcName, dstName) end
@@ -481,7 +487,7 @@ local function Build(fight)
             if lm and ((srcKey and lm.npcs[srcKey]) or (dstKey and lm.npcs[dstKey])) then
                 ns.LichMech.Feed(lm, ts, sub, sk, srcKey, dstKey, srcGUID, srcName, dstGUID, dstName, a1, a4)
             end
-            if sub == "FW_EMOTE" and ts >= fight.from and ts <= fight.to and type(a1) == "string" then
+            if sub == "FW_EMOTE" and ts >= lo and ts <= hi and type(a1) == "string" then
                 local ep = dstName and byName[dstName]
                 if ep then
                     for i = 1, s.own do
@@ -500,7 +506,7 @@ local function Build(fight)
                     end
                 end
             end
-            if sub == "FW_STACK" and ts >= fight.from and ts <= fight.to and a1 ~= nil then
+            if sub == "FW_STACK" and ts >= lo and ts <= hi and a1 ~= nil then
                 local sp = srcName and byName[srcName]
                 local c = tonumber(a2) or 0
                 if sp then
@@ -527,11 +533,11 @@ local function Build(fight)
                 local vp = srcName and byName[srcName]
                 if vp then Veh.Ride(s, fight, vp, ts, id == 1, type(a2) == "string" and a2 or nil) end
             end
-            if useful and ts >= fight.from and ts <= fight.to
+            if useful and ts >= lo and ts <= hi
                 and (sub == "SPELL_SUMMON" or sub == "UNIT_DIED" or (sk and sk == SpellKey(useful.def.heroic))) then
                 Acc.UsefulWatch(s, useful, ts, sub, srcKey, dstGUID, dstKey, sk)
             end
-            local inFightWindow = ts >= fight.from and ts <= fight.to
+            local inFightWindow = ts >= lo and ts <= hi
             if sub == "SPELL_SUMMON" and srcFlags and band(srcFlags, F_PLAYER) > 0 and dstGUID then
                 if dstKey and totemNames[dstKey] then
                     totemWins[#totemWins + 1] = { guid = dstGUID, owner = srcName, from = ts, to = ts + 300 }
@@ -559,7 +565,7 @@ local function Build(fight)
             end
             local p = who and byName[who]
             local dst = dstName and byName[dstName]
-            local inFight = ts >= fight.from and ts <= fight.to
+            local inFight = ts >= lo and ts <= hi
             local mcSrc = srcName and byName[srcName] and srcFlags and band(srcFlags, F_PLAYER) == 0
                 and band(srcFlags, F_BY_PLAYER) == 0 and srcName or nil
             if not s.pull and srcFlags and band(srcFlags, F_BY_PLAYER) > 0
@@ -609,6 +615,7 @@ local function Build(fight)
             if sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_AURA_APPLIED" then
                 ns.RaidPart.Mine(byName, fight, ts, sub, rwho, srcName, srcFlags, a1, dstName, dstFlags, a2)
             end
+            if fc and ts < lo then FC.Pre(fc, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, a1, a2, sk) end
             if inFight then
                 if fc then FC.Event(fc, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a4, a5, sk or false) end
                 if sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CREATE" or sub == "ENCHANT_APPLIED"
@@ -758,7 +765,7 @@ local function Build(fight)
                             b.by[who] = (b.by[who] or 0) + 1
                         end
                     end
-                    if sub == "SPELL_DISPEL" and dst and xk and s.cureSet[xk] then Acc.Cured(s, who, xk, a5) end
+                    if sub == "SPELL_DISPEL" and dst and xk and s.cureSet[xk] then Acc.Cured(s, who, xk, a5, tonumber(a4)) end
                     local ev = d.list or {}
                     d.list = ev
                     ev[#ev + 1] = { t = ts - fight.from, who = dstName, self = dstName == who or nil,
@@ -797,8 +804,7 @@ local function Build(fight)
                         p.casts[sk] = (p.casts[sk] or 0) + 1
                     end
                     if mcSrc and sk and watch.mc[sk] then
-                        local mp = byName[mcSrc]
-                        mp.mcCasts[#mp.mcCasts + 1] = { t = ts, spell = sk }
+                        ns.MindCtl.Cast(byName[mcSrc].mcCasts, ts, sk)
                         s.spellIds[sk] = s.spellIds[sk] or id
                     end
                 end
@@ -806,6 +812,7 @@ local function Build(fight)
                     and srcFlags and band(srcFlags, F_BY_PLAYER) == 0 then
                     Acc.EnemyCast(s, sk, srcKey, sub == "SPELL_CAST_START")
                 end
+                if sub == "SPELL_AURA_APPLIED" and sk and s.laidSet[sk] then Acc.Laid(s, sk, a2, id, dst ~= nil) end
                 if dst and sub == "SPELL_AURA_APPLIED" and sk then
                     for i = 1, #s.extra do
                         local x = s.extra[i]
@@ -890,14 +897,20 @@ local function Build(fight)
                         and (not bd.min or (tonumber(a4) or 0) > bd.min)
                         and not (bd.alive and (tonumber(a5) or 0) > 0) then
                         local st = dst.badges[i]
+                        local amt = tonumber(a4) or 0
                         st.hits = st.hits + 1
-                        st.amount = st.amount + (tonumber(a4) or 0)
-                        if not st.last or ts - st.last > (bd.gap or HIT_GAP) then st.run, st.from = 0, ts end
+                        st.amount = st.amount + amt
+                        if not st.last or ts - st.last > (bd.gap or HIT_GAP) then st.run, st.from, st.ra = 0, ts, 0 end
                         st.run = st.run + 1
+                        st.ra = (st.ra or 0) + amt
                         if st.run > (st.peak or 0) then st.peak = st.run end
                         if st.run == (bd.ticks or 1) then
                             st.n = st.n + 1
                             st.times[#st.times + 1] = st.from - fight.from
+                            st.dmg = st.dmg or {}
+                            st.dmg[st.n] = st.ra
+                        elseif st.run > (bd.ticks or 1) and st.dmg then
+                            st.dmg[st.n] = st.dmg[st.n] + amt
                         end
                         st.last = ts
                         s.icons[i] = s.icons[i] or id
@@ -940,6 +953,7 @@ local function Build(fight)
     if ach then ns.Achievements.Tail(ach, segs[si], to) end
     end
     ns.Jobs.Part(WALK_SHARE, 1)
+    ns.Jobs.Yield()
     SS.Finish(sg, s.players)
     if ns.Achievements then s.ach = ach and ns.Achievements.Finish(ach) or {} end
     for guid, amount in pairs(blasts) do
@@ -981,6 +995,7 @@ local function Build(fight)
     end
     Deaths.DropFake(s, fight)
     ns.Jobs.Progress(1, FINISH_STEPS)
+    ns.Jobs.Yield()
     if acts then ns.Actions.Finish(acts) end
     if shades then ns.Shades.Finish(shades) end
     if cg then ns.Caught.Finish(cg) end
@@ -999,6 +1014,7 @@ local function Build(fight)
     ns.Totals.Finish(tt, s)
     Finish(s, fight)
     ns.Jobs.Progress(2, FINISH_STEPS)
+    ns.Jobs.Yield()
     if fc then
         if mech then ns.ReplayMech.FeedRows(mech, fc) end
         local L = { tanks = {} }
@@ -1009,6 +1025,7 @@ local function Build(fight)
         s.feed = FC.Pack(L)
     end
     ns.Jobs.Progress(3, FINISH_STEPS)
+    ns.Jobs.Yield()
     if pa then ns.Parry.Finish(pa) end
     if hc then ns.Control.Finish(hc) end
     if rf then ns.RFury.Finish(rf) end
@@ -1042,6 +1059,7 @@ function Summary.Now(fight)
     if s then return s end
     s = Summary.Build(fight)
     ns.Jobs.Progress(FINISH_STEPS - 1, FINISH_STEPS)
+    ns.Jobs.Yield()
     if ns.Digest then ns.Digest.Save(fight, s) end
     return Keep(fight, s)
 end

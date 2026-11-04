@@ -19,7 +19,7 @@ local pult, w, cap, keep, keepFs, fold, quick, box, grab, wipeBtn
 local quickBtns, rows = {}, {}
 local mode = "closed"
 local fly = false
-local collapsed, onExpand = false, nil
+local hidden = false
 local built = false
 local refresh
 local function editH()
@@ -177,16 +177,12 @@ local function fits()
 end
 local function layout()
     if not built then return end
-    if collapsed then
+    if hidden then
         mode = "quick"
-        quick:Hide()
-        box:Hide()
-        keep:Hide()
-        keepFs:Hide()
-        fold:SetText("+")
-        fold.tipTitle = ns.T("tipFoldOpen")
+        for _, f in ipairs({ cap, cap.rule, fold, quick, box, keep, keepFs }) do f:Hide() end
         return
     end
+    for _, f in ipairs({ cap, cap.rule, fold }) do f:Show() end
     keep:Show()
     keepFs:Show()
     if fits() then
@@ -227,7 +223,7 @@ function refresh()
     keepFs:SetText(status or "")
     layout()
     for _, b in ipairs(quickBtns) do paintIcon(b) end
-    if box:IsShown() and not collapsed then
+    if box:IsShown() and not hidden then
         local can = M.CanMark()
         for _, r in ipairs(rows) do
             paintIcon(r.btn)
@@ -266,10 +262,6 @@ local function build(parent, width)
     fold:SetSize(18, 16)
     fold:SetPoint("LEFT", cap, "LEFT", w - 18, 0)
     fold.onClick = function()
-        if collapsed then
-            if onExpand then onExpand() end
-            return
-        end
         if mode == "inline" then
             ns.Marks.SetOpen(false)
         elseif mode == "fly" then
@@ -321,12 +313,13 @@ ns.Session.OnChange(refresh)
 ns.OnFont(function() if built then refresh() end end)
 ns.Marks.OnChange(refresh)
 ns.window:OnSize(layout)
-local function setCollapsed(on, expand)
-    collapsed, onExpand = on and true or false, expand
+local function setHidden(on)
+    hidden = on and true or false
+    layout()
 end
 ns.PultMarks = {
-    Build = build, Place = place, Refresh = refresh, SetCollapsed = setCollapsed,
-    Collapsed = function() return collapsed end,
+    Build = build, Place = place, Refresh = refresh, SetHidden = setHidden,
+    Hidden = function() return hidden end,
     Mode = function() return mode end,
     Quick = quickBtns, Rows = rows,
     Parts = function() return cap, pult, fold, keep, grab, wipeBtn end,

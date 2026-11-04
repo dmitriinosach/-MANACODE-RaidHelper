@@ -95,7 +95,7 @@ function Store.Strip(seg)
     seg.bytes = 0
     local db = ns.GetDB()
     db.total = math.max(0, (db.total or 0) - (seg.n or 0))
-    seg.n = 0
+    seg.n, seg.skip, seg.xtra = 0, nil, nil
     seg.bare, seg.lite = true, nil
     if ns.Decode and ns.Decode.Drop then ns.Decode.Drop(seg) end
     if ns.Index and ns.Index.Reset then ns.Index.Reset() end
@@ -225,6 +225,57 @@ function Store.Count()
         end
     end
     return raids, tries
+end
+local function LastGroup()
+    local db = ns.GetDB()
+    local anchor = db.segments[#db.segments] or db.live
+    local out = {}
+    if not anchor then return out end
+    local key = GroupKey(anchor)
+    for i = 1, #db.segments + 1 do
+        local s = db.segments[i] or (i > #db.segments and db.live)
+        if s and GroupKey(s) == key then out[#out + 1] = s end
+    end
+    return out
+end
+function Store.LastRaid()
+    local list = LastGroup()
+    local bytes, tries = 0, 0
+    for i = 1, #list do
+        local s = list[i]
+        bytes = bytes + (s.bytes or 0) + TotalsBytes(s)
+        tries = tries + SegTries(s)
+    end
+    return bytes, tries
+end
+local ALL_PCT, ALL_TRY, ALL_RAID = 20, 1.5, 25
+local ALL_MIN = 2000
+function Store.AllCost()
+    local list = LastGroup()
+    local n, base, full, lo, hi, tries, rest = 0, 0, 0, 0, 0, 0, 0
+    for i = 1, #list do
+        local s = list[i]
+        local bytes = (s.bytes or 0) + TotalsBytes(s)
+        local cnt = s.n or 0
+        if s.pull and cnt > 0 and (s.skip or s.xtra) then
+            local b, f = cnt - (s.xtra or 0), cnt + (s.skip or 0)
+            n, base, full = n + cnt, base + b, full + f
+            lo, hi = lo + (s.bytes or 0) * (b / cnt), hi + (s.bytes or 0) * (f / cnt)
+            rest = rest + TotalsBytes(s)
+            tries = tries + SegTries(s)
+        else
+            rest = rest + bytes
+        end
+    end
+    if n < ALL_MIN or base <= 0 or tries == 0 then
+        return ALL_PCT, ALL_TRY, ALL_TRY * (1 + ALL_PCT / 100), ALL_RAID, ALL_RAID * (1 + ALL_PCT / 100), false
+    end
+    local pct = floor((full - base) / base * 100 + 0.5)
+    return pct, lo / tries / MB, hi / tries / MB, (rest + lo) / MB, (rest + hi) / MB, true
+end
+function Store.AllCostText()
+    local pct, tryLo, tryHi, raidLo, raidHi, own = Store.AllCost()
+    return string.format(ns.T(own and "set.rec.all.cost" or "set.rec.all.est"), pct, tryHi, tryLo, raidHi, raidLo)
 end
 local function Plan(mb)
     local segs = ns.GetDB().segments

@@ -15,7 +15,8 @@ ns.replayMech = {
         },
         [ns.ENC.sindragosa] = {
             show = "banner", boom = { 69845, 71053, 71054, 71055 }, lead = 5.5, join = 1, icon = 69845,
-            drop = true, tomb = { 70157 }, hide = 10, cone = 35, miss = 3, near = 12, far = 25, r = 5, blast = 12, tone = "sem.rep.cold",
+            drop = true, tomb = { 70157 }, area = { 313.8, 133.7, 410.9, 230.8 }, shade = 1.5, gap = 5, step = 1.5, r = 5,
+            blast = 12, tone = "sem.rep.cold",
             fall = { cast = { 69712 }, first = 15.9, step = 6.6, n = 4, join = 1.5 },
         },
     },

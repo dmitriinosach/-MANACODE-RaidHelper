@@ -1,5 +1,4 @@
 local _, ns = ...
-local format = string.format
 local floor = math.floor
 local max = math.max
 local min = math.min
@@ -11,7 +10,6 @@ ns.TimelineLinks = Links
 local focus
 local line
 local band
-local Clock = ns.Clock
 function Links.Culprit(it, player)
     local who = it.victim or it.src
     if who == nil or who == player then return nil end
@@ -78,10 +76,19 @@ function Links.Paint()
     line:Show()
 end
 function Links.Tag(lines, fight, t)
-    if not (fight and t) then return lines end
-    local key = ns.ReplayIso and "tl.mark.click" or "tl.mark.click.bare"
-    lines[#lines + 1] = { kind = "foot", left = format(ns.T(key), Clock(max(0, t - fight.from))) }
-    return lines
+    return ns.ReplayLink.Tag(lines, fight, t)
+end
+local function OpenNow(fight, who, t)
+    if ns.Shell and not ns.Shell.IsOpen("log") then ns.Shell.Open("log") end
+    if ns.Timeline.View() ~= fight then ns.Timeline.ShowFight(fight) end
+    return Links.Focus(who, t)
+end
+function Links.Open(fight, who, t)
+    local TL = ns.Timeline
+    if not (fight and who and fight.players[who] and TL and TL.View) then return false end
+    ns.Tip.Hide()
+    if ns.ShellNav then return ns.ShellNav.Run(OpenNow, fight, who, t) end
+    return OpenNow(fight, who, t)
 end
 function Links.OpenMark(mark, button)
     if button and button ~= "LeftButton" then return false end

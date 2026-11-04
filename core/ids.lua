@@ -161,8 +161,14 @@ function ns.SpellName(id)
     local name = GetSpellInfo(id) or spellNames[id]
     return name or ("#" .. tostring(id))
 end
+local ICON_OVERRIDE = {}
+for _, id in ipairs({ 72762, 72754, 73708, 73709, 73710 }) do
+    ICON_OVERRIDE[id] = "Interface\\Icons\\Spell_Shadow_DeathAndDecay"
+end
 function ns.SpellIcon(id)
     if not id then return nil end
+    local over = ICON_OVERRIDE[id]
+    if over then return over end
     local _, _, icon = GetSpellInfo(id)
     return icon
 end

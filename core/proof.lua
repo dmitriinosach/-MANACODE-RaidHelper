@@ -12,14 +12,15 @@ local TIMES = 4
 local LINKS = 4
 local GUARD = 10
 local DEATHS_MAX = 4
-local GAP = 0.3
-local BURST = 6
+local GAP = 1.05
+local BURST = 3
 local DUP = 4
 local QUEUE = 32
 local STEP = 8
 local LINK = "^|c%x%x%x%x%x%x%x%x|H[^|]*|h[^|]*|h|r"
 local CHANNELS = { "RAID", "PARTY", "GUILD", "OFFICER", "WHISPER", "SAY" }
 local KNOWN = { RAID = true, PARTY = true, GUILD = true, OFFICER = true, WHISPER = true, SAY = true }
+local FAST = { RAID = true, PARTY = true, GUILD = true, OFFICER = true, RAID_WARNING = true, BATTLEGROUND = true }
 local DEATH_KINDS = { death = true, anydeath = true }
 local VIEWS = { chron = true, short = true }
 local CHRON = 8
@@ -222,11 +223,11 @@ local function Chain(fight, hit, p, s)
     elseif kind == "mindmg" then
         local names = {}
         for i = 1, #(rule.targets or {}) do names[i] = ns.NpcName(ns.NpcKeyOf(rule.targets[i])) end
-        out[1] = format(T("proof.mindmg"), Plain(concat(names, ", ")), Short(info.amount or 0),
-            Short(info.need or 0))
+        out[1] = format(T("proof.mindmg"), Plain(concat(names, ", ")),
+            ns.Penalties.OfText(rule, info.melee == false and 2 or 1, info.amount or 0, info.need or 0))
         return out
     elseif kind == "mindps" then
-        out[1] = format(T("proof.mindps"), Short(info.amount or 0), Short(info.need or 0))
+        out[1] = format(T("proof.mindps"), ns.Penalties.OfText(rule, 1, info.amount or 0, info.need or 0))
         return out
     elseif kind == "mcdamage" then
         for k = 1, min(3, #hit.events) do
@@ -614,11 +615,19 @@ local function SendOne()
     local m = tremove(queue, 1)
     if not m then return end
     SendChatMessage(m.text, m.chat, nil, m.target)
-    tokens = tokens - 1
+    if not FAST[m.chat] then tokens = tokens - 1 end
 end
 local function Drain()
     Refill(GetTime())
-    while queue[1] and tokens >= 1 do SendOne() end
+    while queue[1] and (FAST[queue[1].chat] or tokens >= 1) do SendOne() end
+end
+function Proof.Queue(text, chat, target)
+    queue[#queue + 1] = { text = text, chat = chat, target = target }
+    Drain()
+    if queue[1] then pump:Show() end
+end
+function Proof.Fast(chat)
+    return FAST[chat] == true
 end
 pump:SetScript("OnUpdate", ns.Prof.Wrap("bg.proof", function(self)
     if not queue[1] then
@@ -653,6 +662,7 @@ function Proof.SendLines(msgs, want, target, pre)
     end
     sentAt[key] = now
     if chat ~= want then ns.Print(format(T(pre .. ".fallback"), Proof.Label(want), Proof.Label(chat))) end
+    if not FAST[chat] and #msgs > BURST then ns.Print(format(T("chat.slow"), Proof.Label(chat))) end
     for i = 1, #msgs do queue[#queue + 1] = { text = msgs[i], chat = chat, target = to } end
     Drain()
     if queue[1] then pump:Show() end

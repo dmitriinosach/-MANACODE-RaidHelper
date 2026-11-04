@@ -125,6 +125,42 @@ function Modal.Open(source)
     ns.Kit.FadeIn(dim)
     ns.Kit.PopIn(f)
 end
+function Modal.Own(key, make)
+    Build()
+    local f = panels[key]
+    if f then return f end
+    f = make(dim)
+    f:EnableMouse(true)
+    f:SetFrameStrata(STRATA)
+    local close = ns.Kit.CloseButton(f, Close)
+    close:SetFrameLevel(f:GetFrameLevel() + 10)
+    close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
+    f:Hide()
+    panels[key] = f
+    return f
+end
+function Modal.Show(f, source, layout)
+    ns.Tip.Hide()
+    for _, other in pairs(panels) do
+        if other ~= f then other:Hide() end
+    end
+    local shell = ns.Shell and ns.Shell.Frame and ns.Shell.Frame()
+    local box = (shell and shell:IsShown()) and shell or UIParent
+    local px = box:GetEffectiveScale()
+    local boxW, boxH = box:GetWidth() * px, box:GetHeight() * px
+    local want = max(source:GetWidth(), WIDTH_WIDE)
+    local eff = source:GetEffectiveScale()
+    if want + MARGIN * 2 > boxW / eff then eff = boxW / (want + MARGIN * 2) end
+    f:SetScale(eff / f:GetParent():GetEffectiveScale())
+    layout(min(want, boxW / eff - MARGIN * 2), boxH / eff - MARGIN * 2)
+    f:ClearAllPoints()
+    f:SetPoint("CENTER", box, "CENTER", 0, 0)
+    closing = false
+    f:Show()
+    dim:Show()
+    ns.Kit.FadeIn(dim)
+    ns.Kit.PopIn(f)
+end
 function Modal.Current()
     if closing or not (dim and dim:IsShown()) then return nil end
     return Shown()

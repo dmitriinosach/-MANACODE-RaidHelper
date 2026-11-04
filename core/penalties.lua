@@ -29,10 +29,10 @@ local FIELDS = { on = true, mode = true, short = true }
 for f in pairs(NUMS) do FIELDS[f] = true end
 local MODES = { once = true, each = true, grow = true }
 local THRESH = {
-    mindps = { { f = "dps", unit = "kps", scale = 1000 } },
-    mindmg = { { f = "melee", unit = "k", scale = 1000, tip = "sum.tt.needmelee" },
-               { f = "ranged", unit = "k", scale = 1000, tip = "sum.tt.needranged" } },
-    mcdamage = { { f = "min", unit = "k", scale = 1000 } },
+    mindps = { { f = "dps", unit = "kdps", scale = 1000 } },
+    mindmg = { { f = "melee", unit = "kdmg", scale = 1000, tip = "sum.tt.needmelee" },
+               { f = "ranged", unit = "kdmg", scale = 1000, tip = "sum.tt.needranged" } },
+    mcdamage = { { f = "min", unit = "kdmg", scale = 1000 } },
     away = { { f = "yd", unit = "yd", scale = 1 } },
     tombbreak = { { f = "pts", unit = "pts", scale = 1 } },
 }
@@ -40,12 +40,23 @@ local THR_FIELDS = {}
 for _, list in pairs(THRESH) do
     for i = 1, #list do THR_FIELDS[list[i].f] = true end
 end
+local DIFFS = { "10n", "10h", "25n", "25h" }
+local DIFF_SET = {}
+for i = 1, #DIFFS do DIFF_SET[DIFFS[i]] = true end
+local DIFF_DEFAULT = "25h"
+local PER = {}
+for i = 1, #DIFFS do
+    PER["on." .. DIFFS[i]] = { "on", DIFFS[i] }
+    for f in pairs(THR_FIELDS) do PER[f .. "." .. DIFFS[i]] = { f, DIFFS[i] } end
+end
 local Penalties = {}
 ns.Penalties = Penalties
 Penalties.SYS = SYS
 Penalties.NUMS = NUMS
 Penalties.THR_FIELDS = THR_FIELDS
 Penalties.ICONS = ICONS
+Penalties.DIFFS = DIFFS
+Penalties.PER = PER
 local function Store()
     return ns.GetDB().gp
 end
@@ -71,13 +82,47 @@ function Penalties.Clean(name)
     local s = tostring(name or ""):gsub("|", ""):gsub("^%s+", ""):gsub("%s+$", "")
     return s
 end
-local function Merge(base, over)
+local function Default(rule, f, d)
+    local v = rule[f .. "." .. d]
+    if v ~= nil then return v end
+    if f == "on" then return rule.on ~= false and (not rule.diffs or rule.diffs[d] == true) end
+    return rule[f]
+end
+Penalties.Default = Default
+local function Merge(base, over, d)
     local r = setmetatable({}, { __index = base })
-    r.on = base.on ~= false
     if over then
-        for f, v in pairs(over) do r[f] = v end
+        for f, v in pairs(over) do
+            if f ~= "on" and not THR_FIELDS[f] then r[f] = v end
+        end
+    end
+    if d then
+        r.on = Default(r, "on", d)
+        local lim = THRESH[r.kind] or NONE
+        for i = 1, #lim do
+            local v = r[lim[i].f .. "." .. d]
+            if v ~= nil then r[lim[i].f] = v end
+        end
+        r.diff = d
+    else
+        r.on = base.on ~= false
     end
     return r
+end
+local function DiffOk(d)
+    return DIFF_SET[d] and d or DIFF_DEFAULT
+end
+function Penalties.EditDiff()
+    local f = ns.GetDB().faults
+    return DiffOk(f and f.diff)
+end
+function Penalties.SetEditDiff(d)
+    local f = ns.GetDB().faults
+    if f and DIFF_SET[d] then f.diff = d end
+end
+function Penalties.DiffOf(fight)
+    local heroic = fight.raid and fight.raid.heroic
+    return (ns.RaidSize(fight) <= 10 and "10" or "25") .. (heroic and "h" or "n")
 end
 local baseOver, baseRules
 local function BaseRules()
@@ -93,11 +138,12 @@ local function BaseRules()
     baseOver, baseRules = over, out
     return out
 end
-function Penalties.All()
+function Penalties.All(d)
+    d = DiffOk(d or Penalties.EditDiff())
     local rules = BaseRules()
     local mine = Mine()
     local out = {}
-    for i = 1, #rules do out[i] = Merge(rules[i], mine[rules[i].key]) end
+    for i = 1, #rules do out[i] = Merge(rules[i], mine[rules[i].key], d) end
     return out
 end
 local function RollOf(gp)
@@ -126,6 +172,19 @@ function Penalties.Threshold(rule, i)
     local d = lim and lim[i or 1]
     return d and tonumber(rule[d.f]) or nil
 end
+function Penalties.Num(v, d)
+    v = v / d.scale
+    if v >= 100 or v == floor(v) then return format("%d", floor(v + 0.5)) end
+    return ns.Dec((format("%.1f", v):gsub("%.0$", "")))
+end
+function Penalties.Unit(v, d)
+    return Penalties.Num(v, d) .. " " .. ns.T("gpset.unit." .. d.unit)
+end
+function Penalties.OfText(rule, i, amount, need)
+    local d = THRESH[rule.kind] and THRESH[rule.kind][i or 1]
+    if not d then return format(ns.T("sum.tt.ofs"), ns.Short(amount), ns.Short(need)) end
+    return format(ns.T("sum.tt.ofs"), Penalties.Num(amount, d), Penalties.Unit(need, d))
+end
 local function IsLimit(rule, field)
     local lim = THRESH[rule.kind]
     for i = 1, lim and #lim or 0 do
@@ -153,6 +212,8 @@ end
 local ROLLF = {}
 for _, name in pairs(SYS.roll) do ROLLF[name] = true end
 local function Was(rule, field, over)
+    local per = PER[field]
+    if per then return Default(rule, per[1], per[2]) end
     if field == "on" then return rule.on ~= false end
     if field == "mode" then return rule.mode or "each" end
     if field == "short" then return Penalties.Short(rule) end
@@ -171,12 +232,13 @@ local function Find(rules, key)
     end
     return nil
 end
-function Penalties.Set(key, field, value)
+function Penalties.Set(key, field, value, d)
     local base = Find(BaseRules(), key)
     if not base then return false end
     local limit = IsLimit(base, field)
     if not FIELDS[field] and not limit then return false end
     if field == "on" then value = value and true or false end
+    if field == "on" or limit then field = field .. "." .. DiffOk(d or Penalties.EditDiff()) end
     if field == "mode" and not MODES[value] then return false end
     if field == "short" then
         value = ShortText(value)
@@ -195,9 +257,12 @@ function Penalties.Set(key, field, value)
     Touch()
     return true
 end
-function Penalties.Get(key)
+function Penalties.Get(key, d)
     local base = Find(BaseRules(), key)
-    return base and Merge(base, Mine()[key]) or nil
+    return base and Merge(base, Mine()[key], DiffOk(d or Penalties.EditDiff())) or nil
+end
+function Penalties.For(key, fight)
+    return Penalties.Get(key, fight and Penalties.DiffOf(fight) or nil)
 end
 function Penalties.IsChanged(key)
     local over = Mine()[key]
@@ -229,7 +294,7 @@ function Penalties.Prune()
         local base = Find(rules, key)
         if base then
             for f, v in pairs(over) do
-                if Was(base, f, over) == v then over[f] = nil end
+                if not (FIELDS[f] or PER[f]) or f == "on" or Was(base, f, over) == v then over[f] = nil end
             end
         end
         if not base or not next(over) then mine[key] = nil end
@@ -239,9 +304,9 @@ end
 local function ForBoss(rule, boss)
     return rule.boss == boss or rule.boss == ns.penaltyAny
 end
-function Penalties.Rules(boss)
+function Penalties.Rules(boss, d)
     local out = {}
-    local all = Penalties.All()
+    local all = Penalties.All(d)
     for i = 1, #all do
         local r = all[i]
         if r.on and ForBoss(r, boss) then out[#out + 1] = r end
@@ -340,7 +405,7 @@ end
 function Penalties.Spared(s, fight, p)
     local out = {}
     if p.role ~= "dps" then return out end
-    local rules = Penalties.Rules(fight.boss)
+    local rules = Penalties.Rules(fight.boss, Penalties.DiffOf(fight))
     for i = 1, #rules do
         local r = rules[i]
         if r.kind == "mindps" and Applies(r, fight) then
@@ -389,7 +454,7 @@ function Penalties.DutyCount(rule, p, fight)
 end
 function Penalties.Duties(s, fight, p)
     local out = {}
-    local rules = Penalties.Rules(fight.boss)
+    local rules = Penalties.Rules(fight.boss, Penalties.DiffOf(fight))
     for i = 1, #rules do
         local r = rules[i]
         if r.kind == "expect" then
@@ -673,7 +738,7 @@ local function OnceOf(found)
     return found[1]
 end
 local function Compute(s, fight, sys)
-    local rules = Penalties.Rules(fight.boss)
+    local rules = Penalties.Rules(fight.boss, Penalties.DiffOf(fight))
     local fk = Penalties.FightKey(fight)
     local bump = Store().bump
     local manual = Manual(fight)
@@ -762,8 +827,8 @@ function Penalties.Evaluate(s, fight, sys)
     end
     return hit[1], hit[2]
 end
-function Penalties.Choices(boss)
-    return Penalties.Rules(boss)
+function Penalties.Choices(fight)
+    return Penalties.Rules(fight.boss, Penalties.DiffOf(fight))
 end
 function Penalties.AddManual(fight, name, key)
     local fk = Penalties.FightKey(fight)

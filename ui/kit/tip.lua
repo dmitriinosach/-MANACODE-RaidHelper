@@ -95,20 +95,23 @@ function Kit.HoverLines(f)
     f:SetScript("OnEnter", Kit.ShowLines)
     f:SetScript("OnLeave", Kit.HideLines)
 end
-local TIP_INDENT = 10
 local TIP_COL = 20
 local TIP_MAXW = 300
 local TIP_SEP = 6
 local TIP_HEAD = 5
+local ROUND_FILL = 0.8
+local KEY_PAD = 5
+local KEY_SIDE = 2
+local KEY_MINW = 28
+Kit.KEYCAP = { lmb = "key.lmb", rmb = "key.rmb", shift = "key.shift", ctrl = "key.ctrl" }
 local KINDS = {
     head = { font = "GameFontNormal", left = "tip.title", right = "tip.dim", small = "GameFontHighlightSmall" },
     title = { font = "GameFontNormal", left = "tip.title", wrap = true, gap = 0 },
     row = { font = "GameFontHighlight", left = "tip.body", right = "text.primary" },
-    sub = { font = "GameFontHighlightSmall", left = "text.secondary", right = "text.secondary",
-            indent = TIP_INDENT, wrap = true },
+    sub = { font = "GameFontHighlightSmall", left = "text.secondary", right = "text.secondary", wrap = true, grow = 1 },
     text = { font = "GameFontHighlight", left = "tip.body", wrap = true },
     note = { font = "GameFontHighlightSmall", left = "tip.dim", wrap = true },
-    foot = { font = "GameFontHighlightSmall", left = "tip.dim", wrap = true, gap = TIP_SEP },
+    foot = { font = "GameFontHighlightSmall", left = "tip.dim", wrap = true, gap = TIP_SEP, grow = 1 },
 }
 local TONES = { bad = "text.bad", good = "text.good", warn = "text.warn", dim = "tip.dim" }
 local Tip = {}
@@ -123,10 +126,12 @@ local tipW, tipH = 0, 0
 local tipMain = 0
 local footY = {}
 local tipInner
+local tipUnder
 local tipLines = {}
 local tipSized = false
 local tipMids = {}
 local tipRights = {}
+local tipKeys
 local function TipFrame()
     if tipFrame then return tipFrame end
     local f = CreateFrame("Frame", "HTP_FailWatchTip", UIParent)
@@ -170,12 +175,12 @@ local function Tone(token)
     if not c then return 1, 1, 1 end
     return c[1], c[2], c[3]
 end
-local function Fill(fs, text, font, justify, r, g, b)
+local function Fill(fs, text, font, justify, r, g, b, grow)
     local object = Kit.FontFor(font, tipSized) or _G[font]
     local path, size, flags
     if object and object.GetFont then path, size, flags = object:GetFont() end
     fs:SetFontObject(object)
-    if path and size then fs:SetFont(path, size, flags) end
+    if path and size then fs:SetFont(path, size + (grow or 0), flags) end
     fs:ClearAllPoints()
     fs:SetWidth(0)
     fs:SetHeight(0)
@@ -187,17 +192,39 @@ local function Fill(fs, text, font, justify, r, g, b)
         local file, pt, opts
         if stock and stock.GetFont then file, pt, opts = stock:GetFont() end
         fs:SetFontObject(stock)
-        if file and (size or pt) then fs:SetFont(file, size or pt, opts) end
+        if file and (size or pt) then fs:SetFont(file, (size or pt) + (grow or 0), opts) end
         fs:SetText(text)
     end
     fs:SetTextColor(r, g, b)
     fs:Show()
     return fs:GetStringWidth() or 0, fs:GetStringHeight() or 0
 end
+local KEY_ROLE = { face = "tip.key", side = "tip.keySide", text = "tip.keyText" }
+local function KeyColor(role)
+    return Tone(KEY_ROLE[role])
+end
+local function KeyText(fs, text)
+    Fill(fs, text, "GameFontNormalSmall", "CENTER", 1, 1, 1)
+end
+local function KeyRound()
+    return Kit.Theme().button.backdropRound
+end
+local function Keycap(i, key)
+    if not tipKeys then
+        tipKeys = ns.Keycap.New(tipFrame, { color = KeyColor, text = KeyText, backdrop = KeyRound, edge = ROUND_FILL,
+            pad = KEY_PAD, vpad = 0, side = KEY_SIDE, minW = KEY_MINW })
+    end
+    local name = Kit.KEYCAP[key]
+    return tipKeys:Draw(i, name and ns.T(name) or key)
+end
+local function HideKey(i)
+    if tipKeys then tipKeys:Hide(i) end
+end
 local function Measure(i, l, lead, w)
     local L, M, R = Pooled(tipLines, i), Pooled(tipMids, i), Pooled(tipRights, i)
     M:Hide()
     R:Hide()
+    HideKey(i)
     if l.kind == nil and l.left == nil then
         local font = i == 1 and "GameFontNormal" or "GameFontHighlight"
         if type(l[2]) == "string" then
@@ -228,7 +255,11 @@ local function Measure(i, l, lead, w)
         r, g, b = Tone(spec.left)
     end
     if l.rgb then r, g, b = l.rgb[1], l.rgb[2], l.rgb[3] end
-    m.lw, m.h = Fill(L, l.left or "", spec.font, "LEFT", r, g, b)
+    m.lw, m.h = Fill(L, l.left or "", spec.font, "LEFT", r, g, b, spec.grow)
+    if l.key and l.kind == "foot" then
+        m.chip = Keycap(i, l.key)
+        m.indent = m.chip.w + tipKeys.gap
+    end
     local right, mid = l.right, l.mid
     if mid and not right then right, mid = mid, nil end
     local lead2 = m.indent + lead
@@ -241,16 +272,48 @@ local function Measure(i, l, lead, w)
             m.h = max(L:GetStringHeight() or 0, one * ceil(m.lw / room))
             m.lw = room
         end
+        if m.chip and m.chip.h > m.h then m.h = m.chip.h end
         if m.lw + lead2 > w.wide then w.wide = m.lw + lead2 end
         return m
     end
     local token = TONES[l.tone or ""] or spec.right or spec.left
     local font = spec.small or spec.font
-    local rw, rh = Fill(R, right, font, "RIGHT", Tone(token))
+    local grow = not spec.small and spec.grow or nil
+    local tr, tg, tb = Tone(token)
+    local rw, rh = Fill(R, right, font, "RIGHT", tr, tg, tb, grow)
+    if not m.head and not mid then
+        local room = TIP_MAXW * Kit.FontScale("GameFontHighlight", tipSized) - lead2
+        if m.lw + TIP_COL + rw > room then
+            local one = rh
+            R:SetJustifyH("LEFT")
+            if rw > room then
+                R:SetWordWrap(true)
+                R:SetWidth(room)
+                rh = max(R:GetStringHeight() or 0, one * ceil(rw / room))
+                rw = room
+            end
+            m.below, m.lh = true, m.h
+            m.h = m.h + TIP_LINE + rh
+            local need = max(m.lw, rw) + lead2
+            if need > w.wide then w.wide = need end
+            return m
+        end
+    end
     m.right = true
     if rh > m.h then m.h = rh end
+    if m.head then
+        local need = m.lw + lead2 + TIP_COL + rw
+        if mid then
+            local mw, mh = Fill(M, mid, font, "RIGHT", tr, tg, tb)
+            m.mid = true
+            if mh > m.h then m.h = mh end
+            need = need + mw + TIP_COL
+        end
+        if need > w.wide then w.wide = need end
+        return m
+    end
     if mid then
-        local mw, mh = Fill(M, mid, font, "RIGHT", Tone(token))
+        local mw, mh = Fill(M, mid, font, "RIGHT", tr, tg, tb, grow)
         m.mid = true
         if mh > m.h then m.h = mh end
         if mw > w.mid then w.mid = mw end
@@ -277,12 +340,27 @@ local function Layout(lines, icon, owner)
         local lead = (i == 1 and icon) and (TIP_ICON + 6) or 0
         local m = Measure(i, lines[i], lead, w)
         if lead > 0 and m.h < TIP_ICON then m.h = TIP_ICON end
+        if i > 1 and lines[i].kind == "foot" and lines[i - 1].kind == "foot" then m.gap = 0 end
         list[i] = m
+    end
+    local keyW = tipKeys and tipKeys:Column(n) or 0
+    for i = 1, n do
+        local m = list[i]
+        if m.chip then
+            m.indent = keyW + tipKeys.gap
+            local need = m.lw + m.indent
+            if m.right then
+                if need > w.left then w.left = need end
+            elseif need > w.wide then
+                w.wide = need
+            end
+        end
     end
     for i = n + 1, #tipLines do
         tipLines[i]:Hide()
         tipMids[i]:Hide()
         tipRights[i]:Hide()
+        HideKey(i)
     end
     local values = w.span
     if w.mid > 0 and w.mid + TIP_COL + w.right > values then values = w.mid + TIP_COL + w.right end
@@ -302,15 +380,28 @@ local function Layout(lines, icon, owner)
             y = y - m.gap
             local point, base = "TOPRIGHT", y
             local L = tipLines[i]
+            local chip = m.chip and m.chip.box
             if i == 1 and icon then
                 L:SetPoint("LEFT", tipIcon, "RIGHT", 6, 0)
                 point, base = "RIGHT", y - TIP_ICON / 2
+            elseif chip then
+                chip:ClearAllPoints()
+                chip:SetPoint("TOPLEFT", TIP_PAD, y)
+                L:SetPoint("LEFT", m.chip.face, "RIGHT", tipKeys.gap, 0)
             else
                 L:SetPoint("TOPLEFT", TIP_PAD + m.indent, y)
             end
-            if i >= footFrom then footY[#footY + 1] = { i = i, x = TIP_PAD + m.indent, y = y } end
-            if m.right then tipRights[i]:SetPoint(point, f, "TOPRIGHT", -TIP_PAD, base) end
-            if m.mid then tipMids[i]:SetPoint(point, f, "TOPRIGHT", -TIP_PAD - w.right - TIP_COL, base) end
+            if i >= footFrom then footY[#footY + 1] = { i = i, x = TIP_PAD + m.indent, y = y, chip = chip } end
+            if m.below then
+                tipRights[i]:SetPoint("TOPLEFT", f, "TOPLEFT", TIP_PAD + m.indent, y - m.lh - TIP_LINE)
+            elseif m.right then
+                tipRights[i]:SetPoint(point, f, "TOPRIGHT", -TIP_PAD, base)
+            end
+            if m.mid and m.head then
+                tipMids[i]:SetPoint("RIGHT", tipRights[i], "LEFT", -TIP_COL, 0)
+            elseif m.mid then
+                tipMids[i]:SetPoint(point, f, "TOPRIGHT", -TIP_PAD - w.right - TIP_COL, base)
+            end
             y = y - m.h - TIP_LINE
             if m.head then y = y - TIP_HEAD end
         end
@@ -323,7 +414,24 @@ local function Layout(lines, icon, owner)
     tipInner:Hide()
     return f, width
 end
+local tipOwner
+local watched = setmetatable({}, { __mode = "k" })
+local function Recheck(self)
+    self:SetScript("OnUpdate", nil)
+    if tipOwner and not tipOwner:IsVisible() then Tip.Hide() end
+end
+local function OwnerHidden(self)
+    if tipOwner == self and tipFrame then tipFrame:SetScript("OnUpdate", Recheck) end
+end
+local function Watch(owner)
+    tipOwner = owner
+    if owner.HookScript and not watched[owner] then
+        watched[owner] = true
+        owner:HookScript("OnHide", OwnerHidden)
+    end
+end
 function Tip.Show(owner, lines, icon, reach, reachLeft)
+    Watch(owner)
     local f, width = Layout(lines, icon, owner)
     dockSide = nil
     f:ClearAllPoints()
@@ -416,6 +524,7 @@ end
 local function Merge(under)
     local f = tipFrame
     local shift = 0
+    tipUnder = under
     if under then
         local s, u = f:GetEffectiveScale() or 1, under:GetEffectiveScale() or 1
         local uw, uh = (under:GetWidth() or 0) * u / s, (under:GetHeight() or 0) * u / s
@@ -441,9 +550,14 @@ local function Merge(under)
     end
     for k = 1, #footY do
         local e = footY[k]
-        local L = tipLines[e.i]
-        L:ClearAllPoints()
-        L:SetPoint("TOPLEFT", e.x, e.y - shift)
+        if e.chip then
+            e.chip:ClearAllPoints()
+            e.chip:SetPoint("TOPLEFT", TIP_PAD, e.y - shift)
+        else
+            local L = tipLines[e.i]
+            L:ClearAllPoints()
+            L:SetPoint("TOPLEFT", e.x, e.y - shift)
+        end
     end
 end
 function Tip.Block(owner, top, under)
@@ -484,9 +598,11 @@ function Tip.Block(owner, top, under)
     return edge
 end
 function Tip.Dock(owner, lines, icon)
+    local keep = dockOwner == owner and dockSide and tipUnder and tipUnder:IsShown() and tipUnder or nil
+    Watch(owner)
     local f = Layout(lines, icon, owner)
     dockOwner = owner
-    dockSide = Tip.Block(owner, f)
+    dockSide = Tip.Block(owner, f, keep)
     f:Show()
 end
 function Tip.Around(owner, extra)
@@ -533,6 +649,6 @@ function Tip.Docked()
     return nil, nil
 end
 function Tip.Hide()
-    dockSide, dockOwner = nil, nil
+    dockSide, dockOwner, tipOwner = nil, nil, nil
     if tipFrame then tipFrame:Hide() end
 end

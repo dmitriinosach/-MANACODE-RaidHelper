@@ -25,6 +25,7 @@ local SLOW_TEMPO = 0.8
 local DUAL_HITS = 4
 local TOL = 0.05
 local MERGE = 2
+local SAME_USE = 15
 local CD_FLOOR = 0.5
 local RANK = { red = 3, yellow = 2, green = 1 }
 local MCD_TOP = 3
@@ -81,6 +82,14 @@ function Ctl.Begin(rule, byName, owners, pets, drain)
         end
     end
     return st
+end
+function Ctl.Cast(list, ts, sk)
+    for k = #list, 1, -1 do
+        local c = list[k]
+        if ts - c.t >= SAME_USE then break end
+        if c.spell == sk then return end
+    end
+    list[#list + 1] = { t = ts, spell = sk }
 end
 local function Who(st, name)
     local w = st.who[name]

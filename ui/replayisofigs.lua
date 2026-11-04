@@ -109,6 +109,19 @@ local function SortFigures(count)
             fig:SetFrameLevel(base + r * 2)
         end
     end
+    local Live = ns.ReplayLive
+    if not Live then return end
+    local d, l, t, r, b = Live.Throne()
+    if not d then return end
+    local rank, hit = 0, false
+    for i = 1, count do
+        local v = order[i]
+        if depth[v] >= d then break end
+        rank = i
+        local fig = all[v]
+        if fig.shown and fig.sx > l and fig.sx < r and fig.sy > t and fig.sy < b then hit = true end
+    end
+    Live.ThroneOver(hit and base + rank * 2 + 1 or nil)
 end
 local function DepthScale(sy, k)
     local fade = run.flat and 0 or max(0, 1 - cam.persp / DEPTH_FADE)

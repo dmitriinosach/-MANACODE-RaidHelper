@@ -10,7 +10,8 @@ local LOST = { "dead", "veh", "mc" }
 local ABIL_TOP = 10
 local BLOCK_TOP = 5
 local REST_KEY = "#rest"
-local GLYPH = "|T%s:14:14:0:0:64:64:5:59:5:59|t "
+local GLYPH = "|T%s:16:16:0:0:64:64:5:59:5:59|t "
+local JOIN = 12
 local MELEE_ICON = "Interface\\Icons\\INV_Sword_04"
 local Tips = {}
 ns.BadgeTips = Tips
@@ -74,7 +75,7 @@ local function Rate(n, dur)
 end
 local function Inline(id)
     local icon = id and ns.Effects and ns.Effects.IconById(id)
-    return icon and format("|T%s:14|t ", icon) or ""
+    return icon and format("|T%s:16|t ", icon) or ""
 end
 local function Put(out, kind, left, right, mid, tone)
     out[#out + 1] = { kind = kind, left = left, right = right, mid = mid, tone = tone }
@@ -92,6 +93,27 @@ local function Times(out, n, times, base)
     local text = concat(parts, ", ") .. (#times > TIMES and format(T("sum.tip.more"), #times - TIMES) or "")
     if n > 1 or #times > 1 then text = format(T("sum.tt.times"), max(n, #times), text) end
     Put(out, "row", text)
+end
+local function More(out, n)
+    if n > TIMES then Put(out, "sub", (format(T("sum.tip.more"), n - TIMES):gsub("^%s+", ""))) end
+end
+local function TimeList(out, times)
+    local parts = {}
+    for k = 1, min(TIMES, #times) do parts[k] = Clock(times[k]) end
+    if #parts == 0 then return end
+    Put(out, "sub", concat(parts, ", ") .. (#times > TIMES and format(T("sum.tip.more"), #times - TIMES) or ""))
+end
+local function Hits(out, st)
+    local dmg = st.dmg
+    if st.hits ~= st.n then Put(out, "row", T("sum.tt.hits"), tostring(st.hits)) end
+    if not dmg or st.n > 1 then Put(out, "row", T("sum.tt.dmg"), Short(st.amount)) end
+    if not dmg then
+        TimeList(out, st.times)
+        return out
+    end
+    for k = 1, min(TIMES, st.n) do Put(out, "sub", Clock(st.times[k]), Short(dmg[k] or 0)) end
+    More(out, st.n)
+    return out
 end
 local function Names(out, names)
     if #names > 0 then Put(out, "sub", concat(names, ", ")) end
@@ -274,7 +296,8 @@ function Tips.Player(p, s)
         Abilities(out, p.dmgBy, p.petBy, p.dmg, p.abRest)
         if p.role == "tank" and p.heal > 0 then Put(out, "row", T("sum.tt.heal"), Rate(p.heal, sec), Short(p.heal)) end
     end
-    Put(out, "foot", T("sum.tt.foot"))
+    out[#out + 1] = { kind = "foot", key = "lmb", left = T("sum.tt.foot") }
+    out[#out + 1] = { kind = "foot", key = "rmb", left = T("sum.tt.foot.r") }
     return out
 end
 local function Signed(sec)
@@ -308,6 +331,9 @@ local function Buffs(st, def)
     local function Class(who)
         return who and enc and enc.ClassOf and enc.ClassOf(who) or nil
     end
+    local function Pulled(k)
+        return st.pulled ~= nil and st.pulled[k] == true
+    end
     local by, order = {}, {}
     for k = 1, st.n do
         local who = st.notes[k] or "?"
@@ -320,34 +346,43 @@ local function Buffs(st, def)
     end
     local shown = 0
     for o = 1, #order do
+        if shown >= TIMES then
+            Put(out, "sub", (format(T("sum.tip.more"), #order - o + 1):gsub("^%s+", "")))
+            break
+        end
         local who = order[o]
         local list = by[who]
+        shown = shown + 1
         if #list == 1 then
             local k = list[1]
-            local pull = st.pulled ~= nil and st.pulled[k] == true
+            local pull = Pulled(k)
             out[#out + 1] = { kind = "row", left = who, right = Signed(st.times[k]),
                               mid = pull and T("sum.tt.pull") or nil, tone = pull and "good" or nil, class = Class(who) }
             local text, tone = Fate(k)
             if text then Put(out, "sub", text, nil, nil, tone) end
-            shown = shown + 1
         else
             out[#out + 1] = { kind = "row", left = who, right = #order > 1 and format("x%d", #list) or nil,
                               class = Class(who) }
-            for j = 1, #list do
-                if shown >= TIMES then break end
-                local k = list[j]
-                local pull = st.pulled ~= nil and st.pulled[k] == true
-                local text, tone = Fate(k)
-                if text then
-                    Put(out, "sub", Signed(st.times[k]), text, nil, tone)
-                else
-                    Put(out, "sub", Signed(st.times[k]), pull and T("sum.tt.pull") or nil, nil, pull and "good" or nil)
+            local fates = false
+            for j = 1, #list do fates = fates or Fate(list[j]) ~= nil end
+            if fates then
+                for j = 1, min(TIMES, #list) do
+                    local k = list[j]
+                    local text, tone = Fate(k)
+                    Put(out, "sub", Signed(st.times[k]), text or (Pulled(k) and T("sum.tt.pull") or nil), nil,
+                        text and tone or (Pulled(k) and "good" or nil))
                 end
-                shown = shown + 1
+                More(out, #list)
+            else
+                local parts = {}
+                for j = 1, min(JOIN, #list) do
+                    local k = list[j]
+                    parts[j] = Signed(st.times[k]) .. (Pulled(k) and (" " .. T("sum.tt.pull")) or "")
+                end
+                Put(out, "sub", concat(parts, ", ") .. (#list > JOIN and format(T("sum.tip.more"), #list - JOIN) or ""))
             end
         end
     end
-    if shown < st.n then Put(out, "sub", (format(T("sum.tip.more"), st.n - shown):gsub("^%s+", ""))) end
     return out
 end
 function Tips.Cons(list)
@@ -403,39 +438,31 @@ local function Shed(st, def)
     if #st.hangs > TIMES then Put(out, "sub", (format(T("sum.tip.more"), #st.hangs - TIMES):gsub("^%s+", ""))) end
     return out
 end
-function Tips.Badge(st, def)
+function Tips.Badge(st, def, fight)
     local kind = def.kind
     if kind == "given" or kind == "got" then return Buffs(st, def) end
     if kind == "pullin" and ns.PullTips then return ns.PullTips.Badge(st, def) end
     if def.shed and st.hangs and ns.Penalties then return Shed(st, def) end
     if kind == "stack" and st.eps and st.eps[1] and ns.StackTips then return ns.StackTips.Badge(st, def) end
     if kind == "lost" and st.lost and ns.StackTips then return ns.StackTips.Lost(st, def) end
-    if ns.ActionTips and ns.ActionTips[kind] then return ns.ActionTips[kind](st, def) end
+    if ns.ActionTips and ns.ActionTips[kind] then return ns.ActionTips[kind](st, def, fight) end
     local out = {}
-    Head(out, T(def.tip))
     if def.low then
+        Head(out, T(def.tip))
         Put(out, "row", T("sum.uld.min"), st.min and tostring(st.min) or "—")
         Put(out, "row", T("sum.uld.fin"), st.fin and tostring(st.fin) or "—")
         return out
     end
     if kind == "dmgto" then
+        Head(out, T(def.tip))
         Put(out, "row", T("sum.tt.dmg"), Short(st.amount))
         if def.soak then
             Put(out, "row", T("sum.tt.hits"), tostring(st.hits))
         end
         return out
     end
-    if kind == "vehicle" and st.outs then
-        Put(out, "row", T("sum.tt.count"), tostring(st.n))
-    else
-        Times(out, max(st.n, st.removed or 0), st.times, 0)
-    end
-    if kind == "applied" then Tips.Uses(out, st) end
-    if kind == "stack" and st.max > 0 then Put(out, "row", T("sum.tt.stackmax"), tostring(st.max)) end
-    if kind == "hit" then
-        Put(out, "row", T("sum.tt.hits"), tostring(st.hits))
-        Put(out, "row", T("sum.tt.dmg"), Short(st.amount))
-    end
+    local n = max(st.n, st.removed or 0)
+    Head(out, T(def.tip), n > 0 and format("x%d", n) or nil)
     if kind == "vehicle" and st.outs then
         Put(out, "row", T("sum.tt.seated"), format(T("sum.tt.sec"), floor(st.sec or 0)))
         if st.waves then
@@ -445,15 +472,19 @@ function Tips.Badge(st, def)
                 Put(out, "sub", w > 0 and format(T("sum.tt.wave"), w) or T("sum.tt.nowave"),
                     Clock(st.times[k]) .. "–" .. Clock(st.outs[k] or st.times[k]))
             end
-            if #st.times > TIMES then Put(out, "sub", (format(T("sum.tip.more"), #st.times - TIMES):gsub("^%s+", ""))) end
+            More(out, #st.times)
             return out
         end
         local spans = {}
         for k = 1, min(TIMES, #st.times) do spans[k] = Clock(st.times[k]) .. "–" .. Clock(st.outs[k] or st.times[k]) end
         local more = #st.times > TIMES and format(T("sum.tip.more"), #st.times - TIMES) or ""
-        Put(out, "row", T("sum.tt.rides"), concat(spans, ", ") .. more, nil, "dim")
+        Put(out, "row", T("sum.tt.rides"), nil, nil, "dim")
+        Put(out, "sub", concat(spans, ", ") .. more)
         return out
     end
+    if kind == "hit" then return Hits(out, st) end
+    if kind == "applied" then Tips.Uses(out, st) end
+    if kind == "stack" and st.max > 0 then Put(out, "row", T("sum.tt.stackmax"), tostring(st.max)) end
     if st.cleansed > 0 then
         Put(out, "row", T("sum.tt.cleansed"), tostring(st.cleansed), nil, "bad")
         Names(out, st.notes)
@@ -466,6 +497,7 @@ function Tips.Badge(st, def)
         Put(out, "row", T("sum.tt.targets"), tostring(#st.notes))
         Names(out, st.notes)
     end
+    TimeList(out, st.times)
     if kind == "stack" and st.max == 0 then
         Put(out, "sep")
         Put(out, "note", T("sum.tip.stackunknown"))
@@ -860,25 +892,28 @@ end
 function Tips.Spared(sp)
     local out = {}
     Head(out, ns.Penalties.Reason(sp.rule))
-    Put(out, "row", T("sum.tt.needdps"), format(T("sum.tt.ofs"), Short(sp.amount), Short(sp.need)))
+    Put(out, "row", T("sum.tt.needdps"), ns.Penalties.OfText(sp.rule, 1, sp.amount, sp.need))
     Put(out, "row", T("sum.tt.healer"), nil, nil, "good")
     if sp.spec and sp.class then Put(out, "sub", T("sum.tt.healspec"), T("spec." .. sp.class .. "." .. sp.spec)) end
     if #sp.bosses > 0 then Put(out, "sub", T("sum.tt.healedon"), concat(sp.bosses, ", ")) end
     return out
 end
-function Tips.Hit(fight, hit, reason)
+function Tips.Hit(fight, hit, reason, row)
     local out = {}
-    Head(out, reason)
+    Head(out, reason, not row and format("x%d", #hit.events) or nil)
     local sum = 0
     for k = 1, #hit.events do sum = sum + hit.events[k].n end
-    Put(out, "row", T("sum.tt.fine"), format(T("sum.tt.gp"), sum, ns.Ledger and ns.Ledger.Unit() or T("led.unit.gp")), format("x%d", #hit.events))
+    if not row then
+        Put(out, "row", T("sum.tt.fine"), format(T("sum.tt.gp"), sum, ns.Ledger and ns.Ledger.Unit() or T("led.unit.gp")))
+    end
     local info = hit.events[1] and hit.events[1].info
     local rule = hit.rule
     if info and info.missing then
         Put(out, "row", T("sum.tt.done"), format(T("sum.tt.of"), info.have or 0, rule.min or 1), nil, "bad")
     elseif info and info.need then
         local key = info.melee == nil and "sum.tt.needdps" or (info.melee and "sum.tt.needmelee" or "sum.tt.needranged")
-        Put(out, "row", T(key), format(T("sum.tt.ofs"), Short(info.amount or 0), Short(info.need)), nil, "bad")
+        Put(out, "row", T(key), ns.Penalties.OfText(rule, info.melee == false and 2 or 1, info.amount or 0, info.need),
+            nil, "bad")
     elseif info and info.tomb then
         Tips.TombSum(out, info.tomb, info.limit or 0)
         for k = 1, min(3, #hit.events) do
@@ -886,7 +921,8 @@ function Tips.Hit(fight, hit, reason)
             if e and e.tomb then Tips.TombBody(out, e.tomb, e.k, e.tomb.n > 1) end
         end
     elseif info and info.mcd then
-        Put(out, "row", T("sum.tt.limit"), Short(info.limit or 0), nil, "dim")
+        local d = ns.Penalties.Limits(rule)[1]
+        Put(out, "row", T("sum.tt.limit"), d and ns.Penalties.Unit(info.limit or 0, d) or Short(info.limit or 0), nil, "dim")
         for k = 1, min(TIMES, #hit.events) do
             local m = hit.events[k].info and hit.events[k].info.mcd
             if m then Tips.McHurt(out, m, fight.from) end
@@ -924,12 +960,14 @@ function Tips.Hit(fight, hit, reason)
             end
         end
     end
+    local timed = info and (info.mcd or info.nova or info.rune or info.hurt or info.ticks or info.ctl
+        or rule.kind == "caused" and info.dep)
     local parts = {}
     for k = 1, min(TIMES, #hit.events) do
         local t = hit.events[k].t
-        parts[#parts + 1] = t and Clock(t - fight.from) or T("sum.gp.whole")
+        if t or not row then parts[#parts + 1] = t and Clock(t - fight.from) or T("sum.gp.whole") end
     end
-    if #parts > 0 then Put(out, "row", T("sum.tt.when"), concat(parts, ", "), nil, "dim") end
+    if #parts > 0 and not (row and timed) then Put(out, "row", T("sum.tt.when"), concat(parts, ", "), nil, "dim") end
     for k = 1, rule.kind == "caused" and min(TIMES, #hit.events) or 0 do
         local e = hit.events[k]
         local dep = e.info and e.info.dep
@@ -953,27 +991,6 @@ function Tips.Hit(fight, hit, reason)
     local yellow = info and info.early and info.grade == "yellow"
     if rule.unverified then Put(out, "sep") end
     if rule.unverified then Put(out, "note", T("sum.gp.unverified")) end
-    Put(out, "foot", T("sum.tt.foothit"))
-    return out
-end
-function Tips.GPRow(item, reasonOf)
-    local out = {}
-    local unit = ns.Ledger and ns.Ledger.Unit(item.sys) or T("led.unit.gp")
-    Head(out, item.name, nil, item.class)
-    for i = 1, #item.hits do
-        local hit = item.hits[i]
-        local sum = 0
-        for k = 1, #hit.events do sum = sum + hit.events[k].n end
-        Put(out, "row", reasonOf(hit.rule), format(T("sum.tt.gp"), sum, unit), format("x%d", #hit.events))
-        for k = 1, #(hit.shed or {}) do
-            Put(out, "sub", ns.Penalties.ShedText(hit.shed[k].hangs, true), nil, nil,
-                ns.Penalties.Grade(hit) == "yellow" and "warn" or nil)
-        end
-    end
-    Put(out, "sep")
-    Put(out, "row", T("sum.tt.gptotal"), format(T("sum.tt.gp"), item.total, unit))
-    Put(out, "row", T("sum.tt.gppending"), format(T("sum.tt.gp"), item.pending, unit), nil,
-        item.pending > 0 and "bad" or "good")
-    Put(out, "foot", T("sum.tt.footrow"))
+    if not row then out[#out + 1] = { kind = "foot", key = "lmb", left = T("sum.tt.foothit") } end
     return out
 end

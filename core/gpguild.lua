@@ -28,8 +28,16 @@ local TWO32 = 4294967296
 local FNV_BASIS = 2166136261
 local FNV_LOW = 403
 local FNV_HIGH = 16777216
-local ORDER = { "on", "mode", "gp", "wipe", "step", "ep", "epwipe", "epstep", "dkp", "dkpwipe", "dkpstep", "short",
-    "roll", "rollwipe", "rollstep", "dps", "melee", "ranged", "min", "yd" }
+local FLAT = { "mode", "gp", "wipe", "step", "ep", "epwipe", "epstep", "dkp", "dkpwipe", "dkpstep", "short",
+    "roll", "rollwipe", "rollstep" }
+local THR_ORDER = { "dps", "melee", "ranged", "min", "yd", "pts" }
+local PER = ns.Penalties.PER
+local ORDER = {}
+for i = 1, #FLAT do ORDER[#ORDER + 1] = FLAT[i] end
+for _, d in ipairs(ns.Penalties.DIFFS) do
+    ORDER[#ORDER + 1] = "on." .. d
+    for i = 1, #THR_ORDER do ORDER[#ORDER + 1] = THR_ORDER[i] .. "." .. d end
+end
 local RSET = {}
 for i = 1, #ORDER do RSET[ORDER[i]] = true end
 local MODES = { once = true, each = true, grow = true }
@@ -119,6 +127,7 @@ local function Unesc(s)
     return out
 end
 local function Encode(f, v)
+    f = PER[f] and PER[f][1] or f
     if f == "on" then return v and "1" or "0" end
     if f == "mode" then return MODES[v] and v or nil end
     if NUMS[f] then
@@ -138,6 +147,7 @@ local function Encode(f, v)
     return Esc(t)
 end
 local function Decode(f, s)
+    f = PER[f] and PER[f][1] or f
     if f == "on" then
         if s == "1" then return true end
         if s == "0" then return false end
@@ -194,7 +204,7 @@ function GPGuild.Parse(data)
         if KeyOk(key) then
             local fields = {}
             for pair in body:gmatch("[^,]+") do
-                local f, s = pair:match("^(%a+)=(.*)$")
+                local f, s = pair:match("^([%w%.]+)=(.*)$")
                 if f and RSET[f] then fields[f] = Decode(f, s) end
             end
             if next(fields) then model.rules[key] = fields end
@@ -440,7 +450,6 @@ frame:SetScript("OnEvent", ns.Prof.Wrap("bg.gpguild", function(_, event)
 end))
 ns.Comm.On(PREFIX, OnMessage)
 local function Field(rule, f)
-    if f == "on" then return rule.on ~= false end
     if f == "mode" then return rule.mode or "each" end
     if f == "short" then
         if type(rule.short) == "string" and rule.short ~= "" then return rule.short end
@@ -448,24 +457,34 @@ local function Field(rule, f)
     end
     return rule[f]
 end
-GPGuild.Field = Field
 function GPGuild.FromActive()
     local builtin = {}
     local preset = ns.penaltyPresets[DEFAULT]
     for i = 1, #preset.rules do builtin[preset.rules[i].key] = preset.rules[i] end
+    local byDiff = {}
+    for _, d in ipairs(ns.Penalties.DIFFS) do
+        local by, all = {}, ns.Penalties.All(d)
+        for i = 1, #all do by[all[i].key] = all[i] end
+        byDiff[d] = by
+    end
     local model = { rules = {} }
-    local all = ns.Penalties.All()
-    for i = 1, #all do
-        local r = all[i]
-        if builtin[r.key] then
-            local diff = {}
-            for k = 1, #ORDER do
-                local f = ORDER[k]
-                local now = Field(r, f)
-                if now ~= nil and now ~= Field(builtin[r.key], f) then diff[f] = now end
+    for key, base in pairs(builtin) do
+        local diff = {}
+        for k = 1, #ORDER do
+            local f = ORDER[k]
+            local per = PER[f]
+            local now, was
+            if per then
+                local r = byDiff[per[2]][key]
+                now = r and r[per[1]]
+                was = ns.Penalties.Default(base, per[1], per[2])
+            else
+                local r = byDiff[ns.Penalties.DIFFS[1]][key]
+                now, was = r and Field(r, f), Field(base, f)
             end
-            if next(diff) then model.rules[r.key] = diff end
+            if now ~= nil and now ~= was then diff[f] = now end
         end
+        if next(diff) then model.rules[key] = diff end
     end
     return model
 end

@@ -61,8 +61,8 @@ function B.Needs(class, tree)
     return root.RaidBuffs.Needs(class, tree)
 end
 function B.Item(def, list)
-    local it = { def = def, have = 0, src = {}, unsure = {}, party = true }
-    local got, maybe = {}, {}
+    local it = { def = def, have = 0, src = {}, unsure = {}, party = false }
+    local got, maybe, wide = {}, {}, false
     for k, src in ipairs(def.src) do
         local who = {}
         for _, m in ipairs(list) do
@@ -70,16 +70,12 @@ function B.Item(def, list)
             if f then
                 who[#who + 1] = m
                 got[m.name] = true
-                if not src.bless then
-                    it.other = true
-                    if not src.party then it.party = false end
-                end
+                if not src.party then wide = true end
             elseif f == nil then
                 maybe[m.name] = m
             end
         end
         it.src[k] = { def = src, who = who }
-        if src.bless then it.blessable = true end
     end
     for name in pairs(got) do
         it.have = it.have + 1
@@ -88,64 +84,72 @@ function B.Item(def, list)
     for _, m in ipairs(list) do
         if maybe[m.name] then it.unsure[#it.unsure + 1] = m end
     end
-    if not it.other then it.party = false end
+    it.party = it.have > 0 and not wide
     return it
 end
-local PAL = "PALADIN"
-local function bless(byKey, list)
-    local pals, sanct = 0, false
+local PAL = root.raidBuffs.paladin
+local PROT = 2
+local function blessOrder(list)
+    local out = {}
     for _, m in ipairs(list) do
-        if m.class == PAL then
-            pals = pals + 1
-            if m.tree == 2 then sanct = true end
+        if m.class == PAL and m.tree ~= PROT then out[#out + 1] = m end
+    end
+    for _, m in ipairs(list) do
+        if m.class == PAL and m.tree == PROT then out[#out + 1] = m end
+    end
+    return out
+end
+local function bless(items, list)
+    local pals = blessOrder(list)
+    for _, it in ipairs(items) do
+        it.pals, it.have = #pals, 0
+        for _, s in ipairs(it.src) do s.who = {} end
+    end
+    for _, m in ipairs(pals) do
+        for _, it in ipairs(items) do
+            local tree = it.def.src[1].tree
+            if it.have == 0 and (not tree or tree == m.tree) then
+                it.have = 1
+                it.src[1].who[1] = m
+                it.unsure = {}
+                break
+            end
         end
     end
-    for _, it in pairs(byKey) do
-        it.pals, it.need, it.got = pals, 0, 0
-    end
-    for _, m in ipairs(list) do
-        local need = B.Needs(m.class, m.tree)
-        local kind = need.phys and (need.mana and "hybrid" or "phys") or "caster"
-        local left = pals
-        for _, key in ipairs(ns.BLESS_ORDER[kind]) do
-            local it = byKey[key]
-            if it then
-                it.need = it.need + 1
-                if it.other then
-                    it.got = it.got + 1
-                elseif left > 0 and (key ~= "damageTaken" or sanct) then
-                    left = left - 1
-                    it.got = it.got + 1
-                end
-            end
+    local rank = 0
+    for _, it in ipairs(items) do
+        if not it.def.src[1].tree then
+            rank = rank + 1
+            if it.have == 0 and #pals > 0 then it.short = rank - #pals end
         end
     end
 end
 function B.State(it)
-    if it.other then return "full" end
-    if it.blessable and it.pals and it.pals > 0 and it.need > 0 then
-        if it.got >= it.need then return "full" end
-        if it.got > 0 then return "part" end
-    elseif it.have > 0 then
-        return "full"
-    end
+    if it.have > 0 then return "full" end
     if #it.unsure > 0 then return "unsure" end
     return "none"
 end
 function B.Rows(list)
     list = list or B.Members()
-    local out, byKey = {}, {}
+    local out = {}
     for r, row in ipairs(ns.BUFF_ROWS) do
-        local items = {}
-        for k, def in ipairs(row.items) do
-            local it = B.Item(def, list)
-            it.row = row.key
-            items[k] = it
-            if it.blessable then byKey[def.key] = it end
+        local groups = {}
+        for g, grp in ipairs(row.groups) do
+            local items = {}
+            for k, def in ipairs(grp.items) do
+                local it = B.Item(def, list)
+                it.row, it.group = row.key, grp.key
+                items[k] = it
+            end
+            if grp.bless then bless(items, list) end
+            local have = 0
+            for _, it in ipairs(items) do
+                if B.State(it) == "full" then have = have + 1 end
+            end
+            groups[g] = { key = grp.key, row = row.key, items = items, have = have, total = #items }
         end
-        out[r] = { key = row.key, items = items }
+        out[r] = { key = row.key, count = row.count, groups = groups }
     end
-    bless(byKey, list)
     return out
 end
 local function reqKey(slot)

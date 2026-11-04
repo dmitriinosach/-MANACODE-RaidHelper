@@ -2,31 +2,36 @@ local ADDON, root = ...
 root.Lead = root.Lead or {}
 local ns = root.Lead
 local PAD = 10
+local VPAD = 7
 local GAP = 6
-local LINE_GAP = 6
+local LINE_GAP = 4
 local CHECK_H = 17
 local ICON = 14
 local CLS_ICON = 16
-local CHAN_COLS = 3
 local BASE = "GameFontHighlightSmall"
+local PREVIEW_FONT = "ChatFontNormal"
 local STEP_BTN = 18
 local NEED_W = 22
 local CLS_W = 170
 local SPEC_W = 96
-local ROW_PAD = 4
+local SPEC_GAP = 8
+local ROW_PAD = 3
 local ROW_EXTRA = 10
-local PANEL_GAP = 8
+local PANEL_GAP = 6
+local PREVIEW_MAX = 3
 local BAR_W = 12
 local TICK_W = 30
 local TICK_EVERY = 0.25
-local STYLE_W = 170
-local STYLE_MIN = 110
-local styleSel, styleCap
+local BLOCK_GAP = 8
+local CHAN_BIG = 1.25
+local styleSel, styleCap, newBtn, copyBtn, msgBlock, msgCap, optBlock, rotCheck, autoCheck
 local pane, textSel, delBtn, body, textBox, progE, reqSel, reqE, lootSel, timeE, dsE
 local defBtn, tplBtn, preview, counter, chanPool, chanBox, everyCap, everyE, everySec, ownCheck
-local textPanel, previewPanel, chanPanel, specsPanel, specsCap, needsCap, counterBox
-local previewLines = 2
-local tokenItems, valueUnits, markBtns = {}, {}, {}
+local previewPanel, textPanel, chanCap, specsPanel, specsCap, needsCap, counterBox, previewCap
+local previewLines = 1
+local laidCols = 1
+local natural = 0
+local flowUnits, markBtns = {}, {}
 local roleHeads = {}
 local headBg
 local colLines = {}
@@ -53,8 +58,8 @@ local function lootOptions()
     end
     return out
 end
-local function label(parent, key)
-    local fs = ns.Str(parent, "GameFontNormalSmall")
+local function label(parent, key, base)
+    local fs = ns.Str(parent, base or "GameFontNormalSmall")
     fs:SetText(ns.T(key))
     ns.PaintTitle(fs)
     return fs
@@ -75,8 +80,18 @@ end
 local function lineH()
     return ns.Fit(BASE, 20, 2)
 end
+local function chanRowH()
+    return ns.Fit(BASE, 18, 1)
+end
+local function chanCols()
+    if ns.Spam.OwnEvery() or ns.FontScale(BASE) <= CHAN_BIG then return 1 end
+    return 2
+end
+local function ctlH()
+    return math.max(lineH(), lootSel:GetHeight() or 0)
+end
 local function textBoxH()
-    return ns.LineH("ChatFontNormal", 3) + 14
+    return ns.LineH("ChatFontNormal", 2) + 10
 end
 local function unitWidth(items)
     local w = 0
@@ -86,7 +101,7 @@ local function unitWidth(items)
     return w
 end
 local function flow(parent, units, x, y, maxW, reserve)
-    local h = lineH()
+    local h = ctlH()
     local cx, cy = x, y
     for _, items in ipairs(units) do
         local w = unitWidth(items)
@@ -100,7 +115,7 @@ local function flow(parent, units, x, y, maxW, reserve)
             if prev then
                 it:SetPoint("LEFT", prev, "RIGHT", GAP, 0)
             else
-                it:SetPoint("TOPLEFT", parent, "TOPLEFT", cx, -cy)
+                it:SetPoint("LEFT", parent, "TOPLEFT", cx, -(cy + h / 2))
             end
             prev = it
         end
@@ -114,50 +129,175 @@ local function makeEdit(parent, w, field)
     e.onChange = function(v) ns.Session.SetField(field, v) end
     return e
 end
-local function buildText()
-    local p = ns.MakePanel(pane)
-    textPanel = p
-    textSel = ns.MakeSelect(p)
-    textSel:SetWidth(180)
+local function buildMsgBlock(pult, w)
+    local b = ns.NewFrame("Frame", nil, pult)
+    msgBlock = b
+    b:SetWidth(w)
+    msgCap = ns.Caption(b, ns.T("pultText"), w)
+    textSel = ns.MakeSelect(b)
+    textSel:SetWidth(w)
     textSel.onPick = function(i) body:ClearFocus() ns.Spam.PickText(i) end
-    local newBtn = ns.MakeKitButton(p)
+    newBtn = ns.MakeKitButton(b)
     newBtn:SetText(ns.T("btnNew"))
-    newBtn:SetWidth(70)
     newBtn.onClick = function() body:ClearFocus() ns.Spam.NewText(false) end
-    local copyBtn = ns.MakeKitButton(p)
+    copyBtn = ns.MakeKitButton(b)
     copyBtn:SetText(ns.T("btnCopy"))
-    copyBtn:SetWidth(70)
     copyBtn.onClick = function() body:ClearFocus() ns.Spam.NewText(true) end
-    delBtn = ns.MakeKitButton(p)
+    delBtn = ns.MakeKitButton(b)
     delBtn:SetText(ns.T("btnDelete"))
-    delBtn:SetWidth(70)
     delBtn.onClick = function()
         body:ClearFocus()
         local t = ns.Spam.Texts()[ns.Spam.TextIndex()]
         ns.Kit.Confirm(ns.T("textDeleteAsk", t and t.name or ""), ns.T("btnDelete"), function() ns.Spam.DeleteText() end)
     end
-    local prev
-    for _, it in ipairs({ textSel, newBtn, copyBtn, delBtn }) do
-        if prev then
-            it:SetPoint("LEFT", prev, "RIGHT", GAP, 0)
-        else
-            it:SetPoint("TOPLEFT", p, "TOPLEFT", PAD, -PAD)
-        end
-        prev = it
-    end
-    styleSel = ns.MakeSelect(p)
-    styleSel:SetWidth(170)
-    styleSel:SetPoint("TOPRIGHT", p, "TOPRIGHT", -PAD, -PAD)
+    rotCheck = ns.MakeCheck(b)
+    rotCheck.label:SetText(ns.T("textRotate"))
+    rotCheck.tipTitle = ns.T("textRotate")
+    rotCheck.onToggle = function(on) ns.Spam.SetRotate(on) end
+    styleCap = ns.Str(b, BASE)
+    styleCap:SetText(ns.T("styleLabel"))
+    styleCap:SetJustifyH("LEFT")
+    ns.PaintText(styleCap, "text.secondary")
+    styleSel = ns.MakeSelect(b)
+    styleSel:SetWidth(w)
     styleSel.tip = ns.T("tipStyle")
     styleSel.onPick = function(k) ns.Session.SetField("needsStyle", k) end
-    styleCap = ns.Str(p, BASE)
-    styleCap:SetText(ns.T("styleLabel"))
-    ns.PaintText(styleCap, "text.secondary")
-    styleCap:SetPoint("RIGHT", styleSel, "LEFT", -GAP, 0)
+end
+local function buildOptBlock(pult, w)
+    local b = ns.NewFrame("Frame", nil, pult)
+    optBlock = b
+    b:SetWidth(w)
+    everyCap = ns.Str(b, BASE)
+    everyCap:SetText(ns.T("everyAll"))
+    ns.PaintText(everyCap, "text.secondary")
+    everyE = ns.MakeEdit(b)
+    everyE:SetWidth(40)
+    everyE:SetHeight(20)
+    everyE:SetNumeric(true)
+    everyE:SetMaxLetters(4)
+    everyE:SetPoint("LEFT", everyCap, "RIGHT", 4, 0)
+    everyE.onChange = nil
+    everyE.onCommit = function(v)
+        ns.Spam.SetEvery(v)
+        everyE:SetValue(tostring(ns.Spam.Every()))
+    end
+    everySec = ns.Str(b, BASE)
+    everySec:SetText(ns.T("sec"))
+    ns.PaintText(everySec, "text.secondary")
+    everySec:SetPoint("LEFT", everyE, "RIGHT", 3, 0)
+    ownCheck = ns.MakeCheck(b)
+    ownCheck.label:SetText(ns.T("ownEvery"))
+    ownCheck.tipTitle = ns.T("ownEvery")
+    ownCheck.tip = ns.T("tipOwnEvery")
+    ownCheck.onToggle = function(on) ns.Spam.SetOwnEvery(on) end
+    autoCheck = ns.MakeCheck(b)
+    autoCheck.label:SetText(ns.T("autoStop"))
+    autoCheck.tipTitle = ns.T("autoStop")
+    autoCheck.tip = ns.T("tipAutoStop")
+    autoCheck.onToggle = function(on) ns.Spam.SetAutoStop(on) end
+end
+local function placeBlocks()
+    if not msgBlock then return end
+    local w = msgBlock:GetWidth()
+    local capH = ns.LineH("GameFontNormal")
+    local selH = textSel:GetHeight() or 22
+    msgCap:ClearAllPoints()
+    msgCap:SetPoint("TOPLEFT", msgBlock, "TOPLEFT", 0, 0)
+    local y = capH + BLOCK_GAP
+    textSel:ClearAllPoints()
+    textSel:SetPoint("TOPLEFT", msgBlock, "TOPLEFT", 0, -y)
+    y = y + selH + 4
+    local bw = math.floor((w - GAP * 2) / 3)
+    local prev
+    for _, btn in ipairs({ newBtn, copyBtn, delBtn }) do
+        btn:SetWidth(bw)
+        btn:ClearAllPoints()
+        if prev then
+            btn:SetPoint("LEFT", prev, "RIGHT", GAP, 0)
+        else
+            btn:SetPoint("TOPLEFT", msgBlock, "TOPLEFT", 0, -y)
+        end
+        prev = btn
+    end
+    y = y + (newBtn:GetHeight() or 22) + 4
+    local checkH = math.max(rotCheck:GetHeight() or 20, ns.LineH(BASE))
+    rotCheck:ClearAllPoints()
+    rotCheck:SetPoint("LEFT", msgBlock, "TOPLEFT", -3, -(y + checkH / 2))
+    y = y + checkH + BLOCK_GAP
+    styleCap:ClearAllPoints()
+    styleCap:SetPoint("TOPLEFT", msgBlock, "TOPLEFT", 0, -y)
+    styleCap:SetWidth(w)
+    y = y + ns.LineH(BASE) + 4
+    styleSel:ClearAllPoints()
+    styleSel:SetPoint("TOPLEFT", msgBlock, "TOPLEFT", 0, -y)
+    msgBlock:SetHeight(y + (styleSel:GetHeight() or selH))
+    local rowH = math.max(everyE:GetHeight() or 20, ns.LineH(BASE))
+    everyCap:ClearAllPoints()
+    everyCap:SetPoint("LEFT", optBlock, "TOPLEFT", 0, -rowH / 2)
+    ownCheck:ClearAllPoints()
+    ownCheck:SetPoint("LEFT", optBlock, "TOPLEFT", -3, -(rowH + 4 + rowH / 2))
+    autoCheck:ClearAllPoints()
+    autoCheck:SetPoint("LEFT", optBlock, "TOPLEFT", -3, -(rowH * 2 + 8 + rowH / 2))
+    y = rowH * 3 + 8 + BLOCK_GAP
+    chanCap:ClearAllPoints()
+    chanCap:SetPoint("TOPLEFT", optBlock, "TOPLEFT", 0, -y)
+    y = y + ns.LineH("GameFontNormalSmall") + 4
+    laidCols = chanCols()
+    local rows = math.max(1, math.ceil(#ns.Spam.Channels() / laidCols))
+    chanBox:ClearAllPoints()
+    chanBox:SetPoint("TOPLEFT", optBlock, "TOPLEFT", 0, -y)
+    chanBox:SetSize(w, rows * chanRowH())
+    optBlock:SetHeight(y + rows * chanRowH())
+end
+local function buildPreview()
+    local p = ns.MakePanel(pane)
+    previewPanel = p
+    previewCap = label(p, "previewTitle", "GameFontNormal")
+    counter = ns.Str(p, BASE)
+    counter:SetWordWrap(false)
+    local cf = ns.NewFrame("Frame", nil, p)
+    counterBox = cf
+    cf:SetPoint("TOPRIGHT", counter, "TOPRIGHT", 2, 2)
+    cf:SetPoint("BOTTOMLEFT", counter, "BOTTOMLEFT", -2, -2)
+    cf:EnableMouse(true)
+    cf.tip = ns.T("tipBytes")
+    cf:SetScript("OnEnter", function(self) ns.TipShow(self) end)
+    cf:SetScript("OnLeave", ns.TipHide)
+    preview = ns.Str(p, PREVIEW_FONT)
+    preview:SetJustifyH("LEFT")
+    preview:SetJustifyV("TOP")
+    ns.PaintText(preview, "text.primary")
+end
+local function placePreview(y)
+    local p = previewPanel
+    p:ClearAllPoints()
+    p:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -y)
+    p:SetPoint("TOPRIGHT", pane, "TOPRIGHT", 0, -y)
+    local capH = ns.LineH("GameFontNormal")
+    previewCap:ClearAllPoints()
+    previewCap:SetPoint("TOPLEFT", p, "TOPLEFT", PAD, -VPAD)
+    counter:ClearAllPoints()
+    counter:SetPoint("RIGHT", p, "TOPRIGHT", -PAD, -(VPAD + capH / 2))
+    local top = VPAD + capH + LINE_GAP
+    local pvH = ns.LineH(PREVIEW_FONT) * previewLines
+    preview:ClearAllPoints()
+    preview:SetPoint("TOPLEFT", p, "TOPLEFT", PAD, -top)
+    preview:SetPoint("TOPRIGHT", p, "TOPRIGHT", -PAD, -top)
+    preview:SetHeight(pvH)
+    local h = top + pvH + VPAD
+    p:SetHeight(h)
+    return h
+end
+local function previewNeed()
+    local h = preview.GetStringHeight and preview:GetStringHeight()
+    if type(h) ~= "number" or h <= 0 then return 1 end
+    return math.max(1, math.min(PREVIEW_MAX, math.ceil(h / ns.LineH(PREVIEW_FONT) - 0.1)))
+end
+local function buildText()
+    local p = ns.MakePanel(pane)
+    textPanel = p
     local box = ns.NewFrame("Frame", nil, p)
     textBox = box
-    box:SetPoint("TOPLEFT", p, "TOPLEFT", PAD, -(PAD + 28))
-    box:SetPoint("TOPRIGHT", p, "TOPRIGHT", -PAD, -(PAD + 28))
     box:SetHeight(textBoxH())
     ns.Skin(box, "edit")
     local sc = ns.NewFrame("ScrollFrame", nil, box)
@@ -186,22 +326,20 @@ local function buildText()
         end
     end)
     body.onChange = function(text) ns.Spam.SetBody(text) end
-    tokenItems = {
-        { tokenButton(p, "tokRaid") }, { tokenButton(p, "tokNeeds") }, { tokenButton(p, "tokCount") },
-        { tokenButton(p, "tokFree", "tipTokFree") }, { tokenButton(p, "tokLead", "tipTokLead") },
-        { tokenButton(p, "tokHow", "tipTokHow") },
-    }
     progE = makeEdit(p, 84, "prog")
     reqSel = ns.MakeSelect(p)
     reqSel:SetWidth(64)
     reqSel.onPick = function(k) ns.Session.SetField("reqKind", k) end
     reqE = makeEdit(p, 38, "req")
     lootSel = ns.MakeSelect(p)
-    lootSel:SetWidth(170)
+    lootSel:SetWidth(150)
     lootSel.onPick = function(k) ns.Session.SetField("loot", k) end
-    timeE = makeEdit(p, 90, "time")
-    dsE = makeEdit(p, 120, "ds")
-    valueUnits = {
+    timeE = makeEdit(p, 80, "time")
+    dsE = makeEdit(p, 110, "ds")
+    flowUnits = {
+        { tokenButton(p, "tokRaid") }, { tokenButton(p, "tokNeeds") }, { tokenButton(p, "tokCount") },
+        { tokenButton(p, "tokFree", "tipTokFree") }, { tokenButton(p, "tokLead", "tipTokLead") },
+        { tokenButton(p, "tokHow", "tipTokHow") },
         { tokenButton(p, "tokProg"), progE },
         { tokenButton(p, "tokReq"), reqSel, reqE },
         { tokenButton(p, "tokLoot"), lootSel },
@@ -232,70 +370,24 @@ local function placeText(y)
     p:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -y)
     p:SetPoint("TOPRIGHT", pane, "TOPRIGHT", 0, -y)
     local w = paneW() - PAD * 2
-    local room = w - (textSel:GetWidth() + delBtn:GetWidth() * 3 + GAP * 5)
-    local capW = styleCap:GetStringWidth() + GAP
-    if room - capW >= STYLE_MIN then
-        styleCap:Show()
-        styleSel:SetWidth(math.min(STYLE_W, room - capW))
-    else
-        styleCap:Hide()
-        styleSel:SetWidth(math.max(STYLE_MIN, math.min(STYLE_W, room)))
-    end
-    local marksW = 8 * 18
+    textBox:ClearAllPoints()
+    textBox:SetPoint("TOPLEFT", p, "TOPLEFT", PAD, -VPAD)
+    textBox:SetPoint("TOPRIGHT", p, "TOPRIGHT", -PAD, -VPAD)
     textBox:SetHeight(textBoxH())
-    local top = PAD + 28 + textBoxH() + LINE_GAP
-    local h1 = flow(p, tokenItems, PAD, top, w, marksW + GAP)
+    local marksW = 8 * 18
+    local top = VPAD + textBoxH() + LINE_GAP + 2
+    local h1 = flow(p, flowUnits, PAD, top, w, marksW + GAP)
     for i = 8, 1, -1 do
         local b = markBtns[i]
         b:ClearAllPoints()
         if i == 8 then
-            b:SetPoint("TOPRIGHT", p, "TOPRIGHT", -PAD, -(top + 2))
+            b:SetPoint("RIGHT", p, "TOPRIGHT", -PAD, -(top + ctlH() / 2))
         else
             b:SetPoint("RIGHT", markBtns[i + 1], "LEFT", -2, 0)
         end
     end
-    local h2 = flow(p, valueUnits, PAD, top + h1 + LINE_GAP, w)
-    local h = top + h1 + LINE_GAP + h2 + PAD
+    local h = top + h1 + VPAD
     p:SetHeight(h)
-    return h
-end
-local function buildPreview()
-    local p = ns.MakePanel(pane)
-    previewPanel = p
-    local cap = label(p, "previewTitle")
-    cap:SetPoint("TOPLEFT", p, "TOPLEFT", PAD, -PAD)
-    counter = ns.Str(p, BASE)
-    counter:SetPoint("TOPRIGHT", p, "TOPRIGHT", -PAD, -PAD)
-    local cf = ns.NewFrame("Frame", nil, p)
-    counterBox = cf
-    cf:SetPoint("TOPRIGHT", counter, "TOPRIGHT", 2, 2)
-    cf:SetPoint("BOTTOMLEFT", counter, "BOTTOMLEFT", -2, -2)
-    cf:EnableMouse(true)
-    cf.tip = ns.T("tipBytes")
-    cf:SetScript("OnEnter", function(self) ns.TipShow(self) end)
-    cf:SetScript("OnLeave", ns.TipHide)
-    preview = ns.Str(p, BASE)
-    preview:SetJustifyH("LEFT")
-    preview:SetJustifyV("TOP")
-    ns.PaintText(preview, "text.primary")
-end
-local function previewNeed()
-    local h = preview.GetStringHeight and preview:GetStringHeight()
-    if type(h) ~= "number" or h <= 0 then return 2 end
-    return math.max(2, math.min(4, math.ceil(h / ns.LineH(BASE) - 0.1)))
-end
-local function placePreview(y)
-    local line = ns.Fit(BASE, 16, 2)
-    local pv = ns.Fit(BASE, 28, 0, previewLines)
-    previewPanel:ClearAllPoints()
-    previewPanel:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -y)
-    previewPanel:SetPoint("TOPRIGHT", pane, "TOPRIGHT", 0, -y)
-    preview:ClearAllPoints()
-    preview:SetPoint("TOPLEFT", previewPanel, "TOPLEFT", PAD, -(PAD + line))
-    preview:SetPoint("TOPRIGHT", previewPanel, "TOPRIGHT", -PAD, -(PAD + line))
-    preview:SetHeight(pv)
-    local h = PAD + line + pv + PAD
-    previewPanel:SetHeight(h)
     return h
 end
 local function chanRow()
@@ -328,56 +420,17 @@ local function tick(r)
         r.leftText = text
         r.left:SetText(text)
     end
+    local ago = r.key and ns.Spam.Ago(r.key)
+    ago = ago and math.floor(ago)
+    if r.ago ~= ago then
+        r.ago = ago
+        r.check.tip = ago and (ns.T("tipChanLast", ago) .. "\n" .. ns.T("tipChanHour", ns.Spam.HourCount(r.key))) or nil
+    end
 end
 local function buildChannels()
-    local p = ns.MakePanel(pane)
-    chanPanel = p
-    local cap = label(p, "chanTitle")
-    cap:SetPoint("TOPLEFT", p, "TOPLEFT", PAD, -PAD)
-    everyCap = ns.Str(p, BASE)
-    everyCap:SetText(ns.T("everyAll"))
-    ns.PaintText(everyCap, "text.secondary")
-    everyCap:SetPoint("LEFT", cap, "RIGHT", 16, 0)
-    everyE = ns.MakeEdit(p)
-    everyE:SetWidth(40)
-    everyE:SetHeight(20)
-    everyE:SetNumeric(true)
-    everyE:SetMaxLetters(4)
-    everyE:SetPoint("LEFT", everyCap, "RIGHT", 4, 0)
-    everyE.onChange = nil
-    everyE.onCommit = function(v)
-        ns.Spam.SetEvery(v)
-        everyE:SetValue(tostring(ns.Spam.Every()))
-    end
-    everySec = ns.Str(p, BASE)
-    everySec:SetText(ns.T("sec"))
-    ns.PaintText(everySec, "text.secondary")
-    everySec:SetPoint("LEFT", everyE, "RIGHT", 3, 0)
-    ownCheck = ns.MakeCheck(p)
-    ownCheck:SetPoint("LEFT", everySec, "RIGHT", 14, 0)
-    ownCheck.label:SetText(ns.T("ownEvery"))
-    ownCheck.tipTitle = ns.T("ownEvery")
-    ownCheck.tip = ns.T("tipOwnEvery")
-    ownCheck.onToggle = function(on) ns.Spam.SetOwnEvery(on) end
-    chanBox = ns.NewFrame("Frame", nil, p)
+    chanCap = label(optBlock, "chanTitle")
+    chanBox = ns.NewFrame("Frame", nil, optBlock)
     chanPool = ns.NewPool(chanRow)
-end
-local function chanRowH()
-    return ns.Fit(BASE, 22, 4)
-end
-local function placeChannels(y)
-    local cap = ns.Fit("GameFontNormalSmall", 14, 2) + 4
-    local rows = math.max(1, math.ceil(#ns.Spam.Channels() / CHAN_COLS))
-    chanPanel:ClearAllPoints()
-    chanPanel:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -y)
-    chanPanel:SetPoint("TOPRIGHT", pane, "TOPRIGHT", 0, -y)
-    chanBox:ClearAllPoints()
-    chanBox:SetPoint("TOPLEFT", chanPanel, "TOPLEFT", PAD, -(PAD + cap))
-    chanBox:SetPoint("TOPRIGHT", chanPanel, "TOPRIGHT", -PAD, -(PAD + cap))
-    chanBox:SetHeight(rows * chanRowH())
-    local h = PAD + cap + rows * chanRowH() + PAD - 4
-    chanPanel:SetHeight(h)
-    return h
 end
 local function makeCheck(parent, sp)
     local c = ns.MakeCheck(parent)
@@ -428,12 +481,10 @@ local function buildSpecs()
     local p = ns.MakePanel(pane)
     specsPanel = p
     specsCap = label(p, "specsTitle")
-    specsCap:SetPoint("TOPLEFT", p, "TOPLEFT", PAD, -PAD)
     defBtn = ns.MakeKitButton(p)
     defBtn:SetText(ns.T("btnDefault"))
     defBtn:SetWidth(defBtn.text:GetStringWidth() + 20)
     defBtn:SetHeight(20)
-    defBtn:SetPoint("TOPRIGHT", p, "TOPRIGHT", -PAD, -6)
     defBtn.onClick = function() ns.Session.ResetChecks() end
     tplBtn = ns.MakeKitButton(p)
     tplBtn:SetText(ns.T("btnNeedsTpl"))
@@ -491,28 +542,57 @@ local function buildSpecs()
     end
 end
 local function specW()
-    return ns.Wide(BASE, SPEC_W)
+    local w = 0
+    for _, c in pairs(checks) do
+        w = math.max(w, c.label:GetStringWidth() or 0)
+    end
+    if w <= 0 then return ns.Wide(BASE, SPEC_W) end
+    return math.ceil(w) + CHECK_H + 3 + 1 + ICON + 4 + SPEC_GAP
+end
+local function needsWidth()
+    local w = (needsCap:GetStringWidth() or 0) + 10
+    for _, role in ipairs(ns.Spam.ROLES) do
+        w = w + (roleHeads[role].name:GetStringWidth() or 0) + 6 + STEP_BTN * 2 + ns.Wide(BASE, NEED_W) + 14
+    end
+    return w
+end
+local function placeNeeds(x, mid)
+    local p = specsPanel
+    needsCap:ClearAllPoints()
+    needsCap:SetPoint("LEFT", p, "TOPLEFT", x, -mid)
+    x = x + (needsCap:GetStringWidth() or 0) + 10
+    for _, role in ipairs(ns.Spam.ROLES) do
+        local h = roleHeads[role]
+        h.name:ClearAllPoints()
+        h.name:SetPoint("LEFT", p, "TOPLEFT", x, -mid)
+        x = x + (h.name:GetStringWidth() or 0) + 6 + STEP_BTN * 2 + ns.Wide(BASE, NEED_W) + 14
+    end
 end
 local function placeSpecs(y)
     local p = specsPanel
     p:ClearAllPoints()
     p:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -y)
     p:SetPoint("TOPRIGHT", pane, "TOPRIGHT", 0, -y)
-    local pageH = page:GetHeight() or 0
+    local pageH = ns.window.PANE_H
     local roles = ns.Spam.ROLES
     local clsW = ns.Wide(BASE, CLS_W)
     local cellW = (paneW() - PAD * 2 - clsW) / #roles
-    local needsY = PAD + 28
     local headH = ns.Fit(BASE, 20, 2)
-    local headY = needsY + headH + 6
-    needsCap:ClearAllPoints()
-    needsCap:SetPoint("LEFT", p, "TOPLEFT", PAD, -(needsY + headH / 2))
-    local x = PAD + (needsCap:GetStringWidth() or 0) + 10
-    for _, role in ipairs(roles) do
-        local h = roleHeads[role]
-        h.name:ClearAllPoints()
-        h.name:SetPoint("LEFT", p, "TOPLEFT", x, -(needsY + headH / 2))
-        x = x + (h.name:GetStringWidth() or 0) + 6 + STEP_BTN * 2 + ns.Wide(BASE, NEED_W) + 14
+    local top1 = math.max(headH, defBtn:GetHeight() or 0)
+    local mid1 = VPAD + top1 / 2
+    specsCap:ClearAllPoints()
+    specsCap:SetPoint("LEFT", p, "TOPLEFT", PAD, -mid1)
+    defBtn:ClearAllPoints()
+    defBtn:SetPoint("RIGHT", p, "TOPRIGHT", -PAD, -mid1)
+    local capEnd = PAD + (specsCap:GetStringWidth() or 0) + 20
+    local btnStart = paneW() - PAD - defBtn:GetWidth() - GAP - tplBtn:GetWidth() - 16
+    local headY
+    if capEnd + needsWidth() <= btnStart then
+        placeNeeds(capEnd, mid1)
+        headY = VPAD + top1 + 6
+    else
+        placeNeeds(PAD, VPAD + top1 + LINE_GAP + headH / 2)
+        headY = VPAD + top1 + LINE_GAP + headH + 6
     end
     headBg:ClearAllPoints()
     headBg:SetPoint("TOPLEFT", p, "TOPLEFT", PAD - 4, -(headY - 3))
@@ -523,20 +603,25 @@ local function placeSpecs(y)
         h.col:ClearAllPoints()
         h.col:SetPoint("LEFT", p, "TOPLEFT", PAD + clsW + (k - 1) * cellW, -(headY + headH / 2))
     end
-    local perLine = math.max(1, math.floor(cellW / specW()))
-    local heights, natural = {}, 0
-    for i, row in ipairs(classRows) do
-        local lines = 1
-        for _, list in pairs(row.cells) do
-            lines = math.max(lines, math.ceil(#list / perLine))
-        end
-        heights[i] = lines * CHECK_H + ROW_PAD * 2
-        natural = natural + heights[i]
-    end
+    local sw = specW()
+    local perLine = math.max(1, math.floor(cellW / sw))
     local top = headY + headH + 6
-    local avail = pageH - y - top - PAD
+    local heights, sum = {}, 0
+    for _, pad in ipairs({ ROW_PAD, 1, 0 }) do
+        sum = 0
+        for i, row in ipairs(classRows) do
+            local lines = 1
+            for _, list in pairs(row.cells) do
+                lines = math.max(lines, math.ceil(#list / perLine))
+            end
+            heights[i] = lines * CHECK_H + pad * 2
+            sum = sum + heights[i]
+        end
+        if y + top + sum + VPAD <= pageH then break end
+    end
+    local avail = pageH - y - top - VPAD
     local extra = 0
-    if avail > natural then extra = math.min(ROW_EXTRA, math.floor((avail - natural) / #classRows)) end
+    if avail > sum then extra = math.min(ROW_EXTRA, math.floor((avail - sum) / #classRows)) end
     local cy = top
     for i, row in ipairs(classRows) do
         local rh = heights[i] + extra
@@ -557,7 +642,7 @@ local function placeSpecs(y)
                     local col = (j - 1) % perLine
                     local ln = math.floor((j - 1) / perLine)
                     c:ClearAllPoints()
-                    c:SetPoint("TOPLEFT", p, "TOPLEFT", x0 - 3 + col * specW(), -(y0 + ln * CHECK_H - 1))
+                    c:SetPoint("TOPLEFT", p, "TOPLEFT", x0 - 3 + col * sw, -(y0 + ln * CHECK_H - 1))
                 end
             end
         end
@@ -569,9 +654,10 @@ local function placeSpecs(y)
         t:SetPoint("TOPLEFT", p, "TOPLEFT", x, -(headY - 3))
         t:SetHeight(cy - headY + 3)
     end
-    local h = math.max(cy + PAD, pageH - y)
+    local need = cy - extra * #classRows + VPAD
+    local h = math.max(cy + VPAD, pageH - y)
     p:SetHeight(h)
-    return h
+    return h, need
 end
 local function needsTip(t)
     local parts = {}
@@ -597,7 +683,7 @@ local function refreshNeeds()
 end
 local function refreshChannels()
     chanPool:Reset()
-    local colW = (paneW() - PAD * 2) / CHAN_COLS
+    local colW = (optBlock:GetWidth() + 3) / laidCols
     local rh = chanRowH()
     local own = ns.Spam.OwnEvery()
     local tickW = ns.Spam.Running() and ns.Wide(BASE, TICK_W) or 0
@@ -606,18 +692,18 @@ local function refreshChannels()
     ownCheck:SetChecked(own)
     for i, c in ipairs(ns.Spam.Channels()) do
         local r = chanPool:Acquire()
-        local col = (i - 1) % CHAN_COLS
-        local rowN = math.floor((i - 1) / CHAN_COLS)
         r:ClearAllPoints()
-        r:SetPoint("TOPLEFT", chanBox, "TOPLEFT", col * colW, -rowN * rh)
-        r:SetSize(colW - 12, rh)
+        r:SetPoint("TOPLEFT", chanBox, "TOPLEFT", ((i - 1) % laidCols) * colW, -math.floor((i - 1) / laidCols) * rh)
+        r:SetSize(colW - 3, rh)
         r.key = c.key
+        r.ago = false
         r.every:ClearAllPoints()
-        r.every:SetPoint("RIGHT", r, "RIGHT", -(16 + tickW), 0)
+        r.every:SetPoint("RIGHT", r, "RIGHT", -(14 + tickW), 0)
         r.left:SetWidth(tickW)
-        tick(r)
-        r.check.label:SetWidth((own and (colW - 110) or (colW - 30)) - tickW)
+        r.check.label:SetWidth((own and (colW - 84) or (colW - 26)) - tickW)
+        r.check.label:SetWordWrap(false)
         r.check.label:SetText(c.label)
+        tick(r)
         if own then
             r.every:Show()
             r.sec:Show()
@@ -640,29 +726,36 @@ local function refreshChannels()
 end
 local chanCount = -1
 local function layout()
-    local y = placeText(0) + PANEL_GAP
-    y = y + placePreview(y) + PANEL_GAP
-    y = y + placeChannels(y) + PANEL_GAP
-    y = y + placeSpecs(y)
+    local y = placePreview(0) + PANEL_GAP
+    y = y + placeText(y) + PANEL_GAP
+    local h, need = placeSpecs(y)
+    natural = y + need
     pane:SetWidth(paneW())
-    pane:SetHeight(y)
+    pane:SetHeight(y + h)
     scroller:Rescroll()
 end
 local function refresh()
     if not built or not pane:IsVisible() then return end
     local S, P = ns.Session, ns.Spam
-    if #P.Channels() ~= chanCount then
+    if #P.Channels() ~= chanCount or chanCols() ~= laidCols then
         chanCount = #P.Channels()
+        placeBlocks()
         layout()
     end
     textSel:SetOptions(textOptions(), P.TextIndex())
     if #P.Texts() < 2 then
         delBtn:Disable()
         delBtn.tip = ns.T("tipDeleteLast")
+        rotCheck:Disable()
+        rotCheck.tip = ns.T("tipTextRotateOne")
     else
         delBtn:Enable()
         delBtn.tip = nil
+        rotCheck:Enable()
+        rotCheck.tip = ns.T("tipTextRotate")
     end
+    rotCheck:SetChecked(P.Rotate())
+    autoCheck:SetChecked(P.AutoStop())
     if not body.focused then body:SetValue(P.Body()) end
     if not progE.focused then progE:SetValue(S.Field("prog")) end
     if not reqE.focused then reqE:SetValue(S.Field("req")) end
@@ -712,18 +805,38 @@ local function relayout()
     if not built then return end
     body:SetWidth(paneW() - PAD * 2 - 8)
     for _, fs in pairs(needVals) do fs:SetWidth(ns.Wide(BASE, NEED_W)) end
+    placeBlocks()
     layout()
     refresh()
+    if ns.Pult and ns.Pult.Refresh then ns.Pult.Refresh() end
+end
+local function probe()
+    return {
+        natural = natural,
+        view = ns.window.PANE_H,
+        panels = { previewPanel, textPanel, specsPanel },
+        content = pane,
+        blocks = { msgBlock, optBlock },
+        lines = previewLines,
+    }
 end
 local function build()
     page = ns.window:Pane("spam")
     scroller = ns.ScrollPage(page, { fill = true, bar = "deck" })
     pane = scroller.content
-    buildText()
+    local pult = ns.window:Pult()
+    local bw = ns.Pult and ns.Pult.Width and ns.Pult.Width() or 0
+    if bw <= 0 then bw = pult:GetWidth() - 24 end
+    buildMsgBlock(pult, bw)
+    buildOptBlock(pult, bw)
+    msgBlock:Hide()
+    optBlock:Hide()
     buildPreview()
+    buildText()
     buildChannels()
     buildSpecs()
     built = true
+    placeBlocks()
     layout()
     page:SetScript("OnShow", function()
         layout()
@@ -735,16 +848,19 @@ local function build()
         acc = acc + dt
         if acc < TICK_EVERY then return end
         acc = 0
-        if not ns.Spam.Running() then return end
         for _, r in ipairs(chanPool.items) do
             if r:IsShown() then tick(r) end
         end
     end)
     refresh()
+    if ns.Pult and ns.Pult.Refresh then ns.Pult.Refresh() end
 end
 ns.Session.OnChange(refresh)
 ns.Spam.OnRun(refresh)
 ns.OnFont(relayout)
 ns.window:OnSize(relayout)
-ns.SpamPane = { Build = build, Refresh = refresh }
+ns.SpamPane = {
+    Build = build, Refresh = refresh, Probe = probe,
+    PultBlocks = function() return msgBlock, optBlock end,
+}
 ns.window:OnBuild(build)

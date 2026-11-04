@@ -7,6 +7,7 @@ local MAX_CHARS = 255
 local MIN_EVERY = 15
 local DEF_EVERY = 60
 local STAGGER = 2
+local HOUR = 3600
 local LOOT = { "none", "roll", "rollBoe", "rollBoeShards", "sr1", "sr2", "sr3", "sr4", "epgp", "epAuc", "noSoft" }
 P.LOOT = LOOT
 local SPECIAL = {
@@ -19,6 +20,9 @@ P.ROLES = ROLES
 local MAX_NEED = 40
 local running = false
 local nextAt = {}
+local lastAt = {}
+local sentLog = {}
+local rotAt = 0
 local lastFits = true
 local onRun = {}
 function P.OnRun(fn)
@@ -131,6 +135,21 @@ function P.DeleteText()
     if #list < 2 then return end
     table.remove(list, P.TextIndex())
     P.PickText(1)
+end
+function P.Rotate()
+    local r = ns.Store.DB().rotate
+    return r and r[ns.Session.Template().key] and #texts() > 1 or false
+end
+function P.SetRotate(on)
+    local db = ns.Store.DB()
+    db.rotate = db.rotate or {}
+    db.rotate[ns.Session.Template().key] = on and true or nil
+    ns.Session.Changed()
+end
+local function nextText()
+    if not P.Rotate() then return nil end
+    rotAt = rotAt % #texts() + 1
+    return rotAt
 end
 local function plural(n, one, few, many)
     if ns.Lang() ~= "ruRU" then return n == 1 and one or many end
@@ -281,8 +300,9 @@ local function fill(body, needs)
     end
     return tidy(out)
 end
-function P.Build()
-    local body = P.Body()
+function P.Build(i)
+    local t = i and texts()[i]
+    local body = t and t.body or P.Body()
     local parts = needParts()
     local drop = {}
     local short = false
@@ -374,12 +394,19 @@ local function activeChannels()
     end
     return out
 end
+local function say(msg, chat, target)
+    if root.Proof and root.Proof.Queue then
+        root.Proof.Queue(msg, chat, target)
+    else
+        SendChatMessage(msg, chat, nil, target)
+    end
+end
 local function send(c, msg)
     if c.name then
         local id = GetChannelName(c.name)
-        if id and id > 0 then SendChatMessage(msg, "CHANNEL", nil, id) end
+        if id and id > 0 then say(msg, "CHANNEL", id) end
     else
-        SendChatMessage(msg, c.key)
+        say(msg, c.key)
     end
 end
 function P.Running()
@@ -388,13 +415,67 @@ end
 function P.Fits()
     return lastFits
 end
+function P.AutoStop()
+    return ns.Store.DB().autoStop ~= false
+end
+function P.SetAutoStop(on)
+    if on then ns.Store.DB().autoStop = nil else ns.Store.DB().autoStop = false end
+    ns.Session.Changed()
+end
+function P.TemplateFull()
+    local need, total = ns.Session.Needs()
+    local all, open = 0, 0
+    for grp, n in pairs(total) do
+        all = all + n
+        open = open + need[grp]
+    end
+    return all > 0 and open == 0
+end
+local function stopFull()
+    return P.AutoStop() and P.TemplateFull()
+end
 function P.CanStart()
-    return not ns.Test.Active() and #activeChannels() > 0 and P.NeedTotal() > 0
+    return not ns.Test.Active() and #activeChannels() > 0 and P.NeedTotal() > 0 and not stopFull()
 end
 function P.Blocker()
     if ns.Test.Active() then return "tipTestSpam" end
     if #activeChannels() == 0 then return "tipNoChannels" end
     if P.NeedTotal() == 0 then return "tipNoNeeds" end
+    if stopFull() then return "tipTplFull" end
+end
+function P.CanSendNow()
+    return not ns.Test.Active() and #activeChannels() > 0
+end
+local function deliver(c, msg, now)
+    send(c, msg)
+    lastAt[c.key] = now
+    local log = sentLog[c.key]
+    if not log then
+        log = {}
+        sentLog[c.key] = log
+    end
+    log[#log + 1] = now
+end
+function P.HourCount(key)
+    local log = sentLog[key]
+    if not log then return 0 end
+    local edge = GetTime() - HOUR
+    while log[1] and log[1] < edge do table.remove(log, 1) end
+    return #log
+end
+function P.SendNow()
+    if not P.CanSendNow() then return false end
+    local now = GetTime()
+    for _, c in ipairs(activeChannels()) do
+        local msg, _, fits = P.Build(nextText())
+        lastFits = fits
+        if fits then
+            deliver(c, msg, now)
+            if running then nextAt[c.key] = now + P.EveryOf(c.key) end
+        end
+    end
+    ran()
+    return lastFits
 end
 function P.Start()
     if running or not P.CanStart() then return end
@@ -431,6 +512,11 @@ function P.Left(key)
     if not t then return nil end
     return math.max(0, t - GetTime())
 end
+function P.Ago(key)
+    local t = lastAt[key]
+    if not t then return nil end
+    return math.max(0, GetTime() - t)
+end
 local ticker = ns.NewFrame("Frame")
 local acc = 0
 ticker:SetScript("OnUpdate", function(self, dt)
@@ -438,7 +524,7 @@ ticker:SetScript("OnUpdate", function(self, dt)
     acc = acc + dt
     if acc < 0.25 then return end
     acc = 0
-    if P.NeedTotal() == 0 then
+    if P.NeedTotal() == 0 or stopFull() then
         P.Stop()
         return
     end
@@ -449,12 +535,12 @@ ticker:SetScript("OnUpdate", function(self, dt)
         if not t then
             nextAt[c.key] = now
         elseif now >= t then
-            if msg == nil then
+            if msg == nil or P.Rotate() then
                 local _
-                msg, _, fits = P.Build()
+                msg, _, fits = P.Build(nextText())
                 lastFits = fits
             end
-            if fits then send(c, msg) end
+            if fits then deliver(c, msg, now) end
             nextAt[c.key] = now + P.EveryOf(c.key)
         end
     end

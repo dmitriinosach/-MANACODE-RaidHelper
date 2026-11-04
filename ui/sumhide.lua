@@ -1,6 +1,7 @@
 local _, ns = ...
 local format = string.format
 local max = math.max
+local min = math.min
 local ceil = math.ceil
 local ICON = 14
 local GAP = 4
@@ -13,6 +14,9 @@ local CAP = 18
 local POP_MIN = 220
 local CHECK = 22
 local LABEL_PAD = 30
+local PIC_GAP = 4
+local LABEL_MAX = 320
+local LABEL_GROW = 14
 local RESET_H = 20
 local BTN_PAD = 24
 local ZONE_OTHER = "?"
@@ -53,7 +57,8 @@ local function Collect(out, list, kind)
     for i = 1, #(list or {}) do
         local def = list[i]
         local text = T(kind == "block" and def.label or def.tip)
-        out[#out + 1] = { key = Hide.Key(def), label = text, kind = kind, off = def.off == true, spell = def.spell }
+        out[#out + 1] = { key = Hide.Key(def), label = text, kind = kind, off = def.off == true, spell = def.spell,
+                          def = def }
         seen[text] = (seen[text] or 0) + 1
     end
     for i = from, #out do
@@ -84,6 +89,23 @@ function Hide.Items(boss)
     if def.pull then Collect(list, { def.pull }, "badge") end
     cache[boss] = list
     return list
+end
+function Hide.Icon(boss, it)
+    if it.icon ~= nil then return it.icon or nil end
+    local def, tex = it.def, nil
+    if boss == RAID then
+        local id = def.award and ns.awardIcons and ns.awardIcons[def.key]
+        tex = id and ns.SpellIcon(id)
+    elseif it.kind == "block" then
+        tex = ns.BadgeTips and ns.BadgeTips.Mechanic({ def = def }).icon
+    else
+        local id = def.id or def.spell or (def.spells and def.spells[1])
+        tex = id and ns.SpellIcon(id)
+        local npc = not tex and (def.npc or def.src or (def.names and def.names[1]))
+        tex = tex or (npc and ns.npcPortraits and ns.npcPortraits[npc]) or nil
+    end
+    it.icon = tex or false
+    return tex
 end
 function Hide.Name(boss)
     if boss == RAID then return T("set.show.raid") end
@@ -197,6 +219,13 @@ local function Check(i)
     c:SetWidth(CHECK)
     c:SetHeight(CHECK)
     c.tipTitle = false
+    c.pic = c:CreateTexture(nil, "ARTWORK")
+    c.pic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    c.pic:SetPoint("LEFT", c, "RIGHT", 2, 0)
+    c.label:ClearAllPoints()
+    c.label:SetPoint("LEFT", c.pic, "RIGHT", PIC_GAP, 0)
+    c.label:SetJustifyH("LEFT")
+    c.label:SetWordWrap(false)
     c.onToggle = function(on)
         if popBoss and c.hideKey then Hide.Set(popBoss, c.hideKey, not on) end
     end
@@ -248,6 +277,7 @@ local function Fill()
     local list = Hide.Items(boss)
     local g = ns.Kit.Grow().g
     ROW, HEAD, CAP = 22 + g, 20 + g, 18 + g
+    local pic, cap = ROW - 6, LABEL_MAX + g * LABEL_GROW
     pop.title:SetText(format(T("sum.hide.title"), Hide.Name(boss)))
     local w = max(POP_MIN, pop.title:GetStringWidth() + PAD * 2 + 4)
     local y = PAD + HEAD
@@ -267,12 +297,22 @@ local function Fill()
         used = used + 1
         local c = Check(used)
         c.hideKey = it.key
+        local tex = Hide.Icon(boss, it)
+        c.pic:SetWidth(pic)
+        c.pic:SetHeight(pic)
+        c.pic:SetTexture(tex)
+        if tex then c.pic:Show() else c.pic:Hide() end
+        c.label:SetWidth(0)
         c.label:SetText(it.label)
+        local lw = c.label:GetStringWidth()
+        c.label:SetWidth(ceil(min(lw, cap)))
+        c.tip = lw > cap and it.label or nil
+        c:SetHitRectInsets(0, -(2 + pic + PIC_GAP + ceil(min(lw, cap))), 0, 0)
         c:SetChecked(not Hide.IsHidden(boss, it.key))
         c:ClearAllPoints()
         c:SetPoint("TOPLEFT", pop, "TOPLEFT", PAD, -y)
         c:Show()
-        w = max(w, c.label:GetStringWidth() + LABEL_PAD + PAD * 2)
+        w = max(w, min(lw, cap) + pic + PIC_GAP + LABEL_PAD + PAD * 2)
         y = y + ROW
     end
     for i = used + 1, #checks do

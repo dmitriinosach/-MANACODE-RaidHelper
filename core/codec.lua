@@ -18,11 +18,7 @@ local ESC = { ["~"] = "~t", [";"] = "~s" }
 local UNESC = { t = "~", s = ";" }
 local Codec = {}
 ns.Codec = Codec
-local out, n = {}, 0
-local ids, nid = {}, 0
-local strs, nstr = {}, 0
-local extOf = nil
-local dropKeys = nil
+local pool = {}
 local function Esc(s)
     if find(s, "[~;]") then return (gsub(s, "[~;]", ESC)) end
     return s
@@ -40,7 +36,6 @@ local function Num(v)
     if tonumber(s) ~= v then s = format("%.17g", v) end
     return "n" .. s .. ";"
 end
-local Val
 local function Keyable(k)
     local tk = type(k)
     return tk == "string" or tk == "boolean" or (tk == "number" and k == k)
@@ -49,90 +44,94 @@ local function Storable(v)
     local tv = type(v)
     return tv == "string" or tv == "number" or tv == "boolean" or tv == "table"
 end
-local function Table(t)
-    local id = ids[t]
-    if id then
+function Codec.Encode(v, extOf, dropKeys)
+    local set = pool[#pool]
+    if set then pool[#pool] = nil else set = { {}, {}, {} } end
+    local out, ids, strs = set[1], set[2], set[3]
+    local n, nid, nstr = 0, 0, 0
+    local Step = ns.Jobs.Step
+    local Val
+    local function Table(t)
+        local id = ids[t]
+        if id then
+            n = n + 1
+            out[n] = "^" .. id .. ";"
+            return
+        end
+        local path = extOf and extOf(t)
+        if path then
+            n = n + 1
+            out[n] = "&;{;"
+            for i = 1, #path do Val(path[i]) end
+            n = n + 1
+            out[n] = "};"
+            return
+        end
+        nid = nid + 1
+        ids[t] = nid
         n = n + 1
-        out[n] = "^" .. id .. ";"
-        return
-    end
-    local path = extOf and extOf(t)
-    if path then
-        n = n + 1
-        out[n] = "&;{;"
-        for i = 1, #path do Val(path[i]) end
+        out[n] = "{;"
+        local len = #t
+        for i = 1, len do
+            local x = t[i]
+            if Storable(x) then Val(x) else
+                n = n + 1
+                out[n] = "x;"
+            end
+        end
+        local hash = false
+        for k, x in pairs(t) do
+            local inArray = type(k) == "number" and k >= 1 and k <= len and k % 1 == 0
+            if not inArray and Keyable(k) and Storable(x) and not (dropKeys and dropKeys[k]) then
+                if not hash then
+                    hash = true
+                    n = n + 1
+                    out[n] = "|;"
+                end
+                Val(k)
+                Val(x)
+            end
+        end
         n = n + 1
         out[n] = "};"
-        return
     end
-    nid = nid + 1
-    ids[t] = nid
-    n = n + 1
-    out[n] = "{;"
-    local len = #t
-    for i = 1, len do
-        local v = t[i]
-        if Storable(v) then Val(v) else
-            n = n + 1
+    Val = function(x)
+        Step(0.25)
+        local tv = type(x)
+        n = n + 1
+        if tv == "number" then
+            out[n] = Num(x)
+        elseif tv == "string" then
+            if #x < SHORT then
+                out[n] = "q" .. Esc(x) .. ";"
+            else
+                local i = strs[x]
+                if i then
+                    out[n] = "r" .. i .. ";"
+                else
+                    nstr = nstr + 1
+                    strs[x] = nstr
+                    out[n] = "s" .. Esc(x) .. ";"
+                end
+            end
+        elseif tv == "boolean" then
+            out[n] = x and "t;" or "f;"
+        elseif tv == "table" then
+            n = n - 1
+            Table(x)
+        else
             out[n] = "x;"
         end
     end
-    local hash = false
-    for k, v in pairs(t) do
-        local inArray = type(k) == "number" and k >= 1 and k <= len and k % 1 == 0
-        if not inArray and Keyable(k) and Storable(v) and not (dropKeys and dropKeys[k]) then
-            if not hash then
-                hash = true
-                n = n + 1
-                out[n] = "|;"
-            end
-            Val(k)
-            Val(v)
-        end
-    end
-    n = n + 1
-    out[n] = "};"
-end
-Val = function(v)
-    local tv = type(v)
-    n = n + 1
-    if tv == "number" then
-        out[n] = Num(v)
-    elseif tv == "string" then
-        if #v < SHORT then
-            out[n] = "q" .. Esc(v) .. ";"
-        else
-            local i = strs[v]
-            if i then
-                out[n] = "r" .. i .. ";"
-            else
-                nstr = nstr + 1
-                strs[v] = nstr
-                out[n] = "s" .. Esc(v) .. ";"
-            end
-        end
-    elseif tv == "boolean" then
-        out[n] = v and "t;" or "f;"
-    elseif tv == "table" then
-        n = n - 1
-        Table(v)
-    else
-        out[n] = "x;"
-    end
-end
-function Codec.Encode(v, ext, drop)
-    n, nid, nstr = 0, 0, 0
-    extOf, dropKeys = ext, drop
     Val(v)
     local s = concat(out, "", 1, n)
     for i = n, 1, -1 do out[i] = nil end
     for k in pairs(ids) do ids[k] = nil end
     for k in pairs(strs) do strs[k] = nil end
-    extOf, dropKeys = nil, nil
+    pool[#pool + 1] = set
     return s
 end
 Codec.EXT_KEY = EXT_KEY
-local stT, stI, stH, stK, stHK, stE = {}, {}, {}, {}, {}, {}
 function Codec.Decode(s, resolve)
     if type(s) ~= "string" then return nil, false end
     local tabs, ntab = {}, 0
@@ -141,6 +140,7 @@ function Codec.Decode(s, resolve)
     local cur, idx, hash, key, hasKey, isExt = nil, 0, false, nil, false, false
     local ext = false
     local result, got = nil, false
+    local stT, stI, stH, stK, stHK, stE = {}, {}, {}, {}, {}, {}
     local Step = ns.Jobs.Step
     for tag, body in gmatch(s, "(.)([^;]*);") do
         Step(0.25)
@@ -213,7 +213,6 @@ function Codec.Decode(s, resolve)
             end
         end
     end
-    for i = top, 1, -1 do stT[i] = nil end
     return result, got and top == 0 and cur == nil
 end
 local function KeyOrder(a, b)
@@ -227,6 +226,7 @@ local function DerivedSet(v)
     return type(k) == "string" and x == true
 end
 local function Canon(v, buf, seen)
+    ns.Jobs.Step()
     local tv = type(v)
     if tv == "table" then
         if seen[v] then

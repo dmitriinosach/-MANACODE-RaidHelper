@@ -34,6 +34,21 @@ local function Acquire()
     b:Show()
     return b
 end
+local checks, checkUsed = {}, 0
+local function AcquireCheck()
+    checkUsed = checkUsed + 1
+    local c = checks[checkUsed]
+    if not c then
+        c = Kit.Check(list)
+        Kit.Bind(c.label, "GameFontNormalSmall")
+        c.label:SetJustifyH("LEFT")
+        c.label:SetWordWrap(false)
+        c.tipTitle = false
+        checks[checkUsed] = c
+    end
+    c:Show()
+    return c
+end
 local function EnsureList(sel)
     local win = RootOf(sel)
     if not win then return nil end
@@ -77,6 +92,7 @@ local function ShowList(sel, options, value, onPick, owner, title)
     local win = RootOf(sel)
     openOn = owner
     used = 0
+    checkUsed = 0
     local rowH = Kit.GrowH(ROW_H, "GameFontNormalSmall")
     local headH = Kit.GrowH(HEAD_H, "GameFontNormalSmall")
     local y = LIST_PAD
@@ -91,26 +107,46 @@ local function ShowList(sel, options, value, onPick, owner, title)
         head:Hide()
     end
     for _, opt in ipairs(options or {}) do
-        local b = Acquire()
-        b:SetText(opt.label or opt.key)
-        b.tip = opt.tip
-        b.tipTitle = opt.tipTitle
-        if type(value) == "table" then b.active = value[opt.key] == true else b.active = value ~= nil and opt.key == value end
-        b.tint = opt.color
-        if opt.disabled then b:Disable() else b:Enable() end
-        b.onClick = function()
-            Kit.SelectClose()
-            onPick(opt.key, opt)
+        if opt.check ~= nil then
+            local c = AcquireCheck()
+            c:SetWidth(rowH)
+            c:SetHeight(rowH)
+            c:SetChecked(opt.check)
+            c.label:SetText(opt.label or opt.key)
+            c.tip = opt.tip
+            if opt.disabled then c:Disable() else c:Enable() end
+            c.onToggle = function()
+                Kit.SelectClose()
+                onPick(opt.key, opt)
+            end
+            c:ClearAllPoints()
+            c:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PAD, -y)
+            local need = rowH + 2 + c.label:GetStringWidth() + 8
+            if need > w then w = need end
+            y = y + rowH + ROW_GAP
+        else
+            local b = Acquire()
+            b:SetText(opt.label or opt.key)
+            b.tip = opt.tip
+            b.tipTitle = opt.tipTitle
+            if type(value) == "table" then b.active = value[opt.key] == true else b.active = value ~= nil and opt.key == value end
+            b.tint = opt.color
+            if opt.disabled then b:Disable() else b:Enable() end
+            b.onClick = function()
+                Kit.SelectClose()
+                onPick(opt.key, opt)
+            end
+            Kit.StyleButton(b)
+            local need = b.text:GetStringWidth() + 22
+            if need > w then w = need end
+            b:ClearAllPoints()
+            b:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PAD, -y)
+            y = y + rowH + ROW_GAP
         end
-        Kit.StyleButton(b)
-        local need = b.text:GetStringWidth() + 22
-        if need > w then w = need end
-        b:ClearAllPoints()
-        b:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PAD, -y)
-        y = y + rowH + ROW_GAP
     end
     for i = used + 1, #pool do pool[i]:Hide() end
-    if used == 0 then Kit.SelectClose() return end
+    for i = checkUsed + 1, #checks do checks[i]:Hide() end
+    if used + checkUsed == 0 then Kit.SelectClose() return end
     for i = 1, used do pool[i]:SetWidth(w) end
     list:SetWidth(w + LIST_PAD * 2)
     local h = y - ROW_GAP + LIST_PAD
@@ -190,8 +226,8 @@ function Kit.Menu(items, anchor)
         elseif it.isTitle then
             options[#options + 1] = { key = i, label = it.text, disabled = true, tipTitle = false }
         else
-            options[#options + 1] = { key = i, label = it.text, disabled = it.disabled, tip = it.tip, tipTitle = false }
-            if it.checked then value[i] = true end
+            options[#options + 1] = { key = i, label = it.text, disabled = it.disabled, tip = it.tip, tipTitle = false,
+                                      check = it.checked }
         end
     end
     ShowList(anchor, options, value, function(key)

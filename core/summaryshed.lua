@@ -131,7 +131,7 @@ function Buffed.End(p, fight)
         e.sec = math.floor(e.sec + 0.5)
     end
 end
-local Clash = { SPELL = 10060, BY = { 32182, 2825 }, FULL = 15, NEAR = 0.5, LAND = 1, SLACK = 1 }
+local Clash = { SPELL = 10060, BY = { 32182, 2825 }, FULL = 15, NEAR = 0.5, LAND = 1, SLACK = 1, SAME = 1 }
 local function ClashSets()
     if Clash.by then return Clash.key, Clash.by end
     local by = {}
@@ -186,7 +186,7 @@ function Clash.Cast(st, k, dst, ts, fight)
     Settle(c, fight)
     st.fate = st.fate or {}
     st.fate[k] = { s = 0 }
-    if c.hero then
+    if c.hero and ts - c.hero.t > Clash.SAME then
         st.fate[k].over = true
         st.over = (st.over or 0) + 1
         st.grade = "yellow"

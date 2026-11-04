@@ -3,8 +3,8 @@ local floor = math.floor
 local abs = math.abs
 local format = string.format
 local tsort = table.sort
-local TOTALS_VERSION = 60
-local TOTALS_CODE = "9ee216fcf1"
+local TOTALS_VERSION = 68
+local TOTALS_CODE = "8a30892a70"
 local TRASH_VERSION = 3
 local ABIL_KEEP = 10
 local TRASH_KEY = "#trash"
@@ -377,18 +377,36 @@ function Digest.Stats()
     return n, bytes, trash
 end
 local REFRESH_KEY = "digest.refresh"
+local REFRESH_LEAD = 60
+local REFRESH_TAIL = 5
+local function Weight(fight)
+    local n = 0
+    local segs = ns.Encounters.Segs(fight)
+    for i = 1, #segs do n = n + ns.Store.Span(segs[i], fight.from - REFRESH_LEAD, fight.to + REFRESH_TAIL) end
+    return n > 0 and n or 1
+end
 function Digest.Refresh()
     if ns.Jobs.Busy(REFRESH_KEY) then return end
-    local list = ns.Encounters.Fights()
-    local stale = {}
-    for k = 1, #list do
-        if Digest.Stale(list[k]) then stale[#stale + 1] = list[k] end
-    end
-    if #stale == 0 then return end
     ns.Jobs.Run(REFRESH_KEY, function()
+        local list = ns.Encounters.Fights()
+        local stale = {}
+        for k = 1, #list do
+            if Digest.Stale(list[k]) then stale[#stale + 1] = list[k] end
+            ns.Jobs.Step()
+        end
+        if #stale == 0 then return true end
+        local w, sum = {}, 0
+        for k = 1, #stale do
+            w[k] = Weight(stale[k])
+            sum = sum + w[k]
+        end
+        local at = 0
         for k = 1, #stale do
             local f = stale[k]
+            ns.Jobs.Band(at / sum, (at + w[k]) / sum)
+            ns.Jobs.Title(format(ns.T("job.totals"), k, #stale, ns.EncName(f.boss)))
             if Digest.Stale(f) then ns.Summary.Now(f) end
+            at = at + w[k]
             ns.Jobs.Yield()
         end
         return true

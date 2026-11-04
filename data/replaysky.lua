@@ -7,6 +7,15 @@ ns.replaySky = {
             0, { top = "07060a", mid = "17121a", hor = "2a1a1d", fog = "0d0a0e" },
         },
     },
+    cosmos = {
+        clouds = { day = "Dungeons\\Textures\\Ulduar\\EB_ULDUARSTARFIELD", night = "Dungeons\\Textures\\Ulduar\\EB_ULDUARSTARFIELD",
+                   deg = 40, tint = "ffffff",
+                   at = { -90, 4, 0.75, -60, 3, 0.75, -30, 2, 0.75, 0, 1, 0.75, 30, 0, 0.75 } },
+        fade = { night = { 0, 0 }, day = { 0, 0 }, cloudDay = { 0, 1 }, cloudNight = { 0, 0 } },
+        light = {
+            0, { top = "0a0c2a", mid = "2a1f5a", hor = "3d3a8a", fog = "1a1848" },
+        },
+    },
     icecrown = {
         model = STARS .. "IceCrownSky",
         bowl = { day = STARS .. "ICECROWN_SKYBOWLA", night = STARS .. "ICECROWN_SKYBOWLA_NIGHT", u0 = 0.6, u1 = 0.95,

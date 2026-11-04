@@ -100,7 +100,7 @@ function Effects.IconById(id)
     if cached ~= nil then
         return cached ~= false and cached or nil
     end
-    local _, _, icon = GetSpellInfo(spellId)
+    local icon = ns.SpellIcon(spellId)
     iconCache[spellId] = icon or false
     return icon
 end

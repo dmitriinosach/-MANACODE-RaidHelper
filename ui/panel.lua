@@ -59,7 +59,7 @@ local GLYPHS = {
 }
 local ICONS = {
     { key = "log", label = "panel.log", tip = "panel.tip.log" },
-    { key = "gp", label = "panel.gp", tip = "panel.tip.gp" },
+    { key = "gp", label = "panel.stats", tip = "panel.tip.stats", pic = "stats" },
     { key = "raid", label = "panel.raid", tip = "panel.tip.raid" },
     { key = "spam", label = "panel.spam", tip = "panel.tip.spam" },
     { key = "timer", label = "panel.timer" },
@@ -419,18 +419,18 @@ function Panel.RecStateKey()
     if R.IsPaused and R.IsPaused() then return "panel.rec.paused" end
     return "panel.rec.on"
 end
-local function TintIcon(b, hot)
-    b.hot = hot
-    ns.Kit.Tint(b.plate, hot and "button.bgHover" or "button.bg")
-    ns.Kit.Tint(b.ring, hot and "button.borderHover" or "button.border")
-    ns.Kit.Tint(b.icon, hot and "button.textHover" or "text.primary")
-end
+local TintIcon = Kit.RoundTint
 local function FaultsShown()
     return ns.Shell.IsFolded() and ns.ShellMini.View() == "faults"
 end
 function Panel.ToggleMini()
     if not ns.ShellMini then return end
     if ns.Shell.IsFolded() then ns.Shell.Hide() else ns.Shell.FoldTo(ns.ShellMini.View()) end
+end
+local function MiniIcon(b)
+    local lit = b.lit
+    b.lit = nil
+    if lit and not FaultsShown() then ns.Shell.FoldTo("faults") else Panel.ToggleMini() end
 end
 function Panel.Open(key)
     if key == "mini" then
@@ -470,7 +470,7 @@ local function IconTip(b)
     local open = ns.Shell.IsOpen(b.def.key)
     local hide, show = "panel.tip.hide", "panel.tip.open"
     if b.def.key == "gp" and ns.ShellMini then
-        open = FaultsShown()
+        open = ns.Shell.IsFolded()
         hide, show = "panel.tip.gp.hide", "panel.tip.gp.open"
     end
     lines[#lines + 1] = TipLine(ns.T(open and hide or show), "text.secondary")
@@ -496,11 +496,15 @@ local function IconEnter(b)
         return
     end
     IconTip(b)
-    if key == "gp" then alerts.gp = nil end
+    if key == "gp" then
+        b.lit = b.lit or alerts.gp
+        alerts.gp = nil
+    end
 end
 local function IconLeave(b)
     TintIcon(b, false)
     IconTipHide()
+    b.lit = nil
 end
 local function IconClick(b, button)
     if b.dragAt == GetTime() then return end
@@ -514,26 +518,19 @@ local function IconClick(b, button)
         Panel.ShowActs(b, frame)
         return
     end
+    if b.def.key == "gp" and ns.ShellMini then
+        MiniIcon(b)
+        return
+    end
     Panel.Open(b.def.key)
 end
-local function RoundIcon(b, file)
-    b.plate = b:CreateTexture(nil, "BACKGROUND")
-    b.plate:SetAllPoints()
-    b.plate:SetTexture(ART .. "plate.tga")
-    b.ring = b:CreateTexture(nil, "BORDER")
-    b.ring:SetAllPoints()
-    b.ring:SetTexture(ART .. "ring.tga")
-    b.icon = b:CreateTexture(nil, "ARTWORK")
-    b.icon:SetAllPoints()
-    b.icon:SetTexture(ART .. file .. ".tga")
-    TintIcon(b, false)
-end
+local RoundIcon = Kit.RoundIcon
 local function MakeIcon(def)
     local b = CreateFrame("Button", nil, frame)
     b:SetWidth(ICON)
     b:SetHeight(ICON)
     b.def = def
-    RoundIcon(b, def.key)
+    RoundIcon(b, def.pic or def.key)
     b.glow = b:CreateTexture(nil, "OVERLAY")
     b.glow:SetAllPoints()
     b.glow:SetTexture(GLOW)

@@ -113,12 +113,29 @@ local function AbTrim(ab)
         end
     end
 end
+local dmgTo = setmetatable({}, { __mode = "k" })
+local function DmgToOf(s)
+    local d = dmgTo[s]
+    if d then return d end
+    d = { badges = {}, blocks = {} }
+    for i = 1, s.own do
+        if s.badges[i].kind == "dmgto" then d.badges[#d.badges + 1] = i end
+    end
+    for i = 1, #s.blocks do
+        local kind = s.blocks[i].def.kind
+        if kind == "targets" or kind == "damageTo" or kind == "oozes" then d.blocks[#d.blocks + 1] = i end
+    end
+    dmgTo[s] = d
+    return d
+end
 local function DamageTo(s, p, who, target, tkey, amount, src, swing, spell, crit, id, srcKey, guid)
     if not tkey then return end
-    local badges = s.badges
-    for i = 1, s.own do
+    local d = DmgToOf(s)
+    local badges, own = s.badges, d.badges
+    for k = 1, #own do
+        local i = own[k]
         local bd = badges[i]
-        if bd.kind == "dmgto" and BadgeSets(bd).set[tkey] then
+        if BadgeSets(bd).set[tkey] then
             local st = p.badges[i]
             st.n = 1
             st.amount = st.amount + amount
@@ -126,8 +143,9 @@ local function DamageTo(s, p, who, target, tkey, amount, src, swing, spell, crit
             s.icons[i] = bd.id
         end
     end
-    for i = 1, #s.blocks do
-        local b = s.blocks[i]
+    local blocks = d.blocks
+    for k = 1, #blocks do
+        local b = s.blocks[blocks[k]]
         if b.def.kind == "targets" then
             ns.Targets.Hit(b, who, target, guid, tkey, amount, AbKey(s, swing, src, who, spell, srcKey), crit, id)
         elseif b.names[tkey] and (b.def.kind == "damageTo" or b.def.kind == "oozes") then
@@ -205,10 +223,24 @@ local function Kicked(s, who, sk, srcKey, kick)
         if b.def.kind == "casts" and Listed(b, sk, srcKey) then Add(b, who, kick, 1) end
     end
 end
-local function Cured(s, who, sk, debuff)
+local function Cured(s, who, sk, debuff, id)
     for i = 1, #s.blocks do
         local b = s.blocks[i]
-        if b.def.kind == "removed" and Listed(b, sk, nil) then Add(b, who, debuff, 1) end
+        if b.def.kind == "removed" and Listed(b, sk, nil) then
+            Add(b, who, debuff, 1)
+            if b.ids and id then b.ids[debuff] = b.ids[debuff] or id end
+        end
+    end
+end
+local function Laid(s, sk, name, id, mate)
+    if not name then return end
+    for i = 1, #s.blocks do
+        local b = s.blocks[i]
+        local kind = b.laid and b.def.kind
+        if (kind == "removed" and mate and Listed(b, sk, nil)) or (kind == "dispels" and SpellKey(b.def.spell) == sk) then
+            b.laid[name] = (b.laid[name] or 0) + 1
+            if id then b.ids[name] = b.ids[name] or id end
+        end
     end
 end
 local function Unit(b, guid)
@@ -374,6 +406,7 @@ Acc.Peak = Peak
 Acc.EnemyCast = EnemyCast
 Acc.Kicked = Kicked
 Acc.Cured = Cured
+Acc.Laid = Laid
 Acc.UsefulWatch = UsefulWatch
 Acc.Captive = Captive
 Acc.UsefulHit = UsefulHit

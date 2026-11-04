@@ -32,7 +32,8 @@ local entries = {}
 local order = {}
 local commands = {}
 local frame, strip, close, grip, pageBg, zoomOut, zoomIn, about, fold, maxBtn
-local winGroup, pageGroup, viewGroup
+local winGroup, pageGroup, viewGroup, navGroup
+local navBack, navFwd
 local current
 local moving
 local sizer
@@ -58,6 +59,9 @@ local function Pad()
 end
 local function TabLook()
     return Kit.Theme().tab
+end
+local function Edge()
+    return TabLook().join
 end
 local function TabH()
     return Kit.GrowH(TabLook().h, "GameFontNormalSmall")
@@ -106,7 +110,7 @@ local function PlaceTab(e)
     local tt = TabLook()
     local on = e.key == current or (e.def.lit ~= nil and e.def.lit == current)
     local top = TabH()
-    local below = on and (INSET + Pad()) or tt.seat
+    local below = on and Edge() or tt.seat
     local tab = e.tab
     tab:SetHeight(top + below)
     tab:SetFrameLevel(frame:GetFrameLevel() + TABLEVEL + (on and 1 or 0))
@@ -160,6 +164,9 @@ local function SelectNow(key)
     if switching then Kit.FadeIn(e.page) end
 end
 local Select = ns.Prof.Wrap("ui.page", SelectNow)
+local function Go(key)
+    if ns.ShellNav then ns.ShellNav.Run(Select, key) else Select(key) end
+end
 local function TabOrder(a, b)
     if (a.def.right and true or false) ~= (b.def.right and true or false) then
         return not a.def.right
@@ -327,7 +334,7 @@ local function FontButtons()
     end)
     PaintFont()
 end
-local function SeatGroup(g, x)
+local function SeatGroup(g, x, left)
     local tt = TabLook()
     local inner = max(0, tt.rim - PARTPAD)
     local pw = PartW()
@@ -348,7 +355,11 @@ local function SeatGroup(g, x)
     g:SetFrameLevel(frame:GetFrameLevel() + TABLEVEL)
     for _, b in ipairs(g.parts) do b:SetFrameLevel(g:GetFrameLevel() + 1) end
     g:ClearAllPoints()
-    g:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -x, -tt.seat)
+    if left then
+        g:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", x, -tt.seat)
+    else
+        g:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -x, -tt.seat)
+    end
     g:Seat(tt.seat, lift, TabH() + tt.seat)
     return x + w + TABGAP
 end
@@ -383,6 +394,7 @@ function LayoutTabs()
     tsort(order, TabOrder)
     local tt = TabLook()
     local x = tt.x
+    if navGroup then x = SeatGroup(navGroup, x, true) - TABGAP + GROUPGAP end
     local rx = tt.x
     if winGroup then rx = SeatGroup(winGroup, rx) + GROUPGAP end
     local pages = {}
@@ -393,7 +405,7 @@ function LayoutTabs()
             if go then
                 go()
             elseif current ~= key then
-                Select(key)
+                Go(key)
             end
         end
         if e.def.right and e.def.icon and not e.def.tabless then
@@ -548,9 +560,10 @@ local function Place()
     strip:SetHeight(TabH())
     grip:ClearAllPoints()
     grip:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(4 + Pad()), 4 + Pad())
+    local edge = Edge()
     pageBg:ClearAllPoints()
-    pageBg:SetPoint("TOPLEFT", frame, "TOPLEFT", p, -p)
-    pageBg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -p, p)
+    pageBg:SetPoint("TOPLEFT", frame, "TOPLEFT", edge, -edge)
+    pageBg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -edge, edge)
     for _, e in pairs(entries) do
         if e.page then
             e.page:ClearAllPoints()
@@ -617,6 +630,13 @@ local function BuildStrip()
     viewGroup.parts = { about, fontLess, fontMore, zoomOut, zoomIn }
     about.onClick = function() if ns.About then ns.About.Toggle() end end
     PaintZoom()
+    if not ns.ShellNav then return end
+    navGroup = MakeGroup()
+    navBack = Kit.TabPart(navGroup, "back")
+    navFwd = Kit.TabPart(navGroup, "fwd")
+    navGroup.parts = { navBack, navFwd }
+    ns.ShellNav.Arrows(navBack, navFwd)
+    ns.ShellNav.Watch(frame, strip)
 end
 local function OnTheme()
     if not frame then return end
@@ -706,9 +726,9 @@ function Shell.Open(key)
         if prev and prev.key ~= key and prev.page then prev.page:Hide() end
         frame:Show()
         Fit()
-        Select(key)
+        Go(key)
     elseif key ~= current then
-        Select(key)
+        Go(key)
     end
 end
 function Shell.Hide()
@@ -726,8 +746,9 @@ function Shell.FoldTo(view)
 end
 function Shell.Probe()
     return { frame = frame, strip = strip, maxBtn = maxBtn, fold = fold, grip = grip, sizer = sizer, close = close,
-             groups = { winGroup, pageGroup, viewGroup },
-             acts = { winGroup, pageGroup, viewGroup, about, fontLess, fontMore, zoomOut, zoomIn, fold, maxBtn, close } }
+             groups = { winGroup, pageGroup, viewGroup, navGroup }, back = navBack, fwd = navFwd,
+             acts = { winGroup, pageGroup, viewGroup, navGroup, about, fontLess, fontMore, zoomOut, zoomIn, fold, maxBtn,
+                      close, navBack, navFwd } }
 end
 function Shell.IsFolded()
     return ns.ShellMini ~= nil and ns.ShellMini.IsShown()
@@ -741,6 +762,10 @@ function Shell.Toggle(key)
 end
 function Shell.Current()
     return current
+end
+function Shell.Label(key)
+    local e = entries[key]
+    return e and Label(e) or nil
 end
 function Shell.Frame()
     if not frame then Build() end

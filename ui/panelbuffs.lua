@@ -80,7 +80,7 @@ local function Tip(row)
     Refresh(row)
     if not Panel.Ctx().group then
         return { { kind = "head", left = ns.T("set.panel.row.buffs"), right = Panel.EmptyText("nogroup") },
-            { kind = "foot", left = ns.T("buffrow.click") } }
+            { kind = "foot", key = "lmb", left = ns.T("buffrow.click") } }
     end
     local RB = ns.RaidBuffs
     local lack, _, none, known = RB.Counts()
@@ -88,7 +88,7 @@ local function Tip(row)
         right = known and (lack > 0 and format(ns.T("buffrow.lack.head"), lack) or ns.T("buffrow.all.head")) or nil } }
     if not known then
         lines[2] = { kind = "note", left = ns.T("flaskrow.never") }
-        lines[3] = { kind = "foot", left = ns.T("buffrow.click") }
+        lines[3] = { kind = "foot", key = "lmb", left = ns.T("buffrow.click") }
         return lines
     end
     local miss = RB.Missing()
@@ -113,7 +113,7 @@ local function Tip(row)
         lines[#lines + 1] = { kind = "note", left = format(ns.T("buffrow.nodata"), Names(who, false)) }
     end
     lines[#lines + 1] = { kind = "note", left = format(ns.T("buffrow.age"), ns.Clock(RB.Age() or 0)) }
-    lines[#lines + 1] = { kind = "foot", left = ns.T("buffrow.click") }
+    lines[#lines + 1] = { kind = "foot", key = "lmb", left = ns.T("buffrow.click") }
     return lines
 end
 Panel.Widget({

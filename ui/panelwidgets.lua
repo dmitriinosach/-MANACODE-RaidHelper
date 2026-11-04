@@ -62,10 +62,10 @@ local function Graph(parent, bars, n, slot, h, token)
 end
 local function RecState()
     local R = ns.Recorder
-    if not R or not R.IsOn() then return "off" end
-    if R.IsPaused and R.IsPaused() then return "paused" end
-    if R.InZone and not R.InZone() then return "zone" end
-    return "on"
+    return R and R.State() or "off"
+end
+local function Writing(state)
+    return state == "all" or state == "filter"
 end
 local function TintEq(t, ratio)
     local r, g, b
@@ -119,8 +119,9 @@ local function PerSec(row)
 end
 local function RecTip(row)
     local state = RecState()
-    local lines = { { kind = "head", left = ns.T("panel.line.rec"), right = ns.T("panel.rec.state." .. state) } }
-    if state == "on" then
+    local head = Writing(state) and ns.T("panel.rec.head." .. state) or ns.T("panel.rec.head.none")
+    local lines = { { kind = "head", left = ns.T("panel.line.rec"), right = head } }
+    if Writing(state) then
         local seen, kept = ns.Recorder.Counts()
         lines[2] = { kind = "row", left = ns.T("panel.rec.rate.row"), right = ns.Num(PerSec(row)) }
         lines[3] = { kind = "row", left = ns.T("panel.rec.seen"), right = ns.Num(seen) }
@@ -129,7 +130,8 @@ local function RecTip(row)
     else
         lines[2] = { kind = "sub", left = ns.T("panel.rec.why." .. state) }
     end
-    lines[#lines + 1] = { kind = "foot", left = ns.T("panel.rec.click") }
+    lines[#lines + 1] = { kind = "sub", left = ns.Store.AllCostText() }
+    lines[#lines + 1] = { kind = "foot", key = "lmb", left = ns.T("panel.rec.click") }
     return lines
 end
 Panel.Widget({
@@ -143,20 +145,21 @@ Panel.Widget({
         row.base, row.tick, row.writing = 0, 0, false
         row.eq = Graph(row, row.bars, EQ_BARS, EQ_SLOT, EQ_H, nil)
         Panel.Line(row, row.eq, ns.T("panel.line.rec"))
-        Panel.Reserve(row, format(ns.T("panel.rec.rate"), ns.Num(RATE_PROBE)))
+        Panel.Reserve(row, format(ns.T("panel.rec.rate.filter"), ns.Num(RATE_PROBE)))
         DrawEq(row)
         Panel.Empty(row, "zone")
     end,
     Update = function(row, now)
         local dt = now - (row.last or now)
         row.last = now
-        local on = RecState() == "on"
+        local state = RecState()
+        local on = Writing(state)
         FeedEq(row, on and (ns.Recorder.Counts()) or 0, dt, on)
         DrawEq(row)
         if on then
-            Panel.Value(row, format(ns.T("panel.rec.rate"), ns.Num(PerSec(row))))
+            Panel.Value(row, format(ns.T("panel.rec.rate." .. state), ns.Num(PerSec(row))))
         else
-            Panel.Empty(row, RecState())
+            Panel.Empty(row, state)
         end
     end,
     Tip = RecTip,
@@ -256,14 +259,14 @@ local function NowTip(M, b)
     if HadFight(M) then
         lines[#lines + 1] = { kind = "row", left = ns.T("panel.tip.fight"), right = Short(heal and hps or dps) }
     end
-    lines[#lines + 1] = { kind = "foot", left = ns.T("panel.graphs.click." .. b.view) }
+    lines[#lines + 1] = { kind = "foot", key = "lmb", left = ns.T("panel.graphs.click." .. b.view) }
     return lines
 end
 local function GraphEnter(self)
     local M = ns.Meter
     if not M then
         Panel.Tip(self, { { kind = "head", left = ns.T("set.panel.row.graphs"), right = ns.T("panel.state.none") },
-            { kind = "foot", left = ns.T("panel.graphs.click." .. self.block.view) } })
+            { kind = "foot", key = "lmb", left = ns.T("panel.graphs.click." .. self.block.view) } })
         return
     end
     Panel.Tip(self, NowTip(M, self.block))
@@ -438,7 +441,8 @@ Panel.Widget({
             lines = { { kind = "head", left = ns.T("flaskrow.head"), right = Panel.EmptyText("nogroup") } }
         end
         local toggle = group and ns.FlaskTrade
-        lines[#lines + 1] = { kind = "foot", left = ns.T(toggle and "flaskrow.click" or "buffrow.click") }
+        if toggle then lines[#lines + 1] = { kind = "foot", key = "lmb", left = ns.T("flaskrow.click") } end
+        lines[#lines + 1] = { kind = "foot", key = toggle and "rmb" or "lmb", left = ns.T("buffrow.click") }
         return lines
     end,
     Click = function(row, button)

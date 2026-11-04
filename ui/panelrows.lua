@@ -26,9 +26,9 @@ local PICS = {
 }
 local PIC = ICONS .. "INV_Misc_Note_01"
 local LEVELS = {
-    { pad = 6, gap = 4, sep = 8, label = true },
-    { pad = 4, gap = 3, sep = 6, label = true },
-    { pad = 3, gap = 2, sep = 4, label = false },
+    { pad = 6, gap = Acts.GAP, sep = 8, label = true },
+    { pad = 4, gap = Acts.GAP, sep = 6, label = true },
+    { pad = 3, gap = Acts.GAP, sep = 4, label = false },
 }
 local function CtlH()
     return Panel.RowH() - INSET * 2
@@ -109,6 +109,7 @@ local function Button(v, k)
     if b then return b end
     b = ns.Kit.Button(v)
     Kit.RoundButton(b)
+    Kit.ExactSize(b)
     b.text:SetWordWrap(false)
     b:SetHeight(CtlH())
     b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -260,8 +261,7 @@ local function Lay(v)
                 if it.icon then
                     c.pic:SetWidth(w - 2)
                     c.pic:SetHeight(w - 2)
-                    c.wantH = nil
-                    c.rawSetHeight(c, w)
+                    c:SetHeight(w)
                 else
                     c:SetHeight(h)
                     c.text:SetWidth(max(1, w - 2))

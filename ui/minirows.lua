@@ -112,18 +112,23 @@ local function BlockRows(b, s, out)
     local list = Rows.ByWho(b)
     local cols, cells, keep = Rows.Cells(b, s)
     if cols then head.val = cols .. "  " .. head.val end
+    local chat = {}
+    head.chat = { title = cols and format("%s (%s)", label, cols) or label, rows = chat }
     local top = list[1] and list[1].v or 1
     local shown = min(BLOCK_ROWS, #list)
-    for i = 1, shown do
+    for i = 1, #list do
         local e = list[i]
-        local class = ClassOf(e.who, s)
         local r = cells[e.who]
         local val = Value(b, e.who, e.v)
         if r and #keep > 0 then val = Pick(r.cells, keep) end
-        out[#out + 1] = { kind = "row", lead = tostring(i), left = e.who, class = class, val = val,
-            pct = format("%d%%", floor(e.v * 100 / max(1, b.total) + 0.5)), fill = e.v / max(1, top),
-            lines = r and r.lines or nil, tip = not r and ns.BadgeTips.Row or nil, a = b, b = e.who, c = e.v,
-            d = class, who = e.who }
+        local pct = format("%d%%", floor(e.v * 100 / max(1, b.total) + 0.5))
+        chat[i] = { who = e.who, val = val, rest = { pct } }
+        if i <= shown then
+            local class = ClassOf(e.who, s)
+            out[#out + 1] = { kind = "row", lead = tostring(i), left = e.who, class = class, val = val, pct = pct,
+                fill = e.v / max(1, top), lines = r and r.lines or nil, tip = not r and ns.BadgeTips.Row or nil, a = b,
+                b = e.who, c = e.v, d = class, who = e.who }
+        end
     end
     if #list > shown then Note(out, format(ns.T("mini.more"), #list - shown)) end
     if #list == 0 then Note(out, ns.T("sum.k.none")) end
@@ -134,9 +139,9 @@ end
 local function NpcKey(id)
     return ns.NpcKeyOf and ns.NpcKeyOf(id) or id
 end
-local function RuleKeys(boss)
+local function RuleKeys(f)
     local spells, npcs = {}, {}
-    local rules = ns.Penalties and ns.Penalties.Rules and ns.Penalties.Rules(boss) or {}
+    local rules = ns.Penalties and ns.Penalties.Rules(f.boss, ns.Penalties.DiffOf(f)) or {}
     for i = 1, #rules do
         local r = rules[i]
         ns.SpellSet(r.spells, spells)
@@ -194,20 +199,26 @@ end
 local function StackRows(s, i, over, out)
     local bd = s.badges[i]
     local list = Rows.Over(s, i)
-    out[#out + 1] = { kind = "head", left = format(ns.T("mini.over"), ns.T(bd.tip or ""), over), val = tostring(#list) }
+    local title = format(ns.T("mini.over"), ns.T(bd.tip or ""), over)
+    local chat = {}
+    out[#out + 1] = { kind = "head", left = title, val = tostring(#list), chat = { title = title, rows = chat } }
     local top = list[1] and list[1].v or 1
-    for k = 1, min(BLOCK_ROWS, #list) do
+    for k = 1, #list do
         local e = list[k]
-        out[#out + 1] = { kind = "row", lead = tostring(k), left = e.who, class = e.p.class or ClassOf(e.who, s),
-            val = format(ns.T("mini.peak"), e.peak), pct = format("x%d", e.v), fill = e.v / max(1, top),
-            tip = ns.StackTips and ns.StackTips.Badge or nil, a = e.st, b = bd, who = e.who }
+        local val, pct = format(ns.T("mini.peak"), e.peak), format("x%d", e.v)
+        chat[k] = { who = e.who, val = val, rest = { pct } }
+        if k <= BLOCK_ROWS then
+            out[#out + 1] = { kind = "row", lead = tostring(k), left = e.who, class = e.p.class or ClassOf(e.who, s),
+                val = val, pct = pct, fill = e.v / max(1, top), tip = ns.StackTips and ns.StackTips.Badge or nil,
+                a = e.st, b = bd, who = e.who }
+        end
     end
     if #list > BLOCK_ROWS then Note(out, format(ns.T("mini.more"), #list - BLOCK_ROWS)) end
     if #list == 0 then Note(out, ns.T("stk.never"), "text.good") end
 end
 function Rows.Important(f, s)
     local out = {}
-    local spells, npcs = RuleKeys(f.boss)
+    local spells, npcs = RuleKeys(f)
     for i = 1, #s.blocks do
         local b = s.blocks[i]
         local hidden = ns.SumHide and ns.SumHide.Hidden(f.boss, b.def)

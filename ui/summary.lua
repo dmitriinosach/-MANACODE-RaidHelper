@@ -39,6 +39,7 @@ local style = Badges.style
 local host, content, bg, hint, art
 local pane
 local fight, summary
+local keep
 local stats, panels, heads, tiles = {}, {}, {}, {}
 local wides = {}
 local failPanel
@@ -94,12 +95,18 @@ end
 local function PageWheel(delta)
     return pane ~= nil and pane:Wheel(delta)
 end
+local function ChatCtx()
+    return fight and ns.ChatReport.FightCtx(fight, summary) or ""
+end
 local function Stat(i)
     stats[i] = stats[i] or Badges.Total(content, true)
     return stats[i]
 end
 local function Panel(i)
-    panels[i] = panels[i] or Badges.Detail(content, nil, true)
+    if not panels[i] then
+        panels[i] = Badges.Detail(content, nil, true)
+        Badges.ChatHead(panels[i], ChatCtx)
+    end
     return panels[i]
 end
 local function Head(i)
@@ -144,7 +151,7 @@ local function Hidden(def)
     return ns.SumHide ~= nil and fight ~= nil and ns.SumHide.Hidden(fight.boss, def)
 end
 local function TombBadge(st, def)
-    local list, pts, grade = ns.TombBreak.Shown(st, ns.TombBreak.Limit(def))
+    local list, pts, grade = ns.TombBreak.Shown(st, ns.TombBreak.Limit(def, fight))
     if #list == 0 then return nil, nil end
     return tostring(floor(pts + 0.5)), grade
 end
@@ -166,7 +173,9 @@ local function DispelMark(d)
     if first.who and fight.players[first.who] and ns.TimelineLinks then
         local target = { who = first.who, at = m.at }
         m.onClick = function(_, button) ns.TimelineLinks.OpenMark(target, button) end
-        m.lines[#m.lines + 1] = { kind = "foot",
+        local play = ns.ReplayLink and ns.ReplayLink.Play(fight, m.at)
+        m.lines[#m.lines + 1] = play
+        m.lines[#m.lines + 1] = { kind = "foot", key = play and "shift" or "lmb",
             left = format(ns.T("sum.tip.dispelclick"), first.who, Clock(max(0, first.t))) }
     end
     return m
@@ -253,12 +262,12 @@ local function Entries(p, s)
     local sniff = SniffMark(p, s)
     if sniff then list[#list + 1] = sniff end
     local duties = ns.Penalties and ns.Penalties.Duties(s, fight, p) or {}
-    local forced = {}
+    local forced, dutyIcon = {}, {}
     for k = 1, #duties do
         local d = duties[k]
-        local cover = ns.Actions.Covers(s, p, d)
+        local cover, own = ns.Actions.Covers(s, p, d)
         if type(cover) == "number" then
-            forced[cover] = d.n < d.need
+            forced[cover], dutyIcon[cover] = d.n < d.need, own
         elseif not cover then
             list[#list + 1] = { icon = Icon(d.id), count = tostring(d.n), verdict = Verdict(d.n < d.need),
                 lines = Tips.Duty(ns.Penalties.Reason(d.rule), d.n, d.need),
@@ -298,7 +307,7 @@ local function Entries(p, s)
                 grade = ns.Actions.Grade(st.n, st.hits, forced[i])
             end
             if bd.kind == "pullin" then text = format("%d/%d", st.hits, st.n) end
-            if bd.kind == "away" and st.avg then text, grade = tostring(floor(st.avg + 0.5)), ns.Away.Grade(st, bd) end
+            if bd.kind == "away" and st.avg then text, grade = tostring(floor(st.avg + 0.5)), ns.Away.Grade(st, bd, fight) end
             if bd.kind == "tombbreak" then text, grade = TombBadge(st, bd) end
             if bd.shed and st.hangs then
                 local shed = 0
@@ -318,7 +327,7 @@ local function Entries(p, s)
             elseif P and what and fired[what] then
                 ask = Proof(p, P.BySpell(what))
             end
-            list[#list + 1] = Replay({ icon = Icon(st.icon or s.icons[i]),
+            list[#list + 1] = Replay({ icon = Icon(st.icon or dutyIcon[i] or s.icons[i]),
                 proof = ask,
                 count = text,
                 alert = alert,
@@ -326,7 +335,7 @@ local function Entries(p, s)
                     or (fired[ns.SpellKey(bd.spell) or ""] == "yellow" and "yellow") or grade or st.grade or bd.grade,
                 links = linked and st.notes or (bd.kind == "chased" and st.blasted) or nil,
                 arrow = ARROWS[bd.kind],
-                lines = Tips.Badge(st, bd) }, first and fight.from + first, bd.kind)
+                lines = Tips.Badge(st, bd, fight) }, first and fight.from + first, bd.kind)
         end
     end
     for k = 1, #p.kickList do
@@ -494,9 +503,19 @@ local function FailLayout(self, width)
     self.offset = max(0, math.min(self.offset or 0, rows - cap))
     Kit.Arrow(self.arrow, not FailFolded())
     local room = width - 14
+    local more = self.inside and rows > GPCAP and not FailFolded()
+    if more then self.expand:Show() else self.expand:Hide() end
+    if self.inside then
+        self.all:ClearAllPoints()
+        if more then
+            self.all:SetPoint("RIGHT", self.expand, "LEFT", -6, 0)
+        else
+            self.all:SetPoint("TOPRIGHT", -6, -4)
+        end
+    end
     if self.inside then
         room = width - 36
-        for _, b in ipairs({ self.all, self.pop, self.cfg, self.rolls }) do
+        for _, b in ipairs({ self.expand, self.all, self.pop, self.cfg, self.rolls }) do
             if b:IsShown() then room = room - b:GetWidth() - 6 end
         end
     end
@@ -504,18 +523,10 @@ local function FailLayout(self, width)
         ns.FaultTable.Pick(self.title, room, self.titles[1], self.titles[2], self.titles[3])
         if self.title:GetText() == "" then self.title:SetText(self.titles[3]) end
     end
-    local more = rows > GPCAP and not FailFolded()
-    if more then
-        FitButton(self.more, format(ns.T("sum.gp.more"), rows))
-        self.more:Show()
-    else
-        self.more:Hide()
-    end
     if model and #model.items > 0 and not FailFolded() then
         self.list:Show()
         self.listW = width
         h = top + 2 + self.list:Draw(fight, model, width, self.offset, cap)
-        if more and self.inside then h = h + BTNH + 6 end
     else
         self.list:Hide()
     end
@@ -557,19 +568,19 @@ local function FailMode(f, inside)
     f.cfg:ClearAllPoints()
     f.pop:ClearAllPoints()
     f.rolls:ClearAllPoints()
-    f.more:ClearAllPoints()
+    f.expand:ClearAllPoints()
     if inside then
         f.all:SetPoint("TOPRIGHT", -6, -4)
+        f.expand:SetPoint("TOPRIGHT", -6, -(4 + (BTNH - f.expand:GetHeight()) / 2))
         f.pop:SetPoint("RIGHT", f.all, "LEFT", -6, 0)
         f.cfg:SetPoint("RIGHT", f.pop, "LEFT", -6, 0)
         f.rolls:SetPoint("RIGHT", f.cfg, "LEFT", -6, 0)
-        f.more:SetPoint("BOTTOMRIGHT", -6, 4)
     else
         f.cfg:SetPoint("TOPLEFT", 0, -fm.side)
         f.pop:SetPoint("LEFT", f.cfg, "RIGHT", 6, 0)
         f.rolls:SetPoint("TOPLEFT", 0, -(fm.sideHead + 2))
-        f.more:SetPoint("LEFT", f.pop, "RIGHT", 6, 0)
         f.all:SetPoint("TOPRIGHT", 0, -fm.side)
+        f.expand:Hide()
     end
     f.head:ClearAllPoints()
     f.head:SetPoint("TOPLEFT", 0, 0)
@@ -624,11 +635,7 @@ local function FailPanel()
     FitButton(f.rolls, ns.T("roll.summary.button"))
     f.rolls.tip = ns.T("roll.summary.tip")
     f.rolls.onClick = function() ns.FaultsRoll.OpenSummary(fight) end
-    f.more = ns.MakeButton(f, "HTP_FailWatchGPMore", "quiet")
-    f.more:SetHeight(BTNH)
-    f.more.tip = ns.T("sum.gp.more.tip")
-    f.more.onClick = OpenPage
-    f.more:Hide()
+    f.expand = Badges.Expand(f, function() ns.FaultTable.OpenAll(f) end)
     f.head = CreateFrame("Button", nil, f)
     f.head:EnableMouse(true)
     f.head:SetScript("OnEnter", FailHeadEnter)
@@ -747,23 +754,29 @@ local function ClassOf(who)
     return ns.Encounters.ClassOf(who) or (known and known.class)
 end
 local function WidePanel(v, slot, b)
-    local f = wides[slot] or Badges.Wide(content, nil, true)
-    wides[slot] = f
+    local f = wides[slot]
+    if not f then
+        f = Badges.Wide(content, nil, true)
+        Badges.ChatHead(f, ChatCtx)
+        wides[slot] = f
+    end
     local rows = {}
     for i = 1, #v.rows do
         local r = v.rows[i]
         local marks = {}
-        for k = 1, #r.marks do
+        for k = 1, #(r.marks or {}) do
             local mk = r.marks[k]
             marks[k] = mk and { icon = Icon(mk.id), count = tostring(mk.n) } or false
         end
         rows[i] = { who = r.who, class = r.class, sub = r.sub, cells = r.cells, vals = r.vals, marks = marks,
-                    lines = r.lines, tips = r.tips, tones = r.tones }
+                    lines = r.lines, tips = r.tips, tones = r.tones, pin = r.pin, tone = r.tone }
     end
-    local heads = {}
-    for k = 1, #v.heads do heads[k] = v.heads[k] and Icon(v.heads[k]) or false end
+    local heads, colIcons = {}, {}
+    for k = 1, #(v.heads or {}) do heads[k] = v.heads[k] and Icon(v.heads[k]) or false end
+    for k = 1, #(v.colIcons or {}) do colIcons[k] = v.colIcons[k] and Icon(v.colIcons[k]) or false end
     local mechanic = Tips.Mechanic(b)
-    f:SetModel({ title = v.title, total = v.total, cols = v.cols, heads = heads, rows = rows, tip = v.tip or mechanic.tip,
+    f:SetModel({ title = v.title or BlockTitle(b, mechanic.label), total = v.total, cols = v.cols, heads = heads,
+                 colIcons = colIcons, rows = rows, tip = v.tip or mechanic.tip,
                  icon = mechanic.icon, link = mechanic.link,
                  empty = ns.T("sum.k.none"), onWheel = PageWheel })
     return f
@@ -786,7 +799,7 @@ local function DrawBlocks(s, y, w)
             local v = ns.Putri and ns.Putri.View(b, ClassOf, s)
             if v == nil then
                 v = (ns.Valkyr and ns.Valkyr.View(b, s, ClassOf)) or (ns.Uld and ns.Uld.View(b, s, ClassOf))
-                    or (ns.Targets and ns.Targets.View(b, ClassOf))
+                    or (ns.Targets and ns.Targets.View(b, ClassOf)) or (ns.Cures and ns.Cures.View(b, ClassOf))
             end
             if v then
                 nw = nw + 1
@@ -887,6 +900,10 @@ function Render()
     Mark("players", top, y)
     content:SetHeight(max(host:GetHeight(), y + MARGIN))
     pane:Rescroll()
+    if keep then
+        pane:ScrollTo(keep)
+        keep = nil
+    end
 end
 function View.Attach(frame)
     host = frame
@@ -910,6 +927,7 @@ function View.Show(f)
     if not host then return end
     fight = f
     pane.offset = 0
+    keep = nil
     summary = ns.Summary.Peek(f)
     host:Show()
     Render()
@@ -943,6 +961,13 @@ function View.Refresh()
 end
 function View.Fight()
     return fight
+end
+function View.Offset()
+    return pane and pane.offset or 0
+end
+function View.ScrollTo(y)
+    if not pane then return end
+    if summary then pane:ScrollTo(y) else keep = y end
 end
 if ns.GPList then ns.GPList.OnChange(function() Render() end) end
 Kit.OnFont(function() Render() end)

@@ -24,7 +24,7 @@ local function Metrics()
     m.check = max(CHECK, m.btn)
     m.title = max(TITLE_H, ceil(Kit.FontSize("GameFontNormalSmall", true) * 1.15) + 4)
 end
-local st = { rows = {}, rects = {}, items = {}, hasWorld = false }
+local st = { rows = {}, rects = {}, items = {}, hasWorld = false, hasThrone = false }
 local function Opts(prefix, tipPrefix, keys)
     local out = {}
     for i = 1, #keys do
@@ -72,7 +72,7 @@ local function Place()
     for i = 1, #st.items do
         local it = st.items[i]
         if it.kind == "row" then
-            if it.row.key ~= "world" or st.hasWorld then
+            if (it.row.key ~= "world" or st.hasWorld) and (it.row.key ~= "throne" or st.hasThrone) then
                 PlaceRow(it.row, y)
                 y = y + m.row
             end
@@ -142,11 +142,24 @@ local function WorldRow()
     st.hasWorld = has
     Place()
 end
+local function ThroneRow()
+    local mode, has = ns.ReplayLive.ThroneMode()
+    has = has and ns.ReplayGeo.on
+    local row = st.rows.throne
+    if has then row.label:Show() else row.label:Hide() end
+    for i = 1, #row.btns do
+        if has then row.btns[i]:Show() else row.btns[i]:Hide() end
+    end
+    if has then Mark(row, mode) end
+    st.hasThrone = has
+    Place()
+end
 function View.Refresh()
     local api = st.api
     if not (api and st.menu) then return end
     Mark(st.rows.figs, ns.ReplayFigs.Kind())
     RoomRow(api.Room())
+    ThroneRow()
     Mark(st.rows.cam, ns.ReplayIsoCam.Preset())
     Mark(st.rows.arrows, ns.ReplayArrowsView.Mode())
     WorldRow()
@@ -167,6 +180,8 @@ local function Pick(key, opt)
         ns.ReplayArrowsView.SetMode(opt.key)
     elseif key == "world" then
         ns.ReplayRealmView.SetMode(opt.key)
+    elseif key == "throne" then
+        ns.ReplayIso.SetThrone(opt.key)
     end
     View.Refresh()
 end
@@ -179,6 +194,7 @@ local function Row(menu, key, caption, opts)
     for i = 1, #opts do
         local opt = opts[i]
         local b = Kit.Button(menu)
+        Kit.ExactSize(b)
         Kit.Bind(b.text, "GameFontNormalSmall")
         b.text:SetText(opt.label)
         b.tip = opt.tip
@@ -191,6 +207,7 @@ local function Row(menu, key, caption, opts)
 end
 local function Wide(menu, key, fn)
     local b = Kit.Button(menu)
+    Kit.ExactSize(b)
     Kit.Bind(b.text, "GameFontNormalSmall")
     b.text:SetText(ns.T(key))
     b.tip = ns.T(key .. ".tip")
@@ -213,12 +230,13 @@ local function Check(menu, key, fn)
 end
 function View.Build(ui, run, api)
     st.api = api
-    st.rects, st.items, st.hasWorld = {}, {}, false
+    st.rects, st.items, st.hasWorld, st.hasThrone = {}, {}, false, false
     local menu = CreateFrame("Frame", MENU, ui.frame)
     menu:SetWidth(W)
     menu:SetFrameStrata("FULLSCREEN_DIALOG")
     menu:EnableMouse(true)
-    menu:SetPoint("BOTTOMRIGHT", ui.gearBtn, "TOPRIGHT", 0, GAP)
+    menu:SetPoint("TOPRIGHT", ui.view, "TOPRIGHT", -ns.ReplayIsoBuild.NAV_W, -GAP)
+    st.view = ui.view
     Kit.Skin(menu, "list")
     local title = Kit.Str(menu, "GameFontNormalSmall")
     title:SetText(ns.T("iso.view"))
@@ -227,6 +245,7 @@ function View.Build(ui, run, api)
     st.menu = menu
     Row(menu, "figs", "iso.view.figs", Opts("iso.figs.", "iso.tip.figs.", { "chip", "disc", "vol" }))
     Row(menu, "room", "iso.view.room", Opts("iso.geo.", "iso.tip.geo.", { "vol", "flat" }))
+    Row(menu, "throne", "iso.view.throne", Opts("iso.throne.", "iso.tip.throne.", { "pic", "faces" }))
     Row(menu, "cam", "iso.view.cam", Opts("iso.cam.", "iso.tip.cam.", ns.ReplayIsoCam.PRESET_KEYS))
     Row(menu, "arrows", "iso.view.arrows", Opts("iso.arrows.", "iso.tip.arrows.", { "all", "focus", "off" }))
     Row(menu, "world", "iso.view.world", Opts("iso.world.", "iso.tip.world.", { "mine", "both", "phys", "twi" }))
@@ -255,6 +274,8 @@ function View.Toggle()
         return
     end
     View.Refresh()
+    menu:ClearAllPoints()
+    menu:SetPoint("TOPRIGHT", st.view, "TOPRIGHT", -ns.ReplayIsoBuild.NAV_W, -GAP)
     menu:Show()
     ns.ReplayTour.Note("menu")
 end

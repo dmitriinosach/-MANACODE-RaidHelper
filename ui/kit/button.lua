@@ -147,9 +147,10 @@ local function ShapeTab(b)
     Shown(r[4], h > ch)
     Shown(r[5], h > ch)
     local ins = bd.insets or {}
+    local side = min(ins.left or 0, ins.right or 0)
     b.fill:ClearAllPoints()
-    b.fill:SetPoint("TOPLEFT", b, "TOPLEFT", ins.left or 0, -(ins.top or 0))
-    b.fill:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -(ins.right or 0), 0)
+    b.fill:SetPoint("TOPLEFT", b, "TOPLEFT", side, -(ins.top or 0))
+    b.fill:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -side, 0)
     below = min(e, below)
     local s = b.seam
     s:SetTexture(bd.edgeFile)
@@ -333,6 +334,12 @@ end
 function Kit.RoundButton(b)
     b.kitShape = "backdropRound"
     Restyle(b)
+end
+function Kit.ExactSize(b)
+    autoW[b] = nil
+    b.wantW, b.wantH = nil, nil
+    b.SetWidth = b.rawSetWidth
+    b.SetHeight = b.rawSetHeight
 end
 function Kit.IconButton(parent, tex, size, name)
     local b = Make(parent, "button", Kit.StyleButton, nil, name)

@@ -14,7 +14,7 @@ local RESUME_GAP = 180
 local MIN_FIGHT = 20
 local MIN_DUMMY = 3
 local FX_VERSION = 5
-local SCAN_VERSION = 16
+local SCAN_VERSION = 17
 local CLS_VERSION = 1
 local CAST_WINDOW = 3
 local REVIVE_GAP = 2
@@ -408,7 +408,7 @@ local function ScanAll()
                         list[#list + 1] = id
                     end
                 end
-            elseif srcName and sub == "SPELL_AURA_APPLIED" and dstFlags and bit.band(dstFlags, F_PLAYER) > 0 then
+            elseif sub == "SPELL_AURA_APPLIED" and dstFlags and bit.band(dstFlags, F_PLAYER) > 0 then
                 local a1, a2, _, a4 = Tail(seg, s, pos, gen, sub, 4)
                 local id = tonumber(a1)
                 if id then
@@ -419,7 +419,7 @@ local function ScanAll()
                         st.hostile = st.hostile + 1
                     end
                     if srcName == dstName then st.mine = st.mine + 1 end
-                    local at = castAt[srcName .. "\0" .. id]
+                    local at = srcName and castAt[srcName .. "\0" .. id]
                     if at and ts - at <= CAST_WINDOW then st.cast = st.cast + 1 end
                     if dstName and not st.tg[dstName] then
                         st.tg[dstName] = true
@@ -994,6 +994,7 @@ local function BuildTimeline(fight, who, idx)
                 out.marks[#out.marks + 1] = { t = ts, label = ns.DevMarks.Line(a1, a2) }
             end
             local done = ns.CastGcd.Feed(starts, ts, sub, srcName, dstName, a1, a2)
+            if not done and srcName == who then done = ns.CastGcd.Hit(starts, ts, sub, a1, a2) end
             if done then
                 ns.CastGcd.Insert(out.casts, done)
                 ns.CastResult.Cast(cast, done, dstName)

@@ -11,24 +11,15 @@ local CHECK_HL = "Interface\\Buttons\\UI-CheckBox-Highlight"
 local CHECK_MARK = "Interface\\Buttons\\UI-CheckBox-Check"
 local CHECK_OFF = "Interface\\Buttons\\UI-CheckBox-Check-Disabled"
 local ACH_CAT = "Interface\\AchievementFrame\\UI-Achievement-Category-Background"
-local DLG_DARK = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
-local DLG_GOLD = "Interface\\DialogFrame\\UI-DialogBox-Gold-Border"
-local ACH_WOOD = "Interface\\AchievementFrame\\UI-Achievement-WoodBorder"
-local ACH_BG = "Interface\\AchievementFrame\\UI-Achievement-AchievementBackground"
-local LATTICE = "Interface\\AddOns\\" .. ADDON .. "\\lead\\art\\weave_lattice.tga"
+local ACH_HL = "Interface\\AchievementFrame\\UI-Achievement-Category-Highlight"
 local ROUND = "Interface\\AddOns\\" .. ADDON .. "\\art\\kit\\round"
 local ACCENT = { 0.22, 0.72, 0.32 }
 local WHITE = { 1, 1, 1 }
 local DIMMED = { 0.45, 0.45, 0.45 }
 local GOLD = { 1, 0.82, 0 }
-local OAK = { 0.230, 0.190, 0.130 }
-local AMBER = { 0.62, 0.48, 0.18 }
-local CREAM = { 0.95, 0.91, 0.82 }
-local CREAM2 = { 0.82, 0.75, 0.60 }
 local INSET5 = { left = 5, right = 5, top = 5, bottom = 5 }
 local INSET3 = { left = 3, right = 3, top = 3, bottom = 3 }
 local INSET4 = { left = 4, right = 4, top = 4, bottom = 4 }
-local INSET_DLG = { left = 7, right = 8, top = 8, bottom = 7 }
 local function clamp(v)
     if v < 0 then return 0 end
     if v > 1 then return 1 end
@@ -45,10 +36,8 @@ local function lift(c, top)
     if m <= 0 then return { top, top, top } end
     return tone(c, top / m)
 end
-local brass = lift(OAK, 0.82)
-local umber = lift(OAK, 0.22)
 Kit.themes = {}
-Kit.order = { "dark", "scroll", "gold" }
+Kit.order = { "dark", "scroll" }
 Kit.DEFAULT = "dark"
 Kit.themes.dark = {
     labelKey = "set.theme.dark",
@@ -248,7 +237,10 @@ Kit.themes.dark = {
         bgHover = { 1, 1, 1, 0.08 },
         bgOn = { 1, 1, 1, 0.16 },
         text = WHITE,
-        raid = { tex = ACH_CAT, coord = { 5 / 256, 162 / 256, 4 / 32, 23.5 / 32 }, color = { 1, 1, 1, 0.9 } },
+        raid = { tex = ACH_CAT, coord = { 5 / 256, 162 / 256, 4 / 32, 23.5 / 32 }, color = { 1, 1, 1, 0.9 },
+            inner = { 10.5 / 256, 159.5 / 256, 6 / 32, 22 / 32 } },
+        raidOn = { tex = ACH_HL, coord = { 5 / 256, 162 / 256, 4 / 32, 23.5 / 32 }, color = { 1, 0.6, 0.5, 0.75 },
+            blend = "ADD" },
     },
     card = {
         backdrop = {
@@ -292,6 +284,9 @@ Kit.themes.dark = {
         title = WHITE,
         body = GOLD,
         dim = { 0.80, 0.80, 0.80 },
+        key = { 0.80, 0.79, 0.76, 1 },
+        keySide = { 0.36, 0.35, 0.33, 1 },
+        keyText = { 0.10, 0.09, 0.08 },
     },
     text = {
         title = GOLD,
@@ -412,6 +407,17 @@ Kit.themes.dark = {
         pick = { 1, 0.82, 0 },
         fault = { 0.35, 0.08, 0.08 },
         enc = { 0.10, 0.11, 0.12, 0.62 },
+        inst = {
+            icc = { 0.30, 0.80, 0.76, 0.12 },
+            uld = { 0.40, 0.62, 1.00, 0.13 },
+            toc = { 0.92, 0.76, 0.36, 0.10 },
+            rs = { 0.95, 0.28, 0.38, 0.12 },
+            naxx = { 0.52, 0.84, 0.34, 0.10 },
+            eoe = { 0.68, 0.46, 1.00, 0.13 },
+            os = { 0.96, 0.54, 0.24, 0.10 },
+            ony = { 0.84, 0.34, 0.22, 0.11 },
+            voa = { 0.66, 0.70, 0.80, 0.10 },
+        },
         rep = {
             defile = { 0.45, 0.16, 0.62, 0.85 },
             defileAim = { 0.80, 0.50, 1, 0.9 },
@@ -532,6 +538,18 @@ Kit.themes.dark = {
             clsWisp = { 0.26, 0.89, 0.07, 0.45 },
             clsBeacon = { 1, 0.85, 0.35, 0.55 },
             count = { 1, 0.95, 0.55, 1 },
+            ph = {
+                a = { 0.30, 0.48, 0.78, 0.80 },
+                b = { 0.26, 0.58, 0.52, 0.80 },
+                c = { 0.48, 0.36, 0.74, 0.80 },
+                trans = { 0.70, 0.52, 0.22, 0.80 },
+                hot = { 0.74, 0.24, 0.20, 0.85 },
+                away = { 0.40, 0.66, 0.84, 0.85 },
+                played = { 1, 1, 1, 0.16 },
+                text = { 1, 1, 1, 1 },
+                dur = { 1, 1, 1, 0.75 },
+                tick = { 1, 1, 1, 0.45 },
+            },
             bar = {
                 add = { 0.375, 0.545, 1 },
                 addEnd = { 0.15, 0.385, 1 },
@@ -573,10 +591,25 @@ Kit.themes.dark = {
         },
         bg = { 0.03, 0.04, 0.05, 0.9 },
         photo = { 1, 1, 1, 0.5 },
-        veil = { 0, 0, 0, 0.35 },
+        veil = { 0, 0, 0, 0.45 },
         border = { 0.55, 0.55, 0.6, 1 },
         tool = { 0, 0, 0, 0.5 },
         toolHover = { 1, 1, 1, 0.25 },
+    },
+    about = {
+        art = { 0.42, 0.39, 0.35, 1 },
+        line = rgba(GOLD, 0.30),
+        foot = { 0, 0, 0, 0.50 },
+        card = {
+            backdrop = {
+                bgFile = WHITE8, edgeFile = TIP_EDGE,
+                tile = false, edgeSize = 12, insets = INSET3,
+            },
+            bg = { 0, 0, 0, 0.50 },
+            border = { 0.40, 0.38, 0.34, 0.9 },
+            borderHover = { 0.78, 0.76, 0.70, 1 },
+            borderOn = rgba(GOLD, 1),
+        },
     },
     dev = {
         kit = { 0.1, 1, 0.1, 0.45 },
@@ -742,6 +775,9 @@ Kit.themes.scroll = {
     tip = {
         bg = { 0.08, 0.06, 0.04, 1 },
         border = rgba(EDGE, 0.85),
+        key = { 0.80, 0.72, 0.56, 1 },
+        keySide = { 0.42, 0.32, 0.19, 1 },
+        keyText = { 0.16, 0.10, 0.04 },
     },
     text = {
         title = EDGE,
@@ -755,6 +791,17 @@ Kit.themes.scroll = {
         hover = { 0.78, 0.64, 0.40, 1 },
     },
     sem = {
+        inst = {
+            icc = { 0.36, 0.86, 0.82, 0.15 },
+            uld = { 0.46, 0.68, 1.00, 0.16 },
+            toc = { 1.00, 0.84, 0.44, 0.12 },
+            rs = { 1.00, 0.32, 0.40, 0.14 },
+            naxx = { 0.58, 0.90, 0.38, 0.13 },
+            eoe = { 0.74, 0.52, 1.00, 0.16 },
+            os = { 1.00, 0.58, 0.26, 0.12 },
+            ony = { 0.92, 0.38, 0.24, 0.13 },
+            voa = { 0.74, 0.78, 0.88, 0.13 },
+        },
         rep = {
             mc = { 0.96, 0.12, 0.08, 1 },
             mcBody = { 0.76, 0.04, 0.03, 0.95 },
@@ -788,7 +835,7 @@ Kit.themes.scroll = {
     },
     float = {
         bg = { 0.10, 0.07, 0.04, 0.92 },
-        veil = { 0.10, 0.07, 0.04, 0.35 },
+        veil = { 0.10, 0.07, 0.04, 0.55 },
         border = rgba(EDGE, 0.85),
         toolHover = { 1, 0.86, 0.42, 0.3 },
     },
@@ -796,208 +843,16 @@ Kit.themes.scroll = {
         bg = { 0.10, 0.07, 0.04, 1 },
         border = rgba(EDGE, 0.85),
     },
-}
-Kit.themes.gold = {
-    labelKey = "set.theme.gold",
-    window = {
-        backdrop = {
-            bgFile = DLG_DARK, edgeFile = ACH_WOOD,
-            tile = true, tileSize = 32, edgeSize = 32, insets = INSET_DLG,
+    about = {
+        art = { 0.50, 0.40, 0.27, 1 },
+        line = rgba(EDGE, 0.35),
+        foot = { 0.05, 0.035, 0.02, 0.60 },
+        card = {
+            bg = { 0.05, 0.035, 0.02, 0.55 },
+            border = rgba(TILE, 0.85),
+            borderHover = rgba(EDGE, 1),
+            borderOn = rgba(EDGE, 1),
         },
-        bg = { 1, 1, 1, 1 },
-        border = { 1, 1, 1, 1 },
-        pad = 8,
-        decor = {
-            { tex = ACH_BG, color = { 0.26, 0.20, 0.12 }, layer = "BACKGROUND", inset = 8 },
-            { kind = "backdrop", bgFile = LATTICE, tileSize = 64, color = rgba(GOLD, 0.06), inset = 8 },
-        },
-    },
-    tab = {
-        h = 28,
-        seat = 6,
-        join = 12,
-        rim = 13,
-        x = 16,
-        fill = { tex = WHITE8, color = { 0.035, 0.028, 0.012, 1 } },
-        fillHover = { tex = WHITE8, color = { 0.12, 0.095, 0.035, 1 } },
-        fillOn = { tex = WHITE8, coord = { 0, 1, 0, 1 }, color = { 0.055, 0.044, 0.022, 1 } },
-        text = CREAM2,
-        textHover = WHITE,
-        textOn = GOLD,
-        icon = rgba(CREAM2, 1),
-        iconHover = { 1, 1, 1, 1 },
-        iconOn = rgba(GOLD, 1),
-    },
-    panel = {
-        backdrop = {
-            bgFile = TIP_BG, edgeFile = DLG_GOLD,
-            tile = true, tileSize = 16, edgeSize = 14, insets = INSET4,
-        },
-        bg = { 0.08, 0.06, 0.02, 0.75 },
-        border = { 1, 1, 1, 1 },
-    },
-    plate = {
-        bg = { 0.07, 0.055, 0.03, 1 },
-        border = rgba(AMBER, 1),
-    },
-    scroll = {
-        thumb = rgba(brass, 0.95),
-        thumbHot = rgba(GOLD, 1),
-    },
-    slider = {
-        track = { 0, 0, 0, 0.40 },
-        fill = rgba(GOLD, 0.75),
-        thumb = rgba(brass, 1),
-        thumbHot = { 1, 0.88, 0.45, 1 },
-        thumbOff = { 0.42, 0.37, 0.28, 1 },
-    },
-    nav = {
-        accent = GOLD,
-        group = { 0.70, 0.62, 0.44 },
-    },
-    surface = {
-        page = { 0.05, 0.04, 0.022, 0.96 },
-        solid = { 0.05, 0.04, 0.022, 1 },
-        bg = { 0.09, 0.07, 0.035, 0.80 },
-        panel = { 0.09, 0.07, 0.035, 0.62 },
-        head = { 0.46, 0.36, 0.12, 0.40 },
-        headOn = { 0.55, 0.42, 0.10, 0.62 },
-        headText = { 0.88, 0.78, 0.52 },
-        headOnText = CREAM,
-        label = CREAM,
-        labelOff = { 0.62, 0.56, 0.42 },
-        laneText = CREAM,
-        drop = { 0.55, 0.42, 0.12, 0.70 },
-        dropOn = rgba(GOLD, 0.80),
-        dropRow = { 0.34, 0.26, 0.08, 0.45 },
-        dropSub = { 0.46, 0.38, 0.20, 0.55 },
-    },
-    fx = {
-        name = CREAM,
-        nameOff = { 0.72, 0.66, 0.52 },
-        count = CREAM2,
-        countOff = { 0.56, 0.50, 0.38 },
-        markOff = { 0.62, 0.56, 0.42 },
-        line = rgba(GOLD, 0.14),
-    },
-    button = {
-        bg = tone(umber, 0.55, 0.92),
-        bgHover = tone(umber, 1.00, 0.95),
-        bgDown = tone(umber, 0.38, 0.95),
-        bgActive = tone(ACCENT, 0.4, 0.95),
-        bgOff = tone(umber, 0.35, 0.90),
-        border = rgba(tone(brass, 0.66), 0.9),
-        borderHover = rgba(brass, 1),
-        borderActive = rgba(brass, 1),
-        borderOff = rgba(tone(brass, 0.42), 0.6),
-        glow = brass,
-        text = { 0.90, 0.85, 0.72 },
-        main = {
-            bg = tone(GOLD, 0.20, 0.95),
-            bgHover = tone(GOLD, 0.28, 0.95),
-            bgDown = tone(GOLD, 0.13, 0.95),
-            border = rgba(tone(GOLD, 0.75), 0.95),
-            borderHover = rgba(GOLD, 1),
-            text = GOLD,
-        },
-        quiet = {
-            border = rgba(tone(brass, 0.50), 0.9),
-            borderHover = rgba(brass, 1),
-            glow = brass,
-            text = CREAM,
-        },
-        hot = {
-            bg = tone(umber, 0.70, 0.95),
-            bgHover = tone(umber, 1.10, 0.95),
-            bgDown = tone(umber, 0.45, 0.95),
-            border = rgba(tone(brass, 0.45), 1),
-            borderHover = rgba(tone(GOLD, 0.75), 1),
-            text = tone(GOLD, 0.72),
-            textHover = GOLD,
-        },
-    },
-    check = {
-        label = GOLD,
-    },
-    edit = {
-        bg = { 0.04, 0.03, 0.012, 0.9 },
-        border = rgba(AMBER, 1),
-        borderFocus = rgba(GOLD, 1),
-    },
-    list = {
-        bg = { 0.07, 0.055, 0.025, 0.97 },
-        border = rgba(AMBER, 1),
-        head = GOLD,
-    },
-    card = {
-        bg = tone(umber, 0.35, 0.97),
-        border = rgba(AMBER, 1),
-        borderHover = rgba(GOLD, 1),
-        borderDim = { 0.34, 0.27, 0.10, 0.8 },
-        sticker = { 0.04, 0.03, 0.015, 0.95 },
-        rsDark = { 0.018, 0.012, 0.03, 0.97 },
-        rsDarkEdge = { 0.38, 0.24, 0.50, 1 },
-        rsLight = { 0.20, 0.15, 0.06, 0.95 },
-        rsLightEdge = { 1, 0.90, 0.52, 1 },
-    },
-    tip = {
-        bg = { 0.06, 0.045, 0.02, 1 },
-        border = rgba(GOLD, 0.85),
-    },
-    text = {
-        title = GOLD,
-        primary = CREAM,
-        secondary = CREAM2,
-        muted = { 0.70, 0.64, 0.50 },
-    },
-    badge = {
-        bg = { 0.075, 0.06, 0.035, 1 },
-        edge = { 0.32, 0.25, 0.10, 1 },
-        hover = { 0.92, 0.86, 0.66, 1 },
-    },
-    sem = {
-        rep = {
-            mc = { 1, 0.20, 0.12, 1 },
-            mcBody = { 0.86, 0.07, 0.04, 0.95 },
-            mcIcon = { 1, 0.46, 0.40, 1 },
-            cyclone = { 0.86, 1, 0.88, 0.9 },
-            tank = { 0.89, 0.83, 0.68, 1 },
-            heal = { 0.50, 0.84, 0.56, 1 },
-            bar = {
-                add = { 0.40, 0.56, 1 },
-                addEnd = { 0.18, 0.40, 0.98 },
-                aoe = { 1, 0.48, 0.40 },
-                aoeEnd = { 0.96, 0.08, 0 },
-                target = { 0.90, 0.34, 0.96 },
-                targetEnd = { 0.96, 0.06, 0.92 },
-                interrupt = { 0.50, 0.94, 0.96 },
-                interruptEnd = { 0.08, 0.84, 0.94 },
-                role = { 0.54, 0.98, 0.50 },
-                roleEnd = { 0.16, 0.92, 0.30 },
-                phase = { 1, 0.82, 0.30 },
-                phaseEnd = { 0.62, 0.46, 0.22 },
-                plain = { 1, 0.74, 0.08 },
-                plainEnd = { 0.98, 0.38, 0.04 },
-                bg = { 0.06, 0.045, 0.02, 0.6 },
-                text = CREAM,
-            },
-        },
-    },
-    progress = {
-        track = { 0, 0, 0, 0.40 },
-        fill = rgba(GOLD, 0.8),
-        text = CREAM,
-        queue = CREAM2,
-    },
-    float = {
-        bg = { 0.06, 0.045, 0.02, 0.92 },
-        veil = { 0.06, 0.045, 0.02, 0.35 },
-        border = rgba(GOLD, 0.85),
-        toolHover = { 1, 0.82, 0, 0.3 },
-    },
-    pop = {
-        bg = { 0.06, 0.045, 0.02, 1 },
-        border = rgba(GOLD, 0.85),
     },
 }
 local function deepCopy(src)

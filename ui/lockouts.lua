@@ -11,7 +11,8 @@ local CAP_H = 22
 local NOTE_H = 18
 local HEAD_H = 22
 local GAP = 10
-local COL_GAP = 10
+local COL_GAP = 16
+local MAX_COLS = 3
 local CARD_PAD = 8
 local TILE = 44
 local TILE_GAP = 8
@@ -192,7 +193,8 @@ local function DrawCard(r, saves, kills, x, y, cw, h, per, now)
     end
 end
 local function DrawCards(rows, y, w)
-    local cols = w >= CARD_MIN_W * 2 + COL_GAP and 2 or 1
+    local cols = 1
+    while cols < MAX_COLS and w >= CARD_MIN_W * (cols + 1) + COL_GAP * cols do cols = cols + 1 end
     local cw = floor((w - COL_GAP * (cols - 1)) / cols)
     local now = time()
     local kills = LO.Kills(rows)
@@ -255,7 +257,7 @@ local function Build(page)
     ns.GuildLockView.Build(content, Render, pane)
 end
 function LockView.Probe()
-    return { pools = pools, used = used, caption = caption, pane = pane }
+    return { pools = pools, used = used, caption = caption, pane = pane, host = host, mine = mine }
 end
 LockView.Render = Render
 LO.OnChange(Render)

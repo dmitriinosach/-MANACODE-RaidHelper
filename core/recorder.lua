@@ -203,6 +203,12 @@ end
 function Recorder.InZone()
     return inZone
 end
+function Recorder.State()
+    if not isOn then return "off" end
+    if paused then return "paused" end
+    if not inZone then return "zone" end
+    return writeAll and "all" or "filter"
+end
 function Recorder.HearSince()
     return hearAt
 end
@@ -418,8 +424,13 @@ local function RecordEvent(ts, ...)
         seg = ns.GetDB().live
     end
     local ok = false
-    if ns.RecFilter.Keep(sub, srcGUID, srcName, dstGUID, dstName, spellId, auraType, seg.bosses, writeAll) then
+    if ns.RecFilter.Keep(sub, srcGUID, srcName, dstGUID, dstName, spellId, auraType, seg.bosses, false) then
         ok = ns.Store.Append(ts, ...)
+    elseif writeAll then
+        ok = ns.Store.Append(ts, ...)
+        if ok then seg.xtra = (seg.xtra or 0) + 1 end
+    else
+        seg.skip = (seg.skip or 0) + 1
     end
     if not seg.pull and ns.RecFilter.Pulls(sub, srcFlags, dstGUID, dstName, seg.bosses)
         and not Spent(dstGUID, dstName, seg.bosses) then

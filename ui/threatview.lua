@@ -281,7 +281,7 @@ function TV.Lines(m, t)
         end
     end
     if sp and fight.players[sp.who] ~= nil then
-        lines[#lines + 1] = { kind = "foot", left = format(T("thr.tip.click"), sp.who) }
+        lines[#lines + 1] = { kind = "foot", key = "lmb", left = format(T("thr.tip.click"), sp.who) }
     end
     return lines
 end

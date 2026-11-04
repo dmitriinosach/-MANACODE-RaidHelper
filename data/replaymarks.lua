@@ -1,56 +1,213 @@
 local _, ns = ...
 ns.replayMarks = {
     gap = 3,
+    again = 15,
+    lanes = {
+        role = { def = true, help = true, hero = true, death = true },
+        tank = { taunt = true },
+    },
+    phases = {
+        [ns.ENC.lichking] = {
+            icons = { p1 = 70337, t1 = 68981, p2 = 69037, t2 = 72259, p3 = 69409, fury = 72350, away = 73654 },
+            away = "ph.frostmourne",
+        },
+        [ns.ENC.sindragosa] = { icons = { p1 = 69762, p2 = 70127, away = 69846 }, away = "ph.w.air" },
+        [ns.ENC.putricide] = { icons = { p1 = 70351, t1 = 71617, p2 = 72295, t2 = 71617, p3 = 72451 } },
+        [ns.ENC.halion] = { icons = { p1 = 74562, p2 = 74792, p3 = 75063 } },
+        [ns.ENC.deathwhisper] = { icons = { p1 = 70842, p2 = 71289 } },
+        [ns.ENC.saurfang] = { icons = { p1 = 72293, frenzy = 72737 } },
+        [ns.ENC.valithria] = { icons = { dream = 71189 } },
+    },
     bosses = {
-        [36597] = {
+        [ns.ENC.lichking] = {
             { ids = { 69409, 73797, 73798, 73799 }, sub = "SPELL_CAST_SUCCESS" },
             { ids = { 72762 }, sub = "SPELL_CAST_START" },
+            { ids = { 70337, 73912, 73913, 73914 }, sub = "SPELL_CAST_SUCCESS" },
             { ids = { 69037 }, sub = "SPELL_SUMMON", gap = 10 },
             { ids = { 68981, 74270, 74271, 74272, 72259, 74273, 74274, 74275 }, sub = "SPELL_CAST_START" },
             { ids = { 72262 }, sub = "SPELL_CAST_START" },
             { ids = { 72350 }, sub = "SPELL_CAST_START" },
             { ids = { 68980, 74325, 74326, 74327, 73654, 74295, 74296, 74297 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 70358 }, sub = "SPELL_CAST_START" },
+            { ids = { 70372 }, sub = "SPELL_CAST_START" },
+            { ids = { 70541, 73779, 73780, 73781 }, sub = "SPELL_CAST_START" },
+            { ids = { 69200 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 70498 }, sub = "SPELL_CAST_START" },
+            { ids = { 73539 }, sub = "SPELL_CAST_START" },
         },
-        [36853] = {
+        [ns.ENC.sindragosa] = {
             { ids = { 70126 }, sub = "SPELL_AURA_APPLIED" },
             { ids = { 69762 }, sub = { "SPELL_CAST_SUCCESS", "SPELL_AURA_APPLIED" } },
+            { ids = { 70117 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 70123, 71047, 71048, 71049 }, sub = "SPELL_CAST_START" },
+            { ids = { 69649, 71056, 71057, 71058, 73061, 73062, 73063, 73064 }, sub = "SPELL_CAST_START" },
         },
-        [36627] = {
+        [ns.ENC.rotface] = {
             { ids = { 69558 }, sub = "SPELL_AURA_APPLIED" },
             { ids = { 69839 }, sub = "SPELL_CAST_START" },
+            { ids = { 69508 }, sub = "SPELL_CAST_START" },
+            { ids = { 69674, 71224, 73022, 73023 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 72272, 72273 }, sub = "SPELL_AURA_APPLIED" },
         },
-        [36678] = {
+        [ns.ENC.putricide] = {
             { ids = { 70351, 71966, 71967, 71968 }, sub = "SPELL_CAST_START" },
             { ids = { 71255 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 70341 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 72295, 74280, 72615, 74281 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 70911, 72854, 72855, 72856 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 72451, 72463, 72671, 72672 }, sub = "SPELL_CAST_SUCCESS" },
         },
-        [37955] = {
+        [ns.ENC.lanathel] = {
             { ids = { 71726, 71727, 71728, 71729 }, sub = "SPELL_CAST_SUCCESS" },
             { ids = { 71510 }, sub = "SPELL_CAST_SUCCESS" },
             { ids = { 73070 }, sub = "SPELL_CAST_SUCCESS" },
             { ids = { 71772 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 71340 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 71264 }, sub = "SPELL_CAST_SUCCESS" },
         },
-        [36855] = {
+        [ns.ENC.deathwhisper] = {
             { ids = { 70842 }, sub = "SPELL_AURA_REMOVED" },
             { ids = { 71289 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 71001, 72108, 72109, 72110 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 72905, 72906, 72907, 72908 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 71426 }, sub = "SPELL_SUMMON", gap = 10 },
         },
-        [37813] = {
+        [ns.ENC.saurfang] = {
             { ids = { 72293 }, sub = "SPELL_AURA_APPLIED" },
             { ids = { 72172, 72173, 72356, 72357, 72358 }, sub = "SPELL_SUMMON", gap = 5 },
+            { ids = { 72378, 72379, 72380, 72438, 72439, 72440, 73058 }, sub = "SPELL_CAST_START" },
+            { ids = { 72408, 72409, 72410, 72447, 72448, 72449 }, sub = "SPELL_CAST_SUCCESS" },
         },
-        [36612] = {
+        [ns.ENC.marrowgar] = {
             { ids = { 69076 }, sub = "SPELL_CAST_START" },
             { ids = { 69057, 70826, 72088, 72089, 73142, 73143, 73144, 73145 }, sub = "SPELL_CAST_START" },
         },
-        [36626] = {
+        [ns.ENC.festergut] = {
             { ids = { 69278, 71221, 69279 }, sub = { "SPELL_CAST_SUCCESS", "SPELL_AURA_APPLIED" } },
             { ids = { 69165 }, sub = "SPELL_CAST_START" },
+            { ids = { 69195, 71219, 73031, 73032 }, sub = "SPELL_CAST_START" },
+            { ids = { 69240, 71218, 73019, 73020 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 72549, 72550 }, sub = "SPELL_AURA_APPLIED" },
         },
-        [37970] = {
+        [ns.ENC.council] = {
             { ids = { 70952, 70981, 70982 }, sub = "SPELL_AURA_APPLIED" },
+            { ids = { 72037 }, sub = "SPELL_CAST_START" },
+            { ids = { 72039, 73037, 73038, 73039 }, sub = "SPELL_CAST_START" },
+            { ids = { 71718 }, sub = "SPELL_CAST_START" },
+            { ids = { 72040 }, sub = "SPELL_CAST_START" },
         },
-        [36789] = {
+        [ns.ENC.valithria] = {
             { ids = { 71301, 71305, 72220, 72223, 72224, 72225, 71977, 71987, 72480, 72481, 72482, 72483 },
               sub = { "SPELL_SUMMON", "SPELL_CAST_SUCCESS", "SPELL_CAST_START" }, gap = 10 },
+        },
+        [ns.ENC.halion] = {
+            { ids = { 74525, 74526, 74527, 74528 }, sub = { "SPELL_CAST_START", "SPELL_CAST_SUCCESS" } },
+            { ids = { 74806, 75954, 75955, 75956 }, sub = { "SPELL_CAST_START", "SPELL_CAST_SUCCESS" } },
+            { ids = { 74637, 74648, 75877, 75878, 75879 }, sub = { "SPELL_CAST_START", "SPELL_CAST_SUCCESS" } },
+            { ids = { 74562 }, sub = "SPELL_AURA_APPLIED" },
+            { ids = { 74792 }, sub = "SPELL_AURA_APPLIED" },
+        },
+        [ns.ENC.beasts] = {
+            { ids = { 66330, 67647, 67648, 67649 }, sub = { "SPELL_CAST_START", "SPELL_CAST_SUCCESS" } },
+            { ids = { 66901, 67615, 67616, 67617 }, sub = { "SPELL_CAST_START", "SPELL_CAST_SUCCESS" } },
+            { ids = { 66683, 67660, 67661, 67662 }, sub = { "SPELL_CAST_START", "SPELL_CAST_SUCCESS" } },
+            { ids = { 66688, 66689, 67650, 67651, 67652 }, sub = "SPELL_AURA_APPLIED", gap = 5 },
+        },
+        [ns.ENC.jaraxxus] = {
+            { ids = { 66263, 66264, 66269, 67103, 67104, 67105, 67898, 67899, 67900 },
+              sub = { "SPELL_CAST_START", "SPELL_CAST_SUCCESS" } },
+            { ids = { 66252, 66253, 66255, 66258, 67067, 67068, 67069, 67901, 67902, 67903 },
+              sub = { "SPELL_CAST_START", "SPELL_CAST_SUCCESS" } },
+            { ids = { 66237, 67049, 67050, 67051 }, sub = "SPELL_AURA_APPLIED" },
+            { ids = { 66197, 68123, 68124, 68125 }, sub = "SPELL_AURA_APPLIED" },
+        },
+        [ns.ENC.twins] = {
+            { ids = { 66058, 67182, 67183, 67184 }, sub = { "SPELL_CAST_START", "SPELL_CAST_SUCCESS" } },
+            { ids = { 65875, 67303, 67304, 67305 }, sub = { "SPELL_CAST_START", "SPELL_CAST_SUCCESS" } },
+            { ids = { 66046, 67206, 67207, 67208 }, sub = { "SPELL_CAST_START", "SPELL_CAST_SUCCESS" } },
+            { ids = { 65876, 67306, 67307, 67308 }, sub = { "SPELL_CAST_START", "SPELL_CAST_SUCCESS" } },
+            { ids = { 65858, 67259, 67260, 67261 }, sub = { "SPELL_CAST_START", "SPELL_CAST_SUCCESS" } },
+            { ids = { 65874, 67256, 67257, 67258 }, sub = { "SPELL_CAST_START", "SPELL_CAST_SUCCESS" } },
+        },
+        [ns.ENC.anubarak] = {
+            { ids = { 66013, 67700, 68509, 68510 }, sub = "SPELL_AURA_APPLIED", gap = 5 },
+            { ids = { 67574 }, sub = "SPELL_AURA_APPLIED" },
+        },
+        [ns.ENC.leviathan] = {
+            { ids = { 62396 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 62374 }, sub = "SPELL_CAST_SUCCESS" },
+        },
+        [ns.ENC.ignis] = {
+            { ids = { 62680, 62681, 63472 }, sub = "SPELL_CAST_START" },
+            { ids = { 62717, 63477 }, sub = "SPELL_AURA_APPLIED" },
+            { ids = { 62546, 63474 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 62488 }, sub = "SPELL_CAST_START" },
+        },
+        [ns.ENC.razorscale] = {
+            { ids = { 63317, 64021 }, sub = "SPELL_CAST_START" },
+            { ids = { 62666 }, sub = "SPELL_CAST_START" },
+        },
+        [ns.ENC.xt002] = {
+            { ids = { 63024, 64234 }, sub = "SPELL_AURA_APPLIED" },
+            { ids = { 63018, 65121 }, sub = "SPELL_AURA_APPLIED" },
+            { ids = { 62775, 62776 }, sub = "SPELL_CAST_START" },
+            { ids = { 63849 }, sub = "SPELL_CAST_SUCCESS" },
+        },
+        [ns.ENC.ironcouncil] = {
+            { ids = { 61869, 63481 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 61915, 63483 }, sub = "SPELL_CAST_START" },
+            { ids = { 61973 }, sub = "SPELL_CAST_START" },
+            { ids = { 62269, 63490 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 62273 }, sub = "SPELL_CAST_START" },
+            { ids = { 61920 }, sub = "SPELL_CAST_SUCCESS" },
+        },
+        [ns.ENC.kologarn] = {
+            { ids = { 62166, 63981 }, sub = "SPELL_CAST_SUCCESS" },
+        },
+        [ns.ENC.auriaya] = {
+            { ids = { 64389, 64678 }, sub = "SPELL_CAST_START" },
+            { ids = { 64386 }, sub = "SPELL_CAST_START" },
+            { ids = { 64422, 64688 }, sub = "SPELL_CAST_START" },
+            { ids = { 64396 }, sub = "SPELL_CAST_START" },
+        },
+        [ns.ENC.hodir] = {
+            { ids = { 61968 }, sub = "SPELL_CAST_START" },
+            { ids = { 62478, 63512 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 62469 }, sub = "SPELL_CAST_SUCCESS" },
+        },
+        [ns.ENC.thorim] = {
+            { ids = { 62466 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 62130 }, sub = "SPELL_CAST_SUCCESS" },
+        },
+        [ns.ENC.freya] = {
+            { ids = { 62437, 62859 }, sub = "SPELL_CAST_START" },
+            { ids = { 62283, 62438, 62861, 62930 }, sub = "SPELL_AURA_APPLIED", gap = 5 },
+        },
+        [ns.ENC.mimiron] = {
+            { ids = { 62997, 64529 }, sub = "SPELL_CAST_START" },
+            { ids = { 63631 }, sub = "SPELL_CAST_START" },
+            { ids = { 63666, 65026 }, sub = "SPELL_CAST_START" },
+            { ids = { 63027 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 63414 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 64623 }, sub = "SPELL_CAST_SUCCESS" },
+        },
+        [ns.ENC.vezax] = {
+            { ids = { 62662 }, sub = "SPELL_CAST_START" },
+            { ids = { 63276 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 63364 }, sub = "SPELL_CAST_SUCCESS" },
+        },
+        [ns.ENC.yogg] = {
+            { ids = { 63802 }, sub = "SPELL_CAST_START" },
+            { ids = { 63830, 63881 }, sub = "SPELL_CAST_START" },
+            { ids = { 63891 }, sub = "SPELL_CAST_START" },
+            { ids = { 64059 }, sub = "SPELL_CAST_START" },
+            { ids = { 64163, 64164 }, sub = "SPELL_CAST_SUCCESS" },
+            { ids = { 64189 }, sub = "SPELL_CAST_START" },
+            { ids = { 64465 }, sub = "SPELL_CAST_SUCCESS" },
+        },
+        [ns.ENC.algalon] = {
+            { ids = { 64443, 64584 }, sub = "SPELL_CAST_START" },
+            { ids = { 62301, 64598 }, sub = "SPELL_CAST_SUCCESS" },
         },
     },
 }

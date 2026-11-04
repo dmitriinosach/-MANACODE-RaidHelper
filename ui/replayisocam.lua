@@ -108,6 +108,7 @@ local function LoadCamera()
     run.flat = saved.flat == true
     run.focusHeal = saved.focusHeal == true
     Geo.on = saved.geo ~= false
+    ns.ReplayLive.SetThrone(saved.throne)
 end
 local function Reframe()
     if run.flat then

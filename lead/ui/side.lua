@@ -12,7 +12,7 @@ local TOGGLE_OUT = 14
 local ROW_W = W - EDGE * 2 - PAD * 2 - 4
 local NAME = "GameFontNormalSmall"
 local INFO = "GameFontHighlightSmall"
-local side, toggle, scroll, child, unHead, waitHead, emptyFs
+local side, toggle, shut, scroll, child, unHead, waitHead, emptyFs
 local unPool, waitPool
 local built = false
 ns.Side = {}
@@ -195,11 +195,17 @@ local function paintToggle()
     toggle:SetPushedTexture(ARROW:format(dir, "Down"))
     toggle.tipTitle = ns.T(ns.Side.Open() and "tipSideClose" or "tipSideOpen")
 end
+local function setOpen(on)
+    ns.Sfx.Ui("click")
+    ns.Store.DB().sideOpen = on
+    ns.Session.Changed()
+end
 local function refresh()
     if not built then return end
     paintToggle()
     toggle:ClearAllPoints()
-    toggle:SetPoint("CENTER", ns.Side.Open() and side or ns.window:Outer(), "RIGHT", TOGGLE_OUT, 0)
+    toggle:SetPoint("CENTER", ns.window:Outer(), "RIGHT", TOGGLE_OUT, 0)
+    if ns.Side.Open() then toggle:Hide() else toggle:Show() end
     local open = ns.Side.Open() and side:GetParent():IsVisible()
     local shown = side:GetParent():IsVisible()
     ns.window:ClampRight(open and -(W - 6) or (shown and -(TOGGLE_OUT + 18) or 0))
@@ -228,6 +234,10 @@ local function build()
     local panel = ns.MakePanel(side)
     panel:SetPoint("TOPLEFT", side, "TOPLEFT", EDGE, -EDGE)
     panel:SetPoint("BOTTOMRIGHT", side, "BOTTOMRIGHT", -EDGE, EDGE)
+    shut = ns.Kit.CloseButton(panel, function() setOpen(false) end)
+    shut:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -PAD, -PAD)
+    shut:SetFrameLevel(panel:GetFrameLevel() + 5)
+    shut.tipTitle = ns.T("tipSideClose")
     scroll = ns.NewFrame("ScrollFrame", nil, panel)
     scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -PAD)
     scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -PAD, PAD)
@@ -254,11 +264,7 @@ local function build()
     toggle:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
     toggle:SetScript("OnEnter", function(self) ns.TipShow(self) end)
     toggle:SetScript("OnLeave", ns.TipHide)
-    toggle:SetScript("OnClick", function()
-        ns.Sfx.Ui("click")
-        ns.Store.DB().sideOpen = not ns.Side.Open()
-        ns.Session.Changed()
-    end)
+    toggle:SetScript("OnClick", function() setOpen(not ns.Side.Open()) end)
     built = true
     refresh()
 end

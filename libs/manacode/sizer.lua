@@ -24,6 +24,8 @@ local function Measure(self)
     local x, y = Cursor(self)
     local w = min(max(floor(self.w0 + x - self.x0 + 0.5), self.minW), self.maxW)
     local h = min(max(floor(self.h0 + self.y0 - y + 0.5), self.minH), self.maxH)
+    if self.axis == "x" then h = min(max(floor(self.h0 + 0.5), self.minH), self.maxH) end
+    if self.axis == "y" then w = min(max(floor(self.w0 + 0.5), self.minW), self.maxW) end
     if self.opts.snap then w, h = self.opts.snap(w, h) end
     return w, h
 end
@@ -79,8 +81,9 @@ function Sizer.New(frame, opts)
     Build(self)
     return self
 end
-function Sizer:Start()
+function Sizer:Start(axis)
     if self.active then return false end
+    self.axis = axis or self.opts.axis
     self.minW, self.minH, self.maxW, self.maxH = self.opts.limits()
     self.maxW, self.maxH = max(self.minW, self.maxW), max(self.minH, self.maxH)
     self.x0, self.y0 = Cursor(self)

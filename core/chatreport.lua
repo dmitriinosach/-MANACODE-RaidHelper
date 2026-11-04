@@ -89,3 +89,60 @@ function Report.Send(lines, want)
     end
     return (ns.Proof.SendLines(lines, want, target, "report"))
 end
+local LIMIT = 255
+function Report.Plain(s)
+    s = tostring(s or "")
+    s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", ""):gsub("|H.-|h(.-)|h", "%1")
+    s = s:gsub("|", ""):gsub("[\r\n]+", " "):gsub("%s%s+", " ")
+    return (s:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+function Report.Fit(s)
+    if #s <= LIMIT then return s end
+    local cut = LIMIT - 3
+    while cut > 0 do
+        local b = s:byte(cut + 1)
+        if not b or b < 128 or b >= 192 then break end
+        cut = cut - 1
+    end
+    return s:sub(1, cut) .. "…"
+end
+function Report.FightCtx(fight, s)
+    return format(T("report.ctx.fight"), ns.EncName(fight.boss), T(fight.killed and "report.kill" or "report.wipe"),
+        Clock(s and s.dur or 0))
+end
+function Report.RaidCtx(raid)
+    local head = format(T("dc.raid"), ns.Raid.Title(raid), raid.size or 0, raid.heroic and T("dc.hc") or "")
+    return raid.from and (head .. ", " .. ns.Date(raid.from)) or head
+end
+function Report.Detail(title, ctx, rows, n)
+    title = Report.Plain(title)
+    if ctx == "" then ctx = nil end
+    local out = { Report.Fit(ctx and format(T("report.head.detail"), title, Report.Plain(ctx)) or "MRH: " .. title) }
+    for i = 1, min(n, #rows) do
+        local r = rows[i]
+        local line = format("%d. %s %s", i, Report.Plain(r.who), Report.Plain(r.val))
+        local rest = {}
+        for k = 1, #(r.rest or {}) do
+            local x = Report.Plain(r.rest[k])
+            if x ~= "" then rest[#rest + 1] = x end
+        end
+        if #rest > 0 then line = line .. " (" .. table.concat(rest, ", ") .. ")" end
+        out[#out + 1] = Report.Fit((line:gsub("%s+$", "")))
+    end
+    return out
+end
+function Report.Can(c)
+    local raid = (GetNumRaidMembers() or 0) > 0
+    if c == "RAID" then return raid end
+    if c == "PARTY" then return raid or (GetNumPartyMembers() or 0) > 0 end
+    if c == "GUILD" or c == "OFFICER" then return IsInGuild() and true or false end
+    if c == "WHISPER" then return (UnitExists("target") and UnitIsPlayer("target")) and true or false end
+    return KNOWN[c or ""] == true
+end
+function Report.SendNow(lines, want)
+    if not KNOWN[want or ""] or #lines < 2 then return 0 end
+    local target = want == "WHISPER" and UnitExists("target") and UnitIsPlayer("target") and UnitName("target") or nil
+    local n, err = ns.Proof.SendLines(lines, want, target, "report")
+    if not err then Saved().ch = want end
+    return n
+end

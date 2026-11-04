@@ -38,11 +38,29 @@ end
 function RL.Line(fight, t, who)
     local s = RL.Start(fight, t)
     if not (s and ns.ReplayIso) then return nil end
-    return { kind = "foot", left = format(ns.T("rp.shift"), Clock(s)) }
+    return { kind = "foot", key = "shift", left = format(ns.T("rp.shift"), Clock(s)) }
+end
+function RL.Can(f)
+    return f ~= nil and ns.ReplayIso ~= nil and not RL.Bare(f)
+end
+function RL.Play(fight, t)
+    local s = RL.Start(fight, t)
+    if not (s and RL.Can(fight)) then return nil end
+    return { kind = "foot", key = "lmb", left = format(ns.T("rp.click"), Clock(s)) }
 end
 function RL.Tag(lines, fight, t)
-    lines[#lines + 1] = RL.Line(fight, t)
+    if not (fight and t) then return lines end
+    local play = RL.Play(fight, t)
+    lines[#lines + 1] = play
+    lines[#lines + 1] = { kind = "foot", key = play and "shift" or "lmb",
+        left = format(ns.T("tl.mark.click"), Clock(max(0, t - fight.from))) }
     return lines
+end
+function RL.Click(fight, t, who, button)
+    if button and button ~= "LeftButton" then return false end
+    if not (fight and t and RL.Can(fight)) or (IsShiftKeyDown and IsShiftKeyDown()) then return false end
+    ns.Tip.Hide()
+    return RL.Open(fight, t, who)
 end
 function RL.First(list, key)
     local best
@@ -97,7 +115,8 @@ function RL.SetFight(f)
     if save then
         if f then save:Show() else save:Hide() end
     end
-    if f and ns.ReplayIso then
+    local bare = f and RL.Bare(f)
+    if f and ns.ReplayIso and not bare then
         head:Enable()
         Kit.Tint(head.icon, "text.good")
         head.tip = RL.TryText(f)
@@ -105,7 +124,7 @@ function RL.SetFight(f)
     else
         head:Disable()
         Kit.Tint(head.icon, "button.textOff")
-        head.tip = ns.T(f and "rp.head.none" or "rp.head.off")
+        head.tip = ns.T(bare and "rec.bare" or (f and "rp.head.none" or "rp.head.off"))
         head.tipDim = nil
     end
 end
@@ -117,7 +136,7 @@ local function MiniEnter(self)
     ns.Tip.Show(self, {
         { kind = "head", left = ns.T("rp.mini") },
         { kind = "row", left = RL.TryText(self.fight) },
-        { kind = "foot", left = ns.T("rp.mini.click") },
+        { kind = "foot", key = "lmb", left = ns.T("rp.mini.click") },
     })
 end
 local function MiniLeave(self)
@@ -129,6 +148,14 @@ end
 local function MiniClick(self)
     ns.Tip.Hide()
     RL.Open(self.fight, nil)
+end
+function RL.Bare(f)
+    local S = ns.Store
+    return S and S.Bare(f) or false
+end
+function RL.MiniFight(b, f)
+    b.fight = f
+    if f and ns.ReplayIso and not RL.Bare(f) then b:Show() else b:Hide() end
 end
 function RL.Mini(parent, size)
     local b = CreateFrame("Button", nil, parent)

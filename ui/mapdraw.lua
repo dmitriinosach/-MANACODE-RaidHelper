@@ -6,21 +6,6 @@ local TILES = 12
 local MapDraw = {}
 ns.MapDraw = MapDraw
 MapDraw.TILES = TILES
-function MapDraw.Fit(room, boxW, boxH)
-    local aspect = 4 / 3
-    if room then
-        local wide = (room.r - room.l) * 4
-        local tall = (room.b - room.t) * 3
-        if wide > 0 and tall > 0 then aspect = wide / tall end
-    end
-    local w = boxW
-    local h = w / aspect
-    if h > boxH then
-        h = boxH
-        w = h * aspect
-    end
-    return max(1, floor(w)), max(1, floor(h))
-end
 local function TileBase(room)
     local level = room.floor or 0
     if ns.mapTerrain and ns.mapTerrain[room.area] then level = level - 1 end

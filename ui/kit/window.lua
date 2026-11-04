@@ -230,10 +230,20 @@ local GLYPHS = {
     max = Box({}, 0, 0, 12, 12, 2),
     unmax = Box({ { 3, 0, 9, 2 }, { 11, 0, 1, 8 }, { 3, 0, 1, 4 }, { 9, 7, 3, 1 } }, 0, 4, 9, 8, 2),
     close = {},
+    play = {},
+    pause = { { 2, 1, 3, 10 }, { 7, 1, 3, 10 } },
+    back = {},
+    fwd = {},
 }
 for i = 0, 10 do
     GLYPHS.close[#GLYPHS.close + 1] = { i, i, 2, 2 }
     GLYPHS.close[#GLYPHS.close + 1] = { 10 - i, i, 2, 2 }
+    GLYPHS.play[#GLYPHS.play + 1] = { 2, i + 1, math.min(10, (5 - math.abs(i - 5)) * 2 + 1), 1 }
+end
+for y = 1, 10 do
+    local d = math.floor(math.abs(y - 5.5))
+    GLYPHS.back[#GLYPHS.back + 1] = { 3 + d, y, 2, 1 }
+    GLYPHS.fwd[#GLYPHS.fwd + 1] = { 7 - d, y, 2, 1 }
 end
 local function GlyphStyle(b)
     Kit.StyleButton(b)
@@ -304,11 +314,13 @@ function Kit.CloseButton(parent, onClose)
 end
 local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\kit\\"
 local GRIP_TEX = ART .. "grip"
+local VGRIP_TEX = ART .. "vgrip"
 local GRIP_CURSOR = ART .. "grip_cursor"
 local GRIP_BLANK = ART .. "blank"
 local GRIP_BADGE = 24
 local GRIP_ARROW = 25 / 32
 local badge
+local badgeArrow
 local badgeOwner
 local function BadgeFollow(self)
     local u = UIParent:GetEffectiveScale()
@@ -324,10 +336,8 @@ local function Badge()
     badge:SetWidth(GRIP_BADGE)
     badge:SetHeight(GRIP_BADGE)
     badge:Hide()
-    local arrow = badge:CreateTexture(nil, "OVERLAY")
-    arrow:SetTexture(GRIP_CURSOR)
-    arrow:SetTexCoord(0, GRIP_ARROW, 0, GRIP_ARROW)
-    arrow:SetAllPoints(badge)
+    badgeArrow = badge:CreateTexture(nil, "OVERLAY")
+    badgeArrow:SetAllPoints(badge)
     badge:SetScript("OnUpdate", BadgeFollow)
     badge:SetScript("OnHide", function() ResetCursor() end)
     return badge
@@ -335,6 +345,13 @@ end
 local function BadgeShow(g)
     local f = Badge()
     badgeOwner = g
+    if g.vert then
+        badgeArrow:SetTexture(VGRIP_TEX)
+        badgeArrow:SetTexCoord(0, 1, 0, 1)
+    else
+        badgeArrow:SetTexture(GRIP_CURSOR)
+        badgeArrow:SetTexCoord(0, GRIP_ARROW, 0, GRIP_ARROW)
+    end
     BadgeFollow(f)
     f:Show()
 end
@@ -373,16 +390,18 @@ local function GripHide(self)
     Kit.Tint(self.tex, "window.grip")
     BadgeHide(self)
 end
-function Kit.Grip(parent, size)
+function Kit.Grip(parent, size, kind)
     local g = CreateFrame("Button", nil, parent)
+    local tex = kind == "v" and VGRIP_TEX or GRIP_TEX
+    g.vert = kind == "v" or nil
     g:SetWidth(size)
     g:SetHeight(size)
     g.tex = g:CreateTexture(nil, "ARTWORK")
-    g.tex:SetTexture(GRIP_TEX)
+    g.tex:SetTexture(tex)
     g.tex:SetAllPoints(g)
     Kit.Tint(g.tex, "window.grip")
     local hi = g:CreateTexture(nil, "HIGHLIGHT")
-    hi:SetTexture(GRIP_TEX)
+    hi:SetTexture(tex)
     hi:SetAllPoints(g)
     hi:SetBlendMode("ADD")
     Kit.Tint(hi, "window.gripGlow")

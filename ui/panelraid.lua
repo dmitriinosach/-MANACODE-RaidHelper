@@ -153,7 +153,7 @@ Panel.Widget({
         else
             lines[#lines + 1] = { kind = "note", left = ns.T("panel.raidtime.nokill") }
         end
-        lines[#lines + 1] = { kind = "foot", left = ns.T("panel.raidtime.click") }
+        lines[#lines + 1] = { kind = "foot", key = "lmb", left = ns.T("panel.raidtime.click") }
         return lines
     end,
     Click = function(row, button)

@@ -52,8 +52,7 @@ end
 local function Passed(st, def)
     local eps = st.eps
     local n = #eps
-    local out = { { kind = "head", left = T(def.tip) } }
-    Put(out, "row", T("stk.pass.n"), format(Plural(n, T("stk.times")), n))
+    local out = { { kind = "head", left = T(def.tip), right = format("x%d", n) } }
     Put(out, "row", T("stk.pass.sec"), format(T("stk.sec"), Dec(st.sec or 0)))
     if st.tick then Put(out, "row", T("stk.pass.tick"), ns.Short(st.tick)) end
     for k = 1, min(ROWS, n) do
@@ -98,8 +97,7 @@ end
 function StackTips.Lost(st, def)
     local list = st.lost
     local out = {}
-    out[1] = { kind = "head", left = T(def.tip) }
-    Put(out, "row", T("stk.lost.n"), tostring(#list), nil, "warn")
+    out[1] = { kind = "head", left = T(def.tip), right = format("x%d", #list), tone = "warn" }
     for k = 1, min(ROWS, #list) do
         local e = list[k]
         Put(out, "sub", Clock(e.t), e.n > 0 and format(T("stk.lost.had"), e.n) or T("stk.lost.unknown"))

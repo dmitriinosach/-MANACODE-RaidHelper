@@ -47,7 +47,7 @@ function M.New(fight)
     if not trap and #zones == 0 and not bomb and #chase == 0 and not winter and not soul then return nil end
     local ctx = { fight = fight, players = fight.players or {}, trap = trap, casts = {}, booms = {}, open = {},
                   btgt = {}, zones = zones, zCast = {}, zSum = {}, zDrop = {}, zHit = {}, zCasts = {}, inst = {}, byGuid = {},
-                  marks = {}, bomb = bomb, bCasts = {}, bHits = {}, chase = chase, cAura = {}, cSpawn = {},
+                  marks = {}, bomb = bomb, bCasts = {}, bHits = {}, bDied = {}, chase = chase, cAura = {}, cSpawn = {},
                   cNpc = {}, cSeen = {}, cWait = {}, cLone = {}, cOpen = {}, runs = {},
                   winter = winter, rings = {}, wHits = {}, soul = soul, sOpen = {}, spans = {} }
     ctx.wAura = ns.IdSet(winter and winter.aura)
@@ -119,98 +119,87 @@ local function Banner(ctx)
     end
     return list
 end
-local function Meet(L)
-    local a, b, c, p, q, m = 0, 0, 0, 0, 0, 0
-    for i = 1, #L do
-        local l = L[i]
-        if l.on then
-            local m11, m12, m22 = 1 - l.ux * l.ux, -l.ux * l.uy, 1 - l.uy * l.uy
-            a, b, c = a + m11, b + m12, c + m22
-            p, q = p + m11 * l.x + m12 * l.y, q + m12 * l.x + m22 * l.y
-            m = m + 1
+local function Unexplained(x, y, P, T, s2)
+    local bad = 0
+    for p = 1, P.n do
+        local ax, ay = P.x[p] - x, P.y[p] - y
+        local d2 = ax * ax + ay * ay
+        local shade = false
+        for q = 1, T.n do
+            local bx, by = T.x[q] - x, T.y[q] - y
+            if bx * bx + by * by < d2 then
+                local cr = bx * ay - by * ax
+                if cr * cr <= s2 * d2 then
+                    shade = true
+                    break
+                end
+            end
         end
+        if shade == P.hit[p] then bad = bad + 1 end
     end
-    local det = a * c - b * b
-    if m < 2 or det < 0.05 * m then return nil end
-    return (p * c - b * q) / det, (a * q - b * p) / det
+    return bad
 end
 local function BombAt(ctx, t, hit, posAt, ppy, names)
     local B = ctx.bomb
-    local tx, ty, inTomb = {}, {}, {}
+    local A = B.area
+    local T, inTomb = { x = {}, y = {}, n = 0 }, {}
     for i = 1, #ctx.tombs do
         local tb = ctx.tombs[i]
         if tb.from <= t and (not tb.to or tb.to >= t) then
             local x, y = posAt(tb.name, t)
-            if x then tx[#tx + 1], ty[#ty + 1] = x, y end
+            if x then T.n, T.x[T.n + 1], T.y[T.n + 1] = T.n + 1, x, y end
             inTomb[tb.name] = true
         end
     end
-    if #tx == 0 then return nil end
-    local hide2 = (B.hide * ppy) ^ 2
-    local lines = {}
-    local ux, uy = 0, 0
+    if T.n == 0 or not A then return nil end
+    local P = { x = {}, y = {}, hit = {}, n = 0 }
     for i = 1, #names do
-        if not inTomb[names[i]] and not hit[names[i]] then
-            local x, y = posAt(names[i], t - 0.3)
-            local best, bq = hide2, nil
-            for q = 1, x and #tx or 0 do
-                local d2 = (tx[q] - x) ^ 2 + (ty[q] - y) ^ 2
-                if d2 <= best then best, bq = d2, q end
-            end
-            if bq and best > 0 then
-                local d = sqrt(best)
-                local l = { x = tx[bq], y = ty[bq], ux = (tx[bq] - x) / d, uy = (ty[bq] - y) / d, on = true }
-                lines[#lines + 1] = l
-                ux, uy = ux + l.ux, uy + l.uy
+        local name = names[i]
+        local died = ctx.bDied[name]
+        if not inTomb[name] and not (died and died <= t) then
+            local x, y = posAt(name, t - 0.3)
+            if x then
+                local n = P.n + 1
+                P.n, P.x[n], P.y[n], P.hit[n] = n, x, y, hit[name] == true
             end
         end
     end
-    local ulen = sqrt(ux * ux + uy * uy)
-    if #lines == 0 or ulen < 0.01 then return nil end
-    ux, uy = ux / ulen, uy / ulen
-    local cone = math.cos(math.rad(B.cone))
-    for i = 1, #lines do
-        local l = lines[i]
-        l.on = l.ux * ux + l.uy * uy >= cone
-    end
-    local X, Y = Meet(lines)
-    if X then
-        local miss2 = (B.miss * ppy) ^ 2
-        for i = 1, #lines do
-            local l = lines[i]
-            local dx, dy = X - l.x, Y - l.y
-            local along = dx * l.ux + dy * l.uy
-            l.on = l.on and along > 0 and dx * dx + dy * dy - along * along <= miss2
+    if P.n == 0 then return nil end
+    local step, s2, gap2 = B.step * ppy, (B.shade * ppy) ^ 2, (B.gap * ppy) ^ 2
+    local nx, ny = floor((A[3] - A[1]) / step), floor((A[4] - A[2]) / step)
+    local bad, best, sx, sy, n = {}, 1e9, 0, 0, 0
+    for j = 1, ny do
+        ns.Jobs.Step(16)
+        local y = A[2] + (j - 0.5) * step
+        for i = 1, nx do
+            local x = A[1] + (i - 0.5) * step
+            local v = false
+            for q = 1, T.n do
+                if (T.x[q] - x) ^ 2 + (T.y[q] - y) ^ 2 < gap2 then v = true end
+            end
+            v = not v and Unexplained(x, y, P, T, s2)
+            bad[(j - 1) * nx + i] = v
+            if v and v < best then
+                best, sx, sy, n = v, x, y, 1
+            elseif v == best then
+                sx, sy, n = sx + x, sy + y, n + 1
+            end
         end
-        X, Y = Meet(lines)
     end
-    local cx, cy, n = 0, 0, 0
-    for i = 1, #lines do
-        if lines[i].on then cx, cy, n = cx + lines[i].x, cy + lines[i].y, n + 1 end
+    if n == 0 then return nil end
+    sx, sy = sx / n, sy / n
+    local bx, by, bd = nil, 0, 1e18
+    for j = 1, ny do
+        local y = A[2] + (j - 0.5) * step
+        for i = 1, nx do
+            if bad[(j - 1) * nx + i] == best then
+                local x = A[1] + (i - 0.5) * step
+                local d = (x - sx) ^ 2 + (y - sy) ^ 2
+                if d < bd then bx, by, bd = x, y, d end
+            end
+        end
     end
-    if n == 0 then
-        for i = 1, #lines do cx, cy, n = cx + lines[i].x, cy + lines[i].y, n + 1 end
-    end
-    cx, cy = cx / n, cy / n
-    local dx, dy, dist = ux, uy, B.near
-    if X and (X - cx) * ux + (Y - cy) * uy > 0 then
-        dx, dy = X - cx, Y - cy
-    end
-    local len = sqrt(dx * dx + dy * dy)
-    if len < 0.01 then return nil end
-    dx, dy = dx / len, dy / len
-    local bx, by, far = cx, cy, -1e9
-    for i = 1, #lines do
-        local l = lines[i]
-        local pr = l.x * dx + l.y * dy
-        if (l.on or n == #lines) and pr > far then bx, by, far = l.x, l.y, pr end
-    end
-    if X then
-        local d = ((X - bx) * dx + (Y - by) * dy) / ppy
-        if d >= B.near and d <= B.far then return X, Y end
-        dist = min(B.far, max(B.near, d))
-    end
-    return bx + dx * dist * ppy, by + dy * dist * ppy
+    return bx, by
 end
 local function Falls(ctx, hits)
     local B = ctx.bomb
@@ -386,6 +375,7 @@ function M.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1, amount, id, srcKe
     end
     if sub == "UNIT_DIED" then
         if ctx.soul and dst and P[dst] then SoulDied(ctx, ts, dst) end
+        if ctx.bomb and dst and P[dst] and not ctx.bDied[dst] then ctx.bDied[dst] = ts end
         return
     end
     if not id or (src and P[src]) then return end
@@ -875,6 +865,7 @@ function M.LogPos(fight)
             tr = { t = {}, x = {}, y = {} }
             for i = 1, #segs do
                 for ts, x, y in ns.Decode.Pos(segs[i], name, fight.from - 5, fight.to + 5) do
+                    ns.Jobs.Step()
                     if ts > fight.to + 5 then break end
                     if x > 0 or y > 0 then
                         local n = #tr.t + 1

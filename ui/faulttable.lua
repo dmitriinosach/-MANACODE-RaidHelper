@@ -6,6 +6,7 @@ local max = math.max
 local min = math.min
 local UNDO = "Interface\\PaperDollInfoFrame\\UI-GearManager-Undo"
 local REASON = 80
+local NICK = 48
 local DONE = "Interface\\RAIDFRAME\\ReadyCheck-Ready"
 local FT = {}
 ns.FaultTable = FT
@@ -27,7 +28,7 @@ local function Scaled(f)
     for name, v in pairs(base) do L[name] = v end
     L.rowh = max(base.rowh + np - Kit.FontSize(nb), ceil(np * 1.15) + 6)
     L.headh = max(base.headh + ds, ceil(sp * 1.15) + 4)
-    for _, name in ipairs({ "whenw", "namew", "mainw", "proofw", "hotw" }) do
+    for _, name in ipairs({ "namew", "mainw", "proofw", "hotw" }) do
         L[name] = ceil(base[name] * max(1, k))
     end
     L.k = max(1, k)
@@ -68,8 +69,8 @@ function FT.Rows(model, filter)
     end
     return rows
 end
-local function Cols(L, width, noHot, noWhen)
-    local c = { hot = {}, hotw = noHot and 0 or L.hotw, whenw = noWhen and 0 or L.whenw }
+local function Cols(L, width, noHot, all)
+    local c = { hot = {}, hotw = noHot and 0 or L.hotw, allw = all and L.mainw or 0 }
     local x = width - 2
     for i = 3, 1, -1 do
         x = x - c.hotw
@@ -79,18 +80,18 @@ local function Cols(L, width, noHot, noWhen)
     c.proof = x
     x = x - L.mainw
     c.main = x
-    x = x - c.whenw
-    c.when = x
+    x = x - c.allw
+    c.all = x
     c.left = L.checkw + (L.small and 2 or 6)
-    c.nameEnd = c.when - 4
+    c.nameEnd = c.all - 4
     return c
 end
-local function Fitted(L, width, nick, mark)
+local function Fitted(L, width, nick, mark, all)
     local need = ceil(REASON * (L.k or 1))
-    local c = Cols(L, width)
+    local c = Cols(L, width, nil, all)
     local function Room(cc) return cc.nameEnd - (cc.left + mark + nick + 4) end
-    if Room(c) < need and L.hotw > 0 then c = Cols(L, width, true) end
-    if Room(c) < need and L.whenw > 0 then c = Cols(L, width, c.hotw == 0, true) end
+    if Room(c) < need and L.hotw > 0 then c = Cols(L, width, true, all) end
+    if Room(c) < need then nick = max(min(nick, ceil(NICK * (L.k or 1))), nick - (need - Room(c))) end
     c.nick, c.mark = nick, mark
     return c
 end
@@ -105,8 +106,8 @@ local function Head(f, c)
     h:SetHeight(L.headh)
     At(h.who, h, c.left, c.nameEnd - c.left)
     FT.Pick(h.who, c.nameEnd - c.left, ns.T("ft.col.who"))
-    At(h.when, h, c.when, max(1, c.whenw))
-    FT.Pick(h.when, c.whenw, c.whenw > 0 and ns.T("ft.col.when"))
+    At(h.all, h, c.all, max(1, c.allw))
+    FT.Pick(h.all, c.allw, c.allw > 0 and ns.T("ft.col.all"))
     At(h.main, h, c.main, L.mainw)
     FT.Pick(h.main, L.mainw, not L.small and format(ns.T("ft.col.rule"), unit), unit)
     At(h.proof, h, c.proof, L.proofw)
@@ -124,13 +125,16 @@ local function MainClick(self)
     local list, d = ListOf(r), r.data
     if not (d and list.fight) then return end
     local item = d.item
-    if d.all then
-        ns.GPList.Issue(list.fight, { item })
-    elseif d.ev.grade == "yellow" and not d.ev.bumped then
+    if d.ev.grade == "yellow" and not d.ev.bumped then
         ns.GPList.Charge(list.fight, item.name, d.ev)
     else
         ns.GPList.Issue(list.fight, { { name = item.name, sys = item.sys, events = { d.ev } } })
     end
+end
+local function AllClick(self)
+    local r = self.row
+    local list, d = ListOf(r), r.data
+    if d and d.all and list.fight then ns.GPList.Issue(list.fight, { d.item }) end
 end
 local function UndoClick(self)
     local d = self.row.data
@@ -158,25 +162,23 @@ local function RowUp(self, button)
         else
             ns.GPList.ManualMenu(list.fight, d.item.name)
         end
-    elseif d.ev and ns.ReplayLink and d.ev.t then
-        ns.ReplayLink.Shift(list.fight, d.ev.t)
+    elseif d.ev and d.ev.t then
+        if ns.ReplayLink and ns.ReplayLink.Click(list.fight, d.ev.t, d.item.name, button) then return end
+        if ns.TimelineLinks then ns.TimelineLinks.Open(list.fight, d.item.name, d.ev.t) end
     end
 end
 local function RowEnter(self)
     local list, d = ListOf(self), self.data
-    if not (d and list.fight) then return end
-    local lines = d.ev and ns.GPList.HitLines(list.fight, d.ev.hit) or {}
-    if d.first then
-        for i = #lines, 1, -1 do
-            if lines[i].kind == "foot" then table.remove(lines, i) end
-        end
-        local more = ns.BadgeTips.GPRow(d.item, ns.Penalties.Reason)
-        for i = 1, #more do lines[#lines + 1] = more[i] end
-    end
-    if lines[1] then ns.Tip.Show(self, lines) end
+    if not (d and d.ev and list.fight) then return end
+    local fight = list.fight
+    ns.Tip.Show(self, ns.GPList.EventLines(fight, d.ev))
+    if not (ns.DeathPreviewView and d.ev.t) or ns.Store.Bare(fight) then return end
+    self.fight, self.at, self.who, self.preview = fight, d.ev.t, d.item.name, true
+    ns.DeathPreviewView.Enter(self)
 end
 local function RowLeave(self)
     ns.Tip.Hide()
+    if ns.DeathPreviewView then ns.DeathPreviewView.Leave() end
 end
 local function Wheel(self, delta)
     local list = self.list or self
@@ -213,14 +215,16 @@ local function Row(f, k)
     r.note = Str(f.sized, r, L.small and "GameFontHighlightSmall" or "GameFontHighlight")
     r.note:SetJustifyH("LEFT")
     r.note:SetWordWrap(false)
-    r.when = Str(f.sized, r, "GameFontHighlightSmall")
-    ns.Kit.Text(r.when, "text.bright")
-    r.when:SetJustifyH("RIGHT")
     r.main = ns.MakeButton(r, f.prefix .. k, "main")
     if f.sized then ns.Kit.Bind(r.main.text, "GameFontNormalSmall") end
     r.main:SetHeight(L.rowh - 4)
     r.main.row = r
     r.main.onClick = MainClick
+    r.all = ns.MakeButton(r, f.prefix .. "All" .. k, "main")
+    if f.sized then ns.Kit.Bind(r.all.text, "GameFontNormalSmall") end
+    r.all:SetHeight(L.rowh - 4)
+    r.all.row = r
+    r.all.onClick = AllClick
     r.done = r:CreateTexture(nil, "ARTWORK")
     r.done:SetTexture(DONE)
     r.done:SetWidth(12)
@@ -251,6 +255,7 @@ local function Fit(r, L)
     r.fitFor = L
     r:SetHeight(L.rowh)
     r.main:SetHeight(L.rowh - 4)
+    r.all:SetHeight(L.rowh - 4)
     r.mark:Resize(L.icon)
     for i = 1, #r.hot do
         r.hot[i]:SetHeight(L.rowh - 4)
@@ -261,23 +266,31 @@ local function Blank(r)
     if r.check then r.check:Hide() end
     r.mark:Hide()
     r.note:SetText("")
-    r.when:SetText("")
     r.main:Hide()
+    r.all:Hide()
     r.done:Hide()
     r.doneText:Hide()
     r.undo:Hide()
     if r.proof then r.proof:Hide() end
     for i = 1, #r.hot do r.hot[i]:Hide() end
 end
-local function Main(r, c, L, kind, text, tip, all)
+local function Main(r, c, L, kind, text, tip)
     r.main:ClearAllPoints()
     r.main:SetPoint("RIGHT", r, "LEFT", c.main + L.mainw - 4, 0)
     r.main:SetWidth(L.mainw - 6)
     ns.Kit.ButtonKind(r.main, kind)
-    r.main:SetActive(all)
     r.main.text:SetText(text)
     r.main.tip = tip
     r.main:Show()
+end
+local function All(r, c, text, tip)
+    r.all:ClearAllPoints()
+    r.all:SetPoint("RIGHT", r, "LEFT", c.all + c.allw - 4, 0)
+    r.all:SetWidth(c.allw - 6)
+    r.all:SetActive(true)
+    r.all.text:SetText(text)
+    r.all.tip = tip
+    r.all:Show()
 end
 local function Done(r, c, L, n, tip, undo)
     local right = c.main + L.mainw - 4
@@ -319,7 +332,7 @@ local function Proof(r, c, L, ask)
     r.proof:Show()
 end
 local function MarkModel(ev)
-    return { icon = ns.GPList.Icon(ev.hit.icon), count = tostring(#ev.hit.events),
+    return { icon = ns.GPList.Icon(ev.hit.icon), count = "1",
         verdict = ev.grade == "yellow" and "yellow" or "red" }
 end
 local function Who(r, d, c, L)
@@ -379,15 +392,11 @@ local function FillFault(r, d, fight, c)
     ns.Kit.Text(r.note, done and "text.muted" or "text.primary")
     FT.Pick(r.note, room, note and (ev.reason .. marks .. "  " .. ns.Kit.Hex("text.muted") .. note .. "|r"),
         ev.reason .. marks, ev.short and ev.short .. marks, ev.short)
-    if c.whenw > 0 then
-        At(r.when, r, c.when, c.whenw)
-        r.when:SetText(ev.t and ns.Clock(ev.t - fight.from) or ns.T("ft.whole"))
-    end
     local raid = item.raid and item.raid > 0 and "\n" .. format(ns.T("ft.tip.roll.raid"), item.raid) or ""
-    if d.all then
-        Main(r, c, L, "main", Amount(item, list.model, L, item.pending),
-            format(ns.T("ft.tip.all"), item.pending, unit) .. raid, true)
-    elseif done then
+    if d.all and c.allw > 0 then
+        All(r, c, Amount(item, list.model, L, item.pending), format(ns.T("ft.tip.all"), item.pending, unit) .. raid)
+    end
+    if done then
         local tip = done.n and format(ns.T("ft.tip.done"), done.n, ns.Ledger.Unit(done.s)) or ns.T("led.menu.old")
         Done(r, c, L, done.n, tip, ns.Ledger.CanUndo(ev.key))
     elseif ev.grade == "yellow" and not ev.bumped then
@@ -424,10 +433,11 @@ local function Draw(self, fight, model, width, offset, slots)
     local shown = max(0, min(#rows - offset, slots or #rows))
     local r1 = Row(self, 1)
     Fit(r1, L)
-    local nick, count = 0, 0
+    local nick, count, all = 0, 0, false
     r1.name:SetWidth(0)
     for k = 1, #rows do
         local d = rows[k]
+        all = all or d.all or false
         r1.name:SetText(d.item.name)
         nick = max(nick, r1.name:GetStringWidth() or 0)
         if d.ev then
@@ -435,7 +445,7 @@ local function Draw(self, fight, model, width, offset, slots)
             count = max(count, r1.mark:Need())
         end
     end
-    local c = Fitted(L, width, nick > 0 and min(L.namew, ceil(nick) + 8) or L.namew, max(L.icon, count) + 6)
+    local c = Fitted(L, width, nick > 0 and min(L.namew, ceil(nick) + 8) or L.namew, max(L.icon, count) + 6, all)
     Head(self, c)
     for k = 1, max(shown, #rows == 0 and 1 or 0) do
         local r = Row(self, k)
@@ -486,9 +496,9 @@ function FT.New(parent, prefix, layout, sized)
     h.who = Str(sized, h, font)
     h.who:SetJustifyH("LEFT")
     h.who:SetWordWrap(false)
-    h.when = Str(sized, h, font)
-    h.when:SetJustifyH("RIGHT")
-    h.when:SetWordWrap(false)
+    h.all = Str(sized, h, font)
+    h.all:SetJustifyH("RIGHT")
+    h.all:SetWordWrap(false)
     h.main = Str(sized, h, font)
     h.main:SetJustifyH("RIGHT")
     h.main:SetWordWrap(false)
@@ -502,6 +512,79 @@ function FT.New(parent, prefix, layout, sized)
         h.hot[i]:SetWordWrap(false)
         ns.Kit.Text(h.hot[i], "badge.detail")
     end
-    for _, fs in ipairs({ h.who, h.when, h.main, h.proof }) do ns.Kit.Text(fs, "text.secondary") end
+    for _, fs in ipairs({ h.who, h.all, h.main, h.proof }) do ns.Kit.Text(fs, "text.secondary") end
     return f
+end
+local ALLPAD, ALLBAR = 12, 5
+local all
+local function AllDraw()
+    local src = all and all.src
+    if not (src and src.model and src.fight) then
+        if all and all:IsShown() and ns.WidgetModal then ns.WidgetModal.Close() end
+        return
+    end
+    local list = all.list
+    list.filter = src.list and src.list.filter or "all"
+    local L = Scaled(list)
+    local total = #FT.Rows(src.model, list.filter)
+    local slots = max(1, min(total, floor((all.room - all.top - ALLPAD - L.headh) / L.rowh)))
+    all.offset = max(0, min(all.offset or 0, total - slots))
+    all.title:SetText(ns.GPList.Title(src.model))
+    local h = list:Draw(src.fight, src.model, all.w - ALLPAD * 2 - ALLBAR * 2, all.offset, slots)
+    all:SetWidth(all.w)
+    all:SetHeight(all.top + h + ALLPAD)
+    local bar = all.bar
+    bar:ClearAllPoints()
+    bar:SetPoint("TOPRIGHT", all, "TOPRIGHT", -ALLBAR, -(all.top + L.headh))
+    bar:SetHeight(slots * L.rowh)
+    if total > slots then
+        bar:Show()
+        bar:SetState(all.offset, slots, total)
+    else
+        bar:Hide()
+    end
+end
+local function AllWheel(delta)
+    local was = all.offset or 0
+    all.offset = max(0, was - delta)
+    AllDraw()
+end
+local function AllBuild(parent)
+    local f = CreateFrame("Frame", nil, parent)
+    ns.Badges.Skin(f, ns.Badges.style.red)
+    f:EnableMouseWheel(true)
+    f:SetScript("OnMouseWheel", function(_, d) AllWheel(d) end)
+    f.title = ns.Kit.Str(f, "GameFontNormal")
+    ns.Kit.Text(f.title, "text.title")
+    f.title:SetJustifyH("LEFT")
+    f.title:SetWordWrap(false)
+    f.title:SetPoint("TOPLEFT", ALLPAD, -10)
+    f.title:SetPoint("TOPRIGHT", -28, -10)
+    f.list = FT.New(f, "HTP_FailWatchGPAllRows", ns.GPList.WIDE, true)
+    f.list.onWheel = AllWheel
+    f.bar = ns.Kit.ScrollBar(f, 100)
+    f.bar:SetFrameLevel(f:GetFrameLevel() + 6)
+    f.bar.onScroll = function(offset)
+        f.offset = offset
+        AllDraw()
+    end
+    ns.GPList.OnChange(function()
+        if FT.All() then AllDraw() end
+    end)
+    return f
+end
+function FT.OpenAll(src)
+    if not (ns.WidgetModal and src.model) then return end
+    all = ns.WidgetModal.Own("faults", AllBuild)
+    all.src, all.offset = src, 0
+    ns.WidgetModal.Show(all, src, function(w, h)
+        all.w, all.room = w, h
+        all.top = 10 + ceil(all.title:GetStringHeight() or 14) + 8
+        all.list:ClearAllPoints()
+        all.list:SetPoint("TOPLEFT", ALLPAD, -all.top)
+        AllDraw()
+    end)
+end
+function FT.All()
+    return all and ns.WidgetModal.Current() == all and all or nil
 end

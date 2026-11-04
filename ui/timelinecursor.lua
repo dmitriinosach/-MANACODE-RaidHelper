@@ -10,6 +10,7 @@ local DOTSHARE = 0.14
 local TC = {}
 ns.TimelineCursor = TC
 local cursorLine, cursorLabel, cursorBg, hpDot, rowGlow
+local clockOn
 local readouts = {}
 local hov = {}
 function TC.LastBefore(items, t)
@@ -20,15 +21,16 @@ function TC.LastBefore(items, t)
     return found
 end
 local LastBefore = TC.LastBefore
-function TC.Build(canvas, overlay, n)
+function TC.Build(canvas, overlay, n, ruler)
     cursorLine = overlay:CreateTexture(nil, "OVERLAY")
     ns.Kit.Paint(cursorLine, "sem.cursor")
     cursorLine:SetWidth(1)
     cursorLine:Hide()
-    cursorBg = overlay:CreateTexture(nil, "OVERLAY")
+    cursorBg = (ruler or overlay):CreateTexture(nil, "OVERLAY")
     ns.Kit.Paint(cursorBg, "surface.shade")
     cursorBg:Hide()
-    cursorLabel = ns.Kit.Str(overlay, "GameFontHighlightSmall")
+    cursorLabel = ns.Kit.Str(ruler or overlay, "GameFontHighlightSmall")
+    clockOn = ruler
     ns.Kit.Text(cursorLabel, "sem.cursorText")
     cursorLabel:Hide()
     hpDot = overlay:CreateTexture(nil, "OVERLAY")
@@ -72,7 +74,7 @@ local function ShowReadouts(c, t)
     text[1] = b and b.label or nil
     local cast = LastBefore(data.casts, t)
     text[2] = cast and (ns.TimelineCast and ns.TimelineCast.Readout(cast) or cast.label) or nil
-    local active = 0
+    local active, all, seen = 0, 0, {}
     local auraRows = c.auraRows
     for slot = 1, #auraRows do
         local list = auraRows[slot].items
@@ -81,7 +83,15 @@ local function ShowReadouts(c, t)
             if a.t <= t and (a.to or a.t) >= t then active = active + 1 break end
         end
     end
-    text[3] = active > 0 and format(ns.T("tl.read.auras"), active) or nil
+    for i = 1, data.auras and #data.auras or 0 do
+        local a = data.auras[i]
+        local id = a.id or a.label
+        if a.t <= t and (a.to or a.t) >= t and not seen[id] then
+            seen[id] = true
+            all = all + 1
+        end
+    end
+    text[3] = all > 0 and format(ns.T("tl.read.auras"), all, active) or nil
     local heal = LastBefore(data.healed, t)
     text[4] = heal and (t - heal.t) < 3 and format("%s: +%d", heal.label, heal.amount) or nil
     local d = LastBefore(data.taken, t)
@@ -109,7 +119,7 @@ local function ShowReadouts(c, t)
     for i = 1, #readouts do
         local fs = readouts[i]
         if text[i] and not c.Folded(c.tracks[i].key) then
-            local ty = bounds[i].y + 2
+            local ty = bounds[i].hy + 1
             fs:ClearAllPoints()
             if flip then
                 fs:SetPoint("TOPRIGHT", overlay, "TOPLEFT", x - 4, -ty)
@@ -152,7 +162,11 @@ function TC.Hover(self, c, cursor)
         cursorBg:SetWidth(cursorLabel:GetStringWidth() + 8)
         cursorBg:SetHeight(cursorLabel:GetStringHeight() + 4)
         cursorBg:ClearAllPoints()
-        cursorBg:SetPoint("TOPLEFT", overlay, "TOPLEFT", x + 2, -2)
+        if clockOn then
+            cursorBg:SetPoint("BOTTOMLEFT", clockOn, "BOTTOMLEFT", x + 2, 1)
+        else
+            cursorBg:SetPoint("TOPLEFT", overlay, "TOPLEFT", x + 2, -2)
+        end
         cursorBg:Show()
         cursorLabel:ClearAllPoints()
         cursorLabel:SetPoint("LEFT", cursorBg, "LEFT", 4, 0)

@@ -24,6 +24,20 @@ function Rows.Glued()
     local ui = ns.GetDB().settings.ui
     return ui.glue ~= false
 end
+local showAll = false
+function Rows.ShowAll()
+    return showAll
+end
+function Rows.SetShowAll(on)
+    showAll = on and true or false
+end
+function Rows.DefaultOff(id)
+    local key = ns.SpellKey and ns.SpellKey(id) or id
+    local def = ns.effectDefaults and ns.effectDefaults[key]
+    if def == nil or def == "on" then return false end
+    local E = ns.Effects
+    return not (E.State and E.State(id) ~= def)
+end
 local function GlueIds(data)
     if not data then return {} end
     if not data.glueIds then
@@ -42,6 +56,8 @@ local function GlueIds(data)
 end
 function Rows.Aura(data, cats, dropMode, glue)
     local auraRows = {}
+    if showAll then glue = false end
+    local defaultOff = 0
     local list = ns.Effects.categories
     local buckets = {}
     for i = 1, #list do
@@ -64,7 +80,9 @@ function Rows.Aura(data, cats, dropMode, glue)
                     index[key] = row
                     local bucket = buckets[ns.Effects.Category(key)] or buckets.aura
                     local into
-                    if not ns.Effects.Tracked(key) then
+                    local off = not ns.Effects.Tracked(key)
+                    if off and Rows.DefaultOff(key) then defaultOff = defaultOff + 1 end
+                    if off and not showAll then
                         into = bucket.off
                     else
                         into = (a.kind == "debuff") and bucket.bad or bucket.good
@@ -130,6 +148,11 @@ function Rows.Aura(data, cats, dropMode, glue)
             if not folded then Emit(key, 1) end
         end
     end
+    if defaultOff > 0 or showAll then
+        table.insert(auraRows, 1, { head = true, info = true, depth = 0, label = showAll
+            and format(ns.T("tl.fx.all"), defaultOff) or format(ns.T("tl.fx.defoff"), defaultOff) })
+    end
+    auraRows.defaultOff = defaultOff
     return auraRows
 end
 function Rows.Total(row, heal)

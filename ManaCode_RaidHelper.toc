@@ -3,14 +3,15 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 1.8.0
-## X-Date: 2026-10-29
+## Version: 1.9.0
+## X-Date: 2026-11-04
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
 ## SavedVariablesPerCharacter: ManaCodeRaidHelperChar
 ## OptionalDeps: Auctionator
 
 libs\manacode\sizer.lua
+libs\manacode\keycap.lua
 fw.lua
 core\ids.lua
 locale\ruRU.lua
@@ -83,6 +84,7 @@ data\specsigns.lua
 data\castgcd.lua
 data\consumables.lua
 data\raidsummary.lua
+data\lootboss.lua
 data\achievements\ulduar.lua
 data\achievements\toc.lua
 data\flasks.lua
@@ -157,6 +159,7 @@ core\parry.lua
 core\putri.lua
 core\valkyr.lua
 core\targets.lua
+core\cures.lua
 core\ulduar.lua
 core\absorbs.lua
 core\totals.lua
@@ -230,6 +233,7 @@ ui\widgets.lua
 ui\scroll.lua
 ui\fxdrag.lua
 ui\shell.lua
+ui\shellnav.lua
 ui\slash.lua
 ui\effects.lua
 ui\mapdraw.lua

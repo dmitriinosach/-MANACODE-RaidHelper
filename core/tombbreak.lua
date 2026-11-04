@@ -326,8 +326,8 @@ function TB.Finish(st)
         end
     end
 end
-function TB.Limit(def)
-    local rule = ns.Penalties and def.limit and ns.Penalties.Get(def.limit)
+function TB.Limit(def, fight)
+    local rule = ns.Penalties and def.limit and ns.Penalties.For(def.limit, fight)
     return rule and ns.Penalties.Threshold(rule) or 0
 end
 function TB.Shown(st, lim)

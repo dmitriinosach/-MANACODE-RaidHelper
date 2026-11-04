@@ -9,7 +9,7 @@ local BTN_PAD = 24
 local BTN_X = -8
 local BTN_Y = 8
 local btn
-local function StatusText()
+local function StatusText(short)
     if Scan.IsOn() then
         local i, n, item, page, pages = Scan.Progress()
         if Scan.IsPaused() then return format(ns.T("ah.st.paused"), i, n) end
@@ -18,7 +18,7 @@ local function StatusText()
         return s
     end
     local n, last = Scan.Stats()
-    if n == 0 then return ns.T("ah.st.none") end
+    if n == 0 then return ns.T(short and "ah.st.never" or "ah.st.none") end
     return format(ns.T("ah.st.have"), n, ns.Plural(n, ns.T("ah.items")), ns.RaidCost.Stamp(last))
 end
 local function StatusToken()
@@ -42,9 +42,9 @@ local function PaintButton()
     if not btn then return end
     btn:SetText(ShortText())
     btn:SetWidth(max(BTN_MIN, btn.text:GetStringWidth() + BTN_PAD))
-    btn.tipTitle = ns.T("ah.title")
-    btn.tip = StatusText()
-    btn.tipDim = ns.T("ah.tip")
+    btn.tipTitle = ns.T("ah.btn.title")
+    btn.tip = StatusText(true)
+    btn.tipDim = ns.T("ah.why")
     if btn.hovered then Kit.TipShow(btn) end
 end
 local function MakeButton()

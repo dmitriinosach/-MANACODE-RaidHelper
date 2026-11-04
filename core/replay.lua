@@ -76,20 +76,20 @@ Replay.ROOMS = {
     sindragosa = { boss = ns.ENC.sindragosa, floor = 4, tex = "sindragosa", cx = 365, cy = 115, r = 78, pack = "ICC" },
     frostmourne = { boss = ns.ENC.lichking, floor = 8, tex = "frostmourne", cx = 470, cy = 365, r = 130, pack = "ICC" },
     halion = { boss = ns.ENC.halion, floor = 0, tex = "halion", cx = 495, cy = 366, r = 80, pack = "RS" },
-    leviathan = { boss = ns.ENC.leviathan, floor = 1, tex = "leviathan", cx = 493, cy = 276, r = 36 },
-    razorscale = { boss = ns.ENC.razorscale, floor = 1, tex = "razorscale", cx = 537, cy = 175, r = 14 },
-    ignis = { boss = ns.ENC.ignis, floor = 1, tex = "ignis", cx = 387, cy = 173, r = 14 },
-    xt002 = { boss = ns.ENC.xt002, floor = 1, tex = "xt002", cx = 487, cy = 97, r = 13 },
-    ironcouncil = { boss = ns.ENC.ironcouncil, floor = 2, tex = "ironcouncil", cx = 165, cy = 366, r = 70 },
-    kologarn = { boss = ns.ENC.kologarn, floor = 2, tex = "kologarn", cx = 372, cy = 91, r = 48 },
-    algalon = { boss = ns.ENC.algalon, floor = 2, tex = "algalon", cx = 796, cy = 307, r = 54 },
-    hodir = { boss = ns.ENC.hodir, floor = 3, tex = "hodir", cx = 674, cy = 425, r = 21 },
-    auriaya = { boss = ns.ENC.auriaya, floor = 3, tex = "auriaya", cx = 570, cy = 441, r = 25 },
-    thorim = { boss = ns.ENC.thorim, floor = 3, tex = "thorim", cx = 691, cy = 322, r = 47 },
-    freya = { boss = ns.ENC.freya, floor = 3, tex = "freya", cx = 521, cy = 160, r = 40 },
-    vezax = { boss = ns.ENC.vezax, floor = 4, tex = "vezax", cx = 541, cy = 411, r = 68 },
-    yogg = { boss = ns.ENC.yogg, floor = 4, tex = "yogg", cx = 694, cy = 294, r = 70 },
-    mimiron = { boss = ns.ENC.mimiron, floor = 5, tex = "mimiron", cx = 439, cy = 271, r = 38 },
+    leviathan = { boss = ns.ENC.leviathan, floor = 1, tex = "leviathan", cx = 493, cy = 276, r = 40, pack = "ULD" },
+    razorscale = { boss = ns.ENC.razorscale, floor = 1, tex = "razorscale", cx = 537, cy = 175, r = 30, pack = "ULD" },
+    ignis = { boss = ns.ENC.ignis, floor = 1, tex = "ignis", cx = 374, cy = 177, r = 28, pack = "ULD" },
+    xt002 = { boss = ns.ENC.xt002, floor = 1, tex = "xt002", cx = 487, cy = 103, r = 30, pack = "ULD" },
+    ironcouncil = { boss = ns.ENC.ironcouncil, floor = 2, tex = "ironcouncil", cx = 165, cy = 366, r = 92, pack = "ULD" },
+    kologarn = { boss = ns.ENC.kologarn, floor = 2, tex = "kologarn", cx = 372, cy = 91, r = 80, pack = "ULD" },
+    algalon = { boss = ns.ENC.algalon, floor = 2, tex = "algalon", cx = 796, cy = 307, r = 72, pack = "ULD", sky = "cosmos" },
+    hodir = { boss = ns.ENC.hodir, floor = 3, tex = "hodir", cx = 674, cy = 425, r = 32, pack = "ULD" },
+    auriaya = { boss = ns.ENC.auriaya, floor = 3, tex = "auriaya", cx = 549, cy = 488, r = 46, pack = "ULD" },
+    thorim = { boss = ns.ENC.thorim, floor = 3, tex = "thorim", cx = 691, cy = 322, r = 47, pack = "ULD" },
+    freya = { boss = ns.ENC.freya, floor = 3, tex = "freya", cx = 521, cy = 160, r = 40, pack = "ULD" },
+    vezax = { boss = ns.ENC.vezax, floor = 4, tex = "vezax", cx = 531, cy = 416, r = 92, pack = "ULD" },
+    yogg = { boss = ns.ENC.yogg, floor = 4, tex = "yogg", cx = 682, cy = 263, r = 100, pack = "ULD" },
+    mimiron = { boss = ns.ENC.mimiron, floor = 5, tex = "mimiron", cx = 439, cy = 271, r = 38, pack = "ULD" },
     tocBeasts = { boss = ns.ENC.beasts, floor = 1, tex = "toc_arena", cx = 505, cy = 356, r = 165, pack = "TOC" },
     tocJaraxxus = { boss = ns.ENC.jaraxxus, floor = 1, tex = "toc_arena", cx = 505, cy = 356, r = 165, pack = "TOC" },
     tocChampions = { boss = ns.ENC.champions, floor = 1, tex = "toc_arena", cx = 505, cy = 356, r = 165, pack = "TOC" },
@@ -130,6 +130,21 @@ function Replay.FixPoint(room, x, y)
     local c, s, dx, dy = Replay.FixMatrix(room)
     local u, v = x - room.cx, y - room.cy
     return room.cx + c * u - s * v + dx, room.cy + s * u + c * v + dy
+end
+function Replay.FlatCoords(room, out)
+    local c, s, fx, fy = Replay.FixMatrix(room)
+    local span = room.r / RIM
+    local half = span / 2
+    local k = 1
+    for _, px in ipairs({ -half, half }) do
+        for _, py in ipairs({ -half, half }) do
+            local u = (c * px - s * py + fx) / span + 0.5
+            local v = (s * px + c * py + fy) / span + 0.5
+            out[k], out[k + 1] = min(1, max(0, u)), min(1, max(0, v))
+            k = k + 2
+        end
+    end
+    return half
 end
 function Replay.RoomOf(boss, level)
     for _, room in pairs(Replay.ROOMS) do

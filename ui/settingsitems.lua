@@ -117,9 +117,7 @@ S.Section("panel", "panel", {
 local function RecState()
     local lock = ns.RecLock()
     if lock then return T("rec.lock." .. lock) end
-    local key = "set.rec.off"
-    if ns.Recorder.IsOn() then key = ns.Recorder.IsPaused() and "set.rec.paused" or "set.rec.on" end
-    return T(key)
+    return T("set.rec.state." .. ns.Recorder.State())
 end
 local function RecBig()
     local _, _, bytes = ns.Store.Stats()
@@ -132,6 +130,8 @@ local function RecUsed()
     local key = ns.Store.OverLimit() and "set.rec.used.over" or "set.rec.used"
     local text = format(T(key), bytes / MB, ns.Store.Limit(), raids, tries)
     if RecBig() then text = text .. " " .. format(T("set.rec.used.big"), (select(4, ns.Store.LimitRange()))) end
+    local last, lastTries = ns.Store.LastRaid()
+    if last > 0 then text = text .. "\n" .. format(T("set.rec.last"), last / MB, lastTries) end
     return text
 end
 local function SetRec(key, on)
@@ -147,22 +147,59 @@ local function SetRec(key, on)
     end
     if ns.AutoRec and ns.AutoRec.Refresh then ns.AutoRec.Refresh() end
 end
-S.Section("rec", "status", {
-    label = "set.rec.status",
+local mbLo, mbHi, mbDef, mbWarn = ns.Store.LimitRange()
+local function LimitAsk(mb)
+    if not ns.Store.Cuts(mb) then return nil end
+    local raids = ns.Store.Preview(mb)
+    if not raids[1] then return T("set.rec.ask.none") end
+    return format(T("set.rec.ask"), concat(raids, ", "))
+end
+S.Section("rec", "store", {
+    label = "set.rec.store",
+    order = 5,
+    items = {
+        { kind = "text", key = "used", tick = true, text = RecUsed,
+          token = function() return (ns.Store.OverLimit() or RecBig()) and "text.bad" or "text.primary" end },
+        { kind = "slider", key = "mb", label = "set.rec.limit", tip = "set.rec.limit.tip",
+          min = mbLo, max = mbHi, step = 10, default = mbDef, red = mbWarn,
+          get = function() return ns.Store.Limit() end,
+          ask = LimitAsk,
+          set = function(v) ns.Store.SetLimit(v) end },
+        { kind = "check", key = "char", label = "set.rec.char", tip = "set.rec.char.tip",
+          get = function() return Opt().recChar == true end,
+          set = function(on)
+              Opt().recChar = on or nil
+              Kit.Confirm(T("set.rec.char.ask"), T("set.rec.char.yes"), ReloadUI)
+          end },
+        { kind = "button", key = "clear", label = "set.rec.clear", confirm = "set.rec.clear.ask",
+          tip = "set.rec.clear.tip", danger = true, order = 100,
+          run = function()
+              ns.Store.Clear()
+              ns.Print(T("slash.clear.done"))
+          end },
+    },
+})
+S.Section("rec", "where", {
+    label = "set.rec.where",
     order = 10,
     items = {
         { kind = "text", key = "state", tick = true, text = RecState,
           token = function() return ns.RecLock() and "text.warn" or "text.primary" end },
+        { kind = "check", key = "raid", label = "set.rec.raid", tip = "set.rec.raid.tip",
+          enabled = function() return not ns.RecLock() end,
+          get = function() return Opt().autoRaid end, set = function(on) SetRec("autoRaid", on) end },
+        { kind = "check", key = "party", label = "set.rec.party", tip = "set.rec.party.tip",
+          get = function() return Opt().autoParty == true end, set = function(on) SetRec("autoParty", on) end },
+        { kind = "check", key = "dummy", label = "set.rec.dummy", tip = "set.rec.dummy.tip",
+          get = function() return ns.Encounters.Dummy() end, set = function(on) ns.Recorder.SetDummy(on) end },
     },
 })
 S.Section("rec", "what", {
     label = "set.rec.what",
     order = 20,
     items = {
-        { kind = "check", key = "raid", label = "set.rec.raid", tip = "set.rec.raid.tip",
-          enabled = function() return not ns.RecLock() end,
-          get = function() return Opt().autoRaid end, set = function(on) SetRec("autoRaid", on) end },
-        { kind = "check", key = "all", label = "set.rec.all", tip = "set.rec.all.tip",
+        { kind = "check", key = "all", label = "set.rec.all", tip = "set.rec.all.tip", default = false,
+          hint = function() return ns.Store.AllCostText() end,
           get = function() return Opt().recAll == true end, set = function(on) SetRec("recAll", on) end },
         { kind = "choice", key = "mana", buttons = true, label = "set.rec.mana", tip = "set.rec.mana.tip",
           default = "heal", options = function() return Keys(ns.RecMana.MODES, "set.rec.mana.") end,
@@ -231,42 +268,6 @@ S.Section("rec", "bosses", {
     label = "set.rec.bosses",
     order = 25,
     items = BossItems(),
-})
-local mbLo, mbHi, mbDef, mbWarn = ns.Store.LimitRange()
-local function LimitAsk(mb)
-    if not ns.Store.Cuts(mb) then return nil end
-    local raids = ns.Store.Preview(mb)
-    if not raids[1] then return T("set.rec.ask.none") end
-    return format(T("set.rec.ask"), concat(raids, ", "))
-end
-S.Section("rec", "store", {
-    label = "set.rec.store",
-    order = 30,
-    items = {
-        { kind = "check", key = "party", label = "set.rec.party", tip = "set.rec.party.tip", order = -2,
-          get = function() return Opt().autoParty == true end, set = function(on) SetRec("autoParty", on) end },
-        { kind = "check", key = "dummy", label = "set.rec.dummy", tip = "set.rec.dummy.tip", order = -1,
-          get = function() return ns.Encounters.Dummy() end, set = function(on) ns.Recorder.SetDummy(on) end },
-        { kind = "text", key = "used", tick = true, text = RecUsed,
-          token = function() return (ns.Store.OverLimit() or RecBig()) and "text.bad" or "text.primary" end },
-        { kind = "slider", key = "mb", label = "set.rec.limit", tip = "set.rec.limit.tip",
-          min = mbLo, max = mbHi, step = 10, default = mbDef, red = mbWarn,
-          get = function() return ns.Store.Limit() end,
-          ask = LimitAsk,
-          set = function(v) ns.Store.SetLimit(v) end },
-        { kind = "check", key = "char", label = "set.rec.char", tip = "set.rec.char.tip",
-          get = function() return Opt().recChar == true end,
-          set = function(on)
-              Opt().recChar = on or nil
-              Kit.Confirm(T("set.rec.char.ask"), T("set.rec.char.yes"), ReloadUI)
-          end },
-        { kind = "button", key = "clear", label = "set.rec.clear", confirm = "set.rec.clear.ask",
-          tip = "set.rec.clear.tip", danger = true, order = 100,
-          run = function()
-              ns.Store.Clear()
-              ns.Print(T("slash.clear.done"))
-          end },
-    },
 })
 local function Tuner(key, label, lo, hi, step, fmt, order)
     return { kind = "slider", key = key, label = label, tip = label .. ".tip", warn = "set.grade.warn",

@@ -351,7 +351,8 @@ local function UseScene(scene)
     for k = n + 2, #order do order[k] = nil end
     UseFloor(scene.room)
     ResetCamera(false)
-    if Bar.Use(scene) then IsoBuild.Refit() end
+    Bar.Use(scene)
+    IsoBuild.Refit()
     UpdatePlay()
     ApplySeek()
     SetFocus(run.want)
@@ -402,7 +403,7 @@ local function LoadFight(fight)
     Soul.Use(nil)
     ns.ReplayFeed.Use(nil)
     Bar.Use(nil)
-    ui.title:SetText(Bar.Title(fight))
+    ns.ReplaySize.SetTitle(Bar.Head(fight))
     UpdateFightNav()
     ui.hint:SetText(ns.T("iso.loading"))
     ui.hint:Show()
@@ -450,6 +451,7 @@ function Iso.Open(fight, t, who)
     elseif run.scene then
         ApplySeek()
         SetFocus(who)
+        UpdateFightNav()
         Tour.Auto()
     end
 end
@@ -505,6 +507,11 @@ function Iso.SetGeo(on, quiet)
     UpdateCamUi()
     if not quiet then ns.Print(ns.T(Geo.on and "iso.geo.on" or "iso.geo.off")) end
 end
+function Iso.SetThrone(mode)
+    Saved().throne = mode
+    ns.ReplayLive.SetThrone(mode)
+    run.camDirty = true
+end
 function Iso.BarsFrame()
     if not ui.frame then Build() end
     return ui.bars
@@ -524,7 +531,8 @@ function Iso.Layout()
              scene = run.scene and (run.scene == run.base and "base" or "alt") or nil, pin = run.pin, fade = run.fadeA,
              camR = cam.r, camCx = cam.cx, camCy = cam.cy, gap = run.gapKind or nil,
              title = ui.title:GetText(), titleFs = ui.title, prevBtn = ui.prevBtn, nextBtn = ui.nextBtn, focusX = ui.focusX,
-             focusText = ui.focus, hover = ui.hoverBox, navW = IsoBuild.NAV_W, fight = run.fight }
+             focusText = ui.focus, hover = ui.hoverBox, navW = IsoBuild.NAV_W, fight = run.fight, side = ui.side, view = ui.view,
+             box = IsoBuild.Box(), page = ui.page, rule = ui.rule, navGroup = ui.navGroup }
 end
 if ns.MapView and ns.MapView.SetFight then
     hooksecurefunc(ns.MapView, "SetFight", function(f) picked = f end)

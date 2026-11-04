@@ -20,6 +20,7 @@ local SLOT_H = 22
 local MAIN_H = 20
 local ALT_H = 18
 local NOTE_H = 18
+local ROW_GAP = 4
 local TEXT_X = 8
 local FOLD = 14
 local NAME_X = 22
@@ -47,7 +48,7 @@ local HEADS = { "main", "on", "gs", "spec", "roles", "cd", "ri" }
 local RI_TEX = "Interface\\Icons\\INV_Misc_Book_09"
 local RAT_TEX = "Interface\\AddOns\\" .. ADDON .. "\\art\\kit\\rat"
 local BASE = { CAP_H = CAP_H, CTRL_H = CTRL_H, SLOT_H = SLOT_H, MAIN_H = MAIN_H, ALT_H = ALT_H, NOTE_H = NOTE_H,
-    TEXT_X = TEXT_X, FOLD = FOLD, NAME_X = NAME_X, INDENT = INDENT, NAME_W = NAME_W, ON_W = ON_W, GS_W = GS_W,
+    ROW_GAP = ROW_GAP, TEXT_X = TEXT_X, FOLD = FOLD, NAME_X = NAME_X, INDENT = INDENT, NAME_W = NAME_W, ON_W = ON_W, GS_W = GS_W,
     SPEC_W = SPEC_W, ALTS_W = ALTS_W, STATE_W = STATE_W, INV_W = INV_W, SEL_W = SEL_W, CHECK_W = CHECK_W, ROLECHK_W = ROLECHK_W,
     ROLE_SZ = ROLE_SZ, ROLE_GAP = ROLE_GAP, RI_SZ = RI_SZ, RAT_SZ = RAT_SZ }
 local LINE_H = 14
@@ -75,7 +76,7 @@ local function Dims(w)
         + B.STATE_W + B.INV_W
     local kc = max(1, min(k, w / fixed))
     CAP_H, CTRL_H, SLOT_H = ceil(B.CAP_H * k), ceil(B.CTRL_H * k), ceil(B.SLOT_H * k)
-    MAIN_H, ALT_H, NOTE_H = ceil(B.MAIN_H * k), ceil(B.ALT_H * k), ceil(B.NOTE_H * k)
+    MAIN_H, ALT_H, NOTE_H, ROW_GAP = ceil(B.MAIN_H * k), ceil(B.ALT_H * k), ceil(B.NOTE_H * k), ceil(B.ROW_GAP * k)
     LINE_H = ceil(14 * k)
     TEXT_X, FOLD, INDENT = ceil(B.TEXT_X * kc), ceil(B.FOLD * k), ceil(B.INDENT * kc)
     NAME_X, NAME_W, ON_W, GS_W = ceil(B.NAME_X * kc), ceil(B.NAME_W * kc), ceil(B.ON_W * kc), ceil(B.GS_W * kc)
@@ -524,7 +525,7 @@ local function Place()
     local y = listTop
     for i = 1, #lines do
         local e = lines[i]
-        local h = e.c and ALT_H or MAIN_H
+        local h = (e.c and ALT_H or MAIN_H) + ROW_GAP
         if y > bottom then break end
         if y + h >= top then
             if e.c then DrawAlt(e.p, e.c, y, listW) else DrawMain(e.p, y, listW) end
@@ -657,12 +658,12 @@ function View.Draw(y, w)
         local p = cache.people[i]
         if (p.online or not only) and RolesPass(p) then
             lines[#lines + 1] = { p = p }
-            y = y + MAIN_H
+            y = y + MAIN_H + ROW_GAP
             if open[p.name] then
                 local _, alts = Split(p)
                 for k = 1, #alts do
                     lines[#lines + 1] = { p = p, c = alts[k] }
-                    y = y + ALT_H
+                    y = y + ALT_H + ROW_GAP
                 end
             end
         end

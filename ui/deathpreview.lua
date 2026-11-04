@@ -801,7 +801,7 @@ end
 function View.Enter(mark)
     local fight, at = mark.fight, mark.at
     local tile = mark:GetParent()
-    local who = tile and tile.who
+    local who = mark.who or (tile and tile.who)
     if not (mark.preview and fight and at and who and fight.players and fight.players[who]) then return end
     if not frame then
         Build()

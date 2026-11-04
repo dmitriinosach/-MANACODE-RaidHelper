@@ -1,5 +1,24 @@
-local _, ns = ...
+local ADDON, ns = ...
 local Kit = ns.Kit
+local PANEL_ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\"
+function Kit.RoundTint(b, hot)
+    b.hot = hot
+    Kit.Tint(b.plate, hot and "button.bgHover" or "button.bg")
+    Kit.Tint(b.ring, hot and "button.borderHover" or "button.border")
+    Kit.Tint(b.icon, hot and "button.textHover" or "text.primary")
+end
+function Kit.RoundIcon(b, file)
+    b.plate = b:CreateTexture(nil, "BACKGROUND")
+    b.plate:SetAllPoints()
+    b.plate:SetTexture(PANEL_ART .. "plate.tga")
+    b.ring = b:CreateTexture(nil, "BORDER")
+    b.ring:SetAllPoints()
+    b.ring:SetTexture(PANEL_ART .. "ring.tga")
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetAllPoints()
+    b.icon:SetTexture(PANEL_ART .. file .. ".tga")
+    Kit.RoundTint(b, false)
+end
 local CLASSES_TEX = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
 local CIRCLES_TEX = "Interface\\TargetingFrame\\UI-Classes-Circles"
 local CIRCLE_INSET = 3 / 256
@@ -48,10 +67,7 @@ local Icon = {}
 Kit.Icon = Icon
 function Icon.Spell(tex, spell)
     local path
-    if spell then
-        local _, _, icon = GetSpellInfo(spell)
-        path = icon
-    end
+    if spell then path = ns.SpellIcon(spell) end
     tex:SetTexture(path or Kit.QMARK)
     tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 end

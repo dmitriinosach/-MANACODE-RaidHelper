@@ -5,7 +5,7 @@ local max = math.max
 local min = math.min
 local TIMES = 8
 local KICK_TIMES = 15
-local GLYPH = "|T%s:14:14:0:0:64:64:5:59:5:59|t"
+local GLYPH = "|T%s:16:16:0:0:64:64:5:59:5:59|t"
 local Tips = {}
 ns.ActionTips = Tips
 local function T(key)
@@ -39,7 +39,7 @@ local function Spell(id, name)
 end
 function Tips.rebuff(st, def)
     local out = {}
-    Head(out, T(def.tip), format("x%d", st.n))
+    Head(out, T("sum.tt.rebuff.head"), format("x%d", st.n))
     for k = 1, min(TIMES, st.n) do
         local dup = st.dups and st.dups[k]
         Put(out, "sub", Clock(st.times[k]) .. " " .. Spell(st.ids and st.ids[k], st.spells[k]), st.notes[k],
@@ -167,8 +167,10 @@ function Tips.pulled(st, def)
     More(out, st.n)
     return out
 end
-function Tips.ParryBody(out, st)
-    Put(out, "row", T("sum.tt.count"), tostring(st.n), nil, st.grade == "yellow" and "bad" or nil)
+function Tips.ParryBody(out, st, counted)
+    if not counted then
+        Put(out, "row", T("sum.tt.count"), tostring(st.n), nil, st.grade == "yellow" and "bad" or nil)
+    end
     for k = 1, #(st.ids or {}) do
         local id = st.ids[k]
         local name = T("sum.ab.melee")
@@ -178,13 +180,13 @@ function Tips.ParryBody(out, st)
     local parts = {}
     for k = 1, min(TIMES, #st.times) do parts[k] = Clock(st.times[k]) end
     if #parts > 0 then
-        Put(out, "row", table.concat(parts, ", ") .. (#st.times > TIMES and format(T("sum.tip.more"), #st.times - TIMES) or ""))
+        Put(out, "sub", table.concat(parts, ", ") .. (#st.times > TIMES and format(T("sum.tip.more"), #st.times - TIMES) or ""))
     end
 end
 function Tips.parry(st, def)
     local out = {}
-    Head(out, T(def.tip))
-    Tips.ParryBody(out, st)
+    out[1] = { kind = "head", left = T(def.tip), right = format("x%d", st.n), tone = st.grade == "yellow" and "warn" or nil }
+    Tips.ParryBody(out, st, true)
     return out
 end
 function Tips.ParryText(b, who, v)
@@ -194,8 +196,7 @@ function Tips.ParryText(b, who, v)
 end
 function Tips.bounce(st, def)
     local out = {}
-    Head(out, T(def.tip))
-    Put(out, "row", T("sum.tt.bounced"), tostring(st.n))
+    Head(out, T(def.tip), format("x%d", st.n))
     local list = {}
     for key, n in pairs(st.by or {}) do list[#list + 1] = { key = key, n = n } end
     table.sort(list, function(a, b)
@@ -319,17 +320,17 @@ function Tips.nova(st, def)
     More(out, st.n)
     return out
 end
-function Tips.away(st, def)
+function Tips.away(st, def, fight)
     local out = {}
-    local far = ns.Away.Grade(st, def) == "yellow"
+    local far = ns.Away.Grade(st, def, fight) == "yellow"
     Head(out, T(def.tip))
     Put(out, "row", T(far and "sum.tt.away.far" or "sum.tt.away.in"), nil, nil, far and "warn" or "good")
-    ns.BadgeTips.AwayBody(out, st, ns.Away.Limit(def))
+    ns.BadgeTips.AwayBody(out, st, ns.Away.Limit(def, fight))
     return out
 end
-function Tips.tombbreak(st, def)
+function Tips.tombbreak(st, def, fight)
     local out = {}
-    local lim = ns.TombBreak.Limit(def)
+    local lim = ns.TombBreak.Limit(def, fight)
     local list = ns.TombBreak.Shown(st, lim)
     Head(out, T(def.tip), format("x%d", #list))
     ns.BadgeTips.TombSum(out, st, lim)

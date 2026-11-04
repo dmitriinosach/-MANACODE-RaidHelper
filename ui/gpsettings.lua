@@ -16,12 +16,14 @@ local SHORTW = 140
 local RESETW = 90
 local HOTW = 52
 local THRW = 40
-local UNITW = 30
+local UNITW = 72
+local DIFFW = 64
 local MODES = { "once", "each", "grow" }
 local View = {}
 ns.GPSettings = View
 local frame, listBox, banner, pageText, guildText, publishBtn, resetAllBtn, searchBox
-local searchLabel, proofBtn, hotTitle, hintText
+local searchLabel, proofBtn, hotTitle, hintText, diffLabel
+local diffBtns = {}
 local query = ""
 local heads = {}
 local hotBoxes = {}
@@ -241,11 +243,8 @@ local function SetBox(box, value)
     if not box:HasFocus() then box:SetText(value ~= nil and tostring(value) or "") end
     ns.Kit.Tone(box, "text.bright")
 end
-local function LimitText(v, scale)
-    if not v then return nil end
-    v = v / scale
-    if v == floor(v) then return format("%d", v) end
-    return (format("%.1f", v):gsub("%.0$", ""))
+local function LimitText(v, d)
+    return v and ns.Penalties.Num(v, d) or nil
 end
 local function FillLimits(r, rule)
     local lims = ns.Penalties.Limits(rule)
@@ -254,7 +253,7 @@ local function FillLimits(r, rule)
         local d = lims[k]
         if d then
             boxes[k]:Show()
-            SetBox(boxes[k], LimitText(ns.Penalties.Threshold(rule, k), d.scale))
+            SetBox(boxes[k], LimitText(ns.Penalties.Threshold(rule, k), d))
         else
             boxes[k]:Hide()
         end
@@ -271,11 +270,13 @@ end
 local function RuleLines(rule)
     local lims = ns.Penalties.Limits(rule)
     if #lims == 0 then return nil end
-    local out = { { kind = "head", left = ns.T(rule.text) } }
+    local out = { { kind = "head", left = ns.T(rule.text) },
+        { kind = "row", left = ns.T("gpset.diff.row"), right = ns.T("gpset.diff." .. ns.Penalties.EditDiff()) } }
     for k = 1, #lims do
         local d = lims[k]
+        local v = ns.Penalties.Threshold(rule, k)
         out[#out + 1] = { kind = "row", left = ns.T(d.tip or "gpset.col.limit"),
-            right = (LimitText(ns.Penalties.Threshold(rule, k), d.scale) or "—") .. " " .. ns.T("gpset.unit." .. d.unit) }
+            right = v and ns.Penalties.Unit(v, d) or ("— " .. ns.T("gpset.unit." .. d.unit)) }
     end
     out[#out + 1] = { kind = "text", left = ns.T("gpset.limit.tip") }
     return out
@@ -339,6 +340,8 @@ local function RefreshHead()
     local unit = ns.Ledger.Unit(sys)
     heads.sum:SetText(format(ns.T("gpset.col.sum"), unit))
     hintText:SetText(format(ns.T("gpset.hint"), ns.Ledger.Label(sys)))
+    local cur = ns.Penalties.EditDiff()
+    for d, b in pairs(diffBtns) do b:SetActive(d == cur) end
 end
 local function Place()
     local w = floor(frame:GetWidth() or 0)
@@ -397,6 +400,17 @@ local function Place()
     resetAllBtn:SetHeight(ctl2)
     resetAllBtn:ClearAllPoints()
     resetAllBtn:SetPoint("TOPLEFT", PAD + U(370), -U(66))
+    diffLabel:ClearAllPoints()
+    diffLabel:SetPoint("LEFT", resetAllBtn, "RIGHT", 24, 0)
+    local anchor = diffLabel
+    for _, d in ipairs(ns.Penalties.DIFFS) do
+        local b = diffBtns[d]
+        b:SetWidth(U(DIFFW))
+        b:SetHeight(ctl2)
+        b:ClearAllPoints()
+        b:SetPoint("LEFT", anchor, "RIGHT", anchor == diffLabel and 6 or 4, 0)
+        anchor = b
+    end
     listBox:ClearAllPoints()
     listBox:SetPoint("TOPLEFT", PAD, -head)
     listBox:SetPoint("BOTTOMRIGHT", -PAD, U(30))
@@ -513,6 +527,15 @@ function View.Attach(host)
     banner:SetWordWrap(false)
     ns.Kit.Text(banner, "badge.link")
     resetAllBtn = TopButton(frame, "HTP_FailWatchGPResetAll", "gpset.resetall", DoResetAll, "danger")
+    diffLabel = Kit.Str(frame, "GameFontNormalSmall")
+    ns.Kit.Text(diffLabel, "text.title")
+    diffLabel:SetText(ns.T("gpset.diff"))
+    for _, d in ipairs(ns.Penalties.DIFFS) do
+        diffBtns[d] = TopButton(frame, "HTP_FailWatchGPDiff" .. d, "gpset.diff." .. d, function()
+            ns.Penalties.SetEditDiff(d)
+            Reload()
+        end, "quiet")
+    end
     local cols = {
         { "rule", ns.T("gpset.col.rule") },
         { "mode", ns.T("gpset.col.mode") },

@@ -1,6 +1,5 @@
 local _, ns = ...
 local floor = math.floor
-local format = string.format
 local max = math.max
 local min = math.min
 local MIN_W = 696
@@ -8,17 +7,19 @@ local MIN_H = 406
 local MARGIN = 24
 local GRIP = 16
 local MAX_EDGE = 8
-local BTN = 20
-local SIDE = 12
-local BTN_GAP = 2
-local CAPTION_GAP = 8
 local STRIP_W = 320
-local TITLE_LEVEL = 2
 local BTN_LEVEL = 4
+local HEAD_H = 28
+local HEAD_PAD = 8
+local GROUPGAP = 8
+local PARTW = 24
+local PARTH = 22
+local PART_INSET = 3
+local HEADLEVEL = 6
 local Size = { MIN_W = MIN_W, MIN_H = MIN_H, MARGIN = MARGIN, MAX_EDGE = MAX_EDGE }
 ns.ReplaySize = Size
 local Kit = ns.Kit
-local st = { vw = MIN_W, vh = MIN_H, head = 0 }
+local st = { vw = MIN_W, vh = MIN_H }
 local function Num(v)
     if type(v) == "number" and v == v then return v end
     return nil
@@ -31,6 +32,15 @@ local function Saved()
 end
 local function Screen()
     return UIParent:GetWidth() or 0, UIParent:GetHeight() or 0
+end
+function Size.Rim()
+    return Kit.Theme().tab.join or 0
+end
+function Size.HeadH()
+    return Kit.GrowH(HEAD_H, "GameFontNormal")
+end
+function Size.Edge()
+    return Kit.Theme().window.pad or 0
 end
 local function Limit(left, top, edge)
     edge = edge or MARGIN
@@ -74,6 +84,7 @@ end
 local function Decor()
     Kit.ApplyDecor(st.frame)
     MaxLook()
+    Size.Place()
 end
 local function Sizing()
     return st.sizer ~= nil and st.sizer:IsActive()
@@ -140,79 +151,100 @@ local function BuildGrip(frame)
     grip:HookScript("OnHide", function() st.sizer:Cancel() end)
     st.grip = grip
 end
-function Size.Edge()
-    return Kit.Theme().window.pad or 0
+local function SeatParts(parts, x, w, h)
+    local bar = st.title
+    for i = #parts, 1, -1 do
+        local b = parts[i]
+        b:SetWidth(w)
+        b:SetHeight(h)
+        b:SetFrameLevel(bar:GetFrameLevel() + 1)
+        b:ClearAllPoints()
+        b:SetPoint("RIGHT", bar, "RIGHT", -x, 0)
+        x = x + w
+    end
+    return x
 end
 function Size.Place()
     local f = st.frame
     if not f then return end
-    local e = Size.Edge()
-    local y = -(e + st.head / 2)
-    st.close:ClearAllPoints()
-    st.close:SetPoint("RIGHT", f, "TOPRIGHT", -(e + SIDE), y)
-    st.maxBtn:ClearAllPoints()
-    st.maxBtn:SetPoint("RIGHT", st.close, "LEFT", -BTN_GAP, 0)
-    st.foldBtn:ClearAllPoints()
-    st.foldBtn:SetPoint("RIGHT", st.maxBtn, "LEFT", -BTN_GAP, 0)
-    st.title:SetHeight(st.head + e)
-    local left = st.foldBtn
-    if st.nav then
-        for i = #st.nav, 1, -1 do
-            local b = st.nav[i]
-            b:ClearAllPoints()
-            b:SetPoint("RIGHT", left, "LEFT", -(left == st.foldBtn and CAPTION_GAP or BTN_GAP), 0)
-            b:SetFrameLevel(f:GetFrameLevel() + BTN_LEVEL)
-            if b:IsShown() then left = b end
-        end
-    end
-    if st.caption then
-        st.caption:ClearAllPoints()
-        st.caption:SetPoint("LEFT", f, "TOPLEFT", e + SIDE, y)
-        st.caption:SetPoint("RIGHT", left, "LEFT", -CAPTION_GAP, 0)
-    end
+    local rim, head = Size.Rim(), Size.HeadH()
+    local bar = st.title
+    bar:ClearAllPoints()
+    bar:SetPoint("TOPLEFT", f, "TOPLEFT", rim, -rim)
+    bar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -rim, -rim)
+    bar:SetHeight(head)
+    bar:SetFrameLevel(f:GetFrameLevel() + HEADLEVEL)
+    local w = floor(PARTW * Kit.FontScale("GameFontNormal", true) + 0.5)
+    local h = min(Kit.GrowH(PARTH, "GameFontNormal"), head - PART_INSET * 2)
+    local x = SeatParts(st.winParts, PART_INSET, w, h)
+    if st.prev:IsShown() then x = SeatParts(st.navParts, x + GROUPGAP, w, h) end
+    local fs = st.caption
+    fs:ClearAllPoints()
+    fs:SetPoint("LEFT", bar, "LEFT", HEAD_PAD, 0)
+    fs:SetPoint("RIGHT", bar, "RIGHT", -(x + GROUPGAP), 0)
+    st.rule:ClearAllPoints()
+    st.rule:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 0, 0)
+    st.rule:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
     st.grip:ClearAllPoints()
-    st.grip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(4 + e), 4 + e)
+    st.grip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(4 + Size.Edge()), 4 + Size.Edge())
 end
-function Size.Head(head)
-    if head == st.head then return end
-    st.head = head
+function Size.SetTitle(text)
+    st.caption:SetText(text)
     Size.Place()
 end
-local function BuildTitle(frame, close)
-    close:SetWidth(BTN)
-    close:SetHeight(BTN)
-    close:SetFrameLevel(frame:GetFrameLevel() + BTN_LEVEL)
-    st.close = close
-    local b = Kit.MaxButton(frame)
-    b:SetWidth(BTN)
-    b:SetHeight(BTN)
-    b:SetFrameLevel(frame:GetFrameLevel() + BTN_LEVEL)
-    b.onClick = function() Size.Toggle() end
-    st.maxBtn = b
-    local fold = Kit.FoldButton(frame, false)
-    fold:SetWidth(BTN)
-    fold:SetHeight(BTN)
-    fold:SetFrameLevel(frame:GetFrameLevel() + BTN_LEVEL)
+function Size.TitleText()
+    return st.caption
+end
+function Size.Nav()
+    return st.prev, st.next
+end
+local function NavPart(bar, label, tip, fn)
+    local b = Kit.TabPart(bar)
+    Kit.ButtonFont(b, "GameFontNormal")
+    b:SetText(label)
+    b.tipTitle = ns.T(tip)
+    b.onClick = fn
+    return b
+end
+local function BuildHead(frame, onClose, onStep)
+    local bar = CreateFrame("Button", nil, frame)
+    bar:EnableMouse(true)
+    bar:RegisterForDrag("LeftButton")
+    bar:SetScript("OnDragStart", StartMove)
+    bar:SetScript("OnDragStop", StopMove)
+    bar:SetScript("OnDoubleClick", function() Size.Toggle() end)
+    st.title = bar
+    local fs = Kit.Str(bar, "GameFontNormal")
+    Kit.OneLine(fs)
+    Kit.Title(fs)
+    st.caption = fs
+    local rule = bar:CreateTexture(nil, "ARTWORK")
+    rule:SetHeight(1)
+    Kit.Paint(rule, "surface.edge")
+    st.rule = rule
+    local fold = Kit.TabPart(bar, "fold")
+    fold.tipTitle = ns.T("kit.strip.fold")
+    fold.tip = ns.T("kit.strip.fold.tip")
     fold.onClick = function() Size.Fold() end
-    st.foldBtn = fold
-    local title = CreateFrame("Button", nil, frame)
-    title:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    title:SetPoint("RIGHT", fold, "LEFT", 0, 0)
-    title:SetFrameLevel(frame:GetFrameLevel() + TITLE_LEVEL)
-    title:RegisterForDrag("LeftButton")
-    title:SetScript("OnDragStart", StartMove)
-    title:SetScript("OnDragStop", StopMove)
-    title:SetScript("OnDoubleClick", function() Size.Toggle() end)
-    st.title = title
+    local mx = Kit.TabPart(bar, "max")
+    mx.onClick = function() Size.Toggle() end
+    local close = Kit.TabPart(bar, "close")
+    close.tipTitle = ns.T("kit.win.close")
+    close.tip = ns.T("kit.win.close.tip")
+    close.onClick = function() onClose() end
+    st.winParts = { fold, mx, close }
+    st.foldBtn, st.maxBtn, st.close = fold, mx, close
+    st.prev = NavPart(bar, "<", "fl.nav.prev", function() onStep(-1) end)
+    st.next = NavPart(bar, ">", "fl.nav.next", function() onStep(1) end)
+    st.navParts = { st.prev, st.next }
     MaxLook()
 end
-function Size.Bind(frame, close, head, apply, extra, caption, nav)
+function Size.Bind(frame, onClose, apply, extra, onStep)
     st.frame, st.apply, st.extra = frame, apply, extra
-    st.head, st.caption, st.nav = head, caption, nav
     frame:SetScript("OnDragStart", StartMove)
     frame:SetScript("OnDragStop", StopMove)
     BuildGrip(frame)
-    BuildTitle(frame, close)
+    BuildHead(frame, onClose, onStep or function() end)
     Size.Place()
 end
 function Size.Restore()
@@ -340,5 +372,7 @@ function Size.Probe()
     local s = Saved()
     local mw, mh = Limit(nil, nil)
     return { grip = st.grip, maxBtn = st.maxBtn, title = st.title, max = s.max == true, vw = st.vw, vh = st.vh,
-             maxW = mw, maxH = mh, sizing = Sizing(), sizer = st.sizer, foldBtn = st.foldBtn, strip = st.strip, play = st.play }
+             maxW = mw, maxH = mh, sizing = Sizing(), sizer = st.sizer, foldBtn = st.foldBtn, strip = st.strip, play = st.play,
+             headH = Size.HeadH(), rim = Size.Rim(), caption = st.caption, rule = st.rule, close = st.close,
+             prev = st.prev, next = st.next, winParts = st.winParts, navParts = st.navParts }
 end

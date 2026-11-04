@@ -20,7 +20,7 @@ end
 local function Insert(lines, add)
     if not lines then return end
     local at = #lines + 1
-    if lines[#lines] and lines[#lines].kind == "foot" then at = #lines end
+    while at > 1 and lines[at - 1].kind == "foot" do at = at - 1 end
     for i = 1, #add do
         table.insert(lines, at, add[i])
         at = at + 1

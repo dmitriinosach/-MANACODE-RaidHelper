@@ -15,4 +15,7 @@ ns.castGcd = {
     fly = 1.5,
     match = 0.5,
     late = 0.2,
+    hits = {
+        [50783] = 47475,
+    },
 }

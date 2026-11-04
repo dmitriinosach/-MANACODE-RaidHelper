@@ -1,4 +1,5 @@
 local _, ns = ...
+ns.bossLast[ns.ENC.lichking] = { [36597] = true }
 ns.summaries[ns.ENC.lichking] = {
     death = { npc = 37698, wave = 46968, frenzy = 5229, enrage = 28747,
               tranq = 19801 },

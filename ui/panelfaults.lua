@@ -153,7 +153,8 @@ local function TipLines()
     local ok, why = true, nil
     if x then ok, why = CanGive(x) end
     if not ok then lines[#lines + 1] = { kind = "note", left = ns.T(why or "led.err.noepgp"), tone = "bad" } end
-    lines[#lines + 1] = { kind = "foot", left = ns.T("panel.faults.foot") }
+    lines[#lines + 1] = { kind = "foot", key = "lmb", left = ns.T("panel.faults.click") }
+    lines[#lines + 1] = { kind = "foot", key = "rmb", left = ns.T("panel.faults.skip") }
     return lines
 end
 local function GiveEnter(b)
@@ -163,7 +164,7 @@ local function GiveEnter(b)
     local lines = { { kind = "head", left = format(ns.T("panel.faults.give.tip"), x.ev.n, ns.Ledger.Unit(x.item.sys)) },
         { kind = "row", class = x.item.class, left = format(ns.T("panel.faults.row"), x.item.name, x.ev.short or "?") } }
     if not ok then lines[#lines + 1] = { kind = "note", left = ns.T(why or "led.err.noepgp"), tone = "bad" } end
-    lines[#lines + 1] = { kind = "foot", left = ns.T("panel.faults.skip") }
+    lines[#lines + 1] = { kind = "foot", key = "rmb", left = ns.T("panel.faults.skip") }
     ns.Panel.Tip(b, lines)
 end
 local function GiveClick(b, button)
@@ -218,7 +219,7 @@ Panel.Widget({
     Tip = function()
         if not Panel.Ctx().raid then
             return { { kind = "head", left = ns.T("set.panel.row.faults"), right = Panel.EmptyText("noraid") },
-                { kind = "foot", left = ns.T("panel.faults.click") } }
+                { kind = "foot", key = "lmb", left = ns.T("panel.faults.click") } }
         end
         Refresh()
         return TipLines()

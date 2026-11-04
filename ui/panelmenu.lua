@@ -16,8 +16,8 @@ local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\"
 local ARROW_TEX = "Interface\\ChatFrame\\ChatFrameExpandArrow"
 local ITEMS = {
     { key = "log" },
-    { key = "gp" },
-    { key = "mini", label = "panel.mini", tip = "panel.mini.tip", pic = "mini" },
+    { key = "gp", label = "panel.gp", tip = "panel.tip.gp", pic = "gp" },
+    { key = "mini", label = "panel.mini", tip = "panel.mini.tip", pic = "stats" },
     { key = "raid" },
     { key = "spam" },
     { key = "timer", sub = true },

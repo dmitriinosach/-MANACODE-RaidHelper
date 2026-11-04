@@ -1,7 +1,7 @@
 local _, ns = ...
 local min, max = math.min, math.max
 local PAD = 6
-local GAP = 3
+local GAP = 4
 local ROWGAP = 4
 local TITLE_H = 14
 local BTN_H = 18
@@ -20,6 +20,7 @@ local CHECK_PAD = 4
 local STATUS_GAP = 6
 local Acts = {}
 ns.PanelActs = Acts
+Acts.GAP = GAP
 local fly
 local title
 local anchor
@@ -97,6 +98,7 @@ local function Button(i)
     if not b then
         b = ns.Kit.Button(fly)
         ns.Kit.RoundButton(b)
+        ns.Kit.ExactSize(b)
         b:SetHeight(BTN_H)
         b.tipAnchor = "ANCHOR_NONE"
         b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -177,6 +179,7 @@ local function PlaceItem(it, x, y)
         w = max(curMin, b.text:GetStringWidth() + BTN_PAD)
     end
     b:SetWidth(w)
+    b:SetHeight(curH)
     b:ClearAllPoints()
     b:SetPoint("TOPLEFT", x, y)
     return w

@@ -6,13 +6,13 @@ local concat = table.concat
 local UNKNOWN_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local GPList = {}
 ns.GPList = GPList
-GPList.WIDE = { rowh = 22, headh = 18, whenw = 44, mainw = 92, proofw = 30, hotw = 48, checkw = 0, namew = 120,
+GPList.WIDE = { rowh = 22, headh = 18, mainw = 92, proofw = 30, hotw = 48, checkw = 0, namew = 120,
     icon = 16 }
-GPList.PAGE = { rowh = 22, headh = 18, whenw = 44, mainw = 92, proofw = 30, hotw = 48, checkw = 24, namew = 120,
+GPList.PAGE = { rowh = 22, headh = 18, mainw = 92, proofw = 30, hotw = 48, checkw = 24, namew = 120,
     icon = 16 }
-GPList.COMPACT = { rowh = 20, headh = 16, whenw = 0, mainw = 52, proofw = 22, hotw = 38, checkw = 0, namew = 78,
+GPList.COMPACT = { rowh = 20, headh = 16, mainw = 52, proofw = 22, hotw = 38, checkw = 0, namew = 78,
     icon = 13, small = true }
-GPList.MINI = { rowh = 20, headh = 16, whenw = 0, mainw = 46, proofw = 20, hotw = 0, checkw = 0, namew = 74,
+GPList.MINI = { rowh = 20, headh = 16, mainw = 46, proofw = 20, hotw = 0, checkw = 0, namew = 74,
     icon = 14, small = true }
 local listeners = {}
 function GPList.OnChange(fn)
@@ -168,7 +168,7 @@ local function HotItems(menu, fight, name, ev)
     end
 end
 local function ManualItems(menu, fight, name)
-    local rules = ns.Penalties.Choices(fight.boss)
+    local rules = ns.Penalties.Choices(fight)
     local sys = ns.Ledger.SysOf(name)
     menu[#menu + 1] = { text = format(ns.T("sum.gp.add"), name), isTitle = true, notCheckable = true }
     HotItems(menu, fight, name, nil)
@@ -267,7 +267,18 @@ function GPList.FirstAt(list)
 end
 function GPList.HitLines(fight, hit)
     local lines = ns.BadgeTips.Hit(fight, hit, ns.Penalties.Reason(hit.rule))
+    if lines[#lines].kind == "foot" then lines[#lines] = nil end
     if ns.ReplayLink then ns.ReplayLink.Tag(lines, fight, GPList.FirstAt(hit.events)) end
+    return lines
+end
+function GPList.EventLines(fight, ev)
+    local one = { rule = ev.hit.rule, events = { ev.src }, icon = ev.hit.icon, shed = ev.hit.shed }
+    local lines = ns.BadgeTips.Hit(fight, one, ns.Penalties.Reason(ev.hit.rule), true)
+    if ev.t and ns.ReplayLink then
+        ns.ReplayLink.Tag(lines, fight, ev.t)
+    elseif not ns.ReadOnly then
+        lines[#lines + 1] = { kind = "foot", key = "rmb", left = ns.T("ft.tip.foot") }
+    end
     return lines
 end
 function GPList.Note(item)

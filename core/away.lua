@@ -168,8 +168,8 @@ function Away.StatOf(s, p)
     end
     return nil
 end
-function Away.Limit(def)
-    local rule = ns.Penalties and def.limit and ns.Penalties.Get(def.limit)
+function Away.Limit(def, fight)
+    local rule = ns.Penalties and def.limit and ns.Penalties.For(def.limit, fight)
     return rule and ns.Penalties.Threshold(rule) or 0
 end
 function Away.Share(st, lim)
@@ -179,6 +179,6 @@ function Away.Share(st, lim)
     end
     return #d > 0 and n / #d or 0
 end
-function Away.Grade(st, def)
-    return st.avg > Away.Limit(def) and "yellow" or "green"
+function Away.Grade(st, def, fight)
+    return st.avg > Away.Limit(def, fight) and "yellow" or "green"
 end

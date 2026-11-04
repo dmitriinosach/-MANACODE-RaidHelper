@@ -4,13 +4,10 @@ local ceil = math.ceil
 local max = math.max
 local min = math.min
 local pi = math.pi
-local PAD = 12
+local PAD = 8
+local GAP = 8
 local FEED_W = 220
-local HEAD = 30
-local BAR_GAP = 8
-local BARS_GAP = 4
-local FOOT = 22
-local STATUS_GRIP = 24
+local STATUS_W = 360
 local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\replay\\"
 local ICONS = {
     left = "Interface\\Buttons\\UI-RotationLeft-Button-Up",
@@ -23,6 +20,7 @@ local ICONS = {
     north = "Interface\\Minimap\\CompassNorthTag",
     throne = "Interface\\Icons\\Achievement_Boss_LichKing",
     soul = "Interface\\Icons\\INV_Sword_122",
+    view = ns.Kit.GEAR_TEX,
 }
 local TURN_STEP = pi / 12
 local TILT_STEP = ns.ReplayIsoCam.TILT_STEP
@@ -30,8 +28,9 @@ local NAV_TOP = 8
 local NAV_RIGHT = 8
 local NAV_BTN = 28
 local NAV_ICON = 18
-local NAV_GAP = 2
-local NAV_SEP = 4
+local NAV_GAP = 0
+local NAV_SEP = 3
+local NAV_PARTPAD = 3
 local NAV_W = NAV_BTN + NAV_RIGHT * 2
 local NAV = {
     { "left", "iso.tip.left", sep = true }, { "right", "iso.tip.right" },
@@ -39,6 +38,7 @@ local NAV = {
     { "mode", "iso.tip.to2d", sep = true },
     { "reset", "iso.tip.reset", sep = true },
     { "scene", "iso.tip.scene.auto", sep = true },
+    { "view", "iso.view.tip", sep = true },
     { "help", "iso.tip.help", sep = true },
 }
 local SCENE = { fade = 0.15 }
@@ -49,7 +49,6 @@ local FIG_LEVEL = 12
 local HOVER_PAD = 6
 local HOVER_H = 18
 local FOCUS_GAP = 4
-local NAV_BTN_W = 20
 local IsoBuild = { SCENE = SCENE, NAV_W = NAV_W, NAV_BTN = NAV_BTN, ICONS = ICONS }
 ns.ReplayIsoBuild = IsoBuild
 local Kit = ns.Kit
@@ -67,9 +66,9 @@ local Turn, SetView, SetFlat = IsoCam.Turn, IsoCam.SetView, IsoCam.SetFlat
 local ResetCamera, Reframe, Saved = IsoCam.ResetCamera, IsoCam.Reframe, IsoCam.Saved
 local LoadCamera, UpdateCamUi = IsoCam.LoadCamera, IsoCam.UpdateCamUi
 local dim = { viewW = Size.MIN_W, viewH = Size.MIN_H, k = 1 }
-dim.sideH = dim.viewH + BAR_GAP + Bar.ROW_H
+dim.sideH = dim.viewH
 dim.barsH = floor(dim.sideH / 3)
-dim.h = HEAD + dim.sideH + FOOT
+dim.h = PAD + dim.sideH + GAP + Bar.ROW_H + PAD
 IsoBuild.dim = dim
 local ui
 local run
@@ -80,29 +79,31 @@ local SetFocus
 local SetHeal
 local UpdateSceneBtn
 local StepFight
-local m = { feedW = FEED_W, head = HEAD, foot = FOOT, k = 1, line = 18 }
+local m = { feedW = FEED_W, k = 1, line = 18 }
 local function Metrics()
     local k = max(1, Kit.FontScale("GameFontHighlightSmall", true), Kit.FontScale("GameFontNormalSmall", true))
     local pt = Kit.FontSize("GameFontHighlightSmall", true)
     m.k = k
     m.feedW = ceil(FEED_W * k)
-    m.head = max(HEAD, ceil(Kit.FontSize("GameFontNormal", true) * 1.15) + 12)
-    m.foot = max(FOOT, ceil(pt * 1.15) + 8)
     m.line = max(18, ceil(pt * 1.2))
     Bar.Measure()
 end
 local Box = {}
+function Box.Rim()
+    return Size.Rim()
+end
 function Box.SideX()
-    return PAD + Size.Edge()
+    return Box.Rim() + PAD
 end
 function Box.LeftX()
     return Box.SideX() + m.feedW + PAD
 end
 function Box.HeadH()
-    return m.head + Size.Edge() + ns.ReplayNoPatchView.Height()
+    local notice = ns.ReplayNoPatchView.Height()
+    return Box.Rim() + Size.HeadH() + (notice > 0 and PAD + notice + PAD or 0)
 end
 function Box.FootH()
-    return m.foot + Size.Edge()
+    return PAD + Box.Rim()
 end
 local function Clamp(v, lo, hi)
     if v < lo then return lo end
@@ -110,50 +111,82 @@ local function Clamp(v, lo, hi)
     return v
 end
 local function Around()
-    local side = Box.SideX()
-    return (run.narrow and side * 2 or Box.LeftX() + side), Box.HeadH() + BAR_GAP + Bar.ROW_H + Box.FootH()
+    local rim = Box.Rim()
+    return (run.narrow and rim * 2 or Box.LeftX() + rim), Box.HeadH() + GAP + Bar.ROW_H + Box.FootH()
 end
 local function FrameWidth()
     ui.frame:SetWidth(Around() + dim.viewW)
 end
 local function PlaceNotice()
     local side = Box.SideX()
-    ns.ReplayNoPatchView.Place(side, m.head + Size.Edge(), Around() + dim.viewW - side * 2)
+    ns.ReplayNoPatchView.Place(side, Box.Rim() + Size.HeadH() + PAD, Around() + dim.viewW - side * 2)
+end
+local function PlacePage()
+    local rim = Box.Rim()
+    ui.page:ClearAllPoints()
+    ui.page:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", rim, -rim)
+    ui.page:SetPoint("BOTTOMRIGHT", ui.frame, "BOTTOMRIGHT", -rim, rim)
+    local y = Box.HeadH() + dim.viewH + floor(GAP / 2)
+    ui.rule:ClearAllPoints()
+    ui.rule:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", run.narrow and rim or Box.SideX(), -y)
+    ui.rule:SetPoint("TOPRIGHT", ui.frame, "TOPRIGHT", -rim, -y)
 end
 local function PlaceBody()
     PlaceNotice()
     ui.side:ClearAllPoints()
-    ui.side:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", Box.SideX(), -Box.HeadH())
+    ui.side:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", Box.SideX(), -(Box.HeadH() + PAD))
     ui.view:ClearAllPoints()
     if run.narrow then
         ui.side:Hide()
-        ui.view:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", Box.SideX(), -Box.HeadH())
+        ui.view:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", Box.Rim(), -Box.HeadH())
     else
         ui.side:Show()
         ui.view:SetPoint("TOPLEFT", ui.frame, "TOPLEFT", Box.LeftX(), -Box.HeadH())
     end
+    PlacePage()
+end
+local function PlaceBar()
+    local col = not run.narrow and Box.LeftX() - Box.SideX() or nil
+    ui.bar:ClearAllPoints()
+    ui.bar:SetPoint("TOPLEFT", ui.view, "BOTTOMLEFT", col and -col or PAD, -GAP)
+    Bar.Resize(dim.viewW + (col or -PAD), col)
+end
+local function FrameHeight()
+    dim.h = Box.HeadH() + dim.viewH + GAP + Bar.ROW_H + Box.FootH()
+    ui.frame:SetHeight(dim.h)
+    PlacePage()
 end
 local function Narrow(narrow)
     if run.narrow == narrow then return end
     run.narrow = narrow
     PlaceBody()
+    PlaceBar()
+    Bar.Use(run.base)
+    FrameHeight()
     FrameWidth()
     Size.Refit()
 end
 local function Relayout()
     local bars = ui.bars ~= nil and ui.bars:IsShown()
-    ns.ReplayFeed.Fit(m.feedW, bars and dim.sideH - dim.barsH - BARS_GAP or dim.sideH)
+    ns.ReplayFeed.Fit(m.feedW, bars and dim.sideH - dim.barsH - GAP or dim.sideH)
     Narrow(not (run.feedHas or bars))
 end
 local function LayoutNav()
     if not ui.nav then return end
     ui.navRects = {}
-    local x = dim.viewW - NAV_RIGHT - NAV_BTN
-    local y = NAV_TOP
+    local th = Kit.Theme()
+    local g = ui.navGroup
+    Kit.Backdrop(g, { backdrop = th.window.backdrop, bg = th.tab.fill.color, border = th.window.border })
+    local inner = max(0, th.tab.rim - NAV_PARTPAD)
+    local x = dim.viewW - NAV_RIGHT - inner - NAV_BTN
+    local y = inner
     local function Place(b, name)
+        b:SetWidth(NAV_BTN)
+        b:SetHeight(NAV_BTN)
         b:ClearAllPoints()
-        b:SetPoint("TOPRIGHT", ui.view, "TOPRIGHT", -NAV_RIGHT, -y)
-        ui.navRects[#ui.navRects + 1] = { name = name, x = x, y = y, w = NAV_BTN, h = NAV_BTN, right = NAV_RIGHT }
+        b:SetPoint("TOPLEFT", g, "TOPLEFT", inner, -y)
+        ui.navRects[#ui.navRects + 1] = { name = name, x = x, y = NAV_TOP + y, w = NAV_BTN, h = NAV_BTN,
+                                          right = NAV_RIGHT + inner }
         y = y + NAV_BTN
     end
     Place(ui.compass, "north")
@@ -165,7 +198,7 @@ local function LayoutNav()
             if d.sep then
                 y = y + NAV_SEP
                 b.sep:ClearAllPoints()
-                b.sep:SetPoint("TOPRIGHT", ui.view, "TOPRIGHT", -NAV_RIGHT, -y)
+                b.sep:SetPoint("TOPLEFT", g, "TOPLEFT", inner, -y)
                 b.sep:Show()
                 y = y + 1 + NAV_SEP
             else
@@ -176,6 +209,11 @@ local function LayoutNav()
             b.sep:Hide()
         end
     end
+    g:SetWidth(NAV_BTN + inner * 2)
+    g:SetHeight(y + inner)
+    g:ClearAllPoints()
+    g:SetPoint("TOPRIGHT", ui.view, "TOPRIGHT", -NAV_RIGHT, -NAV_TOP)
+    IsoBuild.NAV_W = NAV_BTN + inner * 2 + NAV_RIGHT * 2
 end
 IsoBuild.LayoutNav = LayoutNav
 local function FitLegend()
@@ -188,11 +226,9 @@ local function FitLegend()
 end
 local function Resize(vw, vh)
     Metrics()
-    Size.Head(m.head)
     dim.viewW, dim.viewH = vw, vh
-    dim.sideH = vh + BAR_GAP + Bar.ROW_H
+    dim.sideH = vh - PAD
     dim.barsH = floor(dim.sideH / 3)
-    dim.h = Box.HeadH() + dim.sideH + Box.FootH()
     dim.k = min(vw / Size.MIN_W, vh / Size.MIN_H)
     cam.w, cam.h = vw, vh
     ui.view:SetWidth(vw)
@@ -207,10 +243,10 @@ local function Resize(vw, vh)
     ui.focus:SetWidth(vw - 180)
     LayoutNav()
     FitLegend()
-    Bar.Resize(vw)
+    PlaceBar()
     Bar.Use(run.base)
-    ui.status:SetWidth(vw - STATUS_GRIP)
-    ui.frame:SetHeight(dim.h)
+    ui.status:SetWidth(min(STATUS_W, vw - NAV_W * 2))
+    FrameHeight()
     FrameWidth()
     PlaceNotice()
     Relayout()
@@ -218,23 +254,16 @@ local function Resize(vw, vh)
     run.marksDirty = true
 end
 local function NavButton(parent, icon, tip)
-    local b = Kit.Button(parent)
+    local b = Kit.TabPart(parent, nil, icon, NAV_ICON)
     b:SetWidth(NAV_BTN)
     b:SetHeight(NAV_BTN)
-    if icon then
-        b.icon = b:CreateTexture(nil, "OVERLAY")
-        b.icon:SetTexture(icon)
-        b.icon:SetWidth(NAV_ICON)
-        b.icon:SetHeight(NAV_ICON)
-        b.icon:SetPoint("CENTER", b, "CENTER", 0, 0)
-    end
     b.tip = ns.T(tip)
     b.tipTitle = false
     b.tipAnchor = "ANCHOR_LEFT"
     return b
 end
 local function BuildCompass(top)
-    local b = NavButton(top, nil, "iso.tip.north")
+    local b = NavButton(ui.navGroup, nil, "iso.tip.north")
     b.onClick = function() Turn(-cam.angle) end
     ui.needle = b:CreateTexture(nil, "OVERLAY")
     ui.needle:SetTexture(ICONS.needle)
@@ -270,6 +299,7 @@ local function BuildLegend(top)
 end
 local function BuildNav(top)
     ui.navRects = {}
+    ui.navGroup = CreateFrame("Frame", nil, top)
     BuildCompass(top)
     local act = {
         left = function() Turn(-TURN_STEP) end,
@@ -295,19 +325,18 @@ local function BuildNav(top)
     for i = 1, #NAV do
         local d = NAV[i]
         local name = d[1]
-        local b = NavButton(top, name == "scene" and ICONS.throne or ICONS[name], d[2])
+        local b = NavButton(ui.navGroup, name == "scene" and ICONS.throne or ICONS[name], d[2])
         if d.sep then
-            b.sep = top:CreateTexture(nil, "ARTWORK")
+            b.sep = ui.navGroup:CreateTexture(nil, "ARTWORK")
             b.sep:SetWidth(NAV_BTN)
             b.sep:SetHeight(1)
-            Kit.Paint(b.sep, "window.border", 0.35)
+            Kit.Paint(b.sep, "surface.edge")
         end
         b.onClick = act[name]
         ui.nav[name] = b
     end
-    Kit.Tint(ui.nav.reset.icon, "text.title")
-    Kit.Tint(ui.nav.tiltmore.icon, "text.title")
-    Kit.Tint(ui.nav.tiltless.icon, "text.title")
+    ui.nav.view.tipTitle = ns.T("iso.view")
+    ui.gearBtn = ui.nav.view
     ui.nav.scene.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     ui.modeBtn = ui.nav.mode
     Kit.Bind(ui.modeBtn.text, "GameFontNormalSmall")
@@ -353,9 +382,6 @@ local function BuildView(frame)
     side:SetWidth(m.feedW)
     side:SetHeight(dim.sideH)
     side:SetPoint("TOPLEFT", frame, "TOPLEFT", Box.SideX(), -Box.HeadH())
-    local sideBg = side:CreateTexture(nil, "BACKGROUND")
-    sideBg:SetAllPoints(side)
-    Kit.Paint(sideBg, "surface.page", 0.5)
     ui.side = side
     ns.ReplayFeed.Build(side, m.feedW, dim.sideH, function(sec, who)
         if not run.scene then return end
@@ -429,7 +455,7 @@ function IsoBuild.ShowFocus(name)
 end
 local function BuildBottom()
     Bar.Build(ui, run, dim.viewW)
-    ui.bar:SetPoint("TOPLEFT", ui.view, "BOTTOMLEFT", 0, -BAR_GAP)
+    PlaceBar()
     ViewMenu.Build(ui, run, {
         SetHeal = SetHeal,
         Heal = function() return run.focusHeal end,
@@ -437,19 +463,6 @@ local function BuildBottom()
         Room = function() return run.scene and run.scene.room end,
     })
     Figs.Load()
-end
-local function BuildFightNav(frame)
-    local prev = Kit.ToolButton(frame)
-    prev:SetWidth(NAV_BTN_W)
-    prev.text:SetText("<")
-    prev.tipTitle = ns.T("fl.nav.prev")
-    prev.onClick = function() StepFight(-1) end
-    local nxt = Kit.ToolButton(frame)
-    nxt:SetWidth(NAV_BTN_W)
-    nxt.text:SetText(">")
-    nxt.tipTitle = ns.T("fl.nav.next")
-    nxt.onClick = function() StepFight(1) end
-    ui.prevBtn, ui.nextBtn = prev, nxt
 end
 local function NearFigure()
     local best, bestD
@@ -475,7 +488,8 @@ local function Build()
     frame:SetWidth(Box.LeftX() + dim.viewW + Box.SideX())
     frame:SetHeight(dim.h)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-    frame:SetFrameStrata("DIALOG")
+    frame:SetFrameStrata("FULLSCREEN")
+    frame:SetToplevel(true)
     frame:SetClampedToScreen(true)
     frame:SetMovable(true)
     frame:EnableMouse(true)
@@ -494,29 +508,30 @@ local function Build()
     frame:Hide()
     tinsert(UISpecialFrames, "HTP_FailWatchReplayIso")
     ui.frame = frame
-    ui.title = Kit.Str(frame, "GameFontNormal")
-    ui.title:SetJustifyH("LEFT")
-    ui.title:SetWordWrap(false)
-    Kit.Title(ui.title)
-    local close = Kit.CloseButton(frame, function() Iso.Hide() end)
+    ui.page = frame:CreateTexture(nil, "BORDER")
+    Kit.Paint(ui.page, "surface.page")
+    ui.rule = frame:CreateTexture(nil, "ARTWORK")
+    ui.rule:SetHeight(1)
+    Kit.Paint(ui.rule, "surface.edge")
     ui.nav = {}
     BuildView(frame)
-    BuildFightNav(frame)
     ns.ReplayNoPatchView.Build(frame, Refit)
     PlaceNotice()
     LoadCamera()
     BuildBottom()
     Follow.Bind(ui, run, cam, figs, SetFocus)
-    ui.status = Kit.Str(frame, "GameFontHighlightSmall")
+    ui.status = Kit.Str(ui.top, "GameFontHighlightSmall")
     Kit.Text(ui.status, "text.bright")
-    ui.status:SetPoint("TOPLEFT", ui.bar, "BOTTOMLEFT", 0, -4)
-    ui.status:SetWidth(dim.viewW - STATUS_GRIP)
+    ui.status:SetPoint("BOTTOMLEFT", ui.view, "BOTTOMLEFT", GAP, GAP)
+    ui.status:SetWidth(min(STATUS_W, dim.viewW - NAV_W * 2))
     ui.status:SetJustifyH("LEFT")
     IsoFigs.BuildPools()
     UpdateCamUi()
     run.narrow = false
     Tour.Bind(ui, { Saved = Saved, Figure = NearFigure })
-    Size.Bind(frame, close, m.head, Resize, Around, ui.title, { ui.prevBtn, ui.nextBtn })
+    Size.Bind(frame, function() Iso.Hide() end, Resize, Around, function(step) StepFight(step) end)
+    ui.title = Size.TitleText()
+    ui.prevBtn, ui.nextBtn = Size.Nav()
     Size.Restore()
     frame:SetScript("OnUpdate", ns.Prof.Wrap("ui.iso", Tick))
     frame:SetScript("OnShow", function()
@@ -536,27 +551,27 @@ local function Build()
         run.scrubbing = false
     end)
 end
-Kit.OnTheme(function()
-    if not ui or not ui.frame then return end
-    Size.Place()
-    PlaceBody()
-    Resize(dim.viewW, dim.viewH)
-    Size.Refit()
-    Kit.ApplyDecor(ui.frame)
-end)
-Kit.OnFont(function()
+local function Restyle()
     if not ui or not ui.frame then return end
     Resize(dim.viewW, dim.viewH)
-    Size.Place()
     PlaceBody()
     Size.Refit()
     Kit.ApplyDecor(ui.frame)
-end)
+    if run.fight then Size.SetTitle(Bar.Head(run.fight)) else Size.Place() end
+end
+Kit.OnTheme(Restyle)
+Kit.OnFont(Restyle)
 function IsoBuild.Bind(s)
     ui, run, cam, Iso, Tick = s.ui, s.run, s.cam, s.Iso, s.Tick
     SetFocus, SetHeal, UpdateSceneBtn, StepFight = s.SetFocus, s.SetHeal, s.UpdateSceneBtn, s.StepFight
 end
+function IsoBuild.Box()
+    local aw = Around()
+    return { pad = PAD, gap = GAP, rim = Box.Rim(), side = Box.SideX(), left = Box.LeftX(), head = Box.HeadH(),
+             foot = Box.FootH(), aroundW = aw }
+end
 IsoBuild.Around = Around
 IsoBuild.Relayout = Relayout
 IsoBuild.Refit = Refit
+IsoBuild.Narrow = Narrow
 IsoBuild.Build = Build

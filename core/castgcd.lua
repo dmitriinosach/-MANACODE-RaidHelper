@@ -157,6 +157,24 @@ function CG.Feed(st, ts, sub, srcName, dstName, a1, a2)
     end
     return nil
 end
+function CG.Hit(st, ts, sub, a1, a2)
+    if sub ~= "SPELL_DAMAGE" and sub ~= "SPELL_MISSED" then return nil end
+    local d = D()
+    local id = d.hits[tonumber(a1) or 0]
+    if not id then return nil end
+    local hitAt = st.hitAt or {}
+    st.hitAt = hitAt
+    local last = hitAt[id]
+    hitAt[id] = ts
+    if last and ts - last < d.pair then return nil end
+    local it = { t = ts, label = tostring(a2 or id), kind = "cast", id = id, hit = true }
+    local f = st.fw
+    if f and f.kind == K_CAST and ts >= f.ts and ts <= f.ts + f.left + d.fly then
+        it.start = f.ts
+        st.fw = nil
+    end
+    return it
+end
 function CG.Success(st, it)
     local f = st.fw
     if f and f.kind == K_CHAN and abs(f.ts - it.t) <= D().match then

@@ -397,6 +397,10 @@ function Jobs.Label(label, counted)
         job.counted = counted
     end
 end
+function Jobs.Title(text)
+    local job = running
+    if job then job.title = text end
+end
 function Jobs.Progress(done, total)
     local job = running
     if job then
@@ -426,6 +430,7 @@ function Jobs.Part(a, b)
     end
 end
 local function Caption(job)
+    if job.title then return job.title end
     local text = ns.T(job.label)
     if not job.counted then return text end
     local total = job.pt
@@ -437,7 +442,7 @@ function Jobs.State()
     local n = #queue
     for i = 1, n do
         local job = queue[i]
-        if job.label then
+        if job.label or job.title then
             return job.key, Frac(job), Caption(job), n, GetTime() - job.at, not job.told
         end
     end
@@ -613,6 +618,8 @@ function ns.TuneSig()
 end
 local LIMIT_MB = 100
 local LIMIT_V = 2
+local RULES_V = 2
+local RULES_FLAT = { "on", "dps", "melee", "ranged", "min", "yd", "pts" }
 local function ApplyDefaults(db)
     if type(db.settings) ~= "table" then db.settings = {} end
     if type(db.settings.ui) ~= "table" then db.settings.ui = {} end
@@ -645,6 +652,14 @@ local function ApplyDefaults(db)
     if type(fl.done) ~= "table" then fl.done = {} end
     if type(fl.log) ~= "table" then fl.log = {} end
     if type(fl.rules) ~= "table" then fl.rules = {} end
+    if fl.rulesV ~= RULES_V then
+        for _, over in pairs(fl.rules) do
+            if type(over) == "table" then
+                for i = 1, #RULES_FLAT do over[RULES_FLAT[i]] = nil end
+            end
+        end
+        fl.rulesV = RULES_V
+    end
     if type(fl.hot) ~= "table" then fl.hot = {} end
     if db.recording ~= true then db.recording = false end
     if db.recAuto ~= 1 then
