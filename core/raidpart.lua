@@ -4,7 +4,6 @@ local max = math.max
 local find = string.find
 local tsort = table.sort
 local F_PLAYER = ns.F.PLAYER
-local F_BY_PLAYER = ns.F.BY_PLAYER
 local F_HOSTILE = ns.F.HOSTILE
 local FEIGN = 5384
 local FEIGN_WINDOW = 2

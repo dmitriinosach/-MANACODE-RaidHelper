@@ -23,6 +23,14 @@ ns.pullTimer = {
     breaks = { ["Перерыв!"] = true, ["Перерыв"] = true, ["Break time!"] = true, ["Break"] = true },
     clockMax = 3600,
 }
+ns.pullWho = {
+    period = 0.25,
+    delay = 0.3,
+    window = 10,
+    gap = 0.25,
+    ties = 4,
+    toast = 4,
+}
 ns.pullSniff = {
     hit = 4,
     kill = 10,

@@ -421,6 +421,20 @@ function R.Done(ctx, L, posAt, ppy)
     L.cutter = R.Cutter(ctx, posAt, ppy)
     L.puddles = R.Puddles(ctx, posAt, ppy)
 end
+function R.Second(ctx, L, second)
+    local w = second.world or TWI
+    local span = L.realm and L.realm.boss[w]
+    if not (span and span.from[1]) then return end
+    local tr = second.tr
+    tr.boss, tr.realm, tr.guid, tr.npc = true, w, second.guid, Entry(ctx, second.guid)
+    tr.from, tr.to = span.from[1], span.to[#span.to]
+    local bodies = L.bossBodies
+    for i = 1, bodies and #bodies or 0 do
+        if bodies[i].guid == second.guid then tr.hpT, tr.hpV, tr.hpI = bodies[i].hpT, bodies[i].hpV, 1 end
+    end
+    L.adds[#L.adds + 1] = tr
+    L.boss2 = tr
+end
 function R.In(s, t)
     if not s then return false end
     for i = 1, #s.from do

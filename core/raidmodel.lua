@@ -82,9 +82,9 @@ local function Totals(res)
           color = "sem.wipe" },
         { title = T("rsum.t.encs"), value = format("%d/%d", res.passed, max(res.known or 0, res.encs)),
           sub = T("rsum.t.killed"), subs = encSubs, color = "sem.win", lines = encTip, unbuff = #unbuffed > 0 },
-        { title = T("rsum.t.deaths"), value = tostring(deaths),
+        { title = T("rsum.t.deaths"), value = tostring(deaths), all = "#t.deaths",
           sub = res.trash > 0 and format(T("rsum.t.trashdeaths"), TrashDeaths(res)) or nil, color = "sem.death" },
-        { title = T("rsum.t.heal"), value = Short(heal), color = "sem.heal" },
+        { title = T("rsum.t.heal"), value = Short(heal), color = "sem.heal", all = "#t.hps" },
     }
 end
 local function Ranked(res, key)
@@ -763,19 +763,19 @@ local function Awards(res)
 end
 Model.HIDE = "#raid"
 Model.DEFS = {
-    { key = "all", label = "rsum.d.all" },
-    { key = "enc", label = "rsum.d.enc" },
-    { key = "boss", label = "rsum.d.boss" },
-    { key = "cut", label = "rsum.d.cut" },
-    { key = "prio", label = "rsum.d.prio" },
-    { key = "heal", label = "rsum.d.heal" },
-    { key = "saver", label = "rsum.d.saver" },
-    { key = "deaths", label = "rsum.d.deaths" },
-    { key = "fault", label = "rsum.d.fault" },
-    { key = "time", label = "rsum.d.time" },
-    { key = "gp", label = "rsum.d.gp" },
-    { key = "drunk", label = "rsum.title.drunk" },
-    { key = "spent", label = "rsum.d.spent" },
+    { key = "all", label = "rsum.d.all", icon = "Interface\\Icons\\Ability_DualWield" },
+    { key = "enc", label = "rsum.d.enc", icon = "Interface\\Icons\\INV_Sword_04" },
+    { key = "boss", label = "rsum.d.boss", icon = "Interface\\Icons\\Ability_Warrior_DecisiveStrike" },
+    { key = "cut", label = "rsum.d.cut", icon = "Interface\\Icons\\Achievement_Boss_LichKing" },
+    { key = "prio", label = "rsum.d.prio", icon = "Interface\\Icons\\Ability_Hunter_MarkedForDeath" },
+    { key = "heal", label = "rsum.d.heal", icon = "Interface\\Icons\\Spell_Holy_FlashHeal" },
+    { key = "saver", label = "rsum.d.saver", icon = "Interface\\Icons\\Spell_Holy_DispelMagic" },
+    { key = "deaths", label = "rsum.d.deaths", icon = "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01" },
+    { key = "fault", label = "rsum.d.fault", icon = "Interface\\Icons\\Ability_Creature_Cursed_02" },
+    { key = "time", label = "rsum.d.time", icon = "Interface\\Icons\\INV_Misc_PocketWatch_01" },
+    { key = "gp", label = "rsum.d.gp", all = "#faults", icon = "Interface\\Icons\\INV_Misc_Coin_02" },
+    { key = "drunk", label = "rsum.title.drunk", all = "#cons", icon = "Interface\\Icons\\INV_Alchemy_EndlessFlask_06" },
+    { key = "spent", label = "rsum.d.spent", all = "#cons", icon = "Interface\\Icons\\INV_Potion_54" },
     { key = "top5", label = "rsum.d.top5", award = true },
     { key = "jopo", label = "rsum.d.jopo", award = true },
     { key = "buffed", label = "rsum.d.buffed", award = true },
@@ -823,5 +823,11 @@ function Model.Build(res)
             if d and shown and not NoData(d) then details[#details + 1] = d end
         end
     end
-    return { totals = Totals(res), details = details, awards = awards }
+    local totals = {}
+    local all = Totals(res)
+    for i = 1, #all do
+        local c = all[i]
+        if not (Hide and c.all and Hide.AllOff(c.all)) then totals[#totals + 1] = c end
+    end
+    return { totals = totals, details = details, awards = awards }
 end

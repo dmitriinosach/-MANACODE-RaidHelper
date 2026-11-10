@@ -89,8 +89,8 @@ local function Panel(panel)
     panels[key] = f
     return f
 end
-function Modal.Open(source)
-    local m = source.model
+function Modal.Open(source, model)
+    local m = model or source.model
     if not m then return end
     Build()
     ns.Tip.Hide()

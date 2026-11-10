@@ -178,11 +178,6 @@ function Kit.Panel(parent, caption)
     end
     return p
 end
-function Kit.Plate(parent)
-    local p = CreateFrame("Frame", nil, parent)
-    Kit.Skin(p, "plate")
-    return p
-end
 function Kit.Caption(parent, text, width)
     local fs = Kit.Str(parent, "GameFontNormal")
     fs:SetText(text)
@@ -299,11 +294,6 @@ function Kit.MaxLook(b, on)
     b.tipTitle = T(on and "kit.win.unmax" or "kit.win.max")
     b.tip = T(on and "kit.win.unmax.tip" or "kit.win.max.tip")
     if b.hovered then Kit.TipShow(b) end
-end
-function Kit.MaxButton(parent)
-    local b = Kit.GlyphButton(parent, "max")
-    Kit.MaxLook(b, false)
-    return b
 end
 function Kit.CloseButton(parent, onClose)
     local b = Kit.GlyphButton(parent, "close")

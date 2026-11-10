@@ -40,9 +40,13 @@ local HIT_YD = 3
 local BLAST_SHOW = 1
 local FADE = 1
 local ADD_HOLD = math.huge
-local BADGE = 12
+local BADGE = 15
+local BADGE_ICON = 10
+local ROW = BADGE + 1
+local BADGE_PAD = (BADGE - BADGE_ICON) / 2
 local BADGES = 3
-local FX_SHOW = 6
+local FX_SHOW = 7
+local FX_POOL = 12
 local FX_MAX = 32
 local KEY_B = 1024
 local LIFT_PX = 14
@@ -62,9 +66,6 @@ local BOMB_ICON = 16
 local BOMB_EDGE = 3
 local BOMB_PAD = 6
 local SPIN_TEX = "Creature\\VOIDWALKER\\TORNADO2C"
-local SPIN_K = 2.2
-local SPIN_RATE = 2 * math.pi * 1.25
-local SPIN_H = 0.5
 local VORTEX_DRAW = 4
 local VORTEX_SPIN = 1.6
 local VORTEX_SWIRL = 1.1
@@ -77,6 +78,8 @@ local BOOM_W, BOOM_H, BOOM_SHOW = 7, 26, 1.2
 local V = {}
 ns.ReplayLayersView = V
 local Kit = ns.Kit
+local RD = ns.ReplayDraw
+local Affine = RD.Affine
 local Replay = ns.Replay
 local Layers = ns.ReplayLayers
 local Shield = ns.ReplayShield
@@ -93,10 +96,13 @@ local used = { pool = 0, aim = 0, cone = 0, blast = 0, line = 0, hit = 0, count 
 local view, marks
 local hw, hh = 0, 0
 local top1, top2, top3, topN = {}, {}, {}, {}
+local low = { {}, {}, {}, n = {} }
+local badgeSeen, fxSeen = {}, {}
+local badgeIcons = {}
 local flagSpike, flagMc, flagLift, flagHalo, flagGrow = {}, {}, {}, {}, {}
 local flagLook = {}
-local flagSpin = {}
-local spinFigs = {}
+local ccAt = {}
+local Cc = ns.ReplayCcView
 local memo = { L = nil, from = 0, to = -1, np = 0, fk = 0, nfx = 0 }
 local fxList = {}
 local focusName
@@ -108,6 +114,16 @@ local stats = { aggro = 0, thr = 0, badges = 0, pools = 0, aims = 0, cones = 0, 
                 chaseLines = 0, waves = 0, edge = 0, waveR = 0, collects = 0, addRings = 0, fx = 0, vortex = 0,
                 vortexWave = 0, drops = 0, booms = 0 }
 V.stats = stats
+local mode = { bright = 1, lift = nil, liftK = nil, fx = FX_SHOW, extra = nil, aggro = 1, swap = 0 }
+local extraIds = {}
+local fxIcons = {}
+local exSeen = {}
+local swapAt = { hk = 0, t = -1e9, last = -1e9 }
+local function Bright(a)
+    a = a * mode.bright
+    if a > 1 then return 1 end
+    return a
+end
 local cursors = setmetatable({}, { __mode = "k" })
 local function Cursor(L, t)
     local c = cursors[L]
@@ -202,48 +218,14 @@ local function PutEllipse(tex, sx, sy, rw, rh)
     V.Sharp(tex, rw)
     return PutRect(tex, sx - rw, sy - rh, sx + rw, sy + rh, 0, 0, 1, 1)
 end
-local function Inverse(ox, oy, ux, uy, vx, vy, x, y)
-    local det = ux * vy - uy * vx
-    if det == 0 then return 0, 0 end
-    local dx, dy = x - ox, y - oy
-    return (dx * vy - dy * vx) / det, (ux * dy - uy * dx) / det
-end
 local function PutAffine(tex, ox, oy, ux, uy, vx, vy)
     if not view then return false end
-    local l = min(ox, ox + ux, ox + vx, ox + ux + vx)
-    local r = max(ox, ox + ux, ox + vx, ox + ux + vx)
-    local t = min(oy, oy + uy, oy + vy, oy + uy + vy)
-    local b = max(oy, oy + uy, oy + vy, oy + uy + vy)
-    if r - l > MAX_PX or b - t > MAX_PX then
-        tex:Hide()
-        return false
-    end
-    l, t, r, b = max(l, -hw), max(t, -hh), min(r, hw), min(b, hh)
-    if r - l < 1 or b - t < 1 then
-        tex:Hide()
-        return false
-    end
-    local ulx, uly = Inverse(ox, oy, ux, uy, vx, vy, l, t)
-    local llx, lly = Inverse(ox, oy, ux, uy, vx, vy, l, b)
-    local urx, ury = Inverse(ox, oy, ux, uy, vx, vy, r, t)
-    local lrx, lry = Inverse(ox, oy, ux, uy, vx, vy, r, b)
-    tex:ClearAllPoints()
-    tex:SetPoint("TOPLEFT", view, "CENTER", l, -t)
-    tex:SetWidth(r - l)
-    tex:SetHeight(b - t)
-    tex:SetTexCoord(ulx, uly, llx, lly, urx, ury, lrx, lry)
-    tex:Show()
-    return true
+    return Affine(tex, view, hw, hh, ox, oy, ux, uy, vx, vy)
 end
-local function Tex(parent, path, layer, token)
-    local tex = parent:CreateTexture(nil, layer)
-    tex:SetTexture(path)
-    if token then tex:SetVertexColor(Kit.Color(token)) end
-    tex:Hide()
-    return tex
-end
-function V.Build(v, m)
+local Tex = RD.Tex
+function V.Build(v, m, focusLayer)
     view, marks = v, m
+    Cc.Build(marks)
     for i = 1, POOL_DRAW do pools[i] = Tex(marks, RIM, "BACKGROUND") end
     for i = 1, AIM_DRAW do aimRings[i] = Tex(marks, RING, "BORDER") end
     for i = 1, RING_DRAW do addRings[i] = Tex(marks, RIM, "BACKGROUND") end
@@ -299,14 +281,9 @@ function V.Build(v, m)
     bomb.text:SetPoint("LEFT", bomb.icon, "RIGHT", BOMB_PAD / 2, 0)
     Kit.Text(bomb.text, "text.bad")
     bomb:Hide()
-    for i = 1, FX_SHOW do
-        local tex = marks:CreateTexture(nil, "OVERLAY")
-        tex:SetWidth(BADGE)
-        tex:SetHeight(BADGE)
-        tex:Hide()
-        fxRow.tex[i] = tex
-    end
-    fxRow.more = marks:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    focusLayer = focusLayer or m
+    for i = 1, FX_POOL do fxRow.tex[i] = V.Badge(focusLayer) end
+    fxRow.more = focusLayer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     fxRow.more:Hide()
 end
 function V.Sharp(tex, rw)
@@ -325,48 +302,101 @@ function V.Sharp(tex, rw)
         tex.sharpP = want
     end
 end
-function V.AddDebuff(fig, id)
-    local tex = fig.adb
-    if not id then
-        if tex and fig.adbId then
-            tex:Hide()
-            fig.adbId = nil
+local function BadgeRow(fig)
+    local bd = {}
+    for i = 1, BADGES do bd[i] = V.Badge(fig) end
+    bd[2]:SetPoint("RIGHT", bd[1], "LEFT", -(ROW - BADGE_ICON), 0)
+    bd[3]:SetPoint("LEFT", bd[1], "RIGHT", ROW - BADGE_ICON, 0)
+    local more = fig:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    more:SetPoint("LEFT", bd[3], "RIGHT", BADGE_PAD + 1, 0)
+    more:Hide()
+    return bd, more
+end
+function V.AddDebuff(fig, id, c1, c2, c3, n)
+    n = (n or 0) + (id and 1 or 0)
+    local a, b, c
+    if id then a, b, c = id, c1 or false, c2 or false else a, b, c = c1 or false, c2 or false, c3 or false end
+    local bd = fig.adb
+    if n == 0 then
+        if bd and fig.adbN ~= 0 then
+            for i = 1, BADGES do V.BadgeShow(bd[i], false) end
+            fig.adbMore:Hide()
+            fig.adbN, fig.adbA, fig.adbB, fig.adbC = 0, nil, nil, nil
         end
         return
     end
-    if not tex then
-        tex = fig:CreateTexture(nil, "OVERLAY")
-        tex:SetWidth(BADGE)
-        tex:SetHeight(BADGE)
-        tex:SetPoint("BOTTOM", fig.icon, "TOP", 0, 2)
-        fig.adb = tex
+    if not bd then
+        bd, fig.adbMore = BadgeRow(fig)
+        fig.adb = bd
+        fig.adbAt = nil
     end
-    if fig.adbId ~= id then
-        Kit.Icon.Spell(tex, id)
-        fig.adbId = id
+    local at = fig.bdBase or fig.addHpBg or fig.icon
+    if fig.adbAt ~= at then
+        fig.adbAt = at
+        bd[1]:ClearAllPoints()
+        bd[1]:SetPoint("BOTTOM", at, "TOP", 0, BADGE_PAD + 1)
     end
-    tex:Show()
+    if fig.adbN == n and fig.adbA == a and fig.adbB == b and fig.adbC == c then return end
+    fig.adbN, fig.adbA, fig.adbB, fig.adbC = n, a, b, c
+    for i = 1, BADGES do
+        local id = i == 1 and a or (i == 2 and b or c)
+        if id then Kit.Icon.Spell(bd[i], id) end
+        V.BadgeShow(bd[i], id and true or false)
+    end
+    if n > BADGES then
+        fig.adbMore:SetText("+" .. (n - BADGES))
+        fig.adbMore:Show()
+    else
+        fig.adbMore:Hide()
+    end
 end
 function V.BadgesUp(fig)
-    if fxRow.owner == fig and not fxRow.off and fxRow.tex[1] and fxRow.tex[1]:IsShown() then return 2 * BADGE + 4 end
-    if fig.bd and fig.bd[1]:IsShown() then return BADGE + 2 end
-    return 0
+    return fig.rowsUp or 0
+end
+function V.Badge(fig)
+    local tex = fig:CreateTexture(nil, "ARTWORK")
+    tex:SetWidth(BADGE_ICON)
+    tex:SetHeight(BADGE_ICON)
+    tex:Hide()
+    local disc = fig:CreateTexture(nil, "BORDER")
+    disc:SetTexture(CIRCLE)
+    Kit.Tint(disc, "sem.rep.castBg")
+    disc:SetWidth(BADGE)
+    disc:SetHeight(BADGE)
+    disc:SetPoint("CENTER", tex, "CENTER", 0, 0)
+    disc:Hide()
+    local ring = fig:CreateTexture(nil, "OVERLAY")
+    ring:SetTexture(RING)
+    Kit.Tint(ring, "sem.rep.badgeRim")
+    ring:SetWidth(BADGE)
+    ring:SetHeight(BADGE)
+    ring:SetPoint("CENTER", tex, "CENTER", 0, 0)
+    ring:Hide()
+    tex.disc, tex.ring = disc, ring
+    return tex
+end
+function V.BadgeShow(tex, on)
+    if (tex.bOn or false) == on then return end
+    tex.bOn = on
+    if on then
+        tex:Show()
+        tex.disc:Show()
+        tex.ring:Show()
+    else
+        tex:Hide()
+        tex.disc:Hide()
+        tex.ring:Hide()
+    end
 end
 function V.Attach(fig)
-    fig.bd = {}
-    for i = 1, BADGES do
-        local tex = fig:CreateTexture(nil, "OVERLAY")
-        tex:SetWidth(BADGE)
-        tex:SetHeight(BADGE)
-        tex:Hide()
-        fig.bd[i] = tex
-    end
-    fig.bd[1]:SetPoint("BOTTOM", fig.icon, "TOP", 0, 2)
-    fig.bd[2]:SetPoint("RIGHT", fig.bd[1], "LEFT", -1, 0)
-    fig.bd[3]:SetPoint("LEFT", fig.bd[1], "RIGHT", 1, 0)
-    fig.more = fig:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    fig.more:SetPoint("LEFT", fig.bd[3], "RIGHT", 1, 0)
-    fig.more:Hide()
+    fig.bdBase = fig:CreateTexture(nil, "BACKGROUND")
+    fig.bdBase:SetWidth(1)
+    fig.bdBase:SetHeight(1)
+    fig.bdBase:SetPoint("BOTTOM", fig.icon, "TOP", 0, 0)
+    fig.bd, fig.more = BadgeRow(fig)
+    fig.adb, fig.adbMore = BadgeRow(fig)
+    fig.bd[1]:SetPoint("BOTTOM", fig.bdBase, "TOP", 0, BADGE_PAD + 1)
+    fig.rowsLow, fig.rowsUp = false, 0
     fig.spike = fig:CreateTexture(nil, "OVERLAY")
     fig.spike:SetTexture(CONE)
     fig.spike:SetTexCoord(0, 0, 1, 0, 0, 1, 1, 1)
@@ -380,22 +410,19 @@ function V.Attach(fig)
     fig.halo:SetPoint("TOPLEFT", fig, "TOPLEFT", -4, 4)
     fig.halo:SetPoint("BOTTOMRIGHT", fig, "BOTTOMRIGHT", 4, -4)
     fig.halo:Hide()
-    fig.spin = fig:CreateTexture(nil, "OVERLAY")
-    fig.spin:SetTexture(SPIN_TEX)
-    fig.spin:SetPoint("CENTER", fig.icon, "CENTER", 0, 0)
-    Kit.Hue(fig.spin, "sem.rep.cyclone")
-    fig.spin:Hide()
+    Cc.Attach(fig)
 end
 function V.Role(fig)
     memo.L = nil
     fig.bKey, fig.lift, fig.mcOn, fig.grow, fig.look = nil, nil, nil, nil, nil
-    for i = 1, BADGES do fig.bd[i]:Hide() end
+    fig.dbI1, fig.dbI2, fig.dbI3, fig.dbN = false, false, false, 0
+    V.AddDebuff(fig, false)
+    for i = 1, BADGES do V.BadgeShow(fig.bd[i], false) end
     fig.more:Hide()
     if fxRow.owner == fig then fxRow.key = nil end
     fig.spike:Hide()
     fig.halo:Hide()
-    fig.spin:Hide()
-    fig.spinOn = nil
+    Cc.Set(fig, nil, nil, nil, nil)
 end
 function V.Clear(fig)
     if not fig.bd then return end
@@ -408,6 +435,7 @@ function V.Use(scene)
     for i = 1, #cones do cones[i]:Hide() end
     for i = 1, #blasts do blasts[i]:Hide() end
     for i = 1, #lines do lines[i]:Hide() end
+    Cc.Clear()
     aggro:Hide()
     aggroHead:Hide()
     aggroRing:Hide()
@@ -438,7 +466,7 @@ function V.Use(scene)
     for k in pairs(stats) do stats[k] = 0 end
     stats.countTop = nil
     memo.L = nil
-    for i = 1, FX_SHOW do fxRow.tex[i]:Hide() end
+    for i = 1, FX_POOL do V.BadgeShow(fxRow.tex[i], false) end
     fxRow.more:Hide()
     fxRow.owner, fxRow.key, fxRow.off = nil, nil, nil
     V.scene = scene
@@ -451,6 +479,10 @@ local function Fade(a, from, to, t)
     return a
 end
 local function Count(fs, sx, sy, left)
+    if sx < -hw or sx > hw or sy < -hh or sy > hh then
+        fs:Hide()
+        return
+    end
     if fs.left ~= left then
         fs.left = left
         fs:SetText(tostring(left))
@@ -471,9 +503,9 @@ local function PlacePools(scene, cam, t)
     for r = 1, #act do
         local j = act[r]
         if n >= POOL_DRAW then break end
-        if L.plFrom[j] <= t and L.plTo[j] > t then
+        local def = L.plDef[j]
+        if L.plFrom[j] <= t and L.plTo[j] > t and not (def.smoke or def.cloud) then
             local x, y = L.plX[j], L.plY[j]
-            local def = L.plDef[j]
             if def.follow then x, y = boss.vis and boss.x or -1, boss.y end
             if x >= 0 then
                 local sx, sy, k = Replay.Project(cam, x, y)
@@ -483,6 +515,7 @@ local function PlacePools(scene, cam, t)
                     if PutEllipse(tex, sx, sy, rw, max(1, rw * min(1, cam.tilt * k))) then
                         n = n + 1
                         local r, g, b, a = Kit.Color(def.tone)
+                        a = Bright(a)
                         local solid = def.fade and L.plSolid and L.plSolid[j]
                         if solid and t > solid then a = a * (L.plTo[j] - t) / (L.plTo[j] - solid) end
                         tex:SetVertexColor(r, g, b, Fade(a, L.plFrom[j], L.plTo[j], t))
@@ -516,6 +549,7 @@ local function PlaceAims(scene, cam, t)
             if k > 0 and PutEllipse(tex, sx, sy, rw, max(1, rw * min(1, cam.tilt * k))) then
                 n = n + 1
                 local r, g, b, a = Kit.Color(def.ring or def.tone)
+                a = Bright(a)
                 tex:SetVertexColor(r, g, b, Fade(a, from, L.plFrom[j] + FADE, t))
             end
         end
@@ -576,6 +610,7 @@ local function PlaceRings(scene, cam, t)
                 if PutEllipse(tex, sx, sy, rw, max(1, rw * min(1, cam.tilt * k))) then
                     n = n + 1
                     local r, g, b, a0 = Kit.Color(def.tone)
+                    a0 = Bright(a0)
                     tex:SetVertexColor(r, g, b, Fade(a0, a.from, to, t))
                 end
             end
@@ -603,7 +638,7 @@ local function PlaceBlasts(scene, cam, t)
                 if PutEllipse(tex, sx, sy, rw, max(1, rw * min(1, cam.tilt * k))) then
                     n = n + 1
                     tex:SetVertexColor(Kit.Color(L.bTone[j] or "sem.rep.blast"))
-                    tex:SetAlpha(0.25 + 0.75 * (1 - (t - L.bT[j]) / BLAST_SHOW))
+                    tex:SetAlpha(Bright(0.25 + 0.75 * (1 - (t - L.bT[j]) / BLAST_SHOW)))
                 end
             end
         end
@@ -636,6 +671,7 @@ local function PlaceCones(scene, cam, t)
                 if PutAffine(tex, ax - vx / 2, ay - vy / 2, ux, uy, vx, vy) then
                     n = n + 1
                     local r, g, b, a = Kit.Color(L.cnTone[j] or "sem.rep.cone")
+                    a = Bright(a)
                     tex:SetVertexColor(r, g, b, Fade(a, L.cnT[j], L.cnTo[j], t))
                 end
             end
@@ -645,6 +681,7 @@ local function PlaceCones(scene, cam, t)
     used.cone = n
     stats.cones = n
 end
+local ccTop = {}
 function V.Adds(scene, t, out)
     local list = scene.layers.adds
     local RV = ns.ReplayRealmView
@@ -652,7 +689,8 @@ function V.Adds(scene, t, out)
     for i = 1, #list do
         if n >= ADD_DRAW then break end
         local a = list[i]
-        if a.from <= t and a.to > t and not a.look and not (RV and RV.HideAdd(scene, a)) then
+        if a.from <= t and a.to > t and not a.look and not (RV and RV.HideAdd(scene, a))
+            and not (a.cK and Layers.CarryAt(a, t)) then
             local x, y, chase = -1, -1, false
             if a.chaseK and t < a.chaseTo then
                 x, y = Replay.PosAtTime(scene.tracks[a.chaseK], t)
@@ -663,12 +701,54 @@ function V.Adds(scene, t, out)
             if x >= 0 then
                 n = n + 1
                 out.x[n], out.y[n], out.icon[n], out.chase[n] = x, y, a.icon, chase
-                out.hp[n] = Layers.AddHp(a, t)
+                out.hp[n] = a.boss and Layers.BossHp(scene, t, a.realm) or Layers.AddHp(a, t)
                 out.debuff[n] = Layers.AddDebuff(a, t) or false
+                if out.cc1 then
+                    local cnt = Layers.AddCc(a, t, ccTop)
+                    local list = ns.replayData.addCcList
+                    out.cc1[n] = ccTop[1] and list[a.ccS[ccTop[1]]].icon or false
+                    out.cc2[n] = ccTop[2] and list[a.ccS[ccTop[2]]].icon or false
+                    out.cc3[n] = ccTop[3] and list[a.ccS[ccTop[3]]].icon or false
+                    out.ccN[n], out.add[n] = cnt, a
+                end
+                if out.k then out.k[n], out.rim[n] = a.big or 1, a.rim or false end
+                if out.boss then
+                    out.boss[n] = a.boss and a.name or false
+                    out.ghost[n], out.dusk[n] = false, false
+                    if RV then out.ghost[n], out.dusk[n] = RV.AddLook(a) end
+                end
             end
         end
     end
     return n
+end
+local function Rows(fig)
+    local b = fig.bd
+    local up = b[1].bOn or b[2].bOn or b[3].bOn or (fxRow.owner == fig and (fxRow.shown or 0) > 0)
+    local low = (fig.adbN or 0) > 0
+    if fig.rowsLow ~= low then
+        fig.rowsLow = low
+        b[1]:ClearAllPoints()
+        b[1]:SetPoint("BOTTOM", fig.bdBase, "TOP", 0, (low and ROW or 0) + BADGE_PAD + 1)
+    end
+    fig.rowsUp = (up and ROW or 0) + (low and ROW or 0)
+end
+function V.Carry(scene, t, figs)
+    local L = scene.layers
+    local of = L.carryOf
+    local list = ns.replayData.addCcList
+    for k = 1, #scene.tracks do
+        local fig = figs[k]
+        local a = of and of[k] and fig and fig.bd and Layers.CarriedBy(L, k, t)
+        if a then
+            local cnt = Layers.AddCc(a, t, ccTop)
+            V.AddDebuff(fig, false, ccTop[1] and list[a.ccS[ccTop[1]]].icon or false,
+                ccTop[2] and list[a.ccS[ccTop[2]]].icon or false, ccTop[3] and list[a.ccS[ccTop[3]]].icon or false, cnt)
+        elseif fig and fig.bd then
+            V.AddDebuff(fig, false, fig.dbI1 or false, fig.dbI2 or false, fig.dbI3 or false, fig.dbN or 0)
+        end
+        if fig and fig.bd then Rows(fig) end
+    end
 end
 local function PlaceHits(scene, cam, t)
     local L = scene.layers
@@ -741,13 +821,36 @@ end
 function V.BombText()
     return bomb and bomb.key and bomb.str or nil
 end
+local function BadgeIcon(id)
+    if not id then return Kit.QMARK end
+    local icon = badgeIcons[id]
+    if not icon then
+        icon = ns.SpellIcon(id) or Kit.QMARK
+        badgeIcons[id] = icon
+    end
+    return icon
+end
+local function Prio(s, k)
+    local def = Layers.State(s)
+    local lift = mode.lift
+    if lift and mode.liftK and mode.liftK[k] then return def.prio + (lift[def.name] or 0) end
+    return def.prio
+end
 local function Collect(L, n, t, fk)
+    for icon in pairs(fxSeen) do fxSeen[icon] = nil end
     for k = 1, n do
+        local seen = badgeSeen[k]
+        if seen then
+            for icon in pairs(seen) do seen[icon] = nil end
+        else
+            badgeSeen[k] = {}
+        end
         top1[k], top2[k], top3[k], topN[k] = -1, -1, -1, 0
+        low[1][k], low[2][k], low[3][k], low.n[k] = -1, -1, -1, 0
         flagSpike[k], flagMc[k], flagLift[k], flagHalo[k] = false, false, false, false
         flagGrow[k] = false
         flagLook[k] = false
-        flagSpin[k] = false
+        ccAt[k] = -1
     end
     local np, nx, nfx = 0, huge, 0
     for i = 1, L.ns do
@@ -762,7 +865,9 @@ local function Collect(L, n, t, fk)
         if not mine or to <= t then def = nil end
         if def and to < nx then nx = to end
         if def and def.focus then
-            if nfx < FX_MAX then
+            local icon = BadgeIcon(def.icon)
+            if nfx < FX_MAX and not fxSeen[icon] then
+                fxSeen[icon] = true
                 nfx = nfx + 1
                 fxList[nfx] = s
             end
@@ -770,21 +875,28 @@ local function Collect(L, n, t, fk)
         end
         local look = def and Shield.Of(s)
         if look and Shield.Prio(look) > Shield.Prio(flagLook[k] or nil) then flagLook[k] = look end
-        if def and not def.bare then
+        if def and def.cc and (ccAt[k] < 0 or def.prio >= Layers.State(L.stS[ccAt[k]]).prio) then ccAt[k] = i end
+        if def and not def.bare and not def.ccLook then
             if def.grow then flagGrow[k] = true end
-            topN[k] = topN[k] + 1
-            local p = def.prio
-            local a, b = top1[k], top2[k]
-            if a < 0 or p > Layers.State(a).prio then
-                top1[k], top2[k], top3[k] = s, a, b
-            elseif b < 0 or p > Layers.State(b).prio then
-                top2[k], top3[k] = s, b
-            elseif top3[k] < 0 or p > Layers.State(top3[k]).prio then
-                top3[k] = s
+            local seen = badgeSeen[k]
+            local icon = BadgeIcon(def.icon)
+            if not seen[icon] then
+                seen[icon] = true
+                local t1, t2, t3, tn = top1, top2, top3, topN
+                if def.cc or def.debuff then t1, t2, t3, tn = low[1], low[2], low[3], low.n end
+                tn[k] = tn[k] + 1
+                local p = Prio(s, k)
+                local a, b = t1[k], t2[k]
+                if a < 0 or p > Prio(a, k) then
+                    t1[k], t2[k], t3[k] = s, a, b
+                elseif b < 0 or p > Prio(b, k) then
+                    t2[k], t3[k] = s, b
+                elseif t3[k] < 0 or p > Prio(t3[k], k) then
+                    t3[k] = s
+                end
             end
             if def.spike then flagSpike[k] = true end
             if def.mc then flagMc[k] = true end
-            if def.spin then flagSpin[k] = true end
             if def.lift then flagLift[k] = true end
             if def.link then
                 np = np + 1
@@ -805,7 +917,7 @@ local function Collect(L, n, t, fk)
     end
     return np, nx, nfx
 end
-local function DecorateFx(fig, nfx)
+local function DecorateFx(fig, nfx, k)
     if not fig then nfx = 0 end
     for i = 2, nfx do
         local s = fxList[i]
@@ -817,47 +929,82 @@ local function DecorateFx(fig, nfx)
         end
         fxList[j + 1] = s
     end
-    local key = table.concat(fxList, ",", 1, nfx)
+    local n = 0
+    for icon in pairs(exSeen) do exSeen[icon] = nil end
+    local hidden = 0
+    if fig and k and k > 0 then
+        for i = 1, BADGES do
+            local s = i == 1 and top1[k] or (i == 2 and top2[k] or top3[k])
+            if s >= 0 then
+                n = n + 1
+                fxIcons[n] = Layers.State(s).icon
+                exSeen[BadgeIcon(fxIcons[n])] = true
+            end
+        end
+        hidden = max(0, topN[k] - BADGES)
+    end
+    for i = 1, nfx do
+        local icon = Layers.State(fxList[i]).icon
+        if not exSeen[BadgeIcon(icon)] then
+            n = n + 1
+            fxIcons[n] = icon
+            exSeen[BadgeIcon(icon)] = true
+        end
+    end
+    local nex = fig and memo.nex or 0
+    for i = 1, nex do
+        local id = extraIds[i]
+        local icon = BadgeIcon(id)
+        if not exSeen[icon] then
+            exSeen[icon] = true
+            n = n + 1
+            fxIcons[n] = id
+        end
+    end
+    nfx = n
+    for i = n + 1, #fxIcons do fxIcons[i] = nil end
+    local cap = mode.fx
+    local key = table.concat(fxIcons, ",", 1, nfx) .. "|" .. cap .. "|" .. hidden
     if fxRow.owner == fig and fxRow.key == key then return end
     fxRow.owner, fxRow.key = fig, key
     fxRow.off = fig ~= nil and fig.shown == false
-    local shown = fxRow.off and 0 or min(nfx, FX_SHOW)
-    local w = shown * (BADGE + 1) - 1
-    for i = 1, FX_SHOW do
+    local shown = fxRow.off and 0 or min(nfx, cap)
+    fxRow.shown = shown
+    local w = shown * ROW - 1
+    for i = 1, FX_POOL do
         local tex = fxRow.tex[i]
         if i <= shown then
             tex:ClearAllPoints()
-            tex:SetPoint("BOTTOMLEFT", fig.icon, "TOP", -w / 2 + (i - 1) * (BADGE + 1), BADGE + 4)
-            Kit.Icon.Spell(tex, Layers.State(fxList[i]).icon)
-            tex:Show()
+            tex:SetPoint("BOTTOM", fig.bd[1], "BOTTOM", -w / 2 + BADGE / 2 + (i - 1) * ROW, 0)
+            Kit.Icon.Spell(tex, fxIcons[i])
+            V.BadgeShow(tex, true)
         else
-            tex:Hide()
+            V.BadgeShow(tex, false)
         end
     end
-    if shown > 0 and nfx > FX_SHOW then
+    local rest = max(0, nfx - cap) + hidden
+    if shown > 0 and rest > 0 then
         fxRow.more:ClearAllPoints()
-        fxRow.more:SetPoint("LEFT", fxRow.tex[FX_SHOW], "RIGHT", 1, 0)
-        fxRow.more:SetText("+" .. (nfx - FX_SHOW))
+        fxRow.more:SetPoint("LEFT", fxRow.tex[shown], "RIGHT", BADGE_PAD + 1, 0)
+        fxRow.more:SetText("+" .. rest)
         fxRow.more:Show()
     else
         fxRow.more:Hide()
     end
 end
 local function Decorate(fig, k)
+    local mine = k == memo.fk
     local key = (top1[k] + 2) + (top2[k] + 2) * KEY_B + (top3[k] + 2) * KEY_B * KEY_B
         + (topN[k] + (flagSpike[k] and KEY_B or 0)) * KEY_B * KEY_B * KEY_B
+    if mine then key = -1 - (flagSpike[k] and 1 or 0) end
     if fig.bKey ~= key then
         fig.bKey = key
         for i = 1, BADGES do
             local s = i == 1 and top1[k] or (i == 2 and top2[k] or top3[k])
-            if s >= 0 then
-                Kit.Icon.Spell(fig.bd[i], Layers.State(s).icon)
-                fig.bd[i]:Show()
-            else
-                fig.bd[i]:Hide()
-            end
+            if s >= 0 and not mine then Kit.Icon.Spell(fig.bd[i], Layers.State(s).icon) end
+            V.BadgeShow(fig.bd[i], s >= 0 and not mine)
         end
-        if topN[k] > BADGES then
+        if topN[k] > BADGES and not mine then
             fig.more:SetText("+" .. (topN[k] - BADGES))
             fig.more:Show()
         else
@@ -865,11 +1012,19 @@ local function Decorate(fig, k)
         end
         if flagSpike[k] then fig.spike:Show() else fig.spike:Hide() end
     end
+    for i = 1, BADGES do
+        local s = low[i][k]
+        fig["dbI" .. i] = s >= 0 and Layers.State(s).icon or false
+    end
+    fig.dbN = low.n[k]
     if flagMc[k] ~= (fig.mcOn or false) then
         fig.mcOn = flagMc[k]
         ns.ReplayFigs.Rim(fig)
     end
-    local lift = flagLift[k] and LIFT_PX or nil
+    local cc = ccAt[k]
+    local ccDef = cc >= 0 and Layers.State(memo.L.stS[cc]) or nil
+    local ccKind = ccDef and (ccDef.ccLook or ccDef.hard and "ring") or nil
+    local lift = (flagLift[k] or ccKind == "cyclone") and LIFT_PX or nil
     if fig.lift ~= lift then
         fig.lift = lift
         fig.sQ = nil
@@ -877,29 +1032,9 @@ local function Decorate(fig, k)
     fig.grow = flagGrow[k]
     fig.look = flagLook[k] or nil
     if flagHalo[k] then fig.halo:Show() else fig.halo:Hide() end
-    local spin = flagSpin[k]
-    if fig.spinOn ~= spin then
-        if spin then fig.spin:Show() else fig.spin:Hide() end
-    end
-    fig.spinOn = spin
+    Cc.Set(fig, memo.scene, ccKind, ccKind and memo.L.stSrc[cc] or nil, ccKind and memo.L.stFrom[cc] or nil)
     if topN[k] > 0 then stats.badges = stats.badges + min(BADGES, topN[k]) end
-end
-local function PlaceSpin(t)
-    for i = 1, #spinFigs do
-        local fig = spinFigs[i]
-        local tex = fig.spin
-        local w = floor(fig.icon:GetWidth() * SPIN_K + 0.5)
-        if fig.spinW ~= w then
-            fig.spinW = w
-            tex:SetWidth(max(1, w))
-            tex:SetHeight(max(1, w))
-        end
-        local a = t * SPIN_RATE + i
-        local c, s = math.cos(a) * SPIN_H, math.sin(a) * SPIN_H
-        tex:SetTexCoord(0.5 - c - s, 0.5 + s - c, 0.5 - c + s, 0.5 + s + c,
-            0.5 + c - s, 0.5 - s - c, 0.5 + c + s, 0.5 - s + c)
-    end
-    stats.spins = #spinFigs
+    if low.n[k] > 0 then stats.badges = stats.badges + min(BADGES, low.n[k]) end
 end
 local function PlacePacts(figs, np)
     local n = 0
@@ -921,8 +1056,8 @@ local function PlacePacts(figs, np)
     for i = n + 1, used.line do lines[i]:Hide() end
     used.line = n
 end
-local function RingUnder(tex, fig)
-    local rw = (fig.w or 0) * AGGRO_RING
+local function RingUnder(tex, fig, grow)
+    local rw = (fig.w or 0) * AGGRO_RING * (grow or 1)
     return rw >= 2 and PutEllipse(tex, fig.sx, fig.sy, rw, max(1, rw * (fig.flat or 1)))
 end
 local function ThreatRow(scene, t)
@@ -949,6 +1084,16 @@ local function PlaceAggro(scene, t, figs)
     local fig = hk > 0 and figs[hk]
     local bf = figs[#scene.tracks + 1]
     stats.aggro = 0
+    if t < swapAt.last then swapAt.hk, swapAt.t = hk, -1e9 end
+    swapAt.last = t
+    if hk ~= swapAt.hk then
+        if hk > 0 and swapAt.hk > 0 then swapAt.t = t end
+        swapAt.hk = hk
+    end
+    local aw, ahw = AGGRO_W * mode.aggro, AGGRO_HW * mode.aggro
+    local grow = 1
+    if mode.swap > 0 and t - swapAt.t < mode.swap then grow = 1 + 0.8 * (1 - (t - swapAt.t) / mode.swap) end
+    stats.swap = grow > 1 and 1 or 0
     local drawn = false
     if fig and fig.shown and bf and bf.shown then
         local dx, dy = fig.sx - bf.sx, fig.sy - bf.sy
@@ -959,12 +1104,12 @@ local function PlaceAggro(scene, t, figs)
             local tx, ty = fig.sx - ux * AGGRO_GAP + ox, fig.sy - uy * AGGRO_GAP + oy
             local hx, hy = tx - ux * AGGRO_HL, ty - uy * AGGRO_HL
             local sx, sy = bf.sx + ux * AGGRO_GAP + ox, bf.sy + uy * AGGRO_GAP + oy
-            local nx, ny = -uy * AGGRO_W, ux * AGGRO_W
-            local wx, wy = -uy * AGGRO_HW, ux * AGGRO_HW
+            local nx, ny = -uy * aw, ux * aw
+            local wx, wy = -uy * ahw, ux * ahw
             drawn = PutAffine(aggro, sx - nx / 2, sy - ny / 2, hx - sx, hy - sy, nx, ny)
                 and PutAffine(aggroHead, tx - wx / 2, ty - wy / 2, hx - tx, hy - ty, wx, wy)
         elseif d >= 2 then
-            local nx, ny = -dy / d * AGGRO_W, dx / d * AGGRO_W
+            local nx, ny = -dy / d * aw, dx / d * aw
             drawn = PutAffine(aggro, bf.sx - nx / 2, bf.sy - ny / 2, dx, dy, nx, ny)
             aggroHead:Hide()
         end
@@ -975,7 +1120,7 @@ local function PlaceAggro(scene, t, figs)
         aggro:Hide()
         aggroHead:Hide()
     end
-    if not (fig and fig.shown and RingUnder(aggroRing, fig)) then aggroRing:Hide() end
+    if not (fig and fig.shown and RingUnder(aggroRing, fig, grow)) then aggroRing:Hide() end
     local n = 0
     local r = b.vis and ThreatRow(scene, t)
     local top = r and r.top
@@ -1044,16 +1189,12 @@ local function PlaceDrops(scene, cam, t)
             local tex = drop.beam[nb + 1]
             local yd = scene.ppy * cam.zoom * k
             local w, h = BOOM_W * yd, BOOM_H * yd * min(1, cam.tilt * k + 0.3)
-            if k > 0 and w < MAX_PX and h < MAX_PX then
+            local q = (t - d.t) / BOOM_SHOW
+            local half = w * (1 + 0.4 * q) / 2
+            if k > 0 and w < MAX_PX and h < MAX_PX and PutRect(tex, gx - half, gy - h, gx + half, gy, 0, 0, 1, 1) then
                 nb = nb + 1
-                local q = (t - d.t) / BOOM_SHOW
-                tex:ClearAllPoints()
-                tex:SetPoint("BOTTOM", view, "CENTER", gx, -gy)
-                tex:SetWidth(w * (1 + 0.4 * q))
-                tex:SetHeight(h)
                 local r, g, b, a = Kit.Color("sem.rep.icicleBoom")
                 tex:SetVertexColor(r, g, b, a * (1 - q))
-                tex:Show()
             end
         end
         if n < DROP_DRAW and lead > 0 and t >= d.t - lead and t < d.t then
@@ -1177,28 +1318,37 @@ function V.Place(scene, cam, t, figs)
         end
         memo.fk = fk
         memo.np, memo.to, memo.nfx = Collect(L, n, t, fk)
+        memo.nex = 0
+        if mode.extra and fk > 0 then
+            local nex, nx = mode.extra(fk, t, extraIds)
+            memo.nex = nex
+            if nx and nx < memo.to then memo.to = nx end
+        end
         memo.L, memo.from = L, t
         stats.badges, stats.fx = 0, 0
         stats.collects = stats.collects + 1
-        for i = #spinFigs, 1, -1 do spinFigs[i] = nil end
+        memo.scene = scene
+        Cc.Reset()
         for k = 1, n do
             local fig = figs[k]
             if fig.bd then Decorate(fig, k) end
-            if fig.spinOn then spinFigs[#spinFigs + 1] = fig end
         end
         local owner = fk > 0 and figs[fk].bd and figs[fk] or nil
-        DecorateFx(owner, memo.nfx)
-        stats.fx = owner and min(memo.nfx, FX_SHOW) or 0
+        DecorateFx(owner, memo.nfx, fk)
+        stats.fx = owner and fxRow.shown or 0
     end
     local owner = fxRow.owner
     local off = owner ~= nil and owner.shown == false
     if owner and off ~= fxRow.off then
         fxRow.key = nil
-        DecorateFx(owner, memo.nfx)
+        DecorateFx(owner, memo.nfx, memo.fk)
     end
     PlacePacts(figs, memo.np)
     PlaceAggro(scene, t, figs)
-    PlaceSpin(t)
+    Cc.Place(scene, t, figs)
+    V.Carry(scene, t, figs)
+    local boss = figs[#scene.tracks + 1]
+    if boss and boss.isBoss then ns.ReplayFigs.Rage(boss, Layers.Rage(L, t)) end
 end
 function V.Focus(name)
     if focusName == name then return end
@@ -1207,6 +1357,20 @@ function V.Focus(name)
 end
 function V.FocusName()
     return focusName
+end
+function V.SetMode(m)
+    m = m or {}
+    mode.bright = m.bright or 1
+    mode.lift, mode.liftK = m.lift, m.liftK
+    mode.fx = math.min(FX_POOL, m.fx or FX_SHOW)
+    mode.extra = m.extra
+    mode.aggro = m.aggro or 1
+    mode.swap = m.swap or 0
+    memo.L = nil
+    fxRow.key = nil
+end
+function V.Mode()
+    return mode
 end
 V.FxRow = fxRow
 V.Ellipse = PutEllipse

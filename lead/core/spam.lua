@@ -190,15 +190,48 @@ local function groupNames(grp)
     end
     return names, all
 end
+function P.Have()
+    local S = ns.Session
+    local out = {}
+    for _, r in ipairs(ROLES) do out[r] = 0 end
+    for _, m in ipairs(S.Roster()) do
+        if m.work and m.name then
+            local r = S.FlaskRole(m.name)
+            if out[r] then out[r] = out[r] + 1 end
+        end
+    end
+    return out
+end
+local function open()
+    local need, got, out = P.Needs(), P.Have(), {}
+    for _, grp in ipairs(ROLES) do
+        local o = { n = math.max(0, need[grp] - got[grp]), got = got[grp] }
+        if o.n > 0 then
+            o.names, o.all = groupNames(grp)
+            if #o.names == 0 then o.n = 0 end
+        end
+        out[grp] = o
+    end
+    return out
+end
+function P.Open()
+    local out, got = {}, {}
+    for grp, o in pairs(open()) do out[grp], got[grp] = o.n, o.got end
+    return out, got
+end
+function P.OpenTotal()
+    local n = 0
+    for _, o in pairs(open()) do n = n + o.n end
+    return n
+end
 local function needParts()
-    local need = P.Needs()
+    local o = open()
     local parts = {}
     for _, grp in ipairs(ROLES) do
-        local n = need[grp]
+        local n = o[grp].n
         if n > 0 then
-            local names, all = groupNames(grp)
             parts[#parts + 1] = { grp = grp, head = n .. " " .. groupWord(grp, n),
-                names = (#names > 0 and not all) and names or nil }
+                names = not o[grp].all and o[grp].names or nil }
         end
     end
     return parts
@@ -435,12 +468,13 @@ local function stopFull()
     return P.AutoStop() and P.TemplateFull()
 end
 function P.CanStart()
-    return not ns.Test.Active() and #activeChannels() > 0 and P.NeedTotal() > 0 and not stopFull()
+    return not ns.Test.Active() and #activeChannels() > 0 and P.OpenTotal() > 0 and not stopFull()
 end
 function P.Blocker()
     if ns.Test.Active() then return "tipTestSpam" end
     if #activeChannels() == 0 then return "tipNoChannels" end
     if P.NeedTotal() == 0 then return "tipNoNeeds" end
+    if P.OpenTotal() == 0 then return "tipNeedsMet" end
     if stopFull() then return "tipTplFull" end
 end
 function P.CanSendNow()
@@ -524,7 +558,7 @@ ticker:SetScript("OnUpdate", function(self, dt)
     acc = acc + dt
     if acc < 0.25 then return end
     acc = 0
-    if P.NeedTotal() == 0 or stopFull() then
+    if P.OpenTotal() == 0 or stopFull() then
         P.Stop()
         return
     end

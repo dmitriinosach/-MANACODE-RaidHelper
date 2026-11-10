@@ -1,6 +1,7 @@
 local _, ns = ...
 local band = bit.band
 local floor = math.floor
+local max = math.max
 local min = math.min
 local find = string.find
 local WINDOW = 12
@@ -11,6 +12,7 @@ local STEP_CHUNKS = 32
 local STEP_MS = 3
 local F_GROUP = ns.F.GROUP
 local MAX_TAIL = 12
+local packed = setmetatable({}, { __mode = "k" })
 local Trash = {}
 ns.Trash = Trash
 Trash.WINDOW = WINDOW
@@ -162,7 +164,10 @@ function Trash.Step(seg, now, all)
         if first and first > cutMs then cutMs = first end
     end
     Trim(seg, cutMs)
-    if all or Codec.DictBytes(seg) > DICT_BYTES then Codec.Compact(seg) end
+    if all or Codec.DictBytes(seg) > max(DICT_BYTES, 2 * (packed[seg] or 0)) then
+        Codec.Compact(seg)
+        packed[seg] = Codec.DictBytes(seg)
+    end
     if all then return false end
     return Codec.FrontOld(seg, cutMs) or (seg.chunks[1] ~= nil and Codec.Size(seg) > Trash.RING_BYTES)
 end

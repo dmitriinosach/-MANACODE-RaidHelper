@@ -43,7 +43,7 @@ function Tips.Mechanic(b)
     local npc = d.npc or d.src or (d.names and d.names[1])
     local icon = npc and ns.npcPortraits and ns.npcPortraits[npc]
     local add = npc and ns.replayData and ns.replayData.adds[npc]
-    icon = icon or ns.SpellIcon(id or (type(add) == "number" and add or nil))
+    icon = icon or ns.SpellIcon(id or (type(add) == "number" and add or nil)) or (ns.kindIcons and ns.kindIcons[d.kind])
     if #spells == 1 and not npc then
         return { label = label, icon = icon, link = "spell:" .. id }
     end
@@ -438,6 +438,28 @@ local function Shed(st, def)
     if #st.hangs > TIMES then Put(out, "sub", (format(T("sum.tip.more"), #st.hangs - TIMES):gsub("^%s+", ""))) end
     return out
 end
+local function Portal(out, st)
+    local went, seen, miss = {}, {}, {}
+    for k = 1, #st.waves do
+        local w = st.waves[k]
+        if not seen[w] then
+            seen[w] = true
+            went[#went + 1] = w
+        end
+    end
+    for w = 1, st.of or 0 do
+        if not seen[w] then miss[#miss + 1] = w end
+    end
+    Put(out, "row", T("sum.tt.waves"), format(T("sum.tt.wavesof"), concat(went, ", "), st.of or #went))
+    if #miss > 0 then Put(out, "row", T("sum.tt.wavesmiss"), concat(miss, ", "), nil, "dim") end
+    for k = 1, min(TIMES, #st.times) do
+        local out2 = st.outs and st.outs[k]
+        Put(out, "sub", format(T("sum.tt.wave"), st.waves[k] or 0),
+            Clock(st.times[k]) .. (out2 and ("–" .. Clock(out2)) or ""))
+    end
+    More(out, #st.times)
+    return out
+end
 function Tips.Badge(st, def, fight)
     local kind = def.kind
     if kind == "given" or kind == "got" then return Buffs(st, def) end
@@ -483,6 +505,7 @@ function Tips.Badge(st, def, fight)
         return out
     end
     if kind == "hit" then return Hits(out, st) end
+    if kind == "ticks" and st.waves then return Portal(out, st) end
     if kind == "applied" then Tips.Uses(out, st) end
     if kind == "stack" and st.max > 0 then Put(out, "row", T("sum.tt.stackmax"), tostring(st.max)) end
     if st.cleansed > 0 then
@@ -733,7 +756,7 @@ local function Amount(v, total)
     if not total then return Short(v) end
     return format(T("sum.ab.share"), Short(v), floor(v * 100 / max(1, total) + 0.5))
 end
-local function Split(map, out, counts, top, total)
+local function Split(map, out, counts, top, total, one)
     local parts = {}
     local rest = map and map[REST_KEY]
     for name, x in pairs(map or {}) do
@@ -741,7 +764,7 @@ local function Split(map, out, counts, top, total)
         if name ~= REST_KEY then parts[#parts + 1] = { name = name, v = r and r.a or x, r = r } end
     end
     local extra = rest and rest.k or 0
-    if #parts + extra < (total and 1 or 2) then return false end
+    if #parts + extra < ((total or one) and 1 or 2) then return false end
     tsort(parts, function(a, c)
         if a.v ~= c.v then return a.v > c.v end
         return a.name < c.name
@@ -766,10 +789,10 @@ local function Split(map, out, counts, top, total)
     Put(out, "sub", more, format(T("sum.ab.hits"), hits), Amount(sum, total), "dim")
     return true
 end
-function Tips.Abil(out, ab, head, total)
+function Tips.Abil(out, ab, head, total, one)
     if not ab then return false end
     local list = {}
-    if not Split(ab, list, false, BLOCK_TOP, total) then return false end
+    if not Split(ab, list, false, BLOCK_TOP, total, one) then return false end
     if head then
         Put(out, "sep")
         Put(out, "row", T("sum.tt.abil"), nil, nil, "dim")
@@ -821,7 +844,7 @@ function Tips.Row(b, who, v, class)
         Put(out, "row", T("sum.tt.total"), Short(v), b.def.soak and format("x%d", b.hits[who] or 0) or nil)
         local ab = b.ab and b.ab[who]
         if kind == "friendly" and ab then
-            Tips.Abil(out, ab, false)
+            Tips.Abil(out, ab, false, nil, true)
         else
             Tips.Abil(out, ab, Split(b.split[who], out, false))
         end

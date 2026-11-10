@@ -4,7 +4,6 @@ local floor = math.floor
 local ceil = math.ceil
 local max = math.max
 local min = math.min
-local WHITE8 = "Interface\\Buttons\\WHITE8X8"
 local GLOW_INSET, GLOW_A = 3, 0.10
 local ROUND_FILL = 0.8
 local buttons = {}
@@ -537,14 +536,7 @@ function Kit.StyleRow(r)
     local c = Kit.C[r.on and "row.bgOn" or (r.hovered and "row.bgHover" or "row.bg")]
     r.bg:SetTexture(c[1], c[2], c[3], c[4] or 1)
 end
-local function RowClick(self, button)
-    if button == "RightButton" then
-        if self.onRightClick then self.onRightClick(self) end
-    elseif self.onClick then
-        self.onClick(self)
-    end
-end
-local RowWrap = ns.Prof.Wrap("ui.click", RowClick)
+local RowWrap = ns.Prof.Wrap("ui.click", ns.RowClick)
 local function RowEnter(self)
     self.hovered = true
     Kit.StyleRow(self)

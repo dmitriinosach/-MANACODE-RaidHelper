@@ -1,4 +1,4 @@
-local ADDON, ns = ...
+local _, ns = ...
 local format = string.format
 local floor = math.floor
 local max = math.max
@@ -24,7 +24,6 @@ local BAR_A = 0.38
 local TICK = 1
 local RETRY = 3
 local WHITE8 = "Interface\\Buttons\\WHITE8X8"
-local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\"
 local VIEWS = { "faults", "dps", "hps", "targets", "rolls" }
 local KNOWN = { faults = true, dps = true, hps = true, targets = true, rolls = true }
 local RATE = { dps = true, hps = true }
@@ -892,7 +891,8 @@ local function BuildHead()
         if View() == "rolls" then
             ns.RollPen.Report()
         elseif ns.ProofView then
-            ns.ProofView.ReportMenu(self, ReportLines, View() == "hps" and "report.menu.heal" or nil)
+            local heal = View() == "hps"
+            ns.ProofView.ReportMenu(self, ReportLines, heal and "report.menu.heal" or nil, nil, heal and "report.none.heal" or nil)
         end
     end
     pickBtn = Kit.IconButton(frame, nil, PICK_ICON)
@@ -968,6 +968,7 @@ local function Build()
     frame:SetScript("OnHide", function()
         Mini.SavePlace()
         TipHide()
+        Kit.SelectClose()
         if ns.Meter then
             ns.Meter.Split(false)
             ns.Meter.Want("mini", false)

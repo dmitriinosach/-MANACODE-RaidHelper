@@ -49,11 +49,13 @@ local LANES = {
 }
 local LANE_OF = { tank = 2, heal = 3 }
 local L_DPS = 4
-local PHASE_TONE = { t1 = "trans", t2 = "trans", fury = "hot", frenzy = "hot", dream = "hot", away = "away" }
+local PHASE_TONE = { t1 = "trans", t2 = "trans", fury = "hot", frenzy = "hot", dream = "hot", away = "away", air = "away",
+                     storm = "hot", valanar = "a", taldaram = "b", keleseth = "c" }
 local PHASE_CYCLE = { "a", "b", "c" }
 local Bar = { ROW_H = ROW_H, SEEK_STEP = SEEK_STEP, SPEEDS = SPEEDS, ICON = ICON }
 ns.ReplayBar = Bar
 local Kit = ns.Kit
+local RD = ns.ReplayDraw
 local MK = ns.ReplayMarks
 local st = { width = 0, scrubW = 0, tiers = { {}, {}, {}, {} }, shown = {}, laneY = {}, rects = {}, deaths = 0,
              deathGroups = {}, deathAt = {}, scrubX = 0, phases = {}, hover = false, labelsW = 0, labelR = 0, col = 0, pad = 0 }
@@ -74,11 +76,7 @@ local function Metrics()
     m.clockW = ceil(CLOCK_CHARS * Kit.FontSize("GameFontHighlight", true) * CLOCK_K)
     Bar.ROW_H = m.row
 end
-local function Clamp(v, lo, hi)
-    if v < lo then return lo end
-    if v > hi then return hi end
-    return v
-end
+local Clamp = RD.Clamp
 local function Clock(sec)
     local neg = sec < 0
     sec = neg and ceil(-sec) or floor(sec)
@@ -117,11 +115,22 @@ local function CursorX()
     if not left or st.scrubW <= 0 then return nil end
     return GetCursorPosition() / scrub:GetEffectiveScale() - left
 end
+local function Scale(scene)
+    local folds = scene.layers and scene.layers.folds
+    if st.scaleOf ~= scene or st.scaleFolds ~= folds then
+        st.scaleOf, st.scaleFolds = scene, folds
+        st.scale = MK.Scale(scene.from - scene.pull, scene.to - scene.pull, folds)
+    end
+    return st.scale
+end
+local function XAt(scene, sec)
+    return MK.Frac(Scale(scene), sec) * st.scrubW
+end
 local function SeekToCursor()
     local x = CursorX()
     if not x then return end
     local scene = st.run.scene
-    SeekTo(scene.from + Clamp(x / st.scrubW, 0, 1) * (scene.to - scene.from))
+    SeekTo(scene.pull + MK.TimeAt(Scale(scene), Clamp(x / st.scrubW, 0, 1)))
 end
 function Bar.UpdatePlay()
     local ui, run = st.ui, st.run
@@ -179,8 +188,7 @@ end
 function Bar.UpdateScrub()
     local ui, run = st.ui, st.run
     local scene = run.scene
-    local dur = max(0.001, scene.to - scene.from)
-    local frac = Clamp((run.t - scene.from) / dur, 0, 1)
+    local frac = MK.Frac(Scale(scene), run.t - scene.pull)
     local w = st.scrubW
     ui.fill:SetWidth(max(1, w * frac))
     ui.thumb:SetPoint("CENTER", ui.track, "LEFT", w * frac, 0)
@@ -206,42 +214,23 @@ local function Names(who)
     for i = 1, NAMES_MAX do out[i] = who[i] end
     return format(ns.T("rep.f.more"), concat(out, ", "), #who - NAMES_MAX)
 end
-local function Who(name)
-    local cls = ns.Encounters.ClassOf(name)
-    if not cls then return name end
-    local r, g, b = Kit.ClassColor(cls)
-    return format("|cff%02x%02x%02x%s|r", floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5), name)
-end
-local function WhoList(who, skip)
-    local out, n = {}, 0
-    for i = 1, #who do
-        if who[i] ~= skip then
-            n = n + 1
-            if n <= NAMES_MAX then out[#out + 1] = Who(who[i]) end
-        end
-    end
-    if n == 0 then return nil end
-    local s = concat(out, ", ")
-    if n > NAMES_MAX then s = format(ns.T("rep.f.more"), s, n - NAMES_MAX) end
-    return s
-end
+local Who = ns.ReplayWho
 local function UseRow(mk, own)
     local name = MarkName(mk)
     local text
     if mk.kind == "event" and mk.by then
-        local to = WhoList(mk.who, mk.by)
-        text = to and format(ns.T("rep.mk.to"), Who(mk.by), to) or Who(mk.by)
+        text = Who.Use(mk.by, mk.who, mk.by)
     elseif mk.kind == "event" and #mk.who == 0 and mk.text and mk.key:sub(1, 1) ~= "r" then
         text = mk.text
         local head = name .. ": "
         if text:sub(1, #head) == head then text = text:sub(#head + 1) end
     else
-        text = WhoList(mk.who)
+        text = Who.List(mk.who)
     end
     if not own then text = text and format(ns.T("rep.mk.other"), name, text) or name end
     local icon = mk.id and ns.SpellIcon(mk.id)
     if icon then text = format("|T%s:0|t %s", icon, text or name) end
-    return { kind = "row", left = text or name, right = Clock(mk.t), tone = "dim" }
+    return Who.Row(text or name, Clock(mk.t))
 end
 function Bar.TipLines(g)
     local lines = { { kind = "head", left = MarkName(g.lead), right = g.n > 1 and format(ns.T("rep.mk.times"), g.n) or nil } }
@@ -336,7 +325,6 @@ local function DeathLabel(i)
 end
 local function DrawDeaths(scene, lane, list, acc)
     local ui = st.ui
-    local dur = max(0.001, scene.to - scene.from)
     local top = st.laneY[lane]
     local y = top + 1
     local key = LANES[lane].key
@@ -352,7 +340,7 @@ local function DrawDeaths(scene, lane, list, acc)
             acc.used = acc.used + 1
             local tick = ticks[acc.used]
             local half = (many and DEATH_BIG or DEATH_W) / 2
-            local x = Clamp(st.scrubW * Clamp((list[k].t - scene.from) / dur, 0, 1), half, st.scrubW - half)
+            local x = Clamp(XAt(scene, list[k].t - scene.pull), half, st.scrubW - half)
             tick:ClearAllPoints()
             tick:SetPoint("TOP", ui.bar, "TOPLEFT", st.scrubX + x, -y)
             tick:SetWidth(many and DEATH_BIG or DEATH_W)
@@ -497,12 +485,13 @@ local function PhaseTip(scene, ph)
         if t >= from and t < to then dead[#dead + 1] = d.name end
     end
     if #dead > 0 then lines[#lines + 1] = format(ns.T("rep.ph.deaths"), #dead, Names(dead)) end
-    return ns.T(ph.label), concat(lines, "\n")
+    local title = ns.T(ph.label)
+    if ph.fold then title = format(ns.T("rep.ph.fold"), title, Clock(to - from)) end
+    return title, concat(lines, "\n")
 end
 local function DrawMinutes(scene)
     local n = 0
     if scene then
-        local dur = max(0.001, scene.to - scene.from)
         local len = scene.to - scene.pull
         local step = MINUTE_STEPS[#MINUTE_STEPS]
         for i = 1, #MINUTE_STEPS do
@@ -523,7 +512,7 @@ local function DrawMinutes(scene)
             end
             tex:SetHeight(MINUTE_H)
             tex:ClearAllPoints()
-            tex:SetPoint("BOTTOM", st.ui.bar, "TOPLEFT", st.scrubX + (t + scene.pull - scene.from) / dur * st.scrubW, -m.track)
+            tex:SetPoint("BOTTOM", st.ui.bar, "TOPLEFT", st.scrubX + XAt(scene, t), -m.track)
             tex:Show()
         end
     end
@@ -536,18 +525,15 @@ local function DrawPhases(scene)
     local list = scene and scene.layers and scene.layers.phases or {}
     local n, plain = 0, 0
     if scene then
-        local base = scene.from - scene.pull
-        local dur = max(0.001, scene.to - scene.from)
         for k = 1, min(#list, PHASE_POOL) do
             local ph = list[k]
             if not PHASE_TONE[ph.key] then plain = plain + 1 end
-            local x0 = Clamp((ph.from - base) / dur, 0, 1) * st.scrubW
-            local x1 = Clamp((ph.to - base) / dur, 0, 1) * st.scrubW
+            local x0, x1 = XAt(scene, ph.from), XAt(scene, ph.to)
             if x1 - x0 >= 1 then
                 n = n + 1
                 local p = PhaseSeg(n)
                 local w = max(1, x1 - x0 - (k < #list and PHASE_GAP or 0))
-                local tone = PhaseTone(ph.key, plain)
+                local tone = PhaseTone(ph.fold and "away" or ph.key, plain)
                 p.tex:ClearAllPoints()
                 p.tex:SetPoint("TOPLEFT", ui.bar, "TOPLEFT", st.scrubX + x0, 0)
                 p.tex:SetWidth(w)
@@ -575,7 +561,8 @@ local function Split(scene)
     if not scene then return tiers, deaths end
     local lists = MK.Lanes(scene.layers, LaneOf)
     local from, to = scene.from - scene.pull, scene.to - scene.pull
-    for lane = 1, #LANES do tiers[lane] = MK.Pack(lists[lane], from, to, st.scrubW, m.icon + ICON_GAP) end
+    local sc = Scale(scene)
+    for lane = 1, #LANES do tiers[lane] = MK.Pack(lists[lane], from, to, st.scrubW, m.icon + ICON_GAP, nil, sc) end
     local list = scene.deaths
     for i = 1, #list do
         local d = deaths[LaneOf(list[i].name)]

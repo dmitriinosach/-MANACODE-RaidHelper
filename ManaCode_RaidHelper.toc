@@ -3,8 +3,8 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 1.9.0
-## X-Date: 2026-11-04
+## Version: 1.11.0
+## X-Date: 2026-11-10
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
 ## SavedVariablesPerCharacter: ManaCodeRaidHelperChar
@@ -12,6 +12,8 @@
 
 libs\manacode\sizer.lua
 libs\manacode\keycap.lua
+libs\manacode\themepick.lua
+libs\manacode\sysopts.lua
 fw.lua
 core\ids.lua
 locale\ruRU.lua
@@ -21,6 +23,7 @@ locale\servercmd.lua
 locale\devtool.lua
 locale\threat.lua
 locale\autoinvite.lua
+locale\raidep.lua
 locale\lang.lua
 locale\enUS.lua
 locale\esES.lua
@@ -33,6 +36,7 @@ data\control.lua
 data\replay.lua
 data\replayplatform.lua
 data\replayfeed.lua
+data\replayrare.lua
 data\replaymarks.lua
 data\replaybars.lua
 data\replaymech.lua
@@ -40,10 +44,14 @@ data\replayspread.lua
 data\replayswarm.lua
 data\replayclass.lua
 data\replaycue.lua
+data\replaytomb.lua
+data\replayraid.lua
+data\replaymodes.lua
 data\replaysky.lua
 data\defensives.lua
 data\procs.lua
 data\otheraddons.lua
+data\news.lua
 data\bosses\icc\marrowgar.lua
 data\bosses\icc\deathwhisper.lua
 data\bosses\icc\gunship.lua
@@ -84,6 +92,7 @@ data\specsigns.lua
 data\castgcd.lua
 data\consumables.lua
 data\raidsummary.lua
+data\raidep.lua
 data\lootboss.lua
 data\achievements\ulduar.lua
 data\achievements\toc.lua
@@ -99,6 +108,7 @@ core\bober.lua
 core\expect.lua
 core\reccodec.lua
 core\decode.lua
+core\mappos.lua
 core\recfilter.lua
 core\store.lua
 core\keep.lua
@@ -108,10 +118,12 @@ core\specs.lua
 core\specsign.lua
 core\recmana.lua
 core\reccast.lua
+core\recraid.lua
 core\unitscan.lua
 core\recwpn.lua
 core\recmap.lua
 core\recach.lua
+core\recpull.lua
 core\recorder.lua
 core\meter.lua
 core\effects.lua
@@ -126,7 +138,9 @@ core\autorec.lua
 core\penalties.lua
 core\comm.lua
 core\version.lua
+core\news.lua
 core\pulltimer.lua
+core\pullwho.lua
 core\devmarks.lua
 core\gpguild.lua
 core\ledger.lua
@@ -180,6 +194,7 @@ core\digest.lua
 core\fighttree.lua
 core\loot.lua
 core\raidsummary.lua
+core\raidep.lua
 core\discord.lua
 core\trash.lua
 core\raidmodel.lua
@@ -189,6 +204,7 @@ core\roompacks.lua
 core\replay.lua
 core\replayplatform.lua
 core\replayfeed.lua
+core\replayrare.lua
 core\tlbrief.lua
 core\replaymarks.lua
 core\replaybars.lua
@@ -199,6 +215,9 @@ core\replayspread.lua
 core\replayswarm.lua
 core\replayclass.lua
 core\replaycue.lua
+core\replaytomb.lua
+core\replayraid.lua
+core\replaymode.lua
 core\replayunits.lua
 core\replayarrows.lua
 core\replaylayers.lua
@@ -230,6 +249,7 @@ ui\kit\edit.lua
 ui\kit\scroll.lua
 ui\kit\slider.lua
 ui\kit\icons.lua
+ui\kit\tour.lua
 ui\widgets.lua
 ui\scroll.lua
 ui\fxdrag.lua
@@ -259,6 +279,7 @@ ui\summary.lua
 ui\gpsettings.lua
 ui\faultsroll.lua
 ui\faultssoft.lua
+ui\faultsep.lua
 ui\faults.lua
 ui\gpsignal.lua
 ui\minirows.lua
@@ -291,11 +312,16 @@ ui\panelraid.lua
 ui\panelperf.lua
 ui\panelbuffs.lua
 ui\panelfaults.lua
+ui\panelraidep.lua
 ui\prof.lua
 ui\about.lua
+ui\news.lua
 ui\vertoast.lua
+ui\pulltoast.lua
+ui\replaydraw.lua
 ui\replayshield.lua
 ui\replayfigs.lua
+ui\replaycc.lua
 ui\replaylayers.lua
 ui\replayrealm.lua
 ui\replayspread.lua
@@ -303,9 +329,15 @@ ui\replayswarm.lua
 ui\replayooze.lua
 ui\replayclass.lua
 ui\replaycue.lua
+ui\replaytomb.lua
+ui\replaywho.lua
 ui\replayunits.lua
+ui\replayraidcfg.lua
+ui\replayraid.lua
+ui\replaymode.lua
 ui\replayarrows.lua
 ui\replaysoul.lua
+ui\replaysound.lua
 ui\replayfeed.lua
 ui\replayfollow.lua
 ui\replaybar.lua
@@ -323,6 +355,7 @@ ui\replayiso.lua
 ui\replaybars.lua
 ui\deathpreview.lua
 ui\settingsitems.lua
+ui\sysopts.lua
 ui\threatview.lua
 ui\sumhide.lua
 ui\flasks.lua

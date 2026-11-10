@@ -23,6 +23,7 @@ local WALK_SHARE = 0.95
 local FINISH_STEPS = 5
 local LEAD = ns.PULL_LEAD
 local SHIELD_LEAD = 60
+local PULLER = ns.PullWho.SUB
 local TAIL = 5
 local HIT_GAP = 2
 local TOTEM_DISPEL_WINDOW = 0.5
@@ -424,6 +425,7 @@ local function Build(fight)
     local scan = fight.from - SHIELD_LEAD
     local segs = ns.Encounters.Segs(fight)
     local tt = ns.Totals.Begin(byName, owners, pets, fight)
+    local pw = ns.PullWho.Begin(fight)
     local et = ns.EffTime and ns.EffTime.Begin(byName, fight)
     local rp = ns.RaidPart.New(fight, pets)
     local ach = ns.Achievements and ns.Achievements.Begin(fight)
@@ -459,7 +461,8 @@ local function Build(fight)
             ns.Totals.Aura(tt, ts, sub, srcGUID, srcName, srcFlags, dstName, a1, a2)
         end
         if sub == "FW_PULLT" then ns.PullTimer.Feed(s, ts, srcName, a1, a2) end
-        if SS.SUBS[sub] then SS.Feed(sg, ts, sub, srcName, dstName, a1, a2, a3) end
+        if sub == PULLER then ns.PullWho.First(pw, ts, srcName, dstName, a1) end
+        if SS.SUBS[sub] then SS.Feed(sg, ts, sub, srcName, dstName, a1, a2, a3, a4) end
         if sub == "FW_MARK" and ts >= s.lead and ts <= to then
             s.marks = s.marks or {}
             s.marks[#s.marks + 1] = { t = ts, key = a1, text = a2 }
@@ -512,7 +515,18 @@ local function Build(fight)
                 if sp then
                     for i = 1, s.own do
                         local bd = badges[i]
-                        if bd.kind == "stack" and Keys(bd).sk == ns.StackKey(a1) then
+                        if bd.kind == "ticks" and bd.dream and bd.dream == tonumber(a1) then
+                            local st = sp.badges[i]
+                            local ins = st.dreamIn or {}
+                            st.dreamIn, st.dreamOut = ins, st.dreamOut or {}
+                            if c > 0 and not st.inDream then
+                                ins[#ins + 1] = ts
+                            elseif c == 0 and st.inDream then
+                                st.dreamOut[#ins] = ts
+                            end
+                            st.inDream = c > 0 or nil
+                            s.icons[i] = s.icons[i] or bd.id
+                        elseif bd.kind == "stack" and Keys(bd).sk == ns.StackKey(a1) then
                             local st = sp.badges[i]
                             if c > 0 and (st.cur or 0) == 0 then
                                 st.n = st.n + 1
@@ -568,13 +582,7 @@ local function Build(fight)
             local inFight = ts >= lo and ts <= hi
             local mcSrc = srcName and byName[srcName] and srcFlags and band(srcFlags, F_PLAYER) == 0
                 and band(srcFlags, F_BY_PLAYER) == 0 and srcName or nil
-            if not s.pull and srcFlags and band(srcFlags, F_BY_PLAYER) > 0
-                and (K.dmg or K.miss) and dstBoss then
-                local swing = K.swing
-                s.pull = { t = ts, src = srcName, spell = (not swing) and a2 or nil,
-                           pet = band(srcFlags, F_PLAYER) == 0,
-                           owner = srcGUID and owners[srcGUID] or nil }
-            end
+            if not s.pull then ns.PullWho.Feed(pw, s, ts, sub, K, srcGUID, srcName, srcFlags, dstBoss, a1, a2) end
             if sub == "SPELL_CAST_SUCCESS" and p and dst and sk and srcName == who
                 and s.given[sk] and (dstName ~= who or s.badges[s.given[sk]].self) then
                 Given(s, fight, p, dst, sk, id, ts)
@@ -623,7 +631,7 @@ local function Build(fight)
                     ns.RaidPart.Consume(rp, sub, rwho, srcName, srcFlags, a1, dstName, dstFlags, a2)
                 end
                 if ctl then
-                    ns.MindCtl.Feed(ctl, ts, sub, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a4, a5, a6, a7, a8)
+                    ns.MindCtl.Feed(ctl, ts, sub, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a4, a5, a6, a7, a8, a10)
                 end
                 local swing = K.swing
                 if p and not dst and dstKey and s.bounce and s.bounce[dstKey]
@@ -1010,6 +1018,7 @@ local function Build(fight)
     if track then s.phases = ns.Phases.Done(fight, track) end
     if stk then ns.StackEps.Finish(stk, s) end
     if ctl then ns.MindCtl.Finish(ctl, s, fight.to) end
+    ns.PullWho.Finish(pw, s, owners, pets)
     if ns.PullTimer then ns.PullTimer.Judge(s) end
     ns.Totals.Finish(tt, s)
     Finish(s, fight)

@@ -286,6 +286,7 @@ local function Box()
 end
 function Discord.Queue(res)
     local post = Discord.Build(res)
+    post.at = time()
     local posts = Box().posts
     for i = #posts, 1, -1 do
         if type(posts[i]) ~= "table" or posts[i].id == post.id then tremove(posts, i) end

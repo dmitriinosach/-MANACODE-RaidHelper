@@ -46,12 +46,11 @@ local NEEDLE = 22
 local NORTH_TAG = 8
 local LEGEND_W = 330
 local FIG_LEVEL = 12
-local HOVER_PAD = 6
-local HOVER_H = 18
 local FOCUS_GAP = 4
 local IsoBuild = { SCENE = SCENE, NAV_W = NAV_W, NAV_BTN = NAV_BTN, ICONS = ICONS }
 ns.ReplayIsoBuild = IsoBuild
 local Kit = ns.Kit
+local RD = ns.ReplayDraw
 local Size = ns.ReplaySize
 local Tour = ns.ReplayTour
 local Bar = ns.ReplayBar
@@ -105,17 +104,14 @@ end
 function Box.FootH()
     return PAD + Box.Rim()
 end
-local function Clamp(v, lo, hi)
-    if v < lo then return lo end
-    if v > hi then return hi end
-    return v
-end
+local Clamp = RD.Clamp
 local function Around()
     local rim = Box.Rim()
     return (run.narrow and rim * 2 or Box.LeftX() + rim), Box.HeadH() + GAP + Bar.ROW_H + Box.FootH()
 end
 local function FrameWidth()
     ui.frame:SetWidth(Around() + dim.viewW)
+    Size.Place()
 end
 local function PlaceNotice()
     local side = Box.SideX()
@@ -243,6 +239,7 @@ local function Resize(vw, vh)
     ui.focus:SetWidth(vw - 180)
     LayoutNav()
     FitLegend()
+    if ns.ReplayRaidView then ns.ReplayRaidView.Layout() end
     PlaceBar()
     Bar.Use(run.base)
     ui.status:SetWidth(min(STATUS_W, vw - NAV_W * 2))
@@ -307,7 +304,7 @@ local function BuildNav(top)
         tiltmore = function() SetView(run.tilt3 - TILT_STEP) end,
         tiltless = function() SetView(run.tilt3 + TILT_STEP) end,
         mode = function() SetFlat(not run.flat) end,
-        reset = function() if run.scene then ResetCamera(true) end end,
+        reset = function() IsoCam.DefaultView() end,
         help = function()
             if ui.legend:IsShown() then ui.legend:Hide() else ui.legend:Show() end
         end,
@@ -354,29 +351,6 @@ local function BuildBars(side)
     bars:SetScript("OnHide", Relayout)
     ui.bars = bars
 end
-local function BuildHover(top)
-    local box = CreateFrame("Frame", nil, top)
-    box:SetWidth(60)
-    box:SetHeight(HOVER_H)
-    local bg = box:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints(box)
-    Kit.Paint(bg, "sem.rep.plate")
-    local text = box:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    text:SetPoint("CENTER", box, "CENTER", 0, 0)
-    local path, size = text:GetFont()
-    if path then text:SetFont(path, size or 10, "OUTLINE") end
-    box:Hide()
-    ui.hoverBox, ui.hoverText = box, text
-end
-function IsoBuild.HoverName(name)
-    if not name then
-        ui.hoverBox:Hide()
-        return
-    end
-    ui.hoverText:SetText(name)
-    ui.hoverBox:SetWidth(ceil((ui.hoverText:GetStringWidth() or 0) + HOVER_PAD * 2))
-    ui.hoverBox:Show()
-end
 local function BuildView(frame)
     local side = CreateFrame("Frame", nil, frame)
     side:SetWidth(m.feedW)
@@ -410,7 +384,9 @@ local function BuildView(frame)
     ui.view = view
     ui.marks = CreateFrame("Frame", nil, view)
     ui.marks:SetAllPoints(view)
-    ui.marks:SetFrameLevel(view:GetFrameLevel() + 2)
+    ui.marks:SetFrameLevel(view:GetFrameLevel() + (ns.ReplayLive and ns.ReplayLive.COL_MAX or 4) + 1)
+    ui.focusLayer = CreateFrame("Frame", nil, view)
+    ui.focusLayer:SetAllPoints(view)
     run.levelBase = view:GetFrameLevel() + FIG_LEVEL
     Geo.Build(view, min(117, run.levelBase + 2 * 42 + 2))
     local top = CreateFrame("Frame", nil, view)
@@ -421,7 +397,6 @@ local function BuildView(frame)
     ui.fade:SetAllPoints(view)
     Kit.Paint(ui.fade, "surface.solid")
     ui.fade:Hide()
-    BuildHover(top)
     ui.hint = Kit.Str(top, "GameFontHighlightSmall")
     ui.hint:SetPoint("TOP", view, "TOP", 0, -8)
     ui.hint:SetWidth(dim.viewW - 120)
@@ -530,6 +505,8 @@ local function Build()
     run.narrow = false
     Tour.Bind(ui, { Saved = Saved, Figure = NearFigure })
     Size.Bind(frame, function() Iso.Hide() end, Resize, Around, function(step) StepFight(step) end)
+    if ns.ReplayModeView then ns.ReplayModeView.Build(ui) end
+    if ns.ReplayRaidView then ns.ReplayRaidView.Build(ui) end
     ui.title = Size.TitleText()
     ui.prevBtn, ui.nextBtn = Size.Nav()
     Size.Restore()

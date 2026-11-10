@@ -41,6 +41,7 @@ local clampRight = 0
 local rightW = 0
 local note = { token = "text.warn", x = 0 }
 local placed = {}
+local opened = {}
 local function Placed()
     for i = 1, #placed do placed[i]() end
 end
@@ -334,6 +335,58 @@ local function FontButtons()
     end)
     PaintFont()
 end
+local themeBtn
+local SWATCH_W, SWATCH_H = 4, 12
+local function PaintTheme()
+    if not themeBtn then return end
+    local cs = Kit.Swatch(Kit.Key())
+    for i = 1, 4 do
+        local c = cs[i]
+        if c then themeBtn.chips[i]:SetTexture(c[1], c[2], c[3], 1) end
+    end
+    themeBtn.tipTitle = format(ns.T("shell.theme.tip"), ns.T(Kit.Theme().labelKey))
+    if themeBtn.hovered then Kit.TipShow(themeBtn) end
+end
+local function ThemeMenu()
+    local items = { { isTitle = true, text = ns.T("set.theme.pick") } }
+    local list = Kit.ThemeItems()
+    for i = 1, #list do
+        local key = list[i].key
+        items[#items + 1] = { text = list[i].label, swatch = list[i].colors, checked = list[i].on,
+                              func = function() Kit.SetTheme(key) end }
+    end
+    return items
+end
+local function ThemeClick(b)
+    if Kit.MenuOpenAt(b) then
+        Kit.SelectClose()
+    else
+        Kit.TipHide()
+        Kit.Menu(ThemeMenu, b)
+    end
+end
+local function ThemeButton()
+    local b = Kit.TabPart(viewGroup)
+    b.rim = b:CreateTexture(nil, "ARTWORK")
+    b.rim:SetTexture("Interface\\Buttons\\WHITE8X8")
+    b.rim:SetWidth(SWATCH_W * 4 + 2)
+    b.rim:SetHeight(SWATCH_H + 2)
+    b.rim:SetPoint("CENTER", b, "CENTER", 0, 0)
+    Kit.Tint(b.rim, "tab.icon")
+    b.chips = {}
+    for i = 1, 4 do
+        local t = b:CreateTexture(nil, "OVERLAY")
+        t:SetWidth(SWATCH_W)
+        t:SetHeight(SWATCH_H)
+        t:SetPoint("LEFT", b.rim, "LEFT", 1 + (i - 1) * SWATCH_W, 0)
+        b.chips[i] = t
+    end
+    b.tip = ns.T("shell.theme.act")
+    b.onClick = ThemeClick
+    themeBtn = b
+    Kit.OnTheme(PaintTheme)
+    PaintTheme()
+end
 local function SeatGroup(g, x, left)
     local tt = TabLook()
     local inner = max(0, tt.rim - PARTPAD)
@@ -501,6 +554,7 @@ local function ApplySize(w, h)
     Kit.ApplyDecor(frame)
 end
 local function StartSizing(button)
+    if ns.Web then return end
     if button and button ~= "LeftButton" then return end
     if Sizing() then return end
     if moving then
@@ -513,7 +567,7 @@ local function StartSizing(button)
     sizer:Start()
 end
 local function StartMove()
-    if Sizing() or moving then return end
+    if ns.Web or Sizing() or moving then return end
     DropMax()
     moving = true
     frame:StartMoving()
@@ -528,7 +582,7 @@ local function StopMove()
     Placed()
 end
 local function ToggleMax()
-    if not frame or Sizing() then return end
+    if ns.Web or not frame or Sizing() then return end
     local s = Saved()
     if s.max then
         local n = s.norm
@@ -583,6 +637,7 @@ local function BuildGrip()
     })
     grip.onDown = function(_, button) StartSizing(button) end
     grip.onUp = function() sizer:Finish() end
+    if ns.Web then grip:Hide() end
 end
 local function Unfold()
     Saved().mini = nil
@@ -611,6 +666,10 @@ local function BuildStrip()
     close.tip = ns.T("kit.win.close.tip")
     close.onClick = function() frame:Hide() end
     winGroup.parts = { fold, maxBtn, close }
+    if ns.Web then
+        winGroup:Hide()
+        winGroup = nil
+    end
     strip = CreateFrame("Button", nil, frame)
     strip:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 0)
     strip:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 0)
@@ -624,10 +683,11 @@ local function BuildStrip()
     viewGroup = MakeGroup()
     about = MakeAct(viewGroup, "shell.about", nil, 0)
     about.tipTitle = ns.T("shell.about.tip")
+    ThemeButton()
     FontButtons()
     zoomOut = MakeAct(viewGroup, "shell.scale.less", "shell.scale.less.tip", -SCALE_STEP)
     zoomIn = MakeAct(viewGroup, "shell.scale.more", "shell.scale.more.tip", SCALE_STEP)
-    viewGroup.parts = { about, fontLess, fontMore, zoomOut, zoomIn }
+    viewGroup.parts = { about, themeBtn, fontLess, fontMore, zoomOut, zoomIn }
     about.onClick = function() if ns.About then ns.About.Toggle() end end
     PaintZoom()
     if not ns.ShellNav then return end
@@ -693,9 +753,11 @@ local function Build()
     frame:SetScript("OnShow", function()
         Unfold()
         if ns.CpuMeter then ns.CpuMeter.WinCheck() end
+        for i = 1, #opened do opened[i]() end
     end)
     frame:SetScript("OnHide", function()
         if ns.CpuMeter then ns.CpuMeter.WinCheck() end
+        Kit.SelectClose()
         StopMove()
         if sizer then sizer:Cancel() end
         local e = current and entries[current]
@@ -747,8 +809,9 @@ end
 function Shell.Probe()
     return { frame = frame, strip = strip, maxBtn = maxBtn, fold = fold, grip = grip, sizer = sizer, close = close,
              groups = { winGroup, pageGroup, viewGroup, navGroup }, back = navBack, fwd = navFwd,
-             acts = { winGroup, pageGroup, viewGroup, navGroup, about, fontLess, fontMore, zoomOut, zoomIn, fold, maxBtn,
-                      close, navBack, navFwd } }
+             theme = themeBtn,
+             acts = { winGroup, pageGroup, viewGroup, navGroup, about, themeBtn, fontLess, fontMore, zoomOut, zoomIn,
+                      fold, maxBtn, close, navBack, navFwd } }
 end
 function Shell.IsFolded()
     return ns.ShellMini ~= nil and ns.ShellMini.IsShown()
@@ -773,6 +836,9 @@ function Shell.Frame()
 end
 function Shell.OnPlace(fn)
     placed[#placed + 1] = fn
+end
+function Shell.OnShow(fn)
+    opened[#opened + 1] = fn
 end
 function Shell.Room()
     if not frame then return nil, nil end

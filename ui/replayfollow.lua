@@ -15,18 +15,13 @@ local PIN_ALPHA = 0.55
 local RING_SWING = 3
 local FOLLOW_RATE = 5
 local FOLLOW_EPS = 0.02
-local LABEL_GAP = 8
-local ICON_LIFT = 27
 local Follow = {}
 ns.ReplayFollow = Follow
 local Kit = ns.Kit
+local RD = ns.ReplayDraw
 local Replay = ns.Replay
 local st = { phase = 0, quiet = false }
-local function Saved()
-    local settings = ns.GetDB().settings
-    if type(settings.iso) ~= "table" then settings.iso = {} end
-    return settings.iso
-end
+local Saved = RD.Saved
 function Follow.On()
     return Saved().follow ~= false
 end
@@ -74,10 +69,6 @@ function Follow.Threat()
 end
 function Follow.Bind(ui, run, cam, figs, clear)
     st.ui, st.run, st.cam, st.figs, st.clear = ui, run, cam, figs, clear
-    local label = ui.top:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    Kit.Text(label, "sem.rep.focus")
-    label:Hide()
-    st.label = label
     local catcher = CreateFrame("Frame", CATCHER, UIParent)
     catcher:Hide()
     catcher:SetScript("OnHide", CatcherHide)
@@ -100,7 +91,6 @@ function Follow.Apply()
     if st.fig and st.fig ~= fig then Release(st.fig) end
     if fig and st.fig ~= fig then Grab(fig) end
     st.fig, st.k = fig, k
-    if not fig then st.label:Hide() end
     if ns.ReplayFeed.SetFocus then ns.ReplayFeed.SetFocus(run.focus) end
     st.quiet = true
     if run.focus and st.ui.frame:IsShown() then st.catcher:Show() else st.catcher:Hide() end
@@ -122,10 +112,7 @@ end
 function Follow.Place(elapsed)
     local fig, run, ui = st.fig, st.run, st.ui
     if not fig then return end
-    if not fig.shown then
-        st.label:Hide()
-        return
-    end
+    if not fig.shown then return end
     st.phase = (st.phase + max(0, elapsed) * PULSE_HZ) % 1
     local wave = (sin(st.phase * 2 * pi) + 1) / 2
     local d = PIN_PAD + PIN_SWING * wave
@@ -135,12 +122,6 @@ function Follow.Place(elapsed)
     fig.pin:SetPoint("BOTTOMRIGHT", fig, "BOTTOMRIGHT", d, -d * flat)
     fig.pin:SetAlpha(PIN_ALPHA + (1 - PIN_ALPHA) * wave)
     if fig.ringOn then ns.ReplayFigs.Pulse(fig, RING_SWING * wave) end
-    st.label:SetText(fig.name)
-    st.label:ClearAllPoints()
-    local up = (fig.top or ICON_LIFT * fig.scale) + ns.ReplayLayersView.BadgesUp(fig) + LABEL_GAP * fig.scale
-    st.label:SetPoint("BOTTOM", ui.view, "CENTER", fig.sx, -fig.sy + up)
-    st.label:Show()
-    if run.hover == st.k then ui.hoverBox:Hide() end
 end
 function Follow.Pick(fight, name)
     local run = st.run
@@ -172,7 +153,7 @@ function Follow.Probe()
     end
     if st.fig then
         out.fx, out.fy, out.scale = floor(st.fig.sx + 0.5), floor(st.fig.sy + 0.5), st.fig.scale
-        out.label = st.label:IsShown() and st.fig.name or nil
+        out.label = ns.ReplayUnitsView.Nick(st.fig)
     end
     return out
 end

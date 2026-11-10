@@ -669,9 +669,13 @@ end
 local function refreshNeeds()
     local P = ns.Spam
     local cur = P.Needs()
+    local open, got = P.Open()
     for role, fs in pairs(needVals) do
         fs:SetText(tostring(cur[role]))
-        ns.PaintText(fs, cur[role] > 0 and "text.primary" or "text.muted")
+        ns.PaintText(fs, open[role] > 0 and "text.primary" or "text.muted")
+        local h = roleHeads[role]
+        h.minus.tip = ns.T("tipNeedHave", got[role], open[role])
+        h.plus.tip = h.minus.tip
     end
     local t = P.TemplateNeeds(ns.Session.Template())
     local same = true

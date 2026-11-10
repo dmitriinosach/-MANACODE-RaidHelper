@@ -2,12 +2,22 @@ local _, ns = ...
 local sqrt = math.sqrt
 local min = math.min
 local tsort = table.sort
+local atan2 = math.atan2
+local pi = math.pi
+local huge = math.huge
+local floor = math.floor
+local ceil = math.ceil
 local STEP = 0.25
 local HOLD_STEP = 2
 local SIM = 0.1
 local MATCH = 0.4
+local MISS_GAP = 1.1
+local EARLY = 0.5
+local CHAIN_DEG = math.rad(60)
+local SMOKE_MAX = 600
 local Ooze = {}
 ns.ReplayOoze = Ooze
+local Replay = ns.Replay
 function Ooze.New(fight)
     local M = ns.replayMech
     local defs = M and M.oozes and M.oozes[fight.boss]
@@ -40,7 +50,7 @@ end
 function Ooze.Event(ctx, ts, sub, srcGUID, dstGUID, dst, a1, id)
     id = id or tonumber(a1)
     if not id then return end
-    if ctx.fHit[id] and dst and (sub == "SPELL_AURA_APPLIED" or sub == "SPELL_DAMAGE" or sub == "SPELL_MISSED") then
+    if ctx.fHit[id] and dst and (sub == "SPELL_DAMAGE" or sub == "SPELL_MISSED") then
         ctx.fHits[#ctx.fHits + 1] = { t = ts, n = dst }
         return
     end
@@ -151,43 +161,213 @@ local function Chase(o, d, r, e, x, y, ppy, Pos, add, st)
     end
     return x, y
 end
+local function Calm(scene, byName, s, e, fx, fy)
+    local n = 0
+    local tracks = scene.tracks
+    for k = 1, #tracks do
+        local tr = tracks[k]
+        local own = byName[tr.name]
+        local j = 1
+        for t = s + 1, e - 0.5, 1 do
+            local i = Replay.IndexAt(tr, t)
+            if i > 0 and (tr.dz[i] or 0) == 0 then
+                local x, y = Replay.PosAtTime(tr, t)
+                if x >= 0 then
+                    local near = false
+                    if own then
+                        while j <= #own and own[j] < t - MISS_GAP do j = j + 1 end
+                        near = j <= #own and own[j] <= t + MISS_GAP
+                    end
+                    if not near then
+                        n = n + 1
+                        fx[n], fy[n] = x, y
+                    end
+                end
+            end
+        end
+    end
+    return n
+end
+local function Lit(F, px, py, r2, tx, ty, i0, i1, fx, fy, nf)
+    local lit, cov, calm = {}, {}, {}
+    while true do
+        local best, gain = nil, 0
+        for p = 1, #px do
+            if not lit[p] then
+                local g = 0
+                for i = i0, i1 do
+                    if not cov[i] and (tx[i] - px[p]) ^ 2 + (ty[i] - py[p]) ^ 2 <= r2 then g = g + 1 end
+                end
+                if g > 0 then
+                    local f = 0
+                    for q = 1, nf do
+                        if not calm[q] and (fx[q] - px[p]) ^ 2 + (fy[q] - py[p]) ^ 2 <= r2 then f = f + 1 end
+                    end
+                    local v = g - F.lam * f
+                    if v > gain then best, gain = p, v end
+                end
+            end
+        end
+        if not best then return lit end
+        lit[best] = true
+        for i = i0, i1 do
+            if (tx[i] - px[best]) ^ 2 + (ty[i] - py[best]) ^ 2 <= r2 then cov[i] = true end
+        end
+        for q = 1, nf do
+            if (fx[q] - px[best]) ^ 2 + (fy[q] - py[best]) ^ 2 <= r2 then calm[q] = true end
+        end
+    end
+end
+local function Chain(F, lit)
+    local cx, cy = F.wall[1], F.wall[2]
+    local list = {}
+    for p in pairs(lit) do
+        local a = atan2(F.spots[p][2] - cy, F.spots[p][1] - cx)
+        list[#list + 1] = { p = p, a = a }
+    end
+    tsort(list, function(x, y) return x.a < y.a end)
+    local n = #list
+    local start = 1
+    for i = 1, n do
+        local nxt = list[i % n + 1]
+        local gap = (nxt.a - list[i].a) % (2 * pi)
+        if n > 1 and gap > CHAIN_DEG then
+            start = i % n + 1
+            break
+        end
+    end
+    local delay, run = {}, {}
+    local function Flush()
+        if #run == 0 then return end
+        local function Pipe(p)
+            local best = huge
+            for q = 1, #F.pipes do
+                local d = (F.spots[p][1] - F.pipes[q][1]) ^ 2 + (F.spots[p][2] - F.pipes[q][2]) ^ 2
+                if d < best then best = d end
+            end
+            return best
+        end
+        local rev = Pipe(run[#run]) < Pipe(run[1])
+        for i = 1, #run do delay[run[i]] = F.chain * (rev and (#run - i) or (i - 1)) end
+        run = {}
+    end
+    for i = 0, n - 1 do
+        local e = list[(start - 1 + i) % n + 1]
+        if #run > 0 then
+            local prev = list[(start - 2 + i) % n + 1]
+            if (e.a - prev.a) % (2 * pi) > CHAIN_DEG then Flush() end
+        end
+        run[#run + 1] = e.p
+    end
+    Flush()
+    return delay
+end
 local function Floods(ctx, L, scene, Pos, ppy)
     local F, hits, room = ctx.flood, ctx.fHits, scene.room
     if not F or #hits == 0 or not room then return 0 end
     local px, py = {}, {}
-    for p = 1, #F.pipes do px[p], py[p] = room.cx + F.pipes[p][1] * ppy, room.cy + F.pipes[p][2] * ppy end
-    local t0 = (scene.pull or scene.fight.from) + F.first
-    local last, n, i = hits[#hits].t, 0, 1
-    local def = { tone = F.tone, r0 = F.r0, rmax = F.r, tail = 0, gap = 0 }
-    local k = 0
-    while t0 + k * F.step - F.early <= last do
-        local s = t0 + k * F.step
-        local e = s + F.step
-        local lit = {}
-        while i <= #hits and hits[i].t < e - F.early do
-            local h = hits[i]
-            if h.t >= s - F.early then
-                local x, y = Pos(h.n, h.t)
-                local best, bp = 1e18, nil
-                for p = 1, x and #px or 0 do
-                    local d = (px[p] - x) ^ 2 + (py[p] - y) ^ 2
-                    if d < best then best, bp = d, p end
-                end
-                if bp and (not lit[bp] or h.t < lit[bp]) then lit[bp] = h.t end
-            end
-            i = i + 1
+    for p = 1, #F.spots do px[p], py[p] = room.cx + F.spots[p][1] * ppy, room.cy + F.spots[p][2] * ppy end
+    local r2 = (F.r * ppy) ^ 2
+    tsort(hits, function(a, b) return a.t < b.t end)
+    local tx, ty, tt, byName = {}, {}, {}, {}
+    for i = 1, #hits do
+        local h = hits[i]
+        local own = byName[h.n] or {}
+        byName[h.n] = own
+        own[#own + 1] = h.t
+        local x, y = Pos(h.n, h.t)
+        if x then
+            local m = #tt + 1
+            tx[m], ty[m], tt[m] = x, y, h.t
         end
-        for p, tf in pairs(lit) do
-            local from = min(s, tf)
-            local j = L.np + 1
-            L.np = j
-            L.plX[j], L.plY[j], L.plFrom[j], L.plLast[j], L.plTo[j] = px[p], py[p], from, from + F.pour, e + F.keep
-            L.plR0[j], L.plR1[j], L.plN[j], L.plDef[j] = F.r0, F.r, 1, def
-            n = n + 1
+    end
+    local t0 = (scene.pull or scene.fight.from) + F.first
+    local def = { tone = F.tone, r0 = F.r * F.r0, rmax = F.r, tail = 0, gap = 0, smoke = true }
+    local fx, fy = {}, {}
+    local n, i, k = 0, 1, 0
+    while i <= #tt do
+        local s = t0 + k * F.step
+        local e = s + F.life
+        while i <= #tt and tt[i] < s - EARLY do i = i + 1 end
+        local i0 = i
+        while i <= #tt and tt[i] < e do i = i + 1 end
+        if i > i0 then
+            local nf = Calm(scene, byName, s, e, fx, fy)
+            local lit = Lit(F, px, py, r2, tx, ty, i0, i - 1, fx, fy, nf)
+            local from = min(s, tt[i0]) - F.lead
+            for p, dt in pairs(Chain(F, lit)) do
+                local j = L.np + 1
+                L.np = j
+                L.plX[j], L.plY[j], L.plFrom[j], L.plLast[j], L.plTo[j] = px[p], py[p], from + dt, from + dt + F.pour, e
+                L.plR0[j], L.plR1[j], L.plN[j], L.plDef[j] = F.r * F.r0, F.r, 1, def
+                n = n + 1
+            end
         end
         k = k + 1
     end
     return n
+end
+local function Jitter(i, j)
+    local h = (i * 73856093 + j * 19349663) % 1000003
+    return (h % 1000) / 500 - 1, (floor(h / 1000) % 1000) / 500 - 1
+end
+local function Smoke(F, L, scene, ppy, j0)
+    local K, room = F.smoke, scene.room
+    if not K or L.swarm or L.np <= j0 then return 0 end
+    local S = { r = K.r, tones = { F.tone, F.tone, F.tone }, ka = K.alpha, n = 0, x = {}, y = {}, from = {}, to = {}, v = {},
+                nm = 0, mk = {}, mFrom = {}, mOn = {}, mTo = {} }
+    local wx, wy = room.cx + F.wall[1] * ppy, room.cy + F.wall[2] * ppy
+    local wr2 = ((F.wall[3] - K.inset) * ppy) ^ 2
+    local gap, dy = K.gap * ppy, K.gap * ppy * 0.866
+    local nr = ceil(F.wall[3] / (K.gap * 0.866))
+    local nc = ceil(F.wall[3] / K.gap) + 1
+    local j = j0 + 1
+    while j <= L.np do
+        local e = L.plTo[j]
+        local k = j
+        while k < L.np and L.plTo[k + 1] == e do k = k + 1 end
+        for row = -nr, nr do
+            for col = -nc, nc do
+                local jx, jy = Jitter(row, col)
+                local x = wx + (col + (row % 2) * 0.5) * gap + jx * K.jitter * ppy
+                local y = wy + row * dy + jy * K.jitter * ppy
+                if (x - wx) ^ 2 + (y - wy) ^ 2 <= wr2 then
+                    local from = huge
+                    for p = j, k do
+                        local rin = (L.plR1[p] - K.inset) * ppy
+                        if (x - L.plX[p]) ^ 2 + (y - L.plY[p]) ^ 2 <= rin * rin then
+                            local best = huge
+                            for q = 1, #F.pipes do
+                                local d = (x - room.cx - F.pipes[q][1] * ppy) ^ 2 + (y - room.cy - F.pipes[q][2] * ppy) ^ 2
+                                if d < best then best = d end
+                            end
+                            local at = L.plFrom[p] + sqrt(best) / ppy * K.pour
+                            if at < from then from = at end
+                        end
+                    end
+                    if from < huge and S.n < SMOKE_MAX then
+                        local n = S.n + 1
+                        S.n = n
+                        S.x[n], S.y[n], S.from[n], S.to[n] = x, y, from, e
+                        S.v[n] = (row * 3 + col * 5) % 8 + 1
+                    end
+                end
+            end
+        end
+        j = k + 1
+    end
+    if S.n == 0 then return 0 end
+    local idx = {}
+    for i = 1, S.n do idx[i] = i end
+    tsort(idx, function(a, b) return S.from[a] < S.from[b] end)
+    local x, y, from, to, v = {}, {}, {}, {}, {}
+    for i = 1, S.n do
+        local q = idx[i]
+        x[i], y[i], from[i], to[i], v[i] = S.x[q], S.y[q], S.from[q], S.to[q], S.v[q]
+    end
+    S.x, S.y, S.from, S.to, S.v = x, y, from, to, v
+    L.swarm = S
+    return S.n
 end
 local function ByStart(a, b)
     return a.a < b.a
@@ -237,7 +417,9 @@ function Ooze.Done(ctx, L, scene, Pos, ppy)
         ChaseLayer(ctx, L, scene)
         return
     end
+    local j0 = L.np
     st.floods = Floods(ctx, L, scene, Pos, ppy)
+    st.smoke = ctx.flood and Smoke(ctx.flood, L, scene, ppy, j0) or 0
     local adds = L.adds
     for i = 1, adds and #adds or 0 do
         local add = adds[i]

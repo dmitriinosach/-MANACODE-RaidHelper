@@ -9,7 +9,7 @@ local TICK = 1
 local FIGHT_N = 3
 local FIGHT_WINDOW = 20
 local FIGHT_PAUSE = 60
-local held, yielded, lent, paused, restores = {}, {}, {}, {}, {}
+local held, lent, paused, restores = {}, {}, {}, {}
 local listeners = {}
 local last
 local wait, acc = nil, 0
@@ -200,9 +200,7 @@ function M.View(i)
     return last
 end
 function M.Flags(i)
-    local now = GetTime()
-    return yielded[i] and true or false, lent[i] and true or false,
-        (paused[i] and paused[i] > now) and true or false
+    return lent[i] and true or false, (paused[i] and paused[i] > GetTime()) and true or false
 end
 local function hold(i, c)
     for j = 1, M.COUNT do
@@ -227,30 +225,21 @@ local function restore(i, name, now)
     end
     return true
 end
-local function stay(i, o, fight)
-    local h = held[i]
-    if not fight or not h or h.name == o.name then return false end
-    return markOf(h) == i and not dead(h)
-end
-local function place(i, e, fight, now)
+local function place(i, e, now)
     local o = e.owner
-    if lent[i] or yielded[i] or paused[i] then
+    if lent[i] or paused[i] then
         if paused[i] then pending = true end
-        return
+        return false
     end
-    if fight and not held[i] then
-        pending = true
-        return
-    end
-    if stay(i, o, fight) then return end
     local again = held[i] and held[i].name == o.name
     if again and not restore(i, o.name, now) then
         pending = true
-        return
+        return false
     end
     hold(i, o)
     e.now = true
     put(o, i)
+    return true
 end
 function M.Active()
     return prefs().on and M.InRaid() and M.CanMark() and ns.Keeper.Mine()
@@ -269,36 +258,28 @@ local function keep()
     ns.Keeper.Update(want)
     if not M.Active() then
         if want then pending = true end
-        return
+        return false
     end
-    local fight = InCombatLockdown()
     local now = GetTime()
+    local moved = false
     for i = 1, M.COUNT do
         if paused[i] and paused[i] <= now then paused[i] = nil end
         local e = last[i]
         if e.owner and e.now then
             hold(i, e.owner)
         elseif e.owner then
-            place(i, e, fight, now)
+            if place(i, e, now) then moved = true end
         elseif e.list[1] then
             pending = true
         end
     end
-end
-local function taken()
-    if not InCombatLockdown() then return end
-    for i = 1, M.COUNT do
-        local h = held[i]
-        if h and not yielded[i] and markOf(h) ~= i and not dead(h) then
-            yielded[i] = true
-        end
-    end
+    return moved
 end
 local function watch()
     local need = false
     for i = 1, M.COUNT do
         local h = held[i]
-        if h and not yielded[i] and not lent[i] then
+        if h and not lent[i] then
             local d = dead(h)
             if d ~= (h.dead or false) then
                 h.dead = d
@@ -336,7 +317,7 @@ function M.PinText(i)
     return table.concat(M.Pins(i), ", ")
 end
 local function calm(i)
-    lent[i], paused[i], restores[i], yielded[i] = nil, nil, nil, nil
+    lent[i], paused[i], restores[i] = nil, nil, nil
 end
 function M.SetPins(i, text)
     local out, seen = {}, {}
@@ -380,7 +361,7 @@ function M.Target(i)
         changed()
         return "pin"
     end
-    lent[i], yielded[i], paused[i] = true, nil, nil
+    lent[i], paused[i] = true, nil
     if GetRaidTargetIndex("target") ~= i then SetRaidTarget("target", i) end
     changed()
     return "once"
@@ -388,7 +369,7 @@ end
 function M.Release(i)
     if not M.CanMark() then return "rights" end
     pins()[i] = nil
-    lent[i], yielded[i], paused[i], restores[i] = nil, nil, nil, nil
+    lent[i], paused[i], restores[i] = nil, nil, nil
     last = M.Plan()
     if not last[i].owner then
         local h = held[i]
@@ -509,8 +490,7 @@ function M.Describe(i)
     else
         lines[#lines + 1] = ns.T("marksTipFree")
     end
-    local yielded, lent, paused = M.Flags(i)
-    if yielded then lines[#lines + 1] = ns.T("marksTipYield") end
+    local lent, paused = M.Flags(i)
     if lent then lines[#lines + 1] = ns.T("marksTipLent") end
     if paused then lines[#lines + 1] = ns.T("marksTipPaused") end
     if not M.Enabled() then
@@ -533,14 +513,11 @@ ns.Listen(f, "PLAYER_REGEN_DISABLED")
 ns.Listen(f, "PLAYER_REGEN_ENABLED")
 ns.Listen(f, "PLAYER_ENTERING_WORLD")
 f:SetScript("OnEvent", function(self, event)
-    if event == "RAID_TARGET_UPDATE" then
-        taken()
-    elseif event == "PLAYER_REGEN_DISABLED" then
+    if event == "PLAYER_REGEN_DISABLED" then
         fought = true
         if next(held) then self:Show() end
         return
     elseif event == "PLAYER_REGEN_ENABLED" then
-        clear(yielded)
         if fought then clear(lent) end
         fought = false
     end
@@ -558,10 +535,9 @@ f:SetScript("OnUpdate", function(self, dt)
         if acc < TICK then return end
         acc = 0
         if InCombatLockdown() then
-            if watch() then
-                ns.Session.Invalidate()
-                M.Sync()
-            end
+            local need = watch()
+            if need then ns.Session.Invalidate() end
+            if keep() or need then notify() end
         elseif pending then
             M.Sync()
         end

@@ -176,10 +176,7 @@ local function Take(kind, y, w)
     return row
 end
 local function HideAll()
-    for kind, pool in pairs(pools) do
-        for i = 1, #pool do pool[i]:Hide() end
-        used[kind] = 0
-    end
+    Kit.HidePools(pools, used)
 end
 local function Put(fs, x, width, text, token, right)
     fs:ClearAllPoints()

@@ -195,6 +195,10 @@ local CHECKS = {
     { "cpulive", function() if ns.CpuLiveView then ns.CpuLiveView.Toggle() end end },
     { "ver", function() if ns.VerToast then ns.VerToast.Demo() end end },
     { "kit", KitPaint },
+    { "epkill", function() Out(ns.RaidEP.DevKill(), true) end },
+    { "epmember", function() Out(ns.RaidEP.DevMember(), true) end },
+    { "epgroup", function() Out(ns.RaidEP.DevGroup(), true) end },
+    { "epzone", function() Out(ns.RaidEP.DevZone(), true) end },
 }
 local function BuildParts()
     parts.title = Kit.Str(frame, "GameFontNormal")

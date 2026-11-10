@@ -25,8 +25,6 @@ local function Announce(f, s)
     if #m.items == 0 or m.pending <= 0 then return end
     if not ns.Raid.IsLead() then return end
     if ns.Panel and ns.Panel.SetAlert and not FaultsShown() then ns.Panel.SetAlert("gp", true) end
-    ns.Print(format(ns.T("gp.signal"), m.ready, ns.Plural(m.ready, ns.T("gp.players")), ns.GPList.SumText(m.by),
-        ns.EncName(f.boss)))
 end
 local function Check(seg)
     local f = ns.Encounters.Fights()[1]

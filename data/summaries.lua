@@ -13,7 +13,7 @@ ns.taunts = {
     [6795] = true,
     [31789] = true,
 }
-ns.pollAuras = { 71940, 70873, 63050, 63322, 74807 }
+ns.pollAuras = { 71940, 70873, 63050, 63322, 74807, 70766 }
 ns.tankSpells = {
     [53595] = true,
     [61411] = true,
@@ -218,4 +218,21 @@ ns.summaryZones = {
     } },
     { zone = "zone.TheRubySanctum", bosses = { E.halion } },
     { zone = "zone.TheArgentColiseum", bosses = { E.beasts, E.jaraxxus, E.champions, E.twins, E.anubarak } },
+}
+ns.sumAll = {
+    common = {
+        { key = "#faults", label = "sum.hide.all.faults", icon = "Interface\\Icons\\INV_Misc_Note_01" },
+        { key = "#loot", label = "sum.hide.all.loot", icon = "Interface\\Icons\\INV_Misc_Bag_08" },
+        { key = "#ach", label = "sum.hide.all.ach", icon = "Interface\\Icons\\Achievement_General" },
+        { key = "#cons", label = "sum.hide.all.cons", icon = "Interface\\Icons\\INV_Alchemy_EndlessFlask_06" },
+        { key = "#t.dps", label = "sum.s.dps", icon = "Interface\\Icons\\Ability_DualWield" },
+        { key = "#t.hps", label = "sum.s.hps", icon = "Interface\\Icons\\Spell_Holy_FlashHeal" },
+        { key = "#t.deaths", label = "sum.s.deaths", icon = "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01" },
+    },
+    kinds = { friendly = "sum.k.friendly" },
+}
+ns.kindIcons = {
+    friendly = "Interface\\Icons\\Spell_Shadow_Charm",
+    parries = "Interface\\Icons\\Ability_Parry",
+    parry = "Interface\\Icons\\Ability_Parry",
 }

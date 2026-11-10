@@ -25,24 +25,33 @@ local AR = {}
 ns.ReplayArrows = AR
 AR.SUBS = SUBS
 function AR.New(scene)
-    return { names = ns.Replay.ByK(scene), bosses = ns.Index.BossKeys(scene.fight), raw = {},
+    return { names = ns.Replay.ByK(scene), bosses = ns.Index.BossKeys(scene.fight), raw = {}, selfCast = {},
              boss = { t = {}, id = {}, k = {}, n = 0 } }
 end
 function AR.Event(c, ts, sub, src, dstGUID, dst, id, srcKey)
     local names = c.names
     local k = src and names[src]
     if k then
-        if dst == src then return end
+        if dst == src then
+            if id and (sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CAST_START") then
+                local spells = c.selfCast[k]
+                if not spells then spells = {}; c.selfCast[k] = spells end
+                if not spells[id] then spells[id] = {} end
+                spells[id][ts] = true
+            end
+            return
+        end
         local g = dst and names[dst] or dstGUID
         if not g or g == "" then return end
         local r = c.raw[k]
         if not r then
-            r = { t = {}, id = {}, g = {}, n = 0 }
+            r = { t = {}, id = {}, g = {}, cast = {}, n = 0 }
             c.raw[k] = r
         end
         local n = r.n + 1
         r.n = n
         r.t[n], r.id[n], r.g[n] = ts, SWINGS[sub] and SWING_ID or id or SWING_ID, g
+        r.cast[n] = sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CAST_START"
         return
     end
     if srcKey and c.bosses[srcKey] and (sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_CAST_START") then
@@ -115,36 +124,61 @@ local function AoeIds(r, tg)
     end
     return aoe
 end
-local function CastSpans(spans, r, tg, cs)
-    if not cs then return end
+local function BySpell(r, tg)
     local byId = {}
     for j = 1, r.n do
         local id = r.id[j]
         if id ~= SWING_ID and tg[j] then
             local l = byId[id]
-            if not l then
-                l = { pos = 1 }
-                byId[id] = l
-            end
+            if not l then l = {}; byId[id] = l end
             l[#l + 1] = j
         end
     end
+    return byId
+end
+local function CastSpans(spans, r, tg, cs, byId, aoe, targets)
+    if not cs then return end
+    local pos = {}
     local R = cs.R
     for q = 1, #R do
         local rec = R[q]
         local l = rec.id and not rec.cut and rec.stop and byId[rec.id]
         if l and rec.stop > rec.from then
             local lo = rec.stop - CAST_PRE
-            local p = l.pos
+            local p = pos[rec.id] or 1
             while l[p] and r.t[l[p]] < lo do p = p + 1 end
-            l.pos = p
+            pos[rec.id] = p
             local j = l[p]
             if j and r.t[j] <= rec.stop + CAST_FLY then
                 local g = tg[j]
                 spans[#spans + 1] = { from = rec.from, to = r.t[j] + CAST_TAIL, tg = g, heal = type(g) == "number" and g > 0 }
+                if not aoe[rec.id] then targets[rec] = g end
             end
         end
     end
+end
+local function InstantTargets(r, tg, ins, byId, aoe, selfCast, k)
+    if not ins then return nil end
+    local targets, pos, nextAt = {}, {}, {}
+    for j = #ins.T, 1, -1 do
+        local t, id = ins.T[j], ins.R[j]
+        local l = not aoe[id] and byId[id]
+        local own = not aoe[id] and selfCast and selfCast[id]
+        if own and own[t] then
+            targets[j] = k
+        elseif l then
+            local p = pos[id] or #l
+            while l[p - 1] and r.t[l[p - 1]] >= t do p = p - 1 end
+            pos[id] = p
+            local i = l[p]
+            local at = r.t[i]
+            if at >= t and at <= t + CAST_FLY and at < (nextAt[id] or huge) and (at == t or not r.cast[i]) then
+                targets[j] = tg[i]
+            end
+        end
+        nextAt[id] = t
+    end
+    return targets
 end
 local function HitSpans(r, tg, aoe, spans)
     local run
@@ -166,17 +200,28 @@ end
 function AR.Done(c, L, scene)
     local addBy = {}
     for i = 1, #(L.adds or {}) do addBy[L.adds[i].guid] = L.adds[i] end
-    local casts = scene.units and scene.units.casts or {}
+    local units = scene.units or {}
+    local casts, inst = units.casts or {}, units.inst or {}
+    local castTargets, instTargets = {}, {}
     local lanes, stats = {}, { arrows = 0, raw = 0, aoe = 0 }
-    for k, r in pairs(c.raw) do
+    for k, track in ipairs(scene.tracks) do
+        local r = c.raw[k] or { n = 0 }
         local tg = {}
         for j = 1, r.n do tg[j] = Resolve(r.g[j], addBy, c.bosses) or false end
         local aoe = AoeIds(r, tg)
         for _ in pairs(aoe) do stats.aoe = stats.aoe + 1 end
         local spans = {}
         HitSpans(r, tg, aoe, spans)
-        local track = scene.tracks[k]
-        CastSpans(spans, r, tg, track and casts[track.name])
+        local byId, own = BySpell(r, tg), c.selfCast[k]
+        local cs = casts[track.name]
+        CastSpans(spans, r, tg, cs, byId, aoe, castTargets)
+        if own and cs then
+            for _, rec in ipairs(cs.R) do
+                local times = not aoe[rec.id] and own[rec.id]
+                if times and not castTargets[rec] and (times[rec.from] or times[rec.stop]) then castTargets[rec] = k end
+            end
+        end
+        instTargets[k] = InstantTargets(r, tg, inst[track.name], byId, aoe, own, k)
         local lane = Flatten(spans)
         if #lane.F > 0 then lanes[k] = lane end
         stats.raw = stats.raw + r.n
@@ -188,7 +233,7 @@ function AR.Done(c, L, scene)
         boss.F[j], boss.T[j], boss.G[j], boss.I[j] = b.t[j], b.t[j] + BOSS_HOLD, b.k[j], b.id[j]
     end
     stats.boss = b.n
-    local out = { lanes = lanes, boss = boss, stats = stats }
+    local out = { lanes = lanes, boss = boss, stats = stats, castTargets = castTargets, instTargets = instTargets }
     L.arrows = out
     return out
 end

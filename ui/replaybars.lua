@@ -24,9 +24,6 @@ local ALERT_LEVEL = 120
 local ALERT_REAL = 1.2
 local NAV_W = 44
 local FONT = "Fonts\\FRIZQT__.TTF"
-local SOUND = "igMainMenuOptionCheckBoxOn"
-local SOUND_GAP = 2.5
-local SEEK_MAX = 1
 local DECIMAL = 10
 local MINUTE = 60
 local NAMES_SHOWN = 6
@@ -34,19 +31,8 @@ local View = {}
 ns.ReplayBarsView = View
 local RB = ns.ReplayBars
 local Kit = ns.Kit
-local st = { rows = {}, lines = {}, list = {}, alerts = {}, lineA = {}, rowH = 0, rowW = 0, barW = 0, sounds = 0,
+local st = { rows = {}, lines = {}, list = {}, alerts = {}, lineA = {}, rowH = 0, rowW = 0, barW = 0,
              shown = 0, active = 0, cap = 1, w = 0, h = 0, viewW = 0, lineW = ALERT_W }
-local function Saved()
-    local settings = ns.GetDB().settings
-    if type(settings.iso) ~= "table" then settings.iso = {} end
-    return settings.iso
-end
-function View.Sound()
-    return Saved().barSound ~= false
-end
-function View.SetSound(on)
-    Saved().barSound = on and true or false
-end
 function View.Color(kind, k)
     local r0, g0, b0 = Kit.RGB("sem.rep.bar." .. kind)
     local r1, g1, b1 = Kit.RGB("sem.rep.bar." .. kind .. "End")
@@ -161,7 +147,7 @@ function View.Fit()
 end
 local function Use(B)
     st.data = B
-    st.lastT = nil
+    ns.ReplaySound.Reset()
     for i = 1, #st.rows do
         st.rows[i].tr = nil
         st.rows[i]:Hide()
@@ -221,10 +207,10 @@ local function AlertText(a)
     end
     return format(ns.T("rep.bars.list"), name, table.concat(list, ", "))
 end
-local function DrawAlerts(t, playing, speed)
+local function DrawAlerts(t, speed)
     if not st.alert then return end
     local keep = max(RB.ALERT_FOR, ALERT_REAL * speed)
-    local n = RB.Alerts(st.data, t, st.alerts, keep)
+    RB.Alerts(st.data, t, st.alerts, keep)
     for i = 1, #st.lines do
         local fs, a = st.lines[i], st.alerts[i]
         if a then
@@ -240,15 +226,6 @@ local function DrawAlerts(t, playing, speed)
             fs:Hide()
         end
     end
-    local last = st.lastT
-    if playing and n > 0 and last and t > last and t - last < SEEK_MAX and st.alerts[1].t > last and View.Sound() then
-        local now = GetTime()
-        if not st.soundAt or now - st.soundAt >= SOUND_GAP then
-            st.soundAt = now
-            st.sounds = st.sounds + 1
-            PlaySound(SOUND)
-        end
-    end
 end
 function View.Step()
     if not st.bars then return end
@@ -258,14 +235,14 @@ function View.Step()
         st.scene = scene
         Use(scene and scene.layers and scene.layers.bars or nil)
     end
+    local t, playing, speed = Iso.Now()
+    ns.ReplaySound.Step(scene and scene.layers, t, playing, speed)
     if not st.data then return end
     local w, h = st.bars:GetWidth(), st.bars:GetHeight()
     if (w and w > 0 and w ~= st.w) or (h and h > 0 and h ~= st.h) then View.Fit() end
-    local t, playing, speed = Iso.Now()
     if st.view and (st.view:GetWidth() or 0) ~= st.viewW then PlaceAlerts() end
     DrawBars(t)
-    DrawAlerts(t, playing, tonumber(speed) or 1)
-    st.lastT = t
+    DrawAlerts(t, tonumber(speed) or 1)
 end
 local function Root(f)
     while f and f:GetParent() and f:GetParent() ~= UIParent do f = f:GetParent() end
@@ -281,7 +258,7 @@ function View.Attach()
     if root then root:HookScript("OnUpdate", ns.Prof.Wrap("ui.iso", View.Step)) end
 end
 function View.Probe()
-    return { rows = st.rows, lines = st.lines, shown = st.shown, active = st.active, sounds = st.sounds,
+    return { rows = st.rows, lines = st.lines, shown = st.shown, active = st.active,
              data = st.data, rowH = st.rowH, barW = st.barW, list = st.list, cap = st.cap,
              rect = { x = 0, y = ALERT_TOP, w = st.lineW, h = RB.ALERT_MAX * ALERT_LINE }, real = ALERT_REAL }
 end

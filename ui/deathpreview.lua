@@ -5,7 +5,6 @@ local ceil = math.ceil
 local max = math.max
 local min = math.min
 local Kit = ns.Kit
-local C = Kit.C
 local PAD = 5
 local GUTTER = 15
 local TLW = 236
@@ -144,11 +143,7 @@ local function Build()
     end
     mapBox:Hide()
 end
-local function Rgba(token)
-    local c = C[token]
-    if not c then return 1, 1, 1, 1 end
-    return c[1], c[2], c[3], c[4] or 1
-end
+local Rgba = Kit.Color
 local function Tex(x, y, w, h, token, a)
     if usedTex >= TEXMAX or w <= 0 or h <= 0 then return nil end
     usedTex = usedTex + 1
@@ -561,10 +556,12 @@ local function MapNote(m)
     if not HasSpots(m) then return ns.T("prev.map.none") end
     return ""
 end
-local function Angle()
+local function Angle(room)
     local db = ns.GetDB and ns.GetDB()
     local iso = type(db) == "table" and type(db.settings) == "table" and db.settings.iso
-    return type(iso) == "table" and tonumber(iso.angle) or ISO_ANGLE
+    local views = type(iso) == "table" and iso.views
+    local v = room and room.tex and type(views) == "table" and views[room.tex]
+    return type(v) == "table" and tonumber(v.a) or ISO_ANGLE
 end
 local function DrawRoom(room)
     local path = ROOM_PATH .. room.tex
@@ -625,7 +622,7 @@ local function DrawMap(pv, x0, y0)
     mapBox:SetPoint("TOPLEFT", frame, "TOPLEFT", x0, y0)
     mapBg:SetTexture(Rgba("surface.page"))
     if shown then
-        cam.angle, cam.cx, cam.cy, cam.r = Angle(), m.cx, m.cy, m.half
+        cam.angle, cam.cx, cam.cy, cam.r = Angle(m.room), m.cx, m.cy, m.half
         cam.zoom = MAP / (2 * max(1, m.half))
         Replay.Aim(cam)
         if not (m.room and DrawRoom(m.room)) then DrawGrid(m) end
@@ -637,6 +634,7 @@ local function DrawMap(pv, x0, y0)
     mapBox:Show()
     local ms = debugprofilestop() - p0
     View.lastMapMs = ms
+    View.lastAngle = shown and m.room and cam.angle or nil
     if ns.Prof.on then ns.Prof.Add("prev.map", ms, usedMap + usedStrips) end
 end
 local function SumLine(pv, caption, slot)

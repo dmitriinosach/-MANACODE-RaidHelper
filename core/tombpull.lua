@@ -1,5 +1,4 @@
 local _, ns = ...
-local floor = math.floor
 local sqrt = math.sqrt
 local tsort = table.sort
 local concat = table.concat
@@ -9,7 +8,6 @@ local HELD = 5
 local MARGIN = 1
 local POS_HOLD = 10
 local POS_GAP = 2
-local MAP_UNITS = 10000
 local SUBS = { SPELL_AURA_APPLIED = true, SPELL_AURA_REMOVED = true }
 local TP = {}
 ns.TombPull = TP
@@ -66,29 +64,11 @@ function TP.Feed(st, ts, sub, dstName, a1)
     end
 end
 local function Marks(st)
-    if st.marks then return st.marks end
-    local out = {}
-    local segs = ns.Encounters.Segs(st.fight)
-    for i = 1, #segs do
-        local m = ns.Decode.Maps(segs[i])
-        for k = 1, #m do out[#out + 1] = m[k] end
-    end
-    tsort(out, function(a, b) return a.t < b.t end)
-    st.marks = out
-    return out
+    if not st.marks then st.marks = ns.MapPos.Marks(st.fight) end
+    return st.marks
 end
 local function Scale(st, t)
-    local marks = Marks(st)
-    local mark = marks[1]
-    for i = 1, #marks do
-        if marks[i].t <= t then mark = marks[i] else break end
-    end
-    if not mark then return nil, nil end
-    local scale = ns.mapScale or {}
-    local byArea = scale[mark.name or ""] or (ns.mapAreas and scale[ns.mapAreas[mark.area] or ""])
-    local size = byArea and byArea[mark.level]
-    if not size then return nil, nil end
-    return size.w / MAP_UNITS, size.h / MAP_UNITS
+    return ns.MapPos.Scale(Marks(st), t)
 end
 local function Track(st, name)
     st.tracks = st.tracks or {}
@@ -110,17 +90,7 @@ local function Track(st, name)
     return tr
 end
 local function Near(tr, t)
-    local n = #tr.t
-    if n == 0 then return nil, nil end
-    local lo, hi = 1, n + 1
-    while lo < hi do
-        local mid = floor((lo + hi) / 2)
-        if tr.t[mid] <= t then lo = mid + 1 else hi = mid end
-    end
-    local i = lo - 1
-    if i >= 1 and t - tr.t[i] <= POS_HOLD then return tr.x[i], tr.y[i] end
-    if lo <= n and tr.t[lo] - t <= POS_GAP then return tr.x[lo], tr.y[lo] end
-    return nil, nil
+    return ns.MapPos.Near(tr, t, POS_HOLD, POS_GAP)
 end
 local function Nearest(st, victim, carriers, t)
     local yw, yh = Scale(st, t)

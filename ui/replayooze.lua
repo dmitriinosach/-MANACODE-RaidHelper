@@ -45,6 +45,7 @@ local LOOK = {
 local V = {}
 ns.ReplayOozeView = V
 local Kit = ns.Kit
+local RD = ns.ReplayDraw
 local Replay = ns.Replay
 local Figs = ns.ReplayFigs
 local slots = {}
@@ -55,12 +56,7 @@ local hw, hh = 0, 0
 local stats = { gas = 0, blob = 0, puffs = 0, slow = 0, bodyW = 0, lean = 0, hp = 0, pct = 0, arc = 0, melt = 0,
                 meltW = 0, meltH = 0, poolW = 0, poolA = 0 }
 V.stats = stats
-local function Tex(layer, path, draw)
-    local tex = layer:CreateTexture(nil, draw)
-    tex:SetTexture(path)
-    tex:Hide()
-    return tex
-end
+local Tex = RD.Tex
 local function Recolor(s)
     Kit.Hue(s.arc, ADD_TOK)
     local _, _, _, a = Kit.Color(ADD_TOK)
@@ -122,7 +118,14 @@ function V.Use(scene)
     end
     for k in pairs(stats) do stats[k] = 0 end
 end
-local function Oval(tex, sx, sy, rw, rh)
+local function Oval(tex, sx, sy, rw, rh, c)
+    if rw * 2 > MAX_PX then
+        tex:Hide()
+        return false
+    end
+    return Kit.Crop(tex, view, hw, hh, sx - rw, sy - rh, sx + rw, sy + rh, c)
+end
+local function Arc(tex, sx, sy, rw, rh)
     if rw * 2 > MAX_PX or sx + rw < -hw or sx - rw > hw or sy + rh < -hh or sy - rh > hh then
         tex:Hide()
         return false
@@ -135,12 +138,7 @@ local function Oval(tex, sx, sy, rw, rh)
     return true
 end
 local function Puff(tex, sx, sy, rw, tilt, v)
-    if tex.v ~= v then
-        tex.v = v
-        local c = TC[v]
-        tex:SetTexCoord(c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8])
-    end
-    return Oval(tex, sx, sy, rw, max(1, rw * tilt))
+    return Oval(tex, sx, sy, rw, max(1, rw * tilt), TC[v])
 end
 local function Shear(tex, frame, lean)
     if tex.lean == lean then return end
@@ -148,20 +146,17 @@ local function Shear(tex, frame, lean)
     local u0 = frame * FRAME
     local u1 = u0 + FRAME
     local s = lean * FRAME
-    tex:SetTexCoord(u0 - s, 0, u0, 1, u1 - s, 0, u1, 1)
+    local c = tex.tc or {}
+    tex.tc = c
+    c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8] = u0 - s, 0, u0, 1, u1 - s, 0, u1, 1
 end
 local function Stand(tex, sx, sy, w, h)
     local below = h * (1 - GROUND)
-    if w > MAX_PX or sx + w / 2 < -hw or sx - w / 2 > hw or sy + below < -hh or sy - h * GROUND > hh then
+    if w > MAX_PX then
         tex:Hide()
         return false
     end
-    tex:ClearAllPoints()
-    tex:SetPoint("BOTTOM", view, "CENTER", sx, -(sy + below))
-    tex:SetWidth(w)
-    tex:SetHeight(h)
-    tex:Show()
-    return true
+    return Kit.Crop(tex, view, hw, hh, sx - w / 2, sy + below - h, sx + w / 2, sy + below, tex.tc)
 end
 local function Body(s, sx, sy, w, h, lean, f)
     Shear(s.dark, 0, lean)
@@ -214,7 +209,7 @@ local function PlaceHp(s, a, t, sx, sy, yd, tilt, top)
         end
         local rw = RING_YD * yd / 2
         local rh = max(1, rw * tilt)
-        if Oval(s.arc, sx, sy, rw, rh) and f < Figs.ARC_N then Oval(s.trail, sx, sy, rw, rh) else s.trail:Hide() end
+        if Arc(s.arc, sx, sy, rw, rh) and f < Figs.ARC_N then Arc(s.trail, sx, sy, rw, rh) else s.trail:Hide() end
         stats.arc = f
     end
     local n = max(1, min(100, floor(hp * 100 + 0.5)))

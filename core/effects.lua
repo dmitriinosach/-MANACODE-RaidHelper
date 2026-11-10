@@ -35,10 +35,6 @@ local catOrder = {}
 for i = 1, #Effects.categories do
     catOrder[Effects.categories[i].key] = i
 end
-local catLegacy = {
-    ally = "buff",
-    other = "aura",
-}
 local function Shelf(e)
     local n = e.n or 0
     if n == 0 then return "aura" end
@@ -118,13 +114,11 @@ end
 function Effects.Category(id)
     local row = id and User()[id]
     local key = row and row.cat
-    key = catLegacy[key] or key
     if key and Effects.HasCategory(key) then return key end
     local fake = id and synthetic[id]
     if fake and catOrder[fake.cat] then return fake.cat end
     local e = Effects.Entry(id)
     key = e and e.orig
-    key = catLegacy[key] or key
     if key and catOrder[key] then return key end
     return "aura"
 end
@@ -248,27 +242,4 @@ function Effects.MergeVariants()
     end
     tsort(skipped)
     return merged, skipped
-end
-function Effects.Migrate()
-    local db = ns.GetDB()
-    local oldState = type(db.effectState) == "table" and db.effectState or nil
-    local oldCat = type(db.effectCat) == "table" and db.effectCat or nil
-    if not oldState and not oldCat and db.effects == nil and db.effectIds == nil then
-        return
-    end
-    local byName = NameIndex()
-    for name, ids in pairs(byName) do
-        if #ids == 1 then
-            local id = ids[1]
-            local state = oldState and oldState[name]
-            if state then Effects.Set(id, state) end
-            local cat = oldCat and oldCat[name]
-            cat = catLegacy[cat] or cat
-            if cat and catOrder[cat] then Effects.SetCategory(id, cat) end
-        end
-    end
-    db.effects = nil
-    db.effectIds = nil
-    db.effectState = nil
-    db.effectCat = nil
 end

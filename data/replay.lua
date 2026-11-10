@@ -50,41 +50,42 @@ ns.replayData = {
         [355] = true, [56222] = true, [6795] = true, [62124] = true, [31789] = true,
     },
     states = {
-        { name = 69675, icon = 70157, prio = 100, imp = true, feed = true },
-        { name = 71289, icon = 71289, prio = 100, imp = true, feed = true, mc = true },
-        { name = 62418, icon = 69065, prio = 100, imp = true, feed = true, spike = true },
-        { name = 71340, icon = 71340, prio = 95, imp = true, feed = true, link = true },
-        { name = 72293, icon = 72293, prio = 95, imp = true, feed = true },
-        { name = 72410, icon = 72410, prio = 96, imp = true, feed = true, boss = ns.ENC.saurfang },
-        { name = 70126, icon = 70126, prio = 95, imp = true },
-        { name = 71264, icon = 71265, prio = 92, imp = true, feed = true },
-        { name = 73655, icon = 73655, prio = 92 },
+        { name = 69675, icon = 70157, prio = 100, debuff = true, imp = true, feed = true },
+        { name = 71289, icon = 71289, prio = 100, debuff = true, imp = true, feed = true, mc = true },
+        { name = 62418, icon = 69065, prio = 100, debuff = true, imp = true, feed = true, spike = true },
+        { name = 71340, icon = 71340, prio = 95, debuff = true, imp = true, feed = true, link = true },
+        { name = 72293, icon = 72293, prio = 95, debuff = true, imp = true, feed = true },
+        { name = 72410, icon = 72410, prio = 96, debuff = true, imp = true, feed = true, boss = ns.ENC.saurfang },
+        { name = 70126, icon = 70126, prio = 95, debuff = true, imp = true },
+        { name = 71264, icon = 71265, prio = 92, debuff = true, imp = true, feed = true },
+        { name = 73655, icon = 73655, prio = 92, debuff = true },
         { name = 10278, icon = 10278, prio = 90, feed = true },
         { name = 19752, icon = 19753, prio = 90, feed = true },
         { name = 642, icon = 642, prio = 88, feed = true },
         { name = 45438, icon = 45438, prio = 88, feed = true },
         { name = 47585, icon = 47585, prio = 85, feed = true },
-        { name = 73023, icon = 71224, prio = 85, imp = true, feed = true },
+        { name = 73023, icon = 71224, prio = 85, debuff = true, imp = true, feed = true },
         { name = 31224, icon = 31224, prio = 80 },
-        { name = 69279, icon = 69279, prio = 80 },
-        { name = 72838, icon = 72838, prio = 82 },
-        { name = 72833, icon = 72833, prio = 82 },
-        { name = 73799, icon = 73799, prio = 80 },
-        { name = 69762, icon = 69762, prio = 75 },
+        { name = 69279, icon = 69279, prio = 80, debuff = true },
+        { name = 72838, icon = 72838, prio = 82, debuff = true },
+        { name = 72833, icon = 72833, prio = 82, debuff = true },
+        { name = 73799, icon = 73799, prio = 80, debuff = true },
+        { name = 69762, icon = 69762, prio = 75, debuff = true },
         { name = 6940, icon = 6940, prio = 75, feed = true },
         { name = 70872, icon = 71533, prio = 70 },
         { name = 1044, icon = 1044, prio = 70, feed = true },
-        { name = 72273, icon = 73020, prio = 65 },
-        { name = 70445, icon = 70838, prio = 60 },
+        { name = 72273, icon = 73020, prio = 65, debuff = true },
+        { name = 70445, icon = 70838, prio = 60, debuff = true },
         { name = 33206, icon = 33206, prio = 78 },
         { name = 47788, icon = 47788, prio = 78 },
-        { name = 73070, icon = 73070, prio = 90, boss = ns.ENC.lanathel },
-        { name = 72762, icon = 72762, prio = 100, boss = ns.ENC.lichking, aim = true },
-        { name = 73787, icon = 70337, prio = 97, imp = true, feed = true, boss = ns.ENC.lichking },
-        { name = 63802, icon = 63802, prio = 95, imp = true, feed = true, link = true, boss = ns.ENC.yogg },
-        { name = 61969, icon = 61969, prio = 95, imp = true, feed = true, boss = ns.ENC.hodir },
+        { name = 73070, icon = 73070, prio = 90, debuff = true, boss = ns.ENC.lanathel },
+        { name = 72762, icon = 72762, prio = 100, debuff = true, boss = ns.ENC.lichking, aim = true },
+        { name = 73787, icon = 70337, prio = 97, debuff = true, imp = true, feed = true, boss = ns.ENC.lichking },
+        { name = 63802, icon = 63802, prio = 95, debuff = true, imp = true, feed = true, link = true, boss = ns.ENC.yogg },
+        { name = 61969, icon = 61969, prio = 95, debuff = true, imp = true, feed = true, boss = ns.ENC.hodir },
         { name = 32182, icon = 32182, prio = 1, grow = true },
         { name = 54131, icon = 2825, prio = 1, grow = true },
+        { name = 70308, icon = 70308, prio = 100, imp = true, veh = true, boss = ns.ENC.putricide },
         { name = 54861, icon = 55004, prio = 55 },
         { name = 66233, icon = 66233, prio = 87, cast = 4 },
         { name = 871, icon = 871, prio = 84 },
@@ -137,10 +138,6 @@ ns.replayData = {
         { name = 2457, icon = 2457, prio = 40, focus = true, self = true },
         { name = 71, icon = 71, prio = 40, focus = true, self = true },
         { name = 2458, icon = 2458, prio = 40, focus = true, self = true },
-        { name = 768, icon = 768, prio = 40, focus = true, self = true },
-        { name = 9634, icon = 9634, prio = 40, focus = true, self = true },
-        { name = 24858, icon = 24858, prio = 40, focus = true, self = true },
-        { name = 33891, icon = 33891, prio = 40, focus = true, self = true },
         { name = 48266, icon = 48266, prio = 40, focus = true, self = true },
         { name = 48263, icon = 48263, prio = 40, focus = true, self = true },
         { name = 48265, icon = 48265, prio = 40, focus = true, self = true },
@@ -164,7 +161,15 @@ ns.replayData = {
             51514, 20066,
         },
         soft = { prio = 50, ids = { 1604 } },
-        spin = { [33786] = true },
+        look = { [33786] = "cyclone", [65801] = "sheep", [51514] = "frog" },
+    },
+    rage = { 26662, 72737, 5229, 66759 },
+    addCc = {
+        { prio = 90, ids = { 853, 2812, 12809, 46968, 20253, 7922, 47481, 44572, 408, 1833, 5211, 22570, 20549, 30283,
+                             24394, 12355, 39796, 20170, 3355 } },
+        { prio = 80, ids = { 122, 339, 12494, 55080, 64695, 33395 } },
+        { prio = 60, ids = { 45524, 1715, 12323, 2974, 5116, 13810, 3409, 6343, 116, 120, 11113, 12486, 31935, 3600,
+                             15407, 50435, 48484, 55741, 20184, 53227 } },
     },
     shields = {
         [1022] = "hand", [5599] = "hand", [10278] = "hand",
@@ -186,7 +191,8 @@ ns.replayData = {
     pools = {
         [ns.ENC.lichking] = {
             { spell = 72762, aim = { -0.1, 1.5 }, life = 33, fade = 50, tail = 1, r0 = 10, grow = 0.05,
-              tone = "sem.rep.defile", ring = "sem.rep.defileAim" },
+              tone = "sem.rep.defile", ring = "sem.rep.defileAim",
+              cloud = { tones = { "sem.rep.defileCloud", "sem.rep.defileCore" }, flow = 0.3 } },
         },
         [ns.ENC.deathwhisper] = {
             { spell = 49938, src = 36855, cast = true, life = 10, tail = 1, r0 = 8, rmax = 8, gap = 10, tone = "sem.rep.shadow" },
@@ -299,8 +305,11 @@ ns.replayData = {
         [34362] = false,
         [33169] = false,
         [40681] = 75887,
+        [40683] = 75879,
     },
     addDefault = "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01",
+    addLook = { [36609] = { k = 1.6, rim = "sem.rep.valkyr" } },
+    carry = { [36609] = true },
     feed = {
         [ns.ENC.lichking] = {
             [72762] = true, [73799] = true, [73787] = true,
@@ -322,8 +331,12 @@ do
     for _, list in ipairs({ D.control, D.control.soft }) do
         for i = 1, #list.ids do
             D.states[#D.states + 1] = { name = list.ids[i], icon = list.ids[i], prio = list.prio, cc = true,
-                                        spin = D.control.spin[list.ids[i]] }
+                                        hard = list == D.control or nil, ccLook = D.control.look[list.ids[i]] }
         end
+    end
+    D.addCcList = {}
+    for _, g in ipairs(D.addCc) do
+        for _, id in ipairs(g.ids) do D.addCcList[#D.addCcList + 1] = { name = id, icon = id, prio = g.prio } end
     end
     for _, tint in ipairs(D.tints) do
         for _, id in ipairs(tint.ids) do

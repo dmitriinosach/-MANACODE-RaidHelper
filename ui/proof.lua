@@ -91,12 +91,12 @@ function View.Menu(anchor)
         }
     end, anchor)
 end
-function View.ReportMenu(anchor, build, title, now)
+function View.ReportMenu(anchor, build, title, now, none)
     local R = ns.ChatReport
     local function Send()
         local lines = build(R.Size())
         if #lines < 2 then
-            ns.Print(T("report.none"))
+            ns.Print(T(none or "report.none"))
             return
         end
         if now then R.SendNow(lines, R.Channel()) else R.Send(lines, R.Channel()) end
@@ -120,12 +120,15 @@ function View.ReportMenu(anchor, build, title, now)
         return menu
     end, anchor)
 end
-function View.ReportButton(parent, build)
+function View.ReportButton(parent, build, heal)
     local b = ns.Kit.Button(parent, nil, "quiet")
     b.text:SetText(T("report.btn"))
     b.tipTitle = T("report.btn")
     b.tip = T("report.tip")
-    b.onClick = function(self) View.ReportMenu(self, build) end
+    b.onClick = function(self)
+        if heal then View.ReportMenu(self, build, "report.menu.heal", nil, "report.none.heal")
+        else View.ReportMenu(self, build) end
+    end
     return b
 end
 local function ButtonEnter(self)

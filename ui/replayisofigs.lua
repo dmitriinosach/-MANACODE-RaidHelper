@@ -19,9 +19,12 @@ local START_TILT = ns.ReplayIsoCam.START_TILT
 local HUGE = 1e9
 local STALE_ALPHA = 0.35
 local ADD_K = 0.85
+local COL_PAD = 10
+local DEATH_TC = { 0.5, 0.25, 0.5, 0.5, 0.75, 0.25, 0.75, 0.5 }
 local IsoFigs = {}
 ns.ReplayIsoFigs = IsoFigs
 local Replay = ns.Replay
+local RD = ns.ReplayDraw
 local Kit = ns.Kit
 local LayersView = ns.ReplayLayersView
 local Follow = ns.ReplayFollow
@@ -36,14 +39,11 @@ local cam
 local strips, stripData, dots, figs, deathTex = {}, {}, {}, {}, {}
 local order, depth = {}, {}
 local afigs, all = {}, {}
-local addList = { x = {}, y = {}, icon = {}, chase = {}, hp = {}, debuff = {} }
-local addState = { dead = false, hp = 1, stale = false, speed = 0, vis = true }
+local addList = { x = {}, y = {}, icon = {}, chase = {}, hp = {}, debuff = {}, boss = {}, ghost = {}, dusk = {},
+                  cc1 = {}, cc2 = {}, cc3 = {}, ccN = {}, add = {}, k = {}, rim = {} }
+local addState = { dead = false, hp = 1, stale = false, speed = 0, vis = true, ghost = false, hpOk = false }
 Figs.BindAdds(afigs)
-local function Clamp(v, lo, hi)
-    if v < lo then return lo end
-    if v > hi then return hi end
-    return v
-end
+local Clamp = RD.Clamp
 local function NewFigure(parent)
     local fig = CreateFrame("Frame", nil, parent)
     fig:SetWidth(SHADOW)
@@ -57,8 +57,8 @@ local function NewFigure(parent)
     return fig
 end
 local function ConfigFigure(fig, tr, scene)
-    fig.isBoss = tr == nil
-    fig.sQ, fig.mQ, fig.rank, fig.sDead = nil, nil, nil, nil
+    fig.isBoss, fig.isAdd = tr == nil, false
+    fig.sQ, fig.mQ, fig.level, fig.sDead = nil, nil, nil, nil
     if tr then
         fig.name = tr.name
         fig.cr, fig.cg, fig.cb = Kit.ClassColor(tr.class)
@@ -71,7 +71,21 @@ local function ConfigFigure(fig, tr, scene)
         Figs.Config(fig, nil, "boss")
     end
 end
+local function ConfigBody(fig, name)
+    if fig.isBoss and fig.bodyName == name then return end
+    fig.isBoss, fig.isAdd, fig.addIcon, fig.addHp, fig.bodyName = true, false, nil, nil, name
+    fig.sQ, fig.mQ, fig.level, fig.sDead = nil, nil, nil, nil
+    LayersView.Clear(fig)
+    fig.name = format(ns.T("iso.boss"), name)
+    fig.cr, fig.cg, fig.cb = Kit.Color("sem.lane.boss")
+    Figs.Config(fig, nil, "boss")
+end
 local Parts = Figs.Parts
+local function InFrame(fig, sx, sy, scale, hw, hh)
+    local half = max(fig.w or 0, fig.uw or 0, ICON * scale) / 2
+    local top = max((ICON + LIFT) * scale, fig.top or 0)
+    return sx - half > -hw and sx + half < hw and sy + half * (fig.flat or 1) < hh and sy - top > -hh
+end
 local function DrawFigure(fig, s, sx, sy, scale, flat, elapsed, k)
     scale = scale * Figs.Grow(fig, elapsed)
     Figs.Sprite(fig, s, scale, flat, elapsed)
@@ -90,6 +104,17 @@ local function HideFigure(fig)
         fig:Hide()
     end
 end
+local function OverLevel(count, base, stride, pad, d, l, t, r, b)
+    local rank, hit = 0, false
+    for i = 1, count do
+        local v = order[i]
+        if depth[v] >= d then break end
+        rank = i
+        local fig = all[v]
+        if fig.shown and fig.sx > l - pad and fig.sx < r + pad and fig.sy > t and fig.sy < b + pad then hit = true end
+    end
+    return hit and base + rank * stride + 1 or nil
+end
 local function SortFigures(count)
     for i = 2, count do
         local v = order[i]
@@ -102,26 +127,32 @@ local function SortFigures(count)
         order[j + 1] = v
     end
     local base = run.levelBase
+    local stride = (base + (count + 1) * 2 + 1 < ui.top:GetFrameLevel()) and 2 or 1
+    local focusLevel
     for r = 1, count do
         local fig = all[order[r]]
-        if fig.rank ~= r then
-            fig.rank = r
-            fig:SetFrameLevel(base + r * 2)
+        local focused = run.focus and fig.name == run.focus
+        local rank = focused and count + 1 or r
+        local level = base + rank * stride
+        if focused then focusLevel = level end
+        fig.rank = rank
+        if fig.level ~= level then
+            fig.level = level
+            fig:SetFrameLevel(level)
         end
+    end
+    if focusLevel and ui.focusLevel ~= focusLevel then
+        ui.focusLevel = focusLevel
+        ui.focusLayer:SetFrameLevel(focusLevel + 1)
     end
     local Live = ns.ReplayLive
     if not Live then return end
     local d, l, t, r, b = Live.Throne()
-    if not d then return end
-    local rank, hit = 0, false
-    for i = 1, count do
-        local v = order[i]
-        if depth[v] >= d then break end
-        rank = i
-        local fig = all[v]
-        if fig.shown and fig.sx > l and fig.sx < r and fig.sy > t and fig.sy < b then hit = true end
+    if d then Live.ThroneOver(OverLevel(count, base, stride, 0, d, l, t, r, b)) end
+    for c = 1, Live.Cols() do
+        d, l, t, r, b = Live.Col(c)
+        Live.ColOver(c, d and OverLevel(count, base, stride, COL_PAD, d, l, t, r, b))
     end
-    Live.ThroneOver(hit and base + rank * 2 + 1 or nil)
 end
 local function DepthScale(sy, k)
     local fade = run.flat and 0 or max(0, 1 - cam.persp / DEPTH_FADE)
@@ -146,19 +177,31 @@ local function PlaceAdds(scene, base, elapsed)
                 local x, y, lift = Geo.Where(cam, scene, addList.x[j], addList.y[j])
                 sx, sy, kz = Replay.Project(cam, x, y)
                 sy = sy - lift
-                Figs.ConfigAdd(fig, addList.icon[j], addList.hp[j] ~= nil)
+                local body = addList.boss[j]
+                if body then
+                    ConfigBody(fig, body)
+                else
+                    fig.bodyName = nil
+                    Figs.ConfigAdd(fig, addList.icon[j], addList.hp[j] ~= nil, addList.rim[j])
+                end
+                Figs.Dusk(fig, addList.dusk[j])
                 addState.stale = addList.chase[j]
+                addState.ghost = addList.ghost[j]
                 addState.hp = addList.hp[j] or 1
+                addState.hpOk = addList.hp[j] ~= nil
             end
-            local scale = kz > 0 and DepthScale(sy, kz) * ADD_K or 0
-            if j <= na and kz > 0 and sx > -hw + 2 and sx < hw - 2 and sy < hh - 2 and sy - (ICON + LIFT) * scale > -hh then
+            local scale = kz > 0 and DepthScale(sy, kz) * (j <= na and addList.boss[j] and 1 or ADD_K * (addList.k[j] or 1))
+                or 0
+            if j <= na and kz > 0 and InFrame(fig, sx, sy, scale, hw, hh) then
                 fig.kz = kz
                 DrawFigure(fig, addState, sx, sy, scale, min(1, cam.tilt * kz), elapsed, total)
-                LayersView.AddDebuff(fig, addList.debuff[j])
+                LayersView.AddDebuff(fig, addList.debuff[j], addList.cc1[j], addList.cc2[j], addList.cc3[j], addList.ccN[j])
+                fig.ccAdd = addList.add[j]
                 depth[total] = sy
             else
                 HideFigure(fig)
                 LayersView.AddDebuff(fig, false)
+                fig.ccAdd = nil
                 depth[total] = -HUGE
                 hidden = hidden + 1
             end
@@ -184,7 +227,7 @@ local function PlaceFigures(elapsed)
             sy = sy - lift
         end
         local scale = kz > 0 and DepthScale(sy, kz) or 0
-        if kz > 0 and sx > -hw + 2 and sx < hw - 2 and sy < hh - 2 and sy - (ICON + LIFT) * scale > -hh then
+        if kz > 0 and InFrame(fig, sx, sy, scale, hw, hh) then
             fig.kz = kz
             DrawFigure(fig, s, sx, sy, scale, min(1, cam.tilt * kz), elapsed, k)
             Shield.Place(fig, elapsed)
@@ -202,7 +245,7 @@ local function PlaceFigures(elapsed)
         for k = total + 1, #order do order[k] = nil end
     end
     SortFigures(total)
-    Figs.Alpha(all, order, total)
+    Figs.Alpha(all, order, total, run.focus)
     run.shown = shown + (total - n - 1 - run.addHidden)
 end
 local function PlaceFloor()
@@ -262,13 +305,9 @@ local function PlaceDeaths()
             used = used + 1
             local tex = deathTex[used]
             local sx, sy, k = Replay.Project(cam, d.x, d.y)
-            if k > 0 and sx > -hw and sx < hw and sy > -hh and sy < hh then
-                local size = Clamp(12 * run.figScale * k, 8, 40)
-                tex:SetWidth(size)
-                tex:SetHeight(size)
-                tex:SetPoint("CENTER", ui.view, "CENTER", sx, -sy)
+            local half = Clamp(12 * run.figScale * k, 8, 40) / 2
+            if k > 0 and Kit.Crop(tex, ui.view, hw, hh, sx - half, sy - half, sx + half, sy + half, DEATH_TC) then
                 tex.mark = d
-                tex:Show()
             else
                 tex:Hide()
             end
@@ -314,7 +353,7 @@ local function BuildPools()
         dot:Hide()
         dots[i] = dot
     end
-    LayersView.Build(view, ui.marks)
+    LayersView.Build(view, ui.marks, ui.focusLayer)
     Realm.Build(view, ui.marks)
     ns.ReplaySwarmView.Build(view, ui.marks)
     ns.ReplayOozeView.Build(view, ui.marks)

@@ -62,6 +62,10 @@ local npcElapsed = 0
 local npcKnown, npcKnownN = {}, 0
 local inVehicle = {}
 local vehicleFight = false
+local VPOW = "FW_VPOW"
+local VPOW_STEP = 0.02
+local powFight = false
+local vpowLast, vpowMax = {}, {}
 local auraStacks = {}
 local pollNow = {}
 local posShared = {}
@@ -160,11 +164,15 @@ local function Listen(on)
 end
 local function CloseSegment(why, enc)
     ForgetKill()
+    ns.RecPull.Forget()
     scriptHold = nil
     dummyAt = nil
     wipe(dead)
     wipe(bossSeen)
     vehicleFight = false
+    powFight = false
+    wipe(vpowLast)
+    wipe(vpowMax)
     hadFight = false
     seenIdle = not fighting
     local live = ns.Store.Live()
@@ -177,6 +185,7 @@ local function CloseSegment(why, enc)
     ns.Store.Close()
     if kill and RequestRaidInfo then RequestRaidInfo() end
     if kill and ns.AutoRec and ns.AutoRec.Killed then ns.AutoRec.Killed(enc) end
+    if kill and ns.RaidEP then ns.RaidEP.Killed(enc) end
 end
 function Recorder.LastClose()
     return closed.why, closed.enc, closed.at
@@ -309,10 +318,11 @@ local function NoteClass(guid, name, flags)
     local _, cls = GetPlayerInfoByGUID(guid)
     if cls then classes[name] = cls end
 end
-local function NoteSummon(srcName, srcFlags, dstGUID)
+local function NoteSummon(srcName, srcFlags, dstGUID, dstName)
     if not srcName or not dstGUID or not srcFlags then return end
     if band(srcFlags, F_PLAYER) == 0 or band(srcFlags, F_GROUP) == 0 then return end
     ns.GetDB().pets[dstGUID] = srcName
+    ns.RecPull.Summon(srcName, dstName)
 end
 local function NotePetsIn(used, pets, actors)
     if type(actors) == "table" then
@@ -344,18 +354,44 @@ function Recorder.PrunePets()
         if not used[g] then pets[g] = nil end
     end
 end
+local healStart
+local function HealStart()
+    if healStart then return healStart end
+    healStart = {}
+    local want = {}
+    for _, enc in pairs(ns.pollAuraBoss or {}) do want[enc] = true end
+    for key, enc in pairs(ns.bosses or {}) do
+        if want[enc] and ns.healBoss and ns.healBoss[enc] then healStart[key] = enc end
+    end
+    return healStart
+end
 local function PollFor(enc)
     wipe(pollNow)
     local poll, boss = ns.pollAuras or {}, ns.pollAuraBoss or {}
     for i = 1, #poll do
         local id = poll[i]
         local name = (boss[id] == nil or boss[id] == enc) and GetSpellInfo(id)
-        if name then pollNow[#pollNow + 1] = { i = i, id = id, name = name } end
+        if name then
+            pollNow[#pollNow + 1] = { i = i, id = id, name = name, every = (ns.pollAuraEvery or {})[id], due = 0, on = true }
+        end
+    end
+end
+local function PollDue()
+    local now = GetTime()
+    for j = 1, #pollNow do
+        local p = pollNow[j]
+        if p.every then
+            p.on = now >= p.due
+            if p.on then p.due = now + p.every end
+        end
     end
 end
 local function ResetSegmentState()
     wipe(inVehicle)
     vehicleFight = false
+    powFight = false
+    wipe(vpowLast)
+    wipe(vpowMax)
     wipe(auraStacks)
     wipe(pollNow)
     wipe(posShared)
@@ -382,6 +418,30 @@ local function NoteVehicleFight(guid, name, key)
     if not key then return end
     local enc = ns.Encounters.Of(guid, name, nil) or ns.vehicles[key]
     if enc ~= nil and ns.bossVehicle[enc] then vehicleFight = true end
+    if enc ~= nil and ns.vehiclePower and ns.vehiclePower[enc] then powFight = true end
+end
+local function PutVehPower(k, unit, guid, name)
+    if not (UnitInVehicle and UnitPower and UnitPowerMax) then return end
+    local pet = slotPet[k]
+    local v, vMax = 0, 0
+    if pet and UnitInVehicle(unit) then v, vMax = UnitPower(pet) or 0, UnitPowerMax(pet) or 0 end
+    local lastMax = vpowMax[name]
+    if vMax <= 0 then
+        if lastMax and lastMax > 0 then
+            vpowLast[name], vpowMax[name] = 0, 0
+            ns.Store.Append(Now(), VPOW, guid, name, 0, nil, nil, 0, 0, 0)
+        end
+        return
+    end
+    local last = vpowLast[name]
+    if lastMax == vMax and last then
+        if v == last then return end
+        local d = v - last
+        if d < 0 then d = -d end
+        if v ~= 0 and v ~= vMax and d < vMax * VPOW_STEP then return end
+    end
+    vpowLast[name], vpowMax[name] = v, vMax
+    ns.Store.Append(Now(), VPOW, guid, name, 0, nil, nil, 0, v, vMax)
 end
 local function WatchEnd(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, auto)
     local E = ns.Encounters
@@ -413,10 +473,10 @@ local function Spent(guid, name, auto)
     return ns.Encounters.Of(guid, name, auto) == closed.enc
 end
 local function RecordEvent(ts, ...)
-    local sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, _, _, auraType = ...
+    local sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, spellName, _, auraType = ...
     NoteClass(srcGUID, srcName, srcFlags)
     NoteClass(dstGUID, dstName, dstFlags)
-    if sub == "SPELL_SUMMON" then NoteSummon(srcName, srcFlags, dstGUID) end
+    if sub == "SPELL_SUMMON" then NoteSummon(srcName, srcFlags, dstGUID, dstName) end
     local seg = ns.GetDB().live
     if not seg then
         ns.Store.Open(ts)
@@ -442,9 +502,12 @@ local function RecordEvent(ts, ...)
         PollFor(enc)
         if ns.CpuMeter then ns.CpuMeter.Pull(enc) end
         ns.BuffSnap.Take(ts)
+        ns.RecRaid.Pull(ts)
         if ns.FlaskReady then ns.FlaskReady.Pull() end
         ns.Specs.Take(ts)
         if ns.PullTimer then ns.PullTimer.OnPull(ts) end
+        ns.RecPull.Pull(sub, srcGUID, srcName, srcFlags, spellName,
+            enc ~= nil and not ns.Encounters.IsDummy(ns.NpcKey(dstGUID)))
         frameHp, framePos = true, true
     end
     if sub == "UNIT_DIED" and dstFlags and band(dstFlags, F_PLAYER) > 0 and band(dstFlags, F_GROUP) > 0 then
@@ -462,8 +525,14 @@ local function RecordEvent(ts, ...)
     end
     Anchor(ts)
     local srcKey, dstKey = ns.NpcKey(srcGUID), ns.NpcKey(dstGUID)
+    if dstKey and not seg.pull and (sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_AURA_APPLIED") and ns.bosses[dstKey] then
+        ns.RecPull.Touch(srcGUID, srcName, srcFlags, spellName)
+    end
     if sub == "SPELL_CAST_START" and srcKey and ns.bosses[srcKey] and bossElapsed < BOSS_PERIOD - CAST_POLL then
         bossElapsed = BOSS_PERIOD - CAST_POLL
+    end
+    if dstKey and not pollNow[1] and (sub == "SPELL_HEAL" or sub == "SPELL_PERIODIC_HEAL") and HealStart()[dstKey] then
+        PollFor(HealStart()[dstKey])
     end
     if srcKey or dstKey then
         if ns.RecFilter.spec and ((srcKey and ns.bosses[srcKey]) or (dstKey and ns.bosses[dstKey])) then specAt = GetTime() end
@@ -531,19 +600,21 @@ local function PollAuras(k, guid)
     local unit = slotUnit[k]
     for j = 1, #pollNow do
         local p = pollNow[j]
-        local i = p.i
-        local name, _, _, count = UnitAura(unit, p.name)
-        local c = name and ((count and count > 0) and count or 1) or 0
-        local share = ns.RealmShare
-        if share then c = share.AuraCount(slotName[k], p.id) or c end
-        local stacks = auraStacks[i]
-        if not stacks then
-            stacks = {}
-            auraStacks[i] = stacks
-        end
-        if (stacks[guid] or 0) ~= c then
-            stacks[guid] = c
-            ns.Store.Append(Now(), "FW_STACK", guid, slotName[k], 0, nil, nil, 0, p.id, c)
+        if p.on then
+            local i = p.i
+            local name, _, _, count = UnitAura(unit, p.name)
+            local c = name and ((count and count > 0) and count or 1) or 0
+            local share = ns.RealmShare
+            if share then c = share.AuraCount(slotName[k], p.id) or c end
+            local stacks = auraStacks[i]
+            if not stacks then
+                stacks = {}
+                auraStacks[i] = stacks
+            end
+            if (stacks[guid] or 0) ~= c then
+                stacks[guid] = c
+                ns.Store.Append(Now(), "FW_STACK", guid, slotName[k], 0, nil, nil, 0, p.id, c)
+            end
         end
     end
 end
@@ -556,6 +627,7 @@ local function PutSlot(live, k, now, withPos, forceHp, forcePos)
         ns.RecCodec.Hp(live, now, name, hp, hpMax, forceHp)
     end
     if slotMana[k] then ns.RecMana.Put(live, unit, name, now, forceHp) end
+    if powFight and slotPlayer[k] then PutVehPower(k, unit, guid, name) end
     if withPos then
         local px, py = GetPlayerMapPosition(unit)
         local share = ns.RealmShare
@@ -747,6 +819,7 @@ local function Snapshot()
         keyElapsed = 0
     end
     local p0 = ns.Prof.on and debugprofilestop()
+    if withPos and pollNow[1] then PollDue() end
     local count = CollectUnits(keyframe, withPos, moved)
     ns.RecMap.Restore()
     if p0 then ns.Prof.Add("rec.snap", debugprofilestop() - p0, count) end
@@ -810,6 +883,7 @@ frame:SetScript("OnUpdate", ns.Prof.Wrap("hot.rec", function(_, elapsed)
         local live = ns.Store.Live()
         ringMore = live ~= nil and not live.pull and ns.Trash.Step(live, Now()) or false
     end
+    if not paused and inZone then ns.RecPull.Step(elapsed) end
     ns.RecWpn.Step()
     if ns.Threat then ns.Threat.Step(elapsed) end
     if (killAt or dummyAt or (hadFight and calmAt)) and ns.Store.Live() then

@@ -1,120 +1,159 @@
 local _, ns = ...
 local floor = math.floor
 local max = math.max
-local abs = math.abs
+local min = math.min
+local sqrt = math.sqrt
 local tostring = tostring
 local format = string.format
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 local GAP = 1
-local BAR_H = 2
-local BIG_H = 5
-local BAR_K = 0.8
-local BIG_W = 34
-local MIN_W = 10
 local Q = 100
-local PCT_SIZE = 9
-local BADGE_MIN = 11
-local BADGE_K = 0.6
-local CB_W = 60
-local CB_H = 6
-local CB_ICON = 10
-local SN_H = 3
-local SN_ICON = 8
-local SN_MIN = 26
-local NICK_W = 2.2
-local NICK_NEAR = 1.4
+local NICK_PT = 9
+local FOCUS_PT = 12
+local PCT_PT = 10
+local TIME_PT = 7
+local TARGET_PT = 7
+local FOCUS_TARGET_PT = 8
+local BAR_H = 3
+local BIG_H = 8
+local BAR_K = 1.15
+local BIG_W = 40
+local MIN_W = 10
+local CB_H = 8
+local CB_TXT_EM = 2
+local CB_ROW_K = 1.15
+local SPELL_PT = 6
+local FOCUS_SPELL_PT = 7
+local CB_BG_A = 0.35
+local ZOOM_K = 1.6
+local SIZE_MIN, SIZE_MAX, SIZE_STEP, SIZE_DEFAULT = 80, 160, 10, 100
+local K_Q = 20
+local ROLE_GAP = 2
+local ROLE_PAD = 3
+local NICK_W = 2.6
+local NICK_FOCUS_W = 4
 local NICK_MIN = 18
 local NICK_GAP = 1
-local IN_K = 0.8
-local IN_RISE = 0.5
-local IN_Q = 20
-local V = { stats = { mana = 0, casts = 0, inst = 0 } }
+local PAD = 1
+local NICK_TRIES = 3
+local PARTS = { 6, 1, 2, 3, 4, 5 }
+local FONT_PREFIX = "HTP_FailWatchRepLabel"
+local V = { stats = { mana = 0, casts = 0, rage = 0, hidden = 0 } }
 ns.ReplayUnitsView = V
 local Kit = ns.Kit
+local RD = ns.ReplayDraw
 local RU = ns.ReplayUnits
-local st = { data = nil, focus = nil }
-local pctFont
-local function PctFont()
-    if pctFont then return pctFont end
-    pctFont = CreateFont("HTP_FailWatchUnitPct")
-    pctFont:SetFontObject(GameFontHighlightSmall)
-    local path = GameFontHighlightSmall:GetFont()
-    if path then pctFont:SetFont(path, PCT_SIZE, "OUTLINE") end
-    return pctFont
+local st = { data = nil, focus = nil, k = 1, gen = 0, hw = math.huge, hh = math.huge }
+local RX1, RX2, RY1, RY2, RO, RK = {}, {}, {}, {}, {}, {}
+local nRect = 0
+local order = {}
+local fonts = {}
+local function Face(f, size)
+    local base = Kit.FontFor("GameFontHighlightSmall", true) or GameFontHighlightSmall
+    f:SetFontObject(base)
+    local path = base:GetFont()
+    if path then f:SetFont(path, size, "OUTLINE") end
 end
-local function EnsureMana(fig)
-    if fig.mpBg then return end
-    fig.mpBg = fig:CreateTexture(nil, "ARTWORK")
-    fig.mpBg:SetTexture(WHITE)
-    Kit.Hue(fig.mpBg, "sem.rep.manaBg")
-    fig.mpBg:Hide()
-    fig.mpFill = fig:CreateTexture(nil, "OVERLAY")
-    fig.mpFill:SetTexture(WHITE)
-    Kit.Hue(fig.mpFill, "sem.rep.mana")
-    fig.mpFill:SetPoint("TOPLEFT", fig.mpBg, "TOPLEFT", 0, 0)
-    fig.mpFill:SetPoint("BOTTOMLEFT", fig.mpBg, "BOTTOMLEFT", 0, 0)
-    fig.mpFill:Hide()
+local function FontOf(pt)
+    local size = max(6, floor((pt + Kit.FontDelta()) * st.k + 0.5))
+    local f = fonts[size]
+    if not f then
+        f = CreateFont(FONT_PREFIX .. size)
+        Face(f, size)
+        fonts[size] = f
+    end
+    return f, size
 end
-local function EnsureStrip(fig)
-    if fig.snBg then return end
-    fig.snBg = fig:CreateTexture(nil, "ARTWORK")
-    fig.snBg:SetTexture(WHITE)
-    Kit.Hue(fig.snBg, "sem.rep.castBg")
-    fig.snBg:SetHeight(SN_H)
-    fig.snBg:Hide()
-    fig.snFill = fig:CreateTexture(nil, "OVERLAY")
-    fig.snFill:SetTexture(WHITE)
-    fig.snFill:SetPoint("TOPLEFT", fig.snBg, "TOPLEFT", 0, 0)
-    fig.snFill:SetPoint("BOTTOMLEFT", fig.snBg, "BOTTOMLEFT", 0, 0)
-    fig.snFill:Hide()
-    fig.snIcon = fig:CreateTexture(nil, "ARTWORK")
-    fig.snIcon:SetWidth(SN_ICON)
-    fig.snIcon:SetHeight(SN_ICON)
-    fig.snIcon:SetPoint("RIGHT", fig.snBg, "LEFT", -1, 0)
-    fig.snIcon:Hide()
+Kit.OnFont(function()
+    for size, f in pairs(fonts) do Face(f, size) end
+    st.gen = st.gen + 1
+end)
+local function Px(v)
+    return floor(v * st.k + 0.5)
 end
-local function HideMana(fig)
-    if not fig.mpOn then return end
-    fig.mpOn, fig.mpKey, fig.mpQ = false, nil, nil
-    fig.mpBg:Hide()
-    fig.mpFill:Hide()
-    if fig.mpPct then fig.mpPct:Hide() end
+local Saved = RD.Saved
+function V.Size()
+    local v = tonumber(Saved().labelSize) or SIZE_DEFAULT
+    if v < SIZE_MIN then v = SIZE_MIN elseif v > SIZE_MAX then v = SIZE_MAX end
+    return v, SIZE_MIN, SIZE_MAX, SIZE_STEP
 end
-local function PutNick(fig)
+function V.SetSize(v)
+    v = floor((tonumber(v) or SIZE_DEFAULT) / SIZE_STEP + 0.5) * SIZE_STEP
+    if v < SIZE_MIN then v = SIZE_MIN elseif v > SIZE_MAX then v = SIZE_MAX end
+    Saved().labelSize = v ~= SIZE_DEFAULT and v or nil
+end
+function V.Scale(zoom)
+    local z = sqrt(max(0, zoom or 1))
+    if z < 1 then z = 1 elseif z > ZOOM_K then z = ZOOM_K end
+    return floor(z * V.Size() / SIZE_DEFAULT * K_Q + 0.5) / K_Q
+end
+local function Sized(fs, pt, key, fig)
+    local f, size = FontOf(pt)
+    if fig[key] ~= size then
+        fig[key] = size
+        fs:SetFontObject(f)
+    end
+    return size
+end
+local function Vis(region, on)
+    if on then region:Show() else region:Hide() end
+end
+local function RoleOf(fig)
+    local role = fig.role
+    if role == "tank" or role == "heal" then return role end
+    return nil
+end
+local function PrepNick(fig, big)
     local fs = fig.nkFs
     if not fs then
         fs = fig:CreateFontString(nil, "OVERLAY")
-        fs:SetFontObject(PctFont())
         fs:SetJustifyH("CENTER")
         fs:SetWordWrap(false)
-        Kit.Text(fs, "sem.rep.nick")
+        fs:Hide()
         fig.nkFs = fs
+        fig.nkRole = fig:CreateTexture(nil, "OVERLAY")
+        fig.nkRole:Hide()
     end
-    if fig.nkName ~= fig.name then
-        fig.nkName = fig.name
+    local size = Sized(fs, big and FOCUS_PT or NICK_PT, "nkSize", fig)
+    local role = RoleOf(fig)
+    local y = floor((fig.top or 0) + ns.ReplayLayersView.BadgesUp(fig) + NICK_GAP + 0.5)
+    local w = floor(max(NICK_MIN * st.k, (fig.uw or 0) * (big and NICK_FOCUS_W or NICK_W)) + 0.5)
+    if fig.nkName ~= fig.name or fig.nkS ~= size or fig.nkWide ~= w or fig.nkBig ~= big or fig.nkRoleOn ~= role
+        or fig.nkGen ~= st.gen then
+        fig.nkName, fig.nkS, fig.nkWide, fig.nkBig, fig.nkGen, fig.nkY = fig.name, size, w, big, st.gen, nil
         fig.nkTxt = fig.name or ""
+        Kit.Text(fs, big and "sem.rep.focusText" or "sem.rep.nick")
+        local icon = role and size + ROLE_PAD or 0
+        fig.nkH = max(size, icon)
+        local room = w - (role and icon + ROLE_GAP or 0)
+        fs:SetWidth(room)
         fs:SetText(fig.nkTxt)
+        fig.nkW = room
+        local text = min(room, fs:GetStringWidth() or room)
+        fig.nkTW = text + (role and icon + ROLE_GAP or 0)
+        fig.nkShift = role and (icon + ROLE_GAP) / 2 or 0
+        local tex = fig.nkRole
+        if role then
+            Kit.Icon.RoleBig(tex, role)
+            tex:SetWidth(icon)
+            tex:SetHeight(icon)
+            tex:ClearAllPoints()
+            tex:SetPoint("RIGHT", fs, "CENTER", -text / 2 - ROLE_GAP, 0)
+        end
+        fig.nkRoleOn = role
     end
-    local w = floor(max(NICK_MIN, (fig.uw or 0) * NICK_W) + 0.5)
-    if fig.nkW ~= w then
-        fig.nkW = w
-        fs:SetWidth(w)
-    end
-    local up = fig.bd ~= nil and fig.bd[1]:IsShown() and true or false
-    if fig.nkUp ~= up then
-        fig.nkUp = up
+    if fig.nkY ~= y then
+        fig.nkY, fig.nkLift = y, 0
         fs:ClearAllPoints()
-        fs:SetPoint("BOTTOM", up and fig.bd[1] or fig.icon, "TOP", 0, NICK_GAP)
+        fs:SetPoint("BOTTOM", fig, "CENTER", fig.nkShift, y)
     end
-    if not fig.nkOn then
-        fig.nkOn = true
-        fs:Show()
-    end
+    return y, size
 end
-local function HideNick(fig)
-    if not fig.nkOn then return end
-    fig.nkOn = false
-    fig.nkFs:Hide()
+local function ShowNick(fig, on)
+    if (fig.nkOn or false) == on then return end
+    fig.nkOn = on
+    Vis(fig.nkFs, on)
+    Vis(fig.nkRole, on and fig.nkRoleOn ~= nil)
 end
 function V.Use(scene)
     st.data = scene and (scene.units or (scene.base and scene.base.units)) or nil
@@ -125,25 +164,44 @@ end
 local function Pct(fig)
     if fig.mpPct then return fig.mpPct end
     local fs = fig:CreateFontString(nil, "OVERLAY")
-    fs:SetFontObject(PctFont())
     fs:SetJustifyH("LEFT")
-    Kit.Text(fs, "sem.rep.mana")
+    Kit.Text(fs, fig.mpTok or "sem.rep.mana")
+    fs:Hide()
     fig.mpPct = fs
     return fs
 end
-local function PutMana(fig, v, big)
-    EnsureMana(fig)
-    local w = big and max(BIG_W, fig.uw or 0) or max(MIN_W, (fig.uw or 0) * BAR_K)
-    local h = big and BIG_H or BAR_H
-    local key = floor(fig.under + 0.5) * 4096 + floor(w + 0.5) * 2 + (big and 1 or 0)
-    if fig.mpKey ~= key then
-        fig.mpKey, fig.mpQ = key, nil
+local function EnsureMana(fig, token)
+    if not fig.mpBg then
+        fig.mpBg = fig:CreateTexture(nil, "ARTWORK")
+        fig.mpBg:SetTexture(WHITE)
+        Kit.Tint(fig.mpBg, "sem.rep.manaBg")
+        fig.mpBg:Hide()
+        fig.mpFill = fig:CreateTexture(nil, "OVERLAY")
+        fig.mpFill:SetTexture(WHITE)
+        fig.mpFill:SetPoint("TOPLEFT", fig.mpBg, "TOPLEFT", 0, 0)
+        fig.mpFill:SetPoint("BOTTOMLEFT", fig.mpBg, "BOTTOMLEFT", 0, 0)
+        fig.mpFill:Hide()
+    end
+    if fig.mpTok ~= token then
+        fig.mpTok = token
+        Kit.Tint(fig.mpFill, token)
+        if fig.mpPct then Kit.Text(fig.mpPct, token) end
+    end
+end
+local function PrepMana(fig, v, big, token)
+    EnsureMana(fig, token)
+    local w = max(big and Px(BIG_W) or MIN_W, (fig.uw or 0) * BAR_K)
+    local h = max(1, Px(big and BIG_H or BAR_H))
+    local size = big and Sized(Pct(fig), PCT_PT, "mpSize", fig) or 0
+    local key = ((floor(fig.under + 0.5) * 4096 + floor(w + 0.5)) * 64 + h) * 64 + size
+    if fig.mpKey ~= key or fig.mpGen ~= st.gen then
+        fig.mpKey, fig.mpGen, fig.mpQ = key, st.gen, nil
         local bg = fig.mpBg
         bg:ClearAllPoints()
         bg:SetWidth(w)
         bg:SetHeight(h)
         bg:SetPoint("TOP", fig, "CENTER", 0, fig.under - GAP)
-        fig.mpW = w
+        fig.mpW, fig.mpH = w, h
         if big then
             local fs = Pct(fig)
             fs:ClearAllPoints()
@@ -155,30 +213,44 @@ local function PutMana(fig, v, big)
         fig.mpQ = q
         fig.mpFill:SetWidth(max(0.01, fig.mpW * q / Q))
         if big then
-            fig.mpTxt = tostring(q) .. "%"
-            Pct(fig):SetText(fig.mpTxt)
+            local text = tostring(q) .. "%"
+            if fig.mpTxt ~= text then
+                fig.mpTxt = text
+                Pct(fig):SetText(text)
+            end
         end
     end
-    if not fig.mpOn then
-        fig.mpOn = true
-        fig.mpBg:Show()
+    fig.mpBigNow = big
+    return h
+end
+local function ShowMana(fig, on)
+    if not fig.mpBg then return end
+    if (fig.mpOn or false) ~= on then
+        fig.mpOn = on
+        Vis(fig.mpBg, on)
     end
-    if q > 0 then fig.mpFill:Show() else fig.mpFill:Hide() end
-    if fig.mpPct then
-        if big then fig.mpPct:Show() else fig.mpPct:Hide() end
+    local fill = on and (fig.mpQ or 0) > 0
+    if (fig.mpFillOn or false) ~= fill then
+        fig.mpFillOn = fill
+        Vis(fig.mpFill, fill)
+    end
+    local pct = on and fig.mpBigNow == true
+    if fig.mpPct and (fig.mpPctOn or false) ~= pct then
+        fig.mpPctOn = pct
+        Vis(fig.mpPct, pct)
     end
 end
 local function Bar(fig, layer, token)
     local tex = fig:CreateTexture(nil, layer)
     tex:SetTexture(WHITE)
-    Kit.Hue(tex, token)
+    Kit.Tint(tex, token)
     tex:Hide()
     return tex
 end
 local function Label(fig, justify)
     local fs = fig:CreateFontString(nil, "OVERLAY")
-    fs:SetFontObject(PctFont())
     fs:SetJustifyH(justify)
+    fs:SetWordWrap(false)
     Kit.Text(fs, "sem.rep.castText")
     fs:Hide()
     return fs
@@ -186,318 +258,460 @@ end
 local function EnsureBar(fig)
     if fig.cbBg then return end
     fig.cbBg = Bar(fig, "ARTWORK", "sem.rep.castBg")
-    fig.cbBg:SetWidth(CB_W)
-    fig.cbBg:SetHeight(CB_H)
     fig.cbFill = Bar(fig, "OVERLAY", "sem.rep.cast")
     fig.cbFill:SetPoint("TOPLEFT", fig.cbBg, "TOPLEFT", 0, 0)
     fig.cbFill:SetPoint("BOTTOMLEFT", fig.cbBg, "BOTTOMLEFT", 0, 0)
     fig.cbIcon = fig:CreateTexture(nil, "ARTWORK")
-    fig.cbIcon:SetWidth(CB_ICON)
-    fig.cbIcon:SetHeight(CB_ICON)
-    fig.cbIcon:SetPoint("RIGHT", fig.cbBg, "LEFT", -1, 0)
+    fig.cbIcon:SetPoint("RIGHT", fig.cbBg, "LEFT", -GAP, 0)
     fig.cbIcon:Hide()
-    fig.cbTime = Label(fig, "LEFT")
-    fig.cbTime:SetPoint("LEFT", fig.cbBg, "RIGHT", 2, 0)
-    fig.cbName = Label(fig, "CENTER")
-    fig.cbName:SetPoint("TOP", fig.cbBg, "BOTTOM", 0, -1)
+    fig.cbTime = Label(fig, "CENTER")
+    fig.cbTime:SetPoint("CENTER", fig.cbBg, "CENTER", 0, 0)
+    fig.cbSide = fig:CreateTexture(nil, "ARTWORK")
+    fig.cbSide:SetPoint("LEFT", fig.cbBg, "RIGHT", GAP, 0)
+    fig.cbSide:Hide()
 end
-local function HideBar(fig)
-    if not fig.cbOn then return end
-    fig.cbOn, fig.cbRec, fig.cbY, fig.cbTok, fig.cbQ, fig.cbT = false, nil, nil, nil, nil, nil
-    fig.cbBg:Hide()
-    fig.cbFill:Hide()
-    fig.cbIcon:Hide()
-    fig.cbTime:Hide()
-    fig.cbName:Hide()
-end
-local function HideStrip(fig)
-    if not fig.snOn then return end
-    fig.snOn, fig.snRec, fig.snKey, fig.snTok, fig.snQ = false, nil, nil, nil, nil
-    fig.snBg:Hide()
-    fig.snFill:Hide()
-    fig.snIcon:Hide()
-end
-local function HideCast(fig)
-    HideBar(fig)
-    HideStrip(fig)
-end
-local function ToneOf(rec, t)
-    if rec.cut and t >= rec.stop then return "sem.rep.castCut" end
-    return rec.chan and "sem.rep.castChan" or "sem.rep.cast"
-end
-local function PutStrip(fig, rec, p, tok)
-    EnsureStrip(fig)
-    local w = max(SN_MIN, fig.uw or 0)
-    local y = fig.under - GAP - (fig.mpOn and (BAR_H + GAP) or 0)
-    local key = floor(y + 0.5) * 4096 + floor(w + 0.5)
-    if fig.snKey ~= key then
-        fig.snKey, fig.snW, fig.snQ = key, w, nil
-        fig.snBg:ClearAllPoints()
-        fig.snBg:SetWidth(w)
-        fig.snBg:SetPoint("TOP", fig, "CENTER", (SN_ICON + 1) / 2, y)
-    end
-    if fig.snRec ~= rec then
-        fig.snRec = rec
-        Kit.Icon.Spell(fig.snIcon, rec.id)
-    end
-    if fig.snTok ~= tok then
-        fig.snTok = tok
-        Kit.Hue(fig.snFill, tok)
-    end
-    local share = tok == "sem.rep.castCut" and 1 or (rec.chan and 1 - p or p)
-    local q = floor(share * fig.snW + 0.5)
-    if fig.snQ ~= q then
-        fig.snQ = q
-        fig.snFill:SetWidth(max(0.01, q))
-    end
-    if not fig.snOn then
-        fig.snOn = true
-        fig.snBg:Show()
-        fig.snIcon:Show()
-    end
-    if q > 0 then fig.snFill:Show() else fig.snFill:Hide() end
-end
-local function PutBar(fig, rec, p, left, tok)
-    EnsureBar(fig)
-    local y = fig.under - GAP - (fig.mpOn and (BIG_H + GAP) or 0)
-    if fig.cbY ~= y then
+local function PlaceAction(fig, top)
+    local h = max(1, Px(CB_H))
+    local icon = h
+    local size = Sized(fig.cbTime, TIME_PT, "cbTimeSize", fig)
+    local w = max(floor(size * CB_TXT_EM + 2.5), floor((fig.uw or 0) * CB_ROW_K + 0.5) - icon - GAP)
+    local row = max(h, icon)
+    local y = top - row / 2
+    if fig.cbY ~= y or fig.cbIconW ~= icon or fig.cbW ~= w then
         fig.cbY = y
         fig.cbBg:ClearAllPoints()
-        fig.cbBg:SetPoint("TOP", fig, "CENTER", CB_H / 2, y)
+        fig.cbBg:SetPoint("CENTER", fig, "CENTER", (icon + GAP) / 2, y)
     end
-    if fig.cbRec ~= rec then
-        fig.cbRec = rec
-        Kit.Icon.Spell(fig.cbIcon, rec.id)
-        fig.cbName:SetText(rec.id and GetSpellInfo(rec.id) or "")
+    if fig.cbW ~= w then
+        fig.cbW, fig.cbQ = w, nil
+        fig.cbBg:SetWidth(w)
+        fig.cbTime:SetWidth(w)
     end
-    if fig.cbTok ~= tok then
-        fig.cbTok, fig.cbT = tok, nil
-        Kit.Hue(fig.cbFill, tok)
+    if fig.cbH ~= h then
+        fig.cbH = h
+        fig.cbBg:SetHeight(h)
     end
-    local cut = tok == "sem.rep.castCut"
-    local share = cut and 1 or (rec.chan and 1 - p or p)
-    local q = floor(share * CB_W + 0.5)
+    if fig.cbIconW ~= icon then
+        fig.cbIconW = icon
+        fig.cbIcon:SetWidth(icon)
+        fig.cbIcon:SetHeight(icon)
+        fig.cbSide:SetWidth(icon)
+        fig.cbSide:SetHeight(icon)
+    end
+    fig.cbRow = row
+    return top - row
+end
+local function PrepTime(fig, left, cut)
+    local q = cut and -1 or floor(left * 10)
+    if fig.cbT ~= q then
+        fig.cbT = q
+        local text = cut and ns.T("iso.cast.cut") or format("%.1f", q / 10)
+        fig.cbTime:SetText(text)
+        fig.cbTxt = text
+    end
+end
+local function PrepAction(fig, id, share, left, token, top, bare)
+    EnsureBar(fig)
+    fig.cbBare = bare == true
+    local bottom = PlaceAction(fig, top)
+    if fig.cbId ~= id then
+        fig.cbId = id
+        Kit.Icon.Spell(fig.cbIcon, id)
+    end
+    if fig.cbTok ~= token then
+        fig.cbTok = token
+        Kit.Tint(fig.cbFill, token)
+        Kit.Tint(fig.cbBg, token, CB_BG_A)
+    end
+    local q = floor(share * fig.cbW + 0.5)
     if fig.cbQ ~= q then
         fig.cbQ = q
-        fig.cbFill:SetWidth(max(0.01, q))
+        fig.cbFill:SetWidth(max(0.01, min(q, fig.cbW)))
     end
-    local tt = cut and -1 or floor(left * 10)
-    if fig.cbT ~= tt then
-        fig.cbT = tt
-        fig.cbTxt = cut and ns.T("iso.cast.cut") or format(ns.T("iso.cast.left"), tt / 10)
-        fig.cbTime:SetText(fig.cbTxt)
-    end
-    if not fig.cbOn then
-        fig.cbOn = true
-        fig.cbBg:Show()
-        fig.cbIcon:Show()
-        fig.cbTime:Show()
-        fig.cbName:Show()
-    end
-    if q > 0 then fig.cbFill:Show() else fig.cbFill:Hide() end
+    PrepTime(fig, left, token == "sem.rep.castCut")
+    return bottom
 end
-local function PlaceCast(fig, cs, t, focus)
-    local rec, p, left = RU.CastAt(cs, t)
-    if not rec then
-        HideCast(fig)
-        return false
+local function ShowAction(fig, on)
+    if not fig.cbBg then return end
+    if (fig.cbOn or false) ~= on then
+        fig.cbOn = on
+        Vis(fig.cbIcon, on)
     end
-    local tok = ToneOf(rec, t)
-    if focus then
-        HideStrip(fig)
-        PutBar(fig, rec, p, left, tok)
-    else
-        HideBar(fig)
-        PutStrip(fig, rec, p, tok)
+    local bar = on and not fig.cbBare
+    if (fig.cbBarOn or false) ~= bar then
+        fig.cbBarOn = bar
+        Vis(fig.cbBg, bar)
+        Vis(fig.cbTime, bar)
+    end
+    local side = on and fig.wSide == true
+    if (fig.cbSideOn or false) ~= side then
+        fig.cbSideOn = side
+        Vis(fig.cbSide, side)
+    end
+    local fill = bar and (fig.cbQ or 0) > 0
+    if (fig.cbFillOn or false) ~= fill then
+        fig.cbFillOn = fill
+        Vis(fig.cbFill, fill)
+    end
+end
+local function PrepSpell(fig, id, top, big)
+    if not fig.cbName then fig.cbName = Label(fig, "CENTER") end
+    local size = Sized(fig.cbName, big and FOCUS_SPELL_PT or SPELL_PT, "cbNameSize", fig)
+    if fig.cbNameY ~= top then
+        fig.cbNameY = top
+        fig.cbName:ClearAllPoints()
+        fig.cbName:SetPoint("TOP", fig, "CENTER", 0, top)
+    end
+    local w = max(fig.cbW + fig.cbIconW + GAP, Px(BIG_W) * 2, floor((fig.uw or 0) * NICK_FOCUS_W + 0.5))
+    if fig.cbNameW ~= w or fig.cbNameId ~= id or fig.cbNameS ~= size then
+        fig.cbNameW, fig.cbNameId, fig.cbNameS = w, id, size
+        fig.cbName:SetWidth(w)
+        fig.cbNameText = ns.SpellName(id)
+        fig.cbName:SetText(fig.cbNameText)
+        fig.cbNameTW = min(w, fig.cbName:GetStringWidth() or w)
+    end
+    return top - size
+end
+local function ShowSpell(fig, on)
+    if not fig.cbName or (fig.cbNameOn or false) == on then return end
+    fig.cbNameOn = on
+    Vis(fig.cbName, on)
+end
+local shortId = {}
+local function BossShort(key)
+    if key == nil or key == "" then return nil end
+    local id = key
+    if type(key) == "string" then
+        id = shortId[key]
+        if id == nil then
+            id = false
+            for npc in pairs(ns.bossShort) do
+                if ns.NpcName(npc) == key then
+                    id = npc
+                    break
+                end
+            end
+            shortId[key] = id
+        end
+        if not id then return nil end
+    end
+    local short = ns.bossShort[id]
+    if short then return ns.T("rep.short." .. short) end
+    if ns.bosses[id] then return ns.T("rep.short.boss") end
+    return nil
+end
+local function TargetName(scene, target)
+    if type(target) == "number" then
+        local track = scene.tracks[target]
+        if track then return track.name, track.class, false end
+        if target == 0 then
+            return BossShort(scene.bossName) or BossShort(scene.fight.boss) or ns.T("rep.short.boss"), nil, true
+        end
+        return nil, nil, true
+    end
+    if type(target) == "table" then return BossShort(target.npc) or target.name, nil, true end
+    if type(target) == "string" and target ~= "" then
+        local class = ns.Encounters.ClassOf(target)
+        if class == nil then return BossShort(target) or target, nil, true end
+        return target, class, false
+    end
+    return nil, nil, true
+end
+local function PrepTarget(fig, scene, target, top, big)
+    local name, class, mob
+    if target ~= nil then name, class, mob = TargetName(scene, target) end
+    if not name then return false end
+    if not fig.cbTarget then fig.cbTarget = Label(fig, "CENTER") end
+    local size = Sized(fig.cbTarget, big and FOCUS_TARGET_PT or TARGET_PT, "cbTargetSize", fig)
+    if fig.cbTargetY ~= top then
+        fig.cbTargetY = top
+        fig.cbTarget:ClearAllPoints()
+        fig.cbTarget:SetPoint("TOP", fig, "CENTER", 0, top)
+    end
+    local w = max(Px(BIG_W) * 2, floor((fig.uw or 0) * NICK_FOCUS_W + 0.5))
+    local changed = fig.cbTargetW ~= w or fig.cbTargetName ~= name or fig.cbTargetClass ~= class
+        or fig.cbTargetMob ~= mob or fig.cbTargetS ~= size
+    if fig.cbTargetW ~= w then
+        fig.cbTargetW = w
+        fig.cbTarget:SetWidth(w)
+    end
+    if changed then
+        fig.cbTargetName, fig.cbTargetClass, fig.cbTargetMob, fig.cbTargetS = name, class, mob, size
+        Kit.Text(fig.cbTarget, mob and "sem.rep.add" or "sem.rep.castText")
+        fig.cbTargetText = mob and name or ns.ReplayWho.Name(name, class)
+        fig.cbTarget:SetText(fig.cbTargetText)
+        fig.cbTargetTW = min(w, fig.cbTarget:GetStringWidth() or w)
     end
     return true
 end
-local function EnsureInst(fig)
-    if fig.inTex then return end
-    local list = {}
-    for k = 1, RU.INST_MAX do
-        local tex = fig:CreateTexture(nil, "ARTWORK")
-        tex:Hide()
-        list[k] = tex
-    end
-    fig.inTex, fig.inN, fig.inPos, fig.inId, fig.inA = list, 0, {}, {}, {}
+local function ShowTarget(fig, on)
+    if not fig.cbTarget or (fig.cbTargetOn or false) == on then return end
+    fig.cbTargetOn = on
+    Vis(fig.cbTarget, on)
 end
-local function HideInstBar(fig)
-    if not fig.ibOn then return end
-    fig.ibOn, fig.ibAt, fig.ibA = false, nil, nil
-    fig.ibIcon:Hide()
-    fig.ibName:Hide()
+local function LaneAt(lane, t)
+    if not lane then return nil end
+    local i = RU.Seek(lane.F, lane.ui or 1, t)
+    if i == 0 then return nil end
+    lane.ui = i
+    if t < lane.T[i] then return lane.G[i] end
+    return nil
 end
-local function HideInst(fig)
-    HideInstBar(fig)
-    local n = fig.inN or 0
-    if n == 0 then return end
-    for k = 1, n do
-        fig.inTex[k]:Hide()
-        fig.inA[k] = nil
-    end
-    fig.inN = 0
-end
-local function AlphaQ(a)
-    return floor(a * IN_Q + 0.5)
-end
-local function PutInstBar(fig, id, a)
-    if not fig.ibIcon then
-        fig.ibIcon = fig:CreateTexture(nil, "ARTWORK")
-        fig.ibIcon:SetWidth(CB_H)
-        fig.ibIcon:SetHeight(CB_H)
-        fig.ibName = Label(fig, "LEFT")
-        fig.ibName:SetPoint("LEFT", fig.ibIcon, "RIGHT", 2, 0)
-    end
-    local at
-    if fig.cbOn then
-        at = "after"
-    else
-        at = tostring(fig.under - GAP - (fig.mpOn and (BIG_H + GAP) or 0))
-    end
-    if fig.ibAt ~= at then
-        fig.ibAt = at
-        fig.ibIcon:ClearAllPoints()
-        if fig.cbOn then
-            fig.ibIcon:SetPoint("LEFT", fig.cbTime, "RIGHT", 3, 0)
-        else
-            fig.ibIcon:SetPoint("TOPRIGHT", fig, "CENTER", CB_H / 2 - CB_W / 2 - 1, tonumber(at))
+local function PrepActionFor(fig, scene, data, k, t, focus, act, top)
+    local ar = scene.layers and scene.layers.arrows
+    local rec, p, left = RU.CastAt(data.casts[fig.name], t)
+    fig.cbRec = act and rec or nil
+    fig.wCast, fig.wTarget, fig.wName, fig.wSide = false, false, false, false
+    local ins = act and data.inst and data.inst[fig.name]
+    local jOn, jOff = 0, 0
+    local j = ins and RU.InstAt(ins, t) or 0
+    while j > 0 and t - ins.T[j] < RU.GCD_LIFE and (jOn == 0 or jOff == 0) do
+        if ins.O and ins.O[j] then
+            if jOff == 0 then jOff = j end
+        elseif jOn == 0 then
+            jOn = j
         end
+        j = j - 1
     end
-    if fig.ibId ~= id then
-        fig.ibId = id
-        Kit.Icon.Spell(fig.ibIcon, id)
-        fig.ibTxt = GetSpellInfo(id) or ""
-        fig.ibName:SetText(fig.ibTxt)
+    local targets = ar and ar.instTargets and ar.instTargets[k]
+    local _, nameS = FontOf(focus and FOCUS_SPELL_PT or SPELL_PT)
+    local rowTop = top
+    local nameTop = rowTop - max(1, Px(CB_H)) - GAP
+    local targetTop = nameTop - nameS - GAP
+    local target
+    if rec and act then
+        local cut = rec.cut and t >= rec.stop
+        local token = cut and "sem.rep.castCut" or rec.chan and "sem.rep.castChan" or "sem.rep.cast"
+        local share = cut and 1 or rec.chan and 1 - p or p
+        PrepAction(fig, rec.id, share, left, token, rowTop)
+        PrepSpell(fig, rec.id, nameTop, focus)
+        fig.wName = true
+        if not cut then target = ar and ar.castTargets and ar.castTargets[rec] or rec.aim end
+        fig.wCast = true
+    elseif jOn > 0 then
+        left = RU.GCD_LIFE - (t - ins.T[jOn])
+        PrepAction(fig, ins.R[jOn], left / RU.GCD_LIFE, left, "sem.rep.gcd", rowTop)
+        target = targets and targets[jOn]
+        fig.wCast = true
+    elseif jOff > 0 then
+        left = RU.GCD_LIFE - (t - ins.T[jOff])
+        PrepAction(fig, ins.R[jOff], 1, left, "sem.rep.gcd", rowTop, true)
+        target = targets and targets[jOff]
+        fig.wCast, jOff = true, 0
     end
-    local q = AlphaQ(a)
-    if fig.ibA ~= q then
-        fig.ibA = q
-        fig.ibIcon:SetAlpha(q / IN_Q)
-        fig.ibName:SetAlpha(q / IN_Q)
-    end
-    if not fig.ibOn then
-        fig.ibOn = true
-        fig.ibIcon:Show()
-        fig.ibName:Show()
-    end
-end
-local function PlaceInst(fig, ins, t, focus)
-    local j, n = RU.InstAt(ins, t)
-    if n == 0 then
-        HideInst(fig)
-        return false
-    end
-    EnsureInst(fig)
-    local uw = fig.uw or 0
-    local s = floor(max(BADGE_MIN, uw * BADGE_K) * IN_K + 0.5)
-    if fig.inS ~= s then
-        fig.inS = s
-        for k = 1, RU.INST_MAX do
-            fig.inTex[k]:SetWidth(s)
-            fig.inTex[k]:SetHeight(s)
-            fig.inPos[k] = nil
+    if jOff > 0 and fig.wCast and ins.R[jOff] ~= fig.cbId then
+        if fig.cbSideId ~= ins.R[jOff] then
+            fig.cbSideId = ins.R[jOff]
+            Kit.Icon.Spell(fig.cbSide, fig.cbSideId)
         end
+        fig.wSide = true
     end
-    local life = RU.INST_LIFE
-    for k = 1, n do
-        local idx = j - k + 1
-        local age = t - ins.T[idx]
-        local tex = fig.inTex[k]
-        local x = floor(-(uw / 2 + s / 2 + 1 + (k - 1) * (s + 1)) + 0.5)
-        local y = floor((fig.hy or 0) + IN_RISE * s * age / life + 0.5)
-        local pos = x * 65536 + y
-        if fig.inPos[k] ~= pos then
-            fig.inPos[k] = pos
-            tex:ClearAllPoints()
-            tex:SetPoint("CENTER", fig, "CENTER", x, y)
-        end
-        local id = ins.R[idx]
-        if fig.inId[k] ~= id then
-            fig.inId[k] = id
-            Kit.Icon.Spell(tex, id)
-        end
-        local q = AlphaQ(RU.InstAlpha(age))
-        if fig.inA[k] ~= q then
-            if not fig.inA[k] then tex:Show() end
-            fig.inA[k] = q
-            tex:SetAlpha(q / IN_Q)
-        end
-    end
-    for k = n + 1, fig.inN do
-        fig.inTex[k]:Hide()
-        fig.inA[k] = nil
-    end
-    fig.inN = n
-    if focus then
-        PutInstBar(fig, ins.R[j], RU.InstAlpha(t - ins.T[j]))
-    else
-        HideInstBar(fig)
-    end
-    return true
-end
-local function Saved()
-    local settings = ns.GetDB().settings
-    if type(settings.iso) ~= "table" then settings.iso = {} end
-    return settings.iso
+    if focus and target == nil then target = LaneAt(ar and ar.lanes and ar.lanes[k], t) end
+    if (fig.wCast or focus) and PrepTarget(fig, scene, target, targetTop, focus) then fig.wTarget = true end
 end
 function V.CastsAll()
-    return Saved().castsAll == true
+    return Saved().castsAll ~= false
 end
 function V.SetCastsAll(on)
-    Saved().castsAll = on and true or false
+    if on then Saved().castsAll = nil else Saved().castsAll = false end
 end
-local function Covered(figs, k, n)
-    local fig = figs[k]
-    local near = max(NICK_MIN, fig.uw or 0) * NICK_NEAR
-    for j = 1, n do
-        local o = figs[j]
-        if j ~= k and o.shown and o.sy > fig.sy and abs(o.sx - fig.sx) < near and o.sy - fig.sy < near then return true end
+function V.SetRule(rule)
+    st.casts = rule and rule.casts or nil
+    st.mana = rule and rule.mana or nil
+end
+function V.CastShown(role, mine)
+    if mine then return true end
+    if st.casts then return role == st.casts end
+    return V.CastsAll()
+end
+local function Free(k, x1, x2, y1, y2)
+    for i = 1, nRect do
+        if RO[i] ~= k and x1 < RX2[i] + PAD and x2 + PAD > RX1[i] and y1 < RY2[i] + PAD and y2 + PAD > RY1[i] then
+            return false
+        end
     end
-    return false
+    return true
 end
-function V.Place(scene, t, figs, n)
+local function Take(k, kind, x1, x2, y1, y2)
+    if x1 < -st.hw or x2 > st.hw or y1 < -st.hh or y2 > st.hh then return false end
+    if not Free(k, x1, x2, y1, y2) then return false end
+    nRect = nRect + 1
+    RX1[nRect], RX2[nRect], RY1[nRect], RY2[nRect], RO[nRect], RK[nRect] = x1, x2, y1, y2, k, kind
+    return true
+end
+local function Settle(fig, k, part)
+    local cx, cy = fig.sx or 0, -(fig.sy or 0)
+    if part == 1 then
+        if not fig.wNick then return end
+        local w, h = fig.nkTW or 0, fig.nkH or fig.nkS or 0
+        local below = (h - (fig.nkS or 0)) / 2
+        local b1 = fig.aTomb and cy + fig.aTombY - PAD
+        local b2 = b1 and b1 + (fig.tbH or 0) + PAD * 2
+        for step = 0, NICK_TRIES do
+            local y = cy + fig.nkY - below + step * (h + PAD + 1)
+            if not (b1 and y < b2 and y + h > b1) and Take(k, 1, cx - w / 2, cx + w / 2, y, y + h) then
+                fig.aNick, fig.aNickUp = true, step * (h + PAD + 1)
+                return
+            end
+        end
+    elseif part == 2 then
+        if not fig.wMana then return end
+        local top = cy + fig.under - GAP
+        local w = fig.mpW or 0
+        local right = cx + w / 2 + (fig.mpBigNow and (fig.mpSize or 0) * 2.2 or 0)
+        fig.aMana = Take(k, 2, cx - w / 2, right, top - (fig.mpH or 0), top)
+    elseif part == 3 then
+        if not fig.wCast then return end
+        local icon, w, row = fig.cbIconW or 0, fig.cbW or 0, fig.cbRow or 0
+        local mid = cx + (icon + GAP) / 2
+        local y = cy + fig.cbY
+        local right = fig.cbBare and mid - w / 2 - GAP or mid + w / 2 + (fig.wSide and GAP + icon or 0)
+        fig.aCast = Take(k, 3, mid - w / 2 - GAP - icon, right, y - row / 2, y + row / 2)
+    elseif part == 6 then
+        if not fig.wTomb then return end
+        local h = fig.nkH or fig.nkS or 0
+        local base = cy + (fig.nkY or 0) - (h - (fig.nkS or 0)) / 2 + (fig.aNickUp or 0) + h + PAD + 1
+        local x1, th = cx - (fig.uw or 0) / 2, fig.tbH or 0
+        for step = 0, NICK_TRIES do
+            local y = base + step * (th + PAD + 1)
+            if Take(k, 6, x1, x1 + (fig.tbW or 0), y, y + th) then
+                fig.aTomb, fig.aTombY = true, y - cy
+                return
+            end
+        end
+    elseif part == 4 then
+        if not (fig.wName and fig.aCast) then return end
+        local w = fig.cbNameTW or 0
+        local top = cy + fig.cbNameY
+        fig.aName = Take(k, 4, cx - w / 2, cx + w / 2, top - (fig.cbNameS or 0), top)
+    elseif part == 5 and fig.wTarget and (not fig.wCast or fig.aCast) then
+        local w = fig.cbTargetTW or 0
+        local top = cy + fig.cbTargetY
+        fig.aTarget = Take(k, 5, cx - w / 2, cx + w / 2, top - (fig.cbTargetS or 0), top)
+    end
+end
+local function Apply(fig)
+    if fig.aNick and fig.nkLift ~= fig.aNickUp then
+        fig.nkLift = fig.aNickUp
+        fig.nkFs:ClearAllPoints()
+        fig.nkFs:SetPoint("BOTTOM", fig, "CENTER", fig.nkShift, fig.nkY + fig.nkLift)
+    end
+    ShowNick(fig, fig.aNick)
+    ShowMana(fig, fig.aMana)
+    ShowAction(fig, fig.aCast)
+    ShowSpell(fig, fig.aName)
+    ShowTarget(fig, fig.aTarget)
+    local TV = ns.ReplayTombView
+    if TV and (fig.wTomb or fig.tbOn) then TV.Show(fig, fig.aTomb, fig.aTombY) end
+    return (fig.wTomb and not fig.aTomb and 1 or 0) + (fig.wNick and not fig.aNick and 1 or 0) + (fig.wMana and not fig.aMana and 1 or 0)
+        + (fig.wCast and not fig.aCast and 1 or 0) + (fig.wName and not fig.aName and 1 or 0)
+        + (fig.wTarget and not fig.aTarget and 1 or 0)
+end
+local function Before(figs, a, b)
+    local fa, fb = figs[a], figs[b]
+    local pa = fa.name == st.focus and 2 or fa.role == "tank" and 1 or 0
+    local pb = fb.name == st.focus and 2 or fb.role == "tank" and 1 or 0
+    if pa ~= pb then return pa > pb end
+    return (fa.sy or 0) > (fb.sy or 0)
+end
+function V.Place(scene, t, figs, n, zoom, cam)
+    st.k = V.Scale(zoom or 1)
+    st.hw, st.hh = cam and cam.w / 2 or math.huge, cam and cam.h / 2 or math.huge
     local data = st.data
     local all = V.CastsAll()
-    local shown, casting, inst = 0, 0, 0
+    local shown, casting, rage = 0, 0, 0
+    local m = 0
+    local TV = ns.ReplayTombView
     for k = 1, n do
         local fig = figs[k]
         local s = scene.states[k]
         local alive = data and fig.shown and fig.under and not (s and s.dead)
-        local m = alive and data.mana[fig.name]
-        local v = m and RU.ManaAt(m, t)
         local focus = fig.name == st.focus
-        local nick = fig.shown and not focus and fig.icon and (fig.role == "tank" or not Covered(figs, k, n))
-        if nick then PutNick(fig) else HideNick(fig) end
-        if v then
-            PutMana(fig, v, focus)
-            shown = shown + 1
+        fig.wNick, fig.wMana, fig.wCast, fig.wTarget, fig.wName = false, false, false, false, false
+        if fig.shown and fig.icon then
+            PrepNick(fig, focus)
+            fig.wNick = true
+        end
+        fig.wTomb = TV and fig.shown and TV.Want(scene, fig, k, t) or false
+        if alive then
+            local veh = data.vpow and RU.ManaAt(data.vpow[fig.name], t)
+            local mn = not veh and (focus or st.mana ~= "heal" or fig.role == st.mana) and data.mana[fig.name]
+            local v = veh or (mn and RU.ManaAt(mn, t))
+            local top = fig.under - GAP - max(1, Px(focus and BIG_H or BAR_H)) - GAP
+            if v then
+                PrepMana(fig, v, focus, veh and "sem.rep.rage" or "sem.rep.mana")
+                fig.wMana = true
+                if veh then rage = rage + 1 else shown = shown + 1 end
+            end
+            local act = focus or (st.casts and fig.role == st.casts) or (not st.casts and all)
+            PrepActionFor(fig, scene, data, k, t, focus, act, top)
+            if fig.wCast then casting = casting + 1 end
         else
-            HideMana(fig)
+            fig.cbRec = nil
         end
-        local cs = alive and (all or focus) and data.casts[fig.name]
-        if cs and PlaceCast(fig, cs, t, focus) then
-            casting = casting + 1
-        elseif fig.snOn or fig.cbOn then
-            HideCast(fig)
-        end
-        local ins = alive and (all or focus) and data.inst and data.inst[fig.name]
-        if ins and PlaceInst(fig, ins, t, focus) then
-            inst = inst + 1
-        elseif (fig.inN or 0) > 0 or fig.ibOn then
-            HideInst(fig)
+        if fig.shown then
+            m = m + 1
+            order[m] = k
+        else
+            ShowNick(fig, false)
+            ShowMana(fig, false)
+            ShowAction(fig, false)
+            ShowSpell(fig, false)
+            ShowTarget(fig, false)
+            if TV and fig.tbOn then TV.Show(fig, false) end
         end
     end
-    V.stats.mana, V.stats.casts, V.stats.inst = shown, casting, inst
+    for i = m + 1, #order do order[i] = nil end
+    for i = 2, m do
+        local v = order[i]
+        local j = i - 1
+        while j >= 1 and Before(figs, v, order[j]) do
+            order[j + 1] = order[j]
+            j = j - 1
+        end
+        order[j + 1] = v
+    end
+    nRect = 0
+    local hidden = 0
+    local first = m > 0 and figs[order[1]].name == st.focus and 1 or 0
+    for i = 1, m do
+        local fig = figs[order[i]]
+        fig.aNick, fig.aMana, fig.aCast, fig.aName, fig.aTarget, fig.aNickUp = false, false, false, false, false, 0
+        fig.aTomb, fig.aTombY = false, nil
+    end
+    if first == 1 then
+        for p = 1, #PARTS do Settle(figs[order[1]], order[1], PARTS[p]) end
+    end
+    for p = 1, #PARTS do
+        for i = first + 1, m do Settle(figs[order[i]], order[i], PARTS[p]) end
+    end
+    for i = 1, m do hidden = hidden + Apply(figs[order[i]]) end
+    V.stats.mana, V.stats.casts, V.stats.rage, V.stats.hidden = shown, casting, rage, hidden
+end
+function V.Nick(fig)
+    return fig and fig.nkOn and fig.nkTxt or nil
+end
+function V.Rects()
+    local out = {}
+    for i = 1, nRect do out[i] = { RX1[i], RX2[i], RY1[i], RY2[i], RO[i], RK[i] } end
+    return out
 end
 function V.Probe(fig)
-    return { mana = fig.mpOn and fig.mpQ or nil, big = fig.mpPct ~= nil and fig.mpPct:IsShown() or false,
-             w = fig.mpOn and fig.mpW or nil, pct = fig.mpTxt,
-             cast = (fig.snOn and fig.snRec) or (fig.cbOn and fig.cbRec) or nil, strip = fig.snOn and fig.snQ or nil,
-             stripW = fig.snOn and fig.snW or nil, tone = (fig.snOn and fig.snTok) or (fig.cbOn and fig.cbTok) or nil,
-             bar = fig.cbOn and fig.cbQ or nil, left = fig.cbOn and fig.cbTxt or nil,
-             nick = fig.nkOn and fig.nkTxt or nil, nickW = fig.nkOn and fig.nkW or nil,
-             inst = fig.inN or 0, instA = (fig.inN or 0) > 0 and fig.inA[1] / IN_Q or nil,
-             instId = (fig.inN or 0) > 0 and fig.inId[1] or nil, instPos = fig.inPos and fig.inPos[1] or nil,
-             instBar = fig.ibOn and fig.ibTxt or nil, instAt = fig.ibOn and fig.ibAt or nil }
+    local cast = fig.wCast and fig.cbRec or nil
+    return { mana = fig.wMana and fig.mpQ or nil, big = fig.wMana and fig.mpBigNow == true or false,
+             w = fig.wMana and fig.mpW or nil, h = fig.wMana and fig.mpH or nil, pct = fig.mpTxt,
+             bar = fig.wMana and fig.mpTok or nil,
+             cast = cast, fill = fig.wCast and fig.cbQ or nil,
+             actionW = fig.wCast and (fig.cbW + fig.cbIconW + GAP) or nil,
+             bare = fig.wCast and fig.cbBare or nil, side = fig.wSide and fig.cbSideId or nil,
+             tone = fig.wCast and fig.cbTok or nil, id = fig.wCast and fig.cbId or nil,
+             left = fig.wCast and not fig.cbBare and fig.cbTxt or nil,
+             target = fig.wTarget and fig.cbTargetText or nil,
+             spell = fig.wName and fig.cbNameText or nil, spellSize = fig.cbNameSize,
+             nick = fig.wNick and fig.nkTxt or nil, nickW = fig.wNick and fig.nkW or nil,
+             nickSize = fig.wNick and fig.nkSize or nil, role = fig.wNick and fig.nkRoleOn or nil,
+             timeSize = fig.cbTimeSize, targetSize = fig.cbTargetSize, k = st.k,
+             shown = { nick = fig.nkOn or false, mana = fig.mpOn or false, cast = fig.cbOn or false,
+                       spell = fig.cbNameOn or false, target = fig.cbTargetOn or false },
+             inst = 0 }
 end

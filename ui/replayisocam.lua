@@ -26,13 +26,16 @@ local NORTH_RIM = 12
 local SPIN_H = 0.35
 local FIG_MIN = 0.6
 local FIG_MAX = 2.4
-local LABEL_MIN = 0.8
-local LABEL_MAX = 1.5
 local HOVER_PX = 14
+local VIEW_TILT = PRESETS.mid
+local VIEW_ZOOM = 1
+local VIEW_AT = { 3, 6, 10, 15, 20, 30 }
+local VIEW_STEPS = 72
 local IsoCam = { START_ANGLE = START_ANGLE, START_TILT = START_TILT, START_PERSP = START_PERSP,
                  TILT_STEP = TILT_STEP, PRESETS = PRESETS, PRESET_KEYS = PRESET_KEYS }
 ns.ReplayIsoCam = IsoCam
 local Kit = ns.Kit
+local RD = ns.ReplayDraw
 local Replay = ns.Replay
 local Tour = ns.ReplayTour
 local Bar = ns.ReplayBar
@@ -45,11 +48,7 @@ local dim
 local figs
 local SetFocus
 local PlaceFloor
-local function Clamp(v, lo, hi)
-    if v < lo then return lo end
-    if v > hi then return hi end
-    return v
-end
+local Clamp = RD.Clamp
 local function Num(v, default)
     if type(v) == "number" and v == v then return v end
     return default
@@ -90,27 +89,42 @@ local function UpdateCamUi()
     end
     ViewMenu.Refresh()
 end
-local function Saved()
-    local settings = ns.GetDB().settings
-    if type(settings.iso) ~= "table" then settings.iso = {} end
-    return settings.iso
+local Saved = RD.Saved
+local function ViewKey()
+    local sc = run and run.scene
+    if not sc then return nil end
+    if sc.room and sc.room.tex then return sc.room.tex end
+    return "b" .. tostring(sc.fight and sc.fight.boss)
+end
+local function Views()
+    local saved = Saved()
+    if type(saved.views) ~= "table" then saved.views = {} end
+    saved.angle, saved.tilt, saved.flat = nil, nil, nil
+    return saved.views
 end
 local function SaveCamera()
-    local saved = Saved()
-    saved.angle = cam.angle % (2 * pi)
-    saved.tilt, saved.flat = run.tilt3, run.flat
+    local key = ViewKey()
+    if not key then return end
+    local views = Views()
+    local v = views[key]
+    if type(v) ~= "table" then
+        v = {}
+        views[key] = v
+    end
+    v.a, v.t, v.f = cam.angle % (2 * pi), run.tilt3, run.flat or nil
+    if run.fitZoom and run.fitZoom > 0 then v.z, v.r = cam.zoom / run.fitZoom, cam.r end
 end
 local function LoadCamera()
     local saved = Saved()
-    cam.angle = Num(saved.angle, START_ANGLE)
-    run.tilt3 = Clamp(Num(saved.tilt, START_TILT), TILT_MIN, TILT_MAX)
+    cam.angle = START_ANGLE
+    run.tilt3 = VIEW_TILT
     run.persp3 = START_PERSP
-    run.flat = saved.flat == true
+    run.flat = false
     run.focusHeal = saved.focusHeal == true
     Geo.on = saved.geo ~= false
     ns.ReplayLive.SetThrone(saved.throne)
 end
-local function Reframe()
+local function Reframe(quiet)
     if run.flat then
         cam.tilt, cam.persp = 1, 0
     else
@@ -122,7 +136,7 @@ local function Reframe()
         cam.zoom = run.fitZoom * ratio
     end
     run.camDirty = true
-    UpdateCamUi()
+    if not quiet then UpdateCamUi() end
 end
 local function SetView(tilt)
     run.flat = false
@@ -161,23 +175,16 @@ local function CursorInView()
     local cx, cy = ui.view:GetCenter()
     return x / k - cx, -(y / k - cy)
 end
-local function PlaceLabel(fig)
-    local ls = floor(Clamp(fig.scale / run.figScale, LABEL_MIN, LABEL_MAX) * 20 + 0.5) / 20
-    if ls ~= run.labelScale then
-        run.labelScale = ls
-        ui.hoverBox:SetScale(ls)
-    end
-    ui.hoverBox:SetPoint("BOTTOM", ui.view, "CENTER", fig.sx / ls, (-fig.sy + (fig.top or 0) + 6 * fig.scale) / ls)
-end
 local function Hover()
     if run.drag or not ui.view:IsMouseOver() then
-        if run.hover then
-            run.hover = nil
-            ns.ReplayIsoBuild.HoverName(nil)
-        end
+        run.hover = nil
+        if ns.ReplayTombView then ns.ReplayTombView.Hover(nil, nil, nil, run.t) end
+        ns.ReplayCcView.AddHover(nil, nil, run.t)
+        ns.ReplayClassView.Hover(nil, nil)
         return
     end
     local mx, my = CursorInView()
+    ns.ReplayClassView.Hover(mx, my)
     local best, bestD = nil, HOVER_PX * HOVER_PX
     for k = 1, run.figCount do
         local fig = figs[k]
@@ -187,11 +194,21 @@ local function Hover()
             if d < bestD then best, bestD = k, d end
         end
     end
-    if best ~= run.hover then
-        run.hover = best
-        ns.ReplayIsoBuild.HoverName(best and figs[best].name or nil)
+    run.hover = best
+    if ns.ReplayTombView then ns.ReplayTombView.Hover(run.scene, best and figs[best] or nil, best, run.t) end
+    local addFig = nil
+    if not best then
+        local afigs = ns.ReplayIsoFigs.afigs
+        for j = 1, #afigs do
+            local fig = afigs[j]
+            if fig.shown and fig.ccAdd then
+                local dx, dy = fig.sx - mx, fig.sy - (fig.hy or 0) - my
+                local d = dx * dx + dy * dy
+                if d < bestD then addFig, bestD = fig, d end
+            end
+        end
     end
-    if best then PlaceLabel(figs[best]) end
+    ns.ReplayCcView.AddHover(run.scene, addFig, run.t)
 end
 local function Drag()
     local x, y = GetCursorPosition()
@@ -204,7 +221,7 @@ local function Drag()
             local tilt = Clamp(run.dragTilt + (y - run.dragY) * TILT_DRAG, TILT_MIN, TILT_MAX)
             if tilt ~= run.tilt3 then
                 run.tilt3 = tilt
-                Reframe()
+                Reframe(true)
             end
             Tour.Note("tilt", abs(tilt - run.dragTilt))
         end
@@ -216,29 +233,105 @@ local function Drag()
     end
     run.camDirty = true
 end
-local function ResetCamera(defaults)
-    if defaults then
-        cam.angle, run.tilt3, run.persp3, run.flat = START_ANGLE, START_TILT, START_PERSP, false
-        SaveCamera()
-    else
-        LoadCamera()
+local farD = {}
+local function RaidAndBoss(scene)
+    local rx, ry
+    for i = 1, #VIEW_AT do
+        Replay.Sample(scene, scene.pull + VIEW_AT[i])
+        local b = scene.bossState
+        local boss = b and b.vis
+        local n = 0
+        for k = 1, #scene.tracks do
+            local s = scene.states[k]
+            if s and s.vis and not s.dead then
+                n = n + 1
+                farD[n] = boss and (s.x - b.x) ^ 2 + (s.y - b.y) ^ 2 or 0
+            end
+        end
+        for j = #farD, n + 1, -1 do farD[j] = nil end
+        if n > 0 then
+            table.sort(farD)
+            local cut = farD[floor((n + 1) / 2)]
+            local sx, sy, m = 0, 0, 0
+            for k = 1, #scene.tracks do
+                local s = scene.states[k]
+                if s and s.vis and not s.dead
+                    and (not boss or (s.x - b.x) ^ 2 + (s.y - b.y) ^ 2 >= cut) then
+                    sx, sy, m = sx + s.x, sy + s.y, m + 1
+                end
+            end
+            if not rx then rx, ry = sx / m, sy / m end
+            if boss then return sx / m, sy / m, b.x, b.y end
+        end
     end
-    if Geo.Iso(run.scene and run.scene.room) then run.persp3, run.flat = 0, false end
+    return rx, ry, nil, nil
+end
+local function AngleToBoss(rx, ry, bx, by)
+    if (bx - rx) ^ 2 + (by - ry) ^ 2 < 1 then return nil end
+    local best, bestK = nil, -2
+    local a0 = cam.angle
+    for i = 0, VIEW_STEPS - 1 do
+        cam.angle = 2 * pi * i / VIEW_STEPS
+        Replay.Aim(cam)
+        local x1, y1 = Replay.Project(cam, rx, ry)
+        local x2, y2 = Replay.Project(cam, bx, by)
+        local dx, dy = x2 - x1, y2 - y1
+        local d = sqrt(dx * dx + dy * dy)
+        local k = d > 0 and -dy / d or -2
+        if k > bestK then best, bestK = cam.angle, k end
+    end
+    cam.angle = a0
+    return best
+end
+local function ResetCamera(defaults)
+    Geo.Cancel()
+    LoadCamera()
+    local scene = run.scene
+    local key = ViewKey()
+    if defaults and key then Views()[key] = nil end
+    local v = key and Views()[key]
+    if type(v) ~= "table" then v = nil end
+    local def = scene and scene.room and scene.room.view
+    if v then
+        cam.angle = Num(v.a, START_ANGLE)
+        run.tilt3 = Clamp(Num(v.t, VIEW_TILT), TILT_MIN, TILT_MAX)
+        run.flat = v.f == true
+    else
+        run.tilt3 = Clamp(def and def.tilt or VIEW_TILT, TILT_MIN, TILT_MAX)
+    end
+    if Geo.Iso(scene and scene.room) then run.persp3, run.flat = 0, false end
     if run.flat then
         cam.tilt, cam.persp = 1, 0
     else
         cam.tilt, cam.persp = run.tilt3, run.persp3
     end
-    Replay.Fit(cam, run.scene)
+    Replay.Fit(cam, scene)
     run.fitZoom = cam.zoom
+    local vz = v and v.r and tonumber(v.z)
+    if vz then vz = vz * cam.r / Num(v.r, cam.r) end
+    local zk = Clamp(vz or (def and def.zoom) or VIEW_ZOOM, ZOOM_MIN, ZOOM_MAX)
+    if scene then
+        local rx, ry, bx, by = RaidAndBoss(scene)
+        if not v then
+            cam.angle = def and def.angle or (bx and AngleToBoss(rx, ry, bx, by)) or START_ANGLE
+        end
+        if zk > 1 and rx then
+            cam.cx, cam.cy = bx and (rx + bx) / 2 or rx, by and (ry + by) / 2 or ry
+        end
+    end
+    cam.zoom = run.fitZoom * zk
     run.camDirty = true
     UpdateCamUi()
+end
+local function DefaultView()
+    if run.scene then ResetCamera(true) end
 end
 local function Zoom(dir)
     if not run.scene then return end
     local z = cam.zoom * (dir > 0 and ZOOM_STEP or 1 / ZOOM_STEP)
     cam.zoom = Clamp(z, run.fitZoom * ZOOM_MIN, run.fitZoom * ZOOM_MAX)
     run.camDirty = true
+    SaveCamera()
     Tour.Note("zoom", dir)
 end
 local function Wheel(_, delta)
@@ -280,6 +373,7 @@ local function ViewUp()
         end
     elseif run.drag == "LeftButton" then
         SaveCamera()
+        UpdateCamUi()
         if not run.flat then Geo.Snap(cam, cam.angle, 0, 0) end
     end
     run.drag = nil
@@ -302,6 +396,9 @@ IsoCam.Turn = Turn
 IsoCam.Hover = Hover
 IsoCam.Drag = Drag
 IsoCam.ResetCamera = ResetCamera
+IsoCam.DefaultView = DefaultView
+IsoCam.ViewKey = ViewKey
+IsoCam.VIEW_TILT, IsoCam.VIEW_ZOOM = VIEW_TILT, VIEW_ZOOM
 IsoCam.Zoom = Zoom
 IsoCam.Wheel = Wheel
 IsoCam.ViewDown = ViewDown

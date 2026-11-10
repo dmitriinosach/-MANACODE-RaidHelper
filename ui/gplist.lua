@@ -249,12 +249,6 @@ local function EventItems(menu, fight, hit, name)
         end
     end
 end
-function GPList.EventMenu(fight, hit, name)
-    if ns.ReadOnly then return end
-    local menu = {}
-    EventItems(menu, fight, hit, name)
-    OpenMenu(menu)
-end
 function GPList.RowMenu(fight, hit, name)
     if ns.ReadOnly or not fight or not ns.Penalties then return end
     local menu = {}
@@ -389,6 +383,37 @@ function GPList.Build(fight, summary)
         model.raid = raid
     end
     return model
+end
+function GPList.ChatLines(fight, summary, model, n)
+    local R, L = ns.ChatReport, ns.Ledger
+    if not (R and L and model) then return {} end
+    local rows = {}
+    for i = 1, #model.items do
+        local it = model.items[i]
+        local parts, at, list = {}, {}, {}
+        for e = 1, #it.events do
+            local ev = it.events[e]
+            local id = (ev.wipe and "w:" or "r:") .. (ev.short or "?")
+            local p = at[id]
+            if not p then
+                p = { short = ev.short or "?", wipe = ev.wipe, n = 0 }
+                at[id] = p
+                list[#list + 1] = p
+            end
+            p.n = p.n + 1
+        end
+        for k = 1, #list do
+            local p = list[k]
+            parts[#parts + 1] = p.short .. (p.n > 1 and format(ns.T("led.times"), p.n) or "") .. (p.wipe and ns.T("led.wipe") or "")
+        end
+        local sum = it.total or 0
+        for h = 1, #it.hand do
+            sum = sum + (it.hand[h].done.n or 0)
+            parts[#parts + 1] = L.HotLabel(it.hand[h].kind)
+        end
+        rows[#rows + 1] = { who = it.name, val = sum .. " " .. L.Unit(it.sys), rest = { concat(parts, ", ") } }
+    end
+    return R.Detail(ns.T("report.t.faults"), R.FightCtx(fight, summary), rows, n)
 end
 function GPList.AllText(model)
     local n, k = 0, 0

@@ -1,4 +1,16 @@
 <Bindings>
+	<Binding name="MANACODERAIDHELPER_WINDOW" header="MANACODERAIDHELPER">
+		ManaCodeRaidHelperKey("window")
+	</Binding>
+	<Binding name="MANACODERAIDHELPER_PANEL">
+		ManaCodeRaidHelperKey("panel")
+	</Binding>
+	<Binding name="MANACODERAIDHELPER_MINI">
+		ManaCodeRaidHelperKey("mini")
+	</Binding>
+	<Binding name="MANACODERAIDHELPER_REPLAY">
+		ManaCodeRaidHelperKey("replay")
+	</Binding>
 	<Binding name="RAIDLEAD_MARK8" header="RAIDLEAD">
 		RaidLeadNS.Marks.Key(8)
 	</Binding>

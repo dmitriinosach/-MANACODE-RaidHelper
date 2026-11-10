@@ -14,7 +14,6 @@ local GRAPH_GAP = 8
 local NUM_W = 36
 local NUM_PROBE = 999.9
 local NUM_GAP = 4
-local MUTE = 0.55
 local DIM = 0.6
 local RATE_PROBE = 9999
 local FLASK_TEX = "Interface\\Icons\\INV_Alchemy_EndlessFlask_06"

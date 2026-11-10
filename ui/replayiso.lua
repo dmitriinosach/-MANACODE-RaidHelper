@@ -11,6 +11,7 @@ local START = -HUGE
 local Iso = { dev = false }
 ns.ReplayIso = Iso
 local Replay = ns.Replay
+local RD = ns.ReplayDraw
 local Size = ns.ReplaySize
 local Tour = ns.ReplayTour
 local IsoCam = ns.ReplayIsoCam
@@ -24,7 +25,7 @@ local run = {
     t = 0, playing = false, speed = 1, camDirty = true, fitZoom = 1,
     focusA = {}, roles = {}, focusHeal = false,
     figScale = 1, deathShown = -1,
-    marksDirty = true, stripUsed = 0, labelScale = 1,
+    marksDirty = true, stripUsed = 0,
     tilt3 = START_TILT, persp3 = START_PERSP, flat = false, loading = false,
     msSum = 0, msN = 0, msMax = 0, acc = 0, shown = 0, levelBase = 0,
     lastClock = -1, hover = nil, figCount = 0, hasTex = false, gapKind = "", gapSince = -1, gapLevel = -1,
@@ -50,11 +51,7 @@ local SaveCamera, Reframe, ResetCamera = IsoCam.SaveCamera, IsoCam.Reframe, IsoC
 local Hover, Drag = IsoCam.Hover, IsoCam.Drag
 local Around, Relayout, Build = IsoBuild.Around, IsoBuild.Relayout, IsoBuild.Build
 local picked
-local function Clamp(v, lo, hi)
-    if v < lo then return lo end
-    if v > hi then return hi end
-    return v
-end
+local Clamp = RD.Clamp
 local function MinSec(sec)
     sec = max(0, floor(sec))
     return floor(sec / 60), sec % 60
@@ -127,7 +124,12 @@ local function Tick(self, elapsed)
     local scene, base = run.scene, run.base
     local p0 = debugprofilestop()
     if run.playing then
+        local was = run.t
         run.t = run.t + elapsed * run.speed
+        local folds = scene.layers and scene.layers.folds
+        if folds and #folds > 0 then
+            run.t = scene.pull + ns.ReplayMarks.Skip(folds, was - scene.pull, run.t - scene.pull)
+        end
         if run.t >= scene.to then
             run.t = scene.to
             run.playing = false
@@ -179,8 +181,11 @@ local function Tick(self, elapsed)
     ns.ReplayCueView.Place(scene, cam, run.t)
     ns.ReplayArrowsView.Place(scene, cam, run.t)
     Soul.Place(base, scene, run.t)
+    if ns.ReplayModeView then ns.ReplayModeView.Alpha(scene, run.t, run.focusA) end
     PlaceFigures(elapsed)
-    ns.ReplayUnitsView.Place(scene, run.t, figs, #scene.tracks)
+    ns.ReplayUnitsView.Place(scene, run.t, figs, #scene.tracks, cam.zoom / max(1e-6, run.fitZoom), cam)
+    if ns.ReplayRaidView then ns.ReplayRaidView.Place(run.t) end
+    if ns.ReplayModeView then ns.ReplayModeView.Place(scene, figs) end
     ns.ReplayFeed.Update(run.t - scene.pull)
     PlaceDeaths()
     run.marksDirty = false
@@ -203,7 +208,8 @@ local function ApplyFocus()
     local scene = run.scene
     local A = run.focusA
     for k = 1, #A do A[k] = nil end
-    if scene and run.focus then
+    if ns.ReplayModeView then ns.ReplayModeView.Focus(run.focus) end
+    if scene and run.focus and not (ns.ReplayModeView and ns.ReplayModeView.Active()) then
         for k = 1, #scene.tracks do
             local name = scene.tracks[k].name
             local role = run.roles[name]
@@ -214,6 +220,7 @@ local function ApplyFocus()
     for k = 1, run.figCount do figs[k].alpha = nil end
     LayersView.Focus(run.focus)
     ns.ReplayUnitsView.Focus(run.focus)
+    if ns.ReplayRaidView then ns.ReplayRaidView.Focus(run.focus) end
     ns.ReplayArrowsView.Focus(run.focus)
     IsoBuild.ShowFocus(run.focus)
     Follow.Apply()
@@ -224,10 +231,15 @@ local function SetFocus(name)
     run.focus = name
     ApplyFocus()
 end
-local function FindRoles(scene)
+local RolesLate
+local function FindRoles(scene, s)
     local roles = run.roles
     for name in pairs(roles) do roles[name] = nil end
-    local s = ns.Summary and ns.Summary.Peek(scene.fight)
+    s = s or ns.Summary and ns.Summary.Peek(scene.fight)
+    if not s and ns.Summary and not InCombatLockdown() then
+        local fight = scene.fight
+        ns.Summary.Of(fight, function(sum) RolesLate(fight, sum) end)
+    end
     if s and s.byName then
         for name, p in pairs(s.byName) do
             if p.role == "tank" or p.role == "heal" then roles[name] = p.role end
@@ -237,6 +249,19 @@ local function FindRoles(scene)
     if L and next(roles) == nil then
         for name in pairs(L.tanks) do roles[name] = "tank" end
     end
+end
+RolesLate = function(fight, s)
+    local base = run.base
+    if not (base and base.fight == fight and s) then return end
+    FindRoles(base, s)
+    for k = 1, #base.tracks do ConfigFigure(figs[k], base.tracks[k], base) end
+    ns.ReplayClassView.Use(run.scene, run.roles)
+    if ns.ReplayRaidView then ns.ReplayRaidView.Use(base, run.roles) end
+    if ns.ReplayModeView then ns.ReplayModeView.Use(base, run.roles) end
+    Bar.Use(base)
+    IsoBuild.Refit()
+    run.marksDirty = true
+    ApplyFocus()
 end
 local function SetHeal(on)
     run.focusHeal = on and true or false
@@ -306,7 +331,7 @@ SwapScene = function(sc)
     run.deathShown = -1
     run.gapKind, run.gapSince, run.gapLevel = "", -1, -1
     LayersView.Use(sc)
-    ns.ReplayClassView.Use(sc)
+    ns.ReplayClassView.Use(sc, run.roles)
     ns.ReplaySpreadView.Use(sc)
     ns.ReplayCueView.Use(sc)
     ns.ReplayArrowsView.Use(sc)
@@ -332,13 +357,15 @@ local function UseScene(scene)
     Realm.Use(scene)
     ns.ReplaySwarmView.Use(scene)
     ns.ReplayOozeView.Use(scene)
-    ns.ReplayClassView.Use(scene)
+    ns.ReplayClassView.Use(scene, run.roles)
     ns.ReplaySpreadView.Use(scene)
     ns.ReplayCueView.Use(scene)
     ns.ReplayArrowsView.Use(scene)
     ns.ReplayUnitsView.Use(scene)
+    if ns.ReplayRaidView then ns.ReplayRaidView.Use(scene, run.roles) end
     Soul.Use(scene)
     run.feedHas = ns.ReplayFeed.Use(scene.layers)
+    if ns.ReplayModeView then ns.ReplayModeView.Use(scene, run.roles) end
     ns.ReplayNoPatchView.Use(scene)
     Relayout()
     local n = #scene.tracks
@@ -397,11 +424,13 @@ local function LoadFight(fight)
     ns.ReplayOozeView.Use(nil)
     ns.ReplayClassView.Use(nil)
     ns.ReplayUnitsView.Use(nil)
+    if ns.ReplayRaidView then ns.ReplayRaidView.Use(nil) end
     ns.ReplaySpreadView.Use(nil)
     ns.ReplayCueView.Use(nil)
     ns.ReplayArrowsView.Use(nil)
     Soul.Use(nil)
     ns.ReplayFeed.Use(nil)
+    if ns.ReplayModeView then ns.ReplayModeView.Use(nil) end
     Bar.Use(nil)
     ns.ReplaySize.SetTitle(Bar.Head(fight))
     UpdateFightNav()
@@ -527,11 +556,11 @@ function Iso.Layout()
              barsH = dim.barsH, nav = ui.navRects, navBtns = ui.nav, camW = cam.w, camH = cam.h, fitZoom = run.fitZoom,
              figScale = run.figScale, size = Size.Probe(), tour = Tour.Probe(), feedRows = ns.ReplayFeed.Stats().rows,
              bar = Bar.Probe(), menu = ViewMenu.Probe(), notice = ns.ReplayNoPatchView.Probe(), narrow = run.narrow, zoom = cam.zoom,
-             tilt = run.tilt3, flat = run.flat, speed = run.speed, heal = run.focusHeal,
+             tilt = run.tilt3, flat = run.flat, speed = run.speed, heal = run.focusHeal, angle = cam.angle,
              scene = run.scene and (run.scene == run.base and "base" or "alt") or nil, pin = run.pin, fade = run.fadeA,
-             camR = cam.r, camCx = cam.cx, camCy = cam.cy, gap = run.gapKind or nil,
+             camR = cam.r, camCx = cam.cx, camCy = cam.cy, cam = cam, gap = run.gapKind or nil,
              title = ui.title:GetText(), titleFs = ui.title, prevBtn = ui.prevBtn, nextBtn = ui.nextBtn, focusX = ui.focusX,
-             focusText = ui.focus, hover = ui.hoverBox, navW = IsoBuild.NAV_W, fight = run.fight, side = ui.side, view = ui.view,
+             focusText = ui.focus, navW = IsoBuild.NAV_W, fight = run.fight, side = ui.side, view = ui.view,
              box = IsoBuild.Box(), page = ui.page, rule = ui.rule, navGroup = ui.navGroup }
 end
 if ns.MapView and ns.MapView.SetFight then

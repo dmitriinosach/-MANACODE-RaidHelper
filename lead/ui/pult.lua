@@ -355,6 +355,5 @@ ns.Pult = {
     Parts = function() return raidCap, readyBtn, buffBtn, lootSel, threshSel, timerPool end,
     Width = function() return built and pult:GetWidth() - PAD * 2 or 0 end,
     Run = function() return runBtn, sendBtn end,
-    Chips = function() return timerPool end,
 }
 ns.window:OnBuild(build)

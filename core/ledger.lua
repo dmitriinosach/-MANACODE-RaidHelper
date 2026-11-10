@@ -37,16 +37,7 @@ local function Member(e, name)
     local ok, ep = pcall(e.GetEPGP, e, name)
     return ok and ep ~= nil
 end
-local function Cut(s, n)
-    if #s <= n then return s end
-    local i = n
-    while i > 0 do
-        local c = s:byte(i + 1)
-        if not c or c < 128 or c >= 192 then break end
-        i = i - 1
-    end
-    return s:sub(1, i)
-end
+local Cut = ns.CutText
 local function ReadyBy(fn)
     return function()
         local e = Epgp()

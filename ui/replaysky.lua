@@ -142,7 +142,6 @@ function Sky.Use(room, fight)
     st.hazeA = max(dayA, st.nightA)
     st.cloudPath = def.clouds and (cd >= cn and def.clouds.day or def.clouds.night) or nil
     st.cloudA = max(cd, cn)
-    pools.day.ok, pools.night.ok = false, false
     if def.bowl then
         SetPath(pools.day, def.bowl.day)
         SetPath(pools.night, def.bowl.night)

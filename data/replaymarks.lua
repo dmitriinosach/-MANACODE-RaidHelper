@@ -10,13 +10,20 @@ ns.replayMarks = {
         [ns.ENC.lichking] = {
             icons = { p1 = 70337, t1 = 68981, p2 = 69037, t2 = 72259, p3 = 69409, fury = 72350, away = 73654 },
             away = "ph.frostmourne",
+            collapse = { fury = 10 },
         },
         [ns.ENC.sindragosa] = { icons = { p1 = 69762, p2 = 70127, away = 69846 }, away = "ph.w.air" },
         [ns.ENC.putricide] = { icons = { p1 = 70351, t1 = 71617, p2 = 72295, t2 = 71617, p3 = 72451 } },
         [ns.ENC.halion] = { icons = { p1 = 74562, p2 = 74792, p3 = 75063 } },
         [ns.ENC.deathwhisper] = { icons = { p1 = 70842, p2 = 71289 } },
         [ns.ENC.saurfang] = { icons = { p1 = 72293, frenzy = 72737 } },
-        [ns.ENC.valithria] = { icons = { dream = 71189 } },
+        [ns.ENC.valithria] = { icons = { fight = 71301, dream = 71189 } },
+        [ns.ENC.lanathel] = { icons = { fight = 71726, air = 71772 }, bands = { air = "ph.w.air" } },
+        [ns.ENC.marrowgar] = { icons = { fight = 69057, storm = 69076 }, bands = { storm = "ph.w.storm" } },
+        [ns.ENC.council] = {
+            icons = { fight = 72037, valanar = 70952, taldaram = 70982, keleseth = 70981 },
+            bands = { valanar = "ph.b.valanar", taldaram = "ph.b.taldaram", keleseth = "ph.b.keleseth" },
+        },
     },
     bosses = {
         [ns.ENC.lichking] = {

@@ -170,10 +170,21 @@ local function Header(y)
     frame.title:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y)
     frame.title:SetWidth(w - 24)
     y = y + Kit.GrowH(24, TITLE_FONT)
+    local vh = frame.ver:GetStringHeight()
+    local nb = frame.news
+    local vw = w
+    if nb then
+        nb:SetHeight(D.BTN_H)
+        nb:SetWidth(math.ceil(nb.text:GetStringWidth() or 0) + BTN_PAD * 2)
+        nb:ClearAllPoints()
+        nb:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -y)
+        vw = w - nb:GetWidth() - GAP
+    end
+    local row = nb and math.max(vh, D.BTN_H) or vh
     frame.ver:ClearAllPoints()
-    frame.ver:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y)
-    frame.ver:SetWidth(w)
-    y = y + frame.ver:GetStringHeight() + GAP + 2
+    frame.ver:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -(y + math.floor((row - vh) / 2)))
+    frame.ver:SetWidth(vw)
+    y = y + row + GAP + 2
     for i, fs in ipairs(frame.lines) do
         fs:ClearAllPoints()
         fs:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y)
@@ -384,6 +395,14 @@ local function Build()
     frame.ver = Kit.Str(frame, SMALL)
     frame.ver:SetJustifyH("LEFT")
     Kit.Text(frame.ver, "text.muted")
+    if ns.news and #ns.news.rows > 0 then
+        frame.news = Kit.Button(frame)
+        frame.news:SetText(ns.T("news.btn"))
+        frame.news.onClick = function()
+            frame:Hide()
+            if ns.NewsView then ns.NewsView.Start() end
+        end
+    end
     frame.lines[1] = Text(CHAR_FONT, "text.primary", ns.T(ABOUT.lineKeys[1]))
     frame.lines[2] = Text(SMALL, "text.secondary", ns.T(ABOUT.lineKeys[2]))
     AddLink("release", ns.T("about.release"), ABOUT.release, "about.tip.release", ICONS.release)

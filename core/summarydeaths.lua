@@ -96,6 +96,58 @@ function Deaths.PoolGrade(bd, p)
     end
     return "yellow"
 end
+local function Portals(s, bd, i)
+    local dream = false
+    for k = 1, #s.players do
+        if s.players[k].badges[i].dreamIn then dream = true end
+    end
+    local all = {}
+    for k = 1, #s.players do
+        local st = s.players[k].badges[i]
+        if dream then
+            local ins = st.dreamIn or {}
+            for t = 1, #ins do
+                st.n = st.n + 1
+                st.times[st.n] = ins[t] - s.from
+                if st.dreamOut[t] then
+                    st.outs = st.outs or {}
+                    st.outs[st.n] = st.dreamOut[t] - s.from
+                end
+            end
+        else
+            local last
+            for t = 1, #(st.ticks or {}) do
+                local ts = st.ticks[t]
+                if not last or ts - last > (bd.gap or 5) then
+                    st.n = st.n + 1
+                    st.times[#st.times + 1] = ts - s.from
+                end
+                last = ts
+            end
+        end
+        st.ticks, st.dreamIn, st.dreamOut, st.inDream = nil, nil, nil, nil
+        for t = 1, #st.times do all[#all + 1] = st.times[t] end
+    end
+    if not bd.waves or #all == 0 then return end
+    table.sort(all)
+    local starts = {}
+    for t = 1, #all do
+        if #starts == 0 or all[t] - starts[#starts] > bd.waves then starts[#starts + 1] = all[t] end
+    end
+    for k = 1, #s.players do
+        local st = s.players[k].badges[i]
+        if st.n > 0 then
+            st.waves, st.of = {}, #starts
+            for t = 1, #st.times do
+                local w = 1
+                for q = 1, #starts do
+                    if starts[q] <= st.times[t] then w = q end
+                end
+                st.waves[t] = w
+            end
+        end
+    end
+end
 local function DeathBadges(s)
     for i = 1, #s.badges do
         local bd = s.badges[i]
@@ -113,21 +165,7 @@ local function DeathBadges(s)
                 if p.role == "tank" and p.badges[i].n > 0 then p.badges[i].grade = bd.tank end
             end
         end
-        if bd.kind == "ticks" then
-            for k = 1, #s.players do
-                local st = s.players[k].badges[i]
-                local last
-                for t = 1, #(st.ticks or {}) do
-                    local ts = st.ticks[t]
-                    if not last or ts - last > (bd.gap or 5) then
-                        st.n = st.n + 1
-                        st.times[#st.times + 1] = ts - s.from
-                    end
-                    last = ts
-                end
-                st.ticks = nil
-            end
-        end
+        if bd.kind == "ticks" then Portals(s, bd, i) end
         if bd.kind == "killer" then
             local spells = {}
             ns.SpellSet(bd.spells, spells)
@@ -140,9 +178,13 @@ local function DeathBadges(s)
                         and killer.key and spells[killer.key] and s.byName[killer.src]
                     if kp then
                         local st = kp.badges[i]
+                        local t, at = victim.deathInfo[d].t - s.from, #st.times + 1
+                        while at > 1 and (st.times[at - 1] > t or (st.times[at - 1] == t and st.notes[at - 1] > victim.name)) do
+                            st.times[at], st.notes[at] = st.times[at - 1], st.notes[at - 1]
+                            at = at - 1
+                        end
                         st.n = st.n + 1
-                        st.times[#st.times + 1] = victim.deathInfo[d].t - s.from
-                        st.notes[#st.notes + 1] = victim.name
+                        st.times[at], st.notes[at] = t, victim.name
                     end
                 end
             end

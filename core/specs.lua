@@ -5,6 +5,7 @@ local tonumber = tonumber
 local SUB = "FW_SPEC"
 local SEP = ","
 local AGE = ":"
+local TAL = "."
 local TREES = 3
 local STEP = 1.5
 local WAIT = 4
@@ -28,6 +29,8 @@ local tree = {}
 local seenAt = {}
 local gearOf = {}
 local tried = {}
+local talOf = {}
+local watch
 local readers = {}
 local wants = {}
 local askUnit, askGuid, doneGuid, doneName
@@ -45,6 +48,35 @@ local function Top(inspect)
         if pts > top then best, top = tab, pts end
     end
     return best
+end
+local function Watch()
+    if watch then return watch end
+    local out, any = {}, false
+    local raid = ns.covers and ns.covers.raid or {}
+    for id, rc in pairs(raid) do
+        local name = rc.talent and GetSpellInfo(id)
+        if name then
+            out[rc.class] = out[rc.class] or {}
+            out[rc.class][name] = id
+            any = true
+        end
+    end
+    if any then watch = out end
+    return out
+end
+local function Talents(inspect, class)
+    local want = class and Watch()[class]
+    if not want or not GetTalentInfo or not GetNumTalents then return nil end
+    local group = GetActiveTalentGroup and GetActiveTalentGroup(inspect, false) or nil
+    local out = {}
+    for tab = 1, TREES do
+        for i = 1, tonumber(GetNumTalents(tab, inspect, false)) or 0 do
+            local name, _, _, _, rank = GetTalentInfo(tab, i, inspect, false, group)
+            local id = name and want[name]
+            if id and (tonumber(rank) or 0) > 0 then out[id] = true end
+        end
+    end
+    return out
 end
 local function Stats(link)
     if not GetItemStats then return nil end
@@ -88,6 +120,7 @@ function Specs.Read()
         local t = Top(true)
         if t then
             tree[name], seenAt[name] = t, GetTime()
+            talOf[name] = Talents(true, cls)
             for i = 1, #readers do readers[i](unit, name) end
         end
     end
@@ -106,7 +139,7 @@ function Specs.Want(fn)
 end
 function Specs.Swap(name)
     if not name then return end
-    tree[name], seenAt[name], gearOf[name], tried[name] = nil, nil, nil, nil
+    tree[name], seenAt[name], gearOf[name], tried[name], talOf[name] = nil, nil, nil, nil, nil
     if Specs.frame and not InCombatLockdown() then Specs.frame:Show() end
 end
 function Specs.Soon(sec)
@@ -182,8 +215,14 @@ local function Units()
     for i = 1, GetNumPartyMembers() do out[i + 1] = PARTY[i] end
     return out
 end
+local function TalLine(name, set)
+    local ids = {}
+    for id in pairs(set) do ids[#ids + 1] = id end
+    table.sort(ids)
+    return name .. AGE .. concat(ids, TAL)
+end
 function Specs.Take(ts)
-    local by = {}
+    local by, tal = {}, {}
     for k = 1, TREES do by[k] = {} end
     local us, any = Units(), false
     local now, me = GetTime(), UnitName("player")
@@ -195,12 +234,16 @@ function Specs.Take(ts)
             local age = name == me and 0 or floor(now - (seenAt[name] or now))
             list[#list + 1] = name .. AGE .. age
             any = true
+            local set = talOf[name]
+            if name == me then set = Talents(false, select(2, UnitClass("player"))) end
+            if set then tal[#tal + 1] = TalLine(name, set) end
         end
     end
     if not any then return end
-    ns.Store.Append(ts, SUB, nil, nil, 0, nil, nil, 0, concat(by[1], SEP), concat(by[2], SEP), concat(by[3], SEP))
+    ns.Store.Append(ts, SUB, nil, nil, 0, nil, nil, 0, concat(by[1], SEP), concat(by[2], SEP), concat(by[3], SEP),
+        concat(tal, SEP))
 end
-function Specs.Parse(a1, a2, a3)
+function Specs.Parse(a1, a2, a3, a4)
     local out, ages, cols = {}, {}, { a1, a2, a3 }
     for k = 1, TREES do
         local s = cols[k]
@@ -214,7 +257,18 @@ function Specs.Parse(a1, a2, a3)
             end
         end
     end
-    return out, ages
+    local tal = {}
+    if type(a4) == "string" then
+        for item in a4:gmatch("[^" .. SEP .. "]+") do
+            local name, ids = item:match("^([^" .. AGE .. "]+)" .. AGE .. "(.*)$")
+            if name then
+                local set = {}
+                for id in ids:gmatch("%d+") do set[tonumber(id)] = true end
+                tal[name] = set
+            end
+        end
+    end
+    return out, ages, tal
 end
 local function Wanted()
     for i = 1, #wants do

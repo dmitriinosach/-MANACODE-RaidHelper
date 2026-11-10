@@ -5,14 +5,12 @@ local ceil = math.ceil
 local max = math.max
 local min = math.min
 local tsort = table.sort
-local tconcat = table.concat
 local SIDE = ns.FightList and ns.FightList.WIDTH or 240
 local EFFW = 272
 local MARGIN = 6
 local GAP = 6
 local ROW = 15
 local RULER = 34
-local RULERTOP = 15
 local RULERGAP = 2
 local HEADH = 36
 local FOOTH = 8
@@ -99,7 +97,6 @@ local trackScroll, trackTotal = 0, 0
 local panelMissing = false
 local catHeads = {}
 local foldTracks, foldCats
-local lineH = 11
 local dropMode = false
 local function Folds()
     if not foldTracks then
@@ -822,14 +819,7 @@ local function MarkHit(n, m)
 end
 local function PullLabel(pull)
     if not pull or not pull.src then return ns.T("tl.pull") end
-    local how = pull.spell or ns.T("tl.pull.melee")
-    local who = pull.src
-    if pull.owner then
-        who = format(ns.T("tl.pull.owner"), pull.src, pull.owner)
-    elseif pull.pet then
-        who = format(ns.T("tl.pull.pet"), pull.src)
-    end
-    return format(ns.T("tl.pull.first"), who, how)
+    return ns.PullWho.Text(pull)
 end
 local function DrawPhases()
     for i = 1, #markPool do markPool[i]:Hide() end
@@ -837,7 +827,8 @@ local function DrawPhases()
     for i = 1, #headPool do headPool[i]:Hide() end
     for i = 1, #hitPool do hitPool[i]:Hide() end
     for i = #taken, 1, -1 do taken[i] = nil end
-    local pull = data and data.pull
+    local sum = ns.Summary and ns.Summary.Peek(fight)
+    local pull = (sum and sum.pull) or (data and data.pull)
     local marks = { { t = fight.from, label = PullLabel(pull), head = true },
                     { t = fight.to, label = ns.T("tl.end"), head = true, right = true } }
     local phase = data and data.phases and ns.Phases.Marks(fight, data.phases)

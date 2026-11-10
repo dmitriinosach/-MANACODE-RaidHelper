@@ -43,6 +43,8 @@ local CONE_LIMIT = 300
 local AIM_WINDOW = 5
 local ADD_AIM = 2
 local STATE_LIMIT = 4000
+local ADD_CC_LIMIT = 400
+local ccSeen = {}
 local TANK_SHARE = 0.15
 local BLAST_JOIN = 0.5
 local BLAST_LIMIT = 500
@@ -90,7 +92,7 @@ function Layers.Hitbox(boss)
 end
 local function NewLayers()
     return {
-        stK = {}, stS = {}, stFrom = {}, stTo = {}, ns = 0,
+        stK = {}, stS = {}, stFrom = {}, stTo = {}, stSrc = {}, ns = 0, rgFrom = {}, rgTo = {}, nr = 0,
         plX = {}, plY = {}, plFrom = {}, plTo = {}, plLast = {}, plR0 = {}, plR1 = {}, plN = {}, plDef = {}, plBorn = {}, np = 0,
         plHitT = {}, plHitK = {}, plSolid = {}, plAimK = {}, plAimT = {},
         hiT = {}, hiX = {}, hiY = {}, nh = 0,
@@ -106,7 +108,7 @@ local function NewLayers()
     }
 end
 local Pos = ns.Replay.PosOf
-local function Open(c, k, s, ts)
+local function Open(c, k, s, ts, src)
     local open = c.open[k]
     if open[s] then return end
     local L = c.L
@@ -114,6 +116,7 @@ local function Open(c, k, s, ts)
     local n = L.ns + 1
     L.ns = n
     L.stK[n], L.stS[n], L.stFrom[n], L.stTo[n] = k, s, ts, c.to
+    L.stSrc[n] = src
     open[s] = n
 end
 local function Close(c, k, s, ts)
@@ -123,7 +126,7 @@ local function Close(c, k, s, ts)
     c.L.stTo[n] = ts
     open[s] = nil
 end
-local function OnAura(c, ts, sub, src, dst, spell)
+local function OnAura(c, ts, sub, src, dst, spell, srcKey)
     local k = dst and c.byK[dst]
     local s = k and Layers.StateFor(c.D, spell, c.boss)
     if not s then return end
@@ -134,7 +137,9 @@ local function OnAura(c, ts, sub, src, dst, spell)
     seen[s] = true
     local pre = (def.pre or def.focus) and not was and not c.open[k][s]
     if sub == "SPELL_AURA_APPLIED" then
-        Open(c, k, s, ts)
+        local by = nil
+        if def.hard then by = src and c.byK[src] or (srcKey and c.bosses[srcKey] and -1) or nil end
+        Open(c, k, s, ts, by)
     elseif sub == "SPELL_AURA_REFRESH" then
         if pre then Open(c, k, s, c.from) end
     elseif REMOVED[sub] then
@@ -175,12 +180,12 @@ local function SortStates(L)
         if F[a] ~= F[b] then return F[a] < F[b] end
         return a < b
     end)
-    local k, s, f, t = {}, {}, {}, {}
+    local k, s, f, t, by = {}, {}, {}, {}, {}
     for i = 1, L.ns do
         local j = idx[i]
-        k[i], s[i], f[i], t[i] = L.stK[j], L.stS[j], F[j], L.stTo[j]
+        k[i], s[i], f[i], t[i], by[i] = L.stK[j], L.stS[j], F[j], L.stTo[j], L.stSrc[j]
     end
-    L.stK, L.stS, L.stFrom, L.stTo = k, s, f, t
+    L.stK, L.stS, L.stFrom, L.stTo, L.stSrc = k, s, f, t, by
 end
 local function OnVehicle(c, ts, src, on)
     local k = src and c.byK[src]
@@ -198,8 +203,10 @@ local function AddOf(c, guid, name, ts)
     local icon = c.adds[key]
     if icon == false or c.bosses[key] or c.addN >= ADD_LIMIT then return nil end
     add = ns.Replay.NewTrack(name)
-    add.icon = icon or c.D.addDefault
     add.npc = ns.NpcEntry(guid)
+    add.icon = (add.npc and ns.npcPortraits and ns.npcPortraits[add.npc]) or icon or c.D.addDefault
+    local look = add.npc and c.D.addLook[add.npc]
+    if look then add.big, add.rim = look.k, look.rim end
     add.guid = guid
     add.from = ts
     add.last = -1e9
@@ -514,7 +521,7 @@ local function OnCone(c, ts, sub, src, dst, spell, srcKey, srcGUID)
             L.cnX[n], L.cnY[n], L.cnHx[n], L.cnHy[n] = -1, -1, 0, 1
             c.coneTo[n] = dst and c.byK[dst] or 0
             c.coneDef[n] = def
-            c.coneG[n] = def.src and srcGUID or nil
+            c.coneG[n] = srcGUID
             c.aimX[n], c.aimY[n], c.aimN[n] = 0, 0, 0
             if def.aim then c.aimOpen[#c.aimOpen + 1] = n end
             return
@@ -590,12 +597,56 @@ local function OnDied(c, ts, dstGUID, dst, dstKey)
     end
     if dstKey and c.bosses[dstKey] then c.L.bossDied = ts end
     local add = dstGUID and c.addBy[dstGUID]
-    if add and not add.to then add.to, add.died = ts, true end
+    if add and not add.to then
+        add.to, add.died = ts, true
+        local T = add.ccT
+        for i = 1, T and #T or 0 do
+            if T[i] > ts then T[i] = ts end
+        end
+    end
 end
 local function OnSummon(c, ts, srcKey, dstGUID, dst)
     if not dstGUID or not dst then return end
     c.born[dstGUID] = ts
     if srcKey and c.bosses[srcKey] then AddOf(c, dstGUID, dst, ts) end
+end
+local function OnAddCc(c, ts, sub, src, dstGUID, dst, s)
+    local add = c.addBy[dstGUID]
+    if not add then
+        if sub ~= "SPELL_AURA_APPLIED" or not dst then return end
+        add = AddOf(c, dstGUID, dst, ts)
+        if not add then return end
+    end
+    local open = add.ccOpen
+    if sub == "SPELL_AURA_APPLIED" then
+        if not open then
+            open = {}
+            add.ccOpen, add.ccS, add.ccF, add.ccT, add.ccBy = open, {}, {}, {}, {}
+        end
+        if open[s] or #add.ccS >= ADD_CC_LIMIT then return end
+        local n = #add.ccS + 1
+        add.ccS[n], add.ccF[n], add.ccT[n], add.ccBy[n] = s, ts, c.to, src or false
+        open[s] = n
+    elseif open and open[s] then
+        add.ccT[open[s]] = ts
+        open[s] = nil
+    end
+end
+local function OnRage(c, ts, sub, guid, sk)
+    if not (sk and c.rage[sk]) then return end
+    local L = c.L
+    local key = guid .. sk
+    local n = c.rageOpen[key]
+    if sub == "SPELL_AURA_APPLIED" then
+        if n or L.nr >= STATE_LIMIT then return end
+        n = L.nr + 1
+        L.nr = n
+        L.rgFrom[n], L.rgTo[n] = ts, c.to
+        c.rageOpen[key] = n
+    elseif n then
+        L.rgTo[n] = ts
+        c.rageOpen[key] = nil
+    end
 end
 local function BossSeen(c, guid)
     if not guid then return end
@@ -613,7 +664,10 @@ local function Dispatch(c, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFla
     if SWING[sub] then
         OnSwing(c, ts, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, srcKey, dstKey)
     elseif sub == "SPELL_AURA_APPLIED" or REMOVED[sub] then
-        OnAura(c, ts, sub, src, dst, sk)
+        OnAura(c, ts, sub, src, dst, sk, srcKey)
+        if dstKey and c.bosses[dstKey] then OnRage(c, ts, sub, dstGUID, sk) end
+        local cc = dstGUID and Layers.AddCcIndex(sk, a2)
+        if cc then OnAddCc(c, ts, sub, src, dstGUID, dst, cc) end
         OnFollow(c, ts, sub, src, dst, sk, srcKey)
         if sub == "SPELL_AURA_APPLIED" then
             OnPool(c, ts, sub, srcGUID, src, dst, sk, srcKey)
@@ -654,11 +708,23 @@ local function Dispatch(c, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFla
         if c.aimDefs then OnAimSummon(c, ts, srcGUID, dstGUID, sk) end
     elseif sub == "FW_VEH" then
         OnVehicle(c, ts, src, tonumber(a1) == 1)
+    elseif sub == "FW_VPOW" then
+        local k = c.ride and src and c.byK[src]
+        if k then
+            if (tonumber(a2) or 0) > 0 then Open(c, k, c.ride, ts) else Close(c, k, c.ride, ts) end
+        end
     elseif sub == "FW_MARK" then
         OnMark(c, ts, a1)
     elseif sub == "FW_BUFFSNAP" then
         OnSnap(c, ts, a1, a2)
     end
+end
+local function RideState(D, boss)
+    for i = 1, #D.states do
+        local def = D.states[i]
+        if def.veh and def.boss == boss then return i end
+    end
+    return nil
 end
 local function NewContext(scene)
     local fight = scene.fight
@@ -677,6 +743,8 @@ local function NewContext(scene)
         for id in pairs(D.melee[fight.boss]) do melee[SpellKey(id)] = true end
     end
     for id in pairs(D.taunts) do taunts[SpellKey(id)] = true end
+    local rage = {}
+    for _, id in ipairs(D.rage) do rage[SpellKey(id)] = true end
     for id, icon in pairs(D.adds) do adds[ns.NpcKeyOf(id)] = icon end
     local active = nil
     for _, id in ipairs(D.active[fight.boss] or {}) do
@@ -697,12 +765,12 @@ local function NewContext(scene)
         ppy = scene.ppy, bosses = ns.Index.BossKeys(fight),
         poolDefs = poolDefs, aimDefs = aimDefs, aimCast = {}, aimBy = {}, coneDefs = cones, taunts = taunts, adds = adds,
         blastDefs = D.blasts[fight.boss], blastOpen = {}, blastMax = {}, melee = melee,
-        valkyr = D.valkyr.boss == fight.boss, boss = fight.boss,
+        valkyr = D.valkyr.boss == fight.boss, boss = fight.boss, ride = RideState(D, fight.boss),
         swT = {}, swK = {}, swG = {}, btT = {}, btK = {}, btG = {}, tgT = {}, tgK = {}, hold = TARGET_HOLD, tauT = {}, tauK = {},
         thT = {}, thK = {}, thG = {}, active = active, actT = {}, actG = {}, holders = {},
         tankHits = {}, addBy = {}, addN = 0, pools = {}, born = {}, follow = {}, poolCast = {},
         hitAt = {}, coneTo = {}, coneDef = {}, coneG = {}, aimX = {}, aimY = {}, aimN = {}, aimOpen = {}, aimSpells = aimSpells,
-        diedK = {}, diedT = {}, bossN = {}, bossG = {},
+        diedK = {}, diedT = {}, bossN = {}, bossG = {}, rage = rage, rageOpen = {},
     }
 end
 local function TargetAt(c, t, lo)
@@ -1071,7 +1139,11 @@ local function PlaceCones(scene, c)
         local ts = L.cnT[n]
         local def = c.coneDef[n]
         local org = boss
-        if def.src then org = c.addBy[c.coneG[n] or ""] end
+        if def.src then
+            org = c.addBy[c.coneG[n] or ""]
+        elseif c.boss2 and c.coneG[n] == c.boss2.guid then
+            org = c.boss2.tr
+        end
         local ox, oy = -1, -1
         if org then ox, oy = ns.Replay.PosHold(org, ts, WITNESS_HOLD) end
         if ox >= 0 then
@@ -1089,9 +1161,9 @@ local function PlaceCones(scene, c)
                 local d = sqrt(dx * dx + dy * dy)
                 if d > (def.src and ADD_AIM * ppy or 0.01) then hx, hy = dx / d, dy / d end
             end
-            if hx == 0 and hy == 0 and not def.src and boss.fx then
-                local i = ns.Replay.IndexAt(boss, ts)
-                if i > 0 then hx, hy = boss.fx[i] or 0, boss.fy[i] or 0 end
+            if hx == 0 and hy == 0 and not def.src and org.fx then
+                local i = ns.Replay.IndexAt(org, ts)
+                if i > 0 then hx, hy = org.fx[i] or 0, org.fy[i] or 0 end
             end
             if hx ~= 0 or hy ~= 0 then
                 if def.back then hx, hy = -hx, -hy end
@@ -1145,6 +1217,79 @@ local function FinishAddHp(c, segs, to)
         end
     end
     c.L.addHp = n
+end
+local CARRY_LEAD = 1.5
+local huge = math.huge
+local function Carry(scene, c)
+    local carry = c.D.carry
+    if not carry then return end
+    local L = c.L
+    local cands = {}
+    for i = 1, #L.adds do
+        local a = L.adds[i]
+        if a.npc and carry[a.npc] then cands[#cands + 1] = a end
+    end
+    if #cands == 0 then return end
+    local byGuid = {}
+    for i = 1, #cands do byGuid[cands[i].guid] = cands[i] end
+    local busy = function(a, from, to)
+        for j = 1, a.cK and #a.cK or 0 do
+            if a.cF[j] < to and a.cT[j] > from then return true end
+        end
+        return false
+    end
+    for i = 1, L.ns do
+        if L.stS[i] == 0 then
+            local k, from, to = L.stK[i], L.stFrom[i], L.stTo[i]
+            local pick
+            for j = 1, #c.btT do
+                local bt = c.btT[j]
+                if bt > to then break end
+                local a = c.btK[j] == k and bt >= from - CARRY_LEAD and byGuid[c.btG[j]]
+                if a and not busy(a, from, to) then
+                    pick = a
+                    break
+                end
+            end
+            if not pick then
+                local bestD, bestLate = huge, huge
+                for j = 1, #cands do
+                    local a = cands[j]
+                    if a.from < to and (a.to or huge) > from and not busy(a, from, to) then
+                        local at = math.max(from, a.from)
+                        local px, py = ns.Replay.PosAtTime(scene.tracks[k], at)
+                        local ax, ay = ns.Replay.PosHold(a, at, huge)
+                        local d = (px >= 0 and ax >= 0) and (ax - px) ^ 2 + (ay - py) ^ 2 or huge / 2
+                        local late = math.max(0, a.from - from - CARRY_LEAD)
+                        if late < bestLate or late == bestLate and d < bestD then pick, bestD, bestLate = a, d, late end
+                    end
+                end
+            end
+            if pick then
+                if not pick.cK then pick.cK, pick.cF, pick.cT = {}, {}, {} end
+                local n = #pick.cK + 1
+                pick.cK[n], pick.cF[n], pick.cT[n] = k, math.max(from, pick.from), math.min(to, pick.to or huge)
+                local of = L.carryOf or {}
+                L.carryOf = of
+                of[k] = of[k] or {}
+                of[k][#of[k] + 1] = pick
+            end
+        end
+    end
+end
+function Layers.CarriedBy(L, k, t)
+    local list = L and L.carryOf and L.carryOf[k]
+    for j = 1, list and #list or 0 do
+        if Layers.CarryAt(list[j], t) == k then return list[j] end
+    end
+    return nil
+end
+function Layers.CarryAt(a, t)
+    local K = a.cK
+    for j = 1, K and #K or 0 do
+        if a.cF[j] <= t and t < a.cT[j] then return K[j] end
+    end
+    return nil
 end
 local function FinishBossHp(c, segs, to, first, realms)
     local bodies = {}
@@ -1203,6 +1348,9 @@ function Layers.Build(scene)
     local cl = CL and CL.New(fight)
     local CU = ns.ReplayCue
     local cu = CU and CU.New(fight)
+    local TM = ns.ReplayTomb
+    local tm = TM and TM.New(fight)
+    local tmNpc, tmAura = tm and tm.npc, tm and tm.aura
     local np = ns.NpcPos and ns.NpcPos.New(scene, c)
     local ph = not ns.Phases.Get(fight) and ns.Phases.New(fight) or nil
     local RU = ns.ReplayUnits
@@ -1210,6 +1358,12 @@ function Layers.Build(scene)
     local AR = ns.ReplayArrows
     local ar = AR and AR.New(scene)
     local arSubs = AR and AR.SUBS
+    local RD = ns.ReplayRaid
+    local rd = RD and RD.New(scene)
+    local rdSubs = RD and RD.SUBS
+    local MO = ns.ReplayMode
+    local mo = MO and MO.New(scene)
+    local moSubs = MO and MO.SUBS
     local segs = ns.Encounters.Segs(fight)
     local span, read0 = 0, ns.Store.Read()
     for o = 1, #segs do span = span + ns.Store.Span(segs[o], fight.from, fight.to) end
@@ -1246,6 +1400,8 @@ function Layers.Build(scene)
                 RU.Event(ru, ts, sub, src, dst, a1, a2, a4, id)
             end
             if ar and arSubs[sub] then AR.Event(ar, ts, sub, src, dstGUID, dst, id, srcKey) end
+            if rd and rdSubs[sub] then RD.Event(rd, ts, sub, src, dst, a1, a2, a4, sk) end
+            if mo and moSubs[sub] then MO.Event(mo, ts, sub, src, dst, a1, a2, a4, a5) end
             Dispatch(c, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4, sk, srcKey, dstKey)
             if fc then FC.Event(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a4, a5, skF) end
             if id then
@@ -1257,12 +1413,18 @@ function Layers.Build(scene)
                 if cl and (not clWant or clWant[id] or (sk and clKeys[sk])) then
                     CL.Event(cl, ts, sub, srcGUID, src, dstGUID, dst, a1, id, skF)
                 end
+            elseif cl and sub == "UNIT_DIED" then
+                CL.Died(cl, ts, dstGUID, dst)
             end
             if rm and (not rmWant or (id and rmWant[id]) or sub == BTGT or sub == "UNIT_DIED") then
                 RM.Event(rm, ts, sub, srcGUID, src, dstGUID, dst, a1, a4, id, srcKey or false, dstKey or false)
             end
             if rr then RR.Event(rr, ts, sub, srcGUID, src, dstGUID, dst, a1, a2, skF) end
             if sk and cuWant and cuWant[sk] then CU.Event(cu, ts, sub, srcGUID, src, dst, a1, sk, srcKey or false) end
+            if tm and (dstKey == tmNpc or srcKey == tmNpc or sub == "SPELL_SUMMON" or sub == "SPELL_DAMAGE"
+                or sub == "RANGE_DAMAGE" or (id and tmAura[id])) then
+                TM.Event(tm, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, a1, a2, a4, a5, id, srcKey, dstKey)
+            end
             if np and SWING[sub] then NpcFeed(np, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags) end
         end
     end
@@ -1282,8 +1444,10 @@ function Layers.Build(scene)
     if sp then SP.Done(sp, c.L, scene) end
     if sw then SW.Done(sw, c.L, scene) end
     if cu then CU.Done(cu, c.L, scene) end
+    if tm then TM.Done(tm, c.L, scene, segs) end
     if RU then RU.Build(scene, segs, ru) end
-    if ar then AR.Done(ar, c.L, scene) end
+    if rd then RD.Done(rd, scene) end
+    if mo then MO.Done(mo, c.L) end
     if fc then
         FC.Done(fc, c.L, feedRes)
         FC.Keep(fight, FC.Pack(c.L))
@@ -1295,11 +1459,16 @@ function Layers.Build(scene)
     if rb then RB.Done(rb, c.L, feedRes, fight) end
     c.L.feedMs = debugprofilestop() - f0
     PickTargets(c)
-    if not (np and ns.NpcPos.Place(np, Layers.HolderAt)) then PlaceBoss(scene, c) end
+    if not (np and ns.NpcPos.Place(np, Layers.HolderAt, rr and rr.rd.boss)) then PlaceBoss(scene, c) end
+    c.boss2 = np and np.second
     Steady(scene)
+    if c.boss2 then Steady({ boss = c.boss2.tr, ppy = scene.ppy }) end
     if rm then RM.Flasks(rm, c.L, scene) end
     if oz then OZ.Done(oz, c.L, scene, PosAt, c.ppy) end
     FinishBossHp(c, segs, fight.to, np and np.stats.guid, rr)
+    Carry(scene, c)
+    if rr and c.boss2 then RR.Second(rr, c.L, c.boss2) end
+    if ar then AR.Done(ar, c.L, scene) end
     PlaceCones(scene, c)
     if cl then CL.Done(cl, c.L, scene, c.bosses) end
     c.L.bsT = c.swT
@@ -1316,6 +1485,48 @@ function Layers.AddDebuff(add, t)
         on = add.debOn[i]
     end
     return on and add.debId or nil
+end
+local ccByKey, ccByName
+function Layers.AddCcIndex(sk, name)
+    if not ccByKey then
+        ccByKey, ccByName = {}, {}
+        local list = ns.replayData.addCcList
+        for i = 1, #list do
+            local id = list[i].name
+            ccByKey[SpellKey(id)] = i
+            local n = GetSpellInfo(id)
+            if type(n) == "string" and not ccByName[n] then ccByName[n] = i end
+        end
+    end
+    return (sk and ccByKey[sk]) or (type(name) == "string" and ccByName[name]) or nil
+end
+function Layers.AddCc(add, t, out)
+    local S = add.ccS
+    out[1], out[2], out[3] = nil, nil, nil
+    if not S then return 0 end
+    for k in pairs(ccSeen) do ccSeen[k] = nil end
+    local list, F, T = ns.replayData.addCcList, add.ccF, add.ccT
+    local n = 0
+    for i = 1, #S do
+        if F[i] > t then break end
+        if T[i] > t then
+            local def = list[S[i]]
+            if not ccSeen[def.icon] then
+                ccSeen[def.icon] = true
+                n = n + 1
+                local p = def.prio
+                for j = 1, 3 do
+                    local o = out[j]
+                    if not o or p > list[S[o]].prio then
+                        for m = 3, j + 1, -1 do out[m] = out[m - 1] end
+                        out[j] = i
+                        break
+                    end
+                end
+            end
+        end
+    end
+    return n
 end
 function Layers.AddHp(add, t)
     local T = add.hpT
@@ -1334,24 +1545,44 @@ function Layers.AddHp(add, t)
     if t <= from then return v end
     return v + (V[i + 1] - v) * (t - from) / ramp
 end
-function Layers.BossHp(scene, t)
-    local L = scene.layers
-    local bodies = L and L.bossBodies
-    if not bodies then return nil end
-    local world = nil
-    local R = L.realm
-    if R then world = (ns.ReplayRealm.In(R.boss[1], t) and 1) or (ns.ReplayRealm.In(R.boss[2], t) and 2) or 1 end
+local function LiveHp(bodies, t, world)
     local last, lastT = nil, nil
     for i = 1, #bodies do
         local b = bodies[i]
         local T = b.hpT
         if (not world or not b.world or b.world == world) and T[1] - BOSS_HP_LEAD <= t then
             local tail = T[#T]
-            if t <= tail + BOSS_HP_HOLD then return Layers.AddHp(b, t) end
+            if t <= tail + BOSS_HP_HOLD then return Layers.AddHp(b, t), b end
             if not lastT or tail > lastT then last, lastT = b, tail end
         end
     end
+    return nil, last
+end
+function Layers.BossHp(scene, t, world)
+    local L = scene.layers
+    local bodies = L and L.bossBodies
+    if not bodies then return nil end
+    local R = L.realm
+    local shared = R ~= nil and L.boss2 ~= nil
+    if shared then
+        world = world or 1
+    elseif R then
+        world = (ns.ReplayRealm.In(R.boss[1], t) and 1) or (ns.ReplayRealm.In(R.boss[2], t) and 2) or 1
+    end
+    local hp, last = LiveHp(bodies, t, world)
+    if hp then return hp end
+    if shared then
+        local any = LiveHp(bodies, t, nil)
+        if any then return any end
+    end
     return last and Layers.AddHp(last, t) or nil
+end
+function Layers.Rage(L, t)
+    if not L then return false end
+    for i = 1, L.nr or 0 do
+        if L.rgFrom[i] <= t and t < L.rgTo[i] then return true end
+    end
+    return false
 end
 function Layers.PoolRadius(L, j, t)
     local def = L.plDef[j]

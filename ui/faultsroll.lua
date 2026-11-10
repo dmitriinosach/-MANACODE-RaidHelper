@@ -229,3 +229,120 @@ function View.Paint(raid, label, alt)
     if list[1] then rolls.report:Enable() else rolls.report:Disable() end
     if list[1] then rolls.clear:Enable() else rolls.clear:Disable() end
 end
+local RR_ADDON = "RaidRoll"
+local RR_ROWS = 5
+local RR_PAD = 6
+local RR_LINE = 14
+local RRPen = {}
+ns.RaidRollPen = RRPen
+local strip, hooked, shownId
+function RRPen.On()
+    return ns.GetDB().settings.rrPen ~= false
+end
+function RRPen.SetOn(on)
+    if on then ns.GetDB().settings.rrPen = nil else ns.GetDB().settings.rrPen = false end
+    RRPen.Refresh()
+end
+local function Cell(list, id, k)
+    local t = _G[list]
+    t = type(t) == "table" and t[id]
+    if type(t) ~= "table" then return nil end
+    return t[k]
+end
+local function EpgpMode()
+    local db = _G.RaidRoll_DBPC
+    local me = type(db) == "table" and db[UnitName("player")]
+    return type(me) == "table" and me.RR_EPGP_Enabled == true
+end
+local function Build(host)
+    strip = CreateFrame("Frame", nil, host)
+    Kit.Skin(strip, "panel")
+    strip:EnableMouse(false)
+    strip.rows = {}
+    for k = 0, RR_ROWS do
+        local fs = Kit.Str(strip, "GameFontNormal")
+        fs:SetJustifyH("LEFT")
+        fs:SetWordWrap(false)
+        Kit.Text(fs, k == 0 and "text.secondary" or "text.bright")
+        strip.rows[k] = fs
+    end
+    strip.rows[0]:SetText(ns.T("roll.col.pen"))
+end
+local function RowY(host, k)
+    local fs = _G["RR_Rolled" .. (k > 0 and k or "")]
+    local top, ht = fs and fs.GetTop and fs:GetTop(), host:GetTop()
+    if top and ht then return floor(top - ht + 0.5) end
+    return -30 - RR_LINE * k
+end
+local function Texts(id)
+    local R, out, shown, sums = ns.RollPen, {}, 0, nil
+    local off = tonumber(_G.RR_ScrollOffset) or 0
+    for k = 1, RR_ROWS do
+        local fs = _G["RR_Rolled" .. k]
+        local who, n = Cell("RollerName", id, k + off), tonumber(Cell("RollerRoll", id, k + off))
+        local text = ""
+        if fs and (fs:GetText() or "") ~= "" and type(who) == "string" and n and n > 0 then
+            if not sums then
+                local raid, alt = R.Here()
+                sums = raid and R.Sums(raid, alt) or {}
+            end
+            local pen = R.PenOf(who, n, sums)
+            if pen > 0 then
+                text = format(ns.T("roll.rr.row"), Kit.Hex("text.bad") .. View.Minus(pen) .. "|r", n - pen)
+                shown = shown + 1
+            end
+        end
+        out[k] = text
+    end
+    return out, shown
+end
+function RRPen.Paint(id)
+    if id ~= nil then shownId = id end
+    local host = _G.RR_RollFrame
+    local texts, shown = nil, 0
+    if host and shownId ~= nil and RRPen.On() and not EpgpMode() and Cell("RollerFirst", shownId, 1) ~= nil then
+        texts, shown = Texts(shownId)
+    end
+    if shown == 0 then
+        if strip then strip:Hide() end
+        return 0
+    end
+    if not strip then Build(host) end
+    local w = 0
+    for k = 0, RR_ROWS do
+        local fs = strip.rows[k]
+        if k > 0 then fs:SetText(texts[k]) end
+        fs:ClearAllPoints()
+        fs:SetPoint("TOPLEFT", strip, "TOPLEFT", RR_PAD, RowY(host, k))
+        w = max(w, fs:GetStringWidth() or 0)
+    end
+    strip:ClearAllPoints()
+    strip:SetPoint("TOPLEFT", host, "TOPRIGHT", 0, 0)
+    strip:SetPoint("BOTTOMLEFT", host, "BOTTOMRIGHT", 0, 0)
+    strip:SetWidth(floor(w + 0.5) + RR_PAD * 2)
+    strip:Show()
+    return shown
+end
+function RRPen.Refresh()
+    if hooked then RRPen.Paint() end
+end
+function RRPen.Strip()
+    return strip
+end
+function RRPen.Hook()
+    if hooked then return true end
+    if type(_G.RR_Display) ~= "function" then return false end
+    hooksecurefunc("RR_Display", RRPen.Paint)
+    hooked = true
+    return true
+end
+local rrWatch = CreateFrame("Frame")
+rrWatch:SetScript("OnEvent", function(self, _, name)
+    if name == RR_ADDON and RRPen.Hook() then self:UnregisterEvent("ADDON_LOADED") end
+end)
+rrWatch:RegisterEvent("ADDON_LOADED")
+ns.OnReady(function()
+    if ns.RollPen then ns.RollPen.OnChange(RRPen.Refresh) end
+    if ns.GPList then ns.GPList.OnChange(RRPen.Refresh) end
+    if IsAddOnLoaded and IsAddOnLoaded(RR_ADDON) and RRPen.Hook() then rrWatch:UnregisterEvent("ADDON_LOADED") end
+end)

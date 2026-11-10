@@ -23,8 +23,18 @@ local KNOWN = { RAID = true, PARTY = true, GUILD = true, OFFICER = true, WHISPER
 local FAST = { RAID = true, PARTY = true, GUILD = true, OFFICER = true, RAID_WARNING = true, BATTLEGROUND = true }
 local DEATH_KINDS = { death = true, anydeath = true }
 local VIEWS = { chron = true, short = true }
-local CHRON = 8
-local CHRON_MSGS = 4
+local CHRON_WIN = 10
+local CHRON_FULL = 0.9
+local CHRON_STEP = 0.5
+local CHRON_LINES = 6
+local CHRON_SPELLS = 3
+local CHRON_NAMES = 3
+local CHRON_BIG = 0.3
+local HP_LAG = 0.25
+local ICON_KILL = "{rt8}"
+local ICON_BIG = "{rt7}"
+local F_PLAYER = ns.F.PLAYER
+local band = bit.band
 local Proof = {}
 ns.Proof = Proof
 Proof.LIMIT = LIMIT
@@ -315,38 +325,177 @@ local function Head(name, rule, gp, done)
     local reason = ns.Penalties and ns.Penalties.Reason(rule) or rule.key
     return format(T(done and "proof.head.done" or "proof.head"), TAG, Plain(name), Plain(reason), gp, Unit())
 end
-local function ChronList(fight, head, p, d, name, keep)
-    local out = { head .. " —", Killer(d, name, fight.boss) .. " " .. format(T("proof.at"), Clock(d.t - fight.from)) .. ";" }
-    local list = {}
+local function ChronRaw(fight, name, from, to)
+    local E = ns.Encounters
+    local segs = E and E.Segs and E.Segs(fight)
+    if not segs or #segs == 0 then return nil end
+    local hits, heals, any = {}, {}, false
+    for o = 1, #segs do
+        for ts, sub, _, src, srcFlags, _, dst, _, a1, a2, a3, a4, a5 in ns.Store.Events(segs[o], from, to, 9) do
+            any = true
+            if dst == name and ts >= from and ts <= to then
+                local swing = sub == "SWING_DAMAGE"
+                if swing or sub == "SPELL_DAMAGE" or sub == "SPELL_PERIODIC_DAMAGE" or sub == "RANGE_DAMAGE"
+                    or sub == "DAMAGE_SHIELD" or sub == "ENVIRONMENTAL_DAMAGE" then
+                    local env = sub == "ENVIRONMENTAL_DAMAGE"
+                    local amount = tonumber(swing and a1 or env and a2 or a4) or 0
+                    if amount > 0 then
+                        local player = src and src ~= name and srcFlags and band(srcFlags, F_PLAYER) > 0
+                        hits[#hits + 1] = { t = ts, amount = amount, src = player and src or nil,
+                                            key = swing and "#melee" or env and ns.EnvKey(a1) or tonumber(a1),
+                                            id = (not swing and not env) and tonumber(a1) or nil,
+                                            spell = swing and "#melee" or env and ns.EnvName(a1) or a2 }
+                    end
+                elseif sub == "SPELL_HEAL" or sub == "SPELL_PERIODIC_HEAL" then
+                    local eff = (tonumber(a4) or 0) - (tonumber(a5) or 0)
+                    if eff > 0 then heals[#heals + 1] = { t = ts, amount = eff } end
+                end
+            end
+        end
+    end
+    if not any then return nil end
+    return { hits = hits, heals = heals, hp = ns.Streams.HpList(segs, name, from - CHRON_WIN, to) }
+end
+local function ChronRecent(d, name)
+    local hits = {}
     for i = 1, #(d.recent or {}) do
         local e = d.recent[i]
-        if d.t - e.t <= RECENT then list[#list + 1] = e end
+        if (e.amount or 0) > 0 and d.t - e.t <= CHRON_WIN then
+            hits[#hits + 1] = { t = e.t, amount = e.amount, key = e.key or e.spell, id = e.id, spell = e.spell,
+                                src = e.src ~= name and not e.srcKey and e.src or nil }
+        end
     end
-    local from = math.max(1, #list - keep + 1)
-    for i = from, #list do
-        local e = list[i]
-        local text = Dec(e.t - d.t) .. " " .. Spell(e)
-        if (e.amount or 0) > 0 then text = text .. " " .. Short(e.amount) end
-        if e == d.killer then text = text .. T("proof.chron.kill") end
-        out[#out + 1] = text .. (i < #list and " /" or "")
+    return { hits = hits, heals = {}, hp = {} }
+end
+local function HpAt(hp, t)
+    local best
+    for i = 1, #hp do
+        if hp[i].t <= t then best = hp[i] else break end
+    end
+    return best
+end
+local function HitSpell(e)
+    if e.spell == "#melee" then return T("proof.melee") end
+    return Link(e.id, e.spell)
+end
+local function StepDamage(hits)
+    local by, order = {}, {}
+    for i = 1, #hits do
+        local e = hits[i]
+        local gk = e.spell or e.key or "?"
+        local g = by[gk]
+        if not g then
+            g = { e = e, n = 0, sum = 0, names = {}, seen = {} }
+            by[gk] = g
+            order[#order + 1] = g
+        end
+        g.n, g.sum = g.n + 1, g.sum + e.amount
+        if e.src and not g.seen[e.src] then
+            g.seen[e.src] = true
+            g.names[#g.names + 1] = Plain(e.src)
+        end
+    end
+    tsort(order, function(a, b) return a.sum > b.sum end)
+    local parts, rest = {}, 0
+    for i = 1, #order do
+        local g = order[i]
+        if i <= CHRON_SPELLS then
+            local text = HitSpell(g.e) .. (g.n > 1 and format(T("proof.chron.n"), g.n) or "") .. " -" .. Short(g.sum)
+            if #g.names > 0 then
+                local names = {}
+                for k = 1, min(CHRON_NAMES, #g.names) do names[k] = g.names[k] end
+                text = text .. " (" .. concat(names, ", ") .. ")"
+            end
+            parts[#parts + 1] = text
+        else
+            rest = rest + g.sum
+        end
+    end
+    if rest > 0 then parts[#parts + 1] = format(T("proof.chron.rest"), Short(rest)) end
+    return concat(parts, ", ")
+end
+local function ChronLines(fight, head, p, d, name)
+    local data = ChronRaw(fight, name, d.t - CHRON_WIN, d.t) or ChronRecent(d, name)
+    local hp = data.hp
+    local maxHp = hp[#hp] and hp[#hp].max or nil
+    local from = d.t - CHRON_WIN
+    for i = #hp, 1, -1 do
+        if hp[i].t <= d.t and hp[i].pct >= CHRON_FULL then
+            from = math.max(from, hp[i].t)
+            break
+        end
+    end
+    local steps = {}
+    for i = 1, #data.hits do
+        local e = data.hits[i]
+        if e.t >= from and e.t <= d.t then
+            local st = steps[#steps]
+            if not st or e.t - st.a > CHRON_STEP then
+                st = { a = e.t, b = e.t, hits = {}, heal = 0, big = false }
+                steps[#steps + 1] = st
+            end
+            st.b = e.t
+            st.hits[#st.hits + 1] = e
+            if maxHp and e.amount >= CHRON_BIG * maxHp then st.big = true end
+        end
+    end
+    local h = 1
+    for k = 1, #steps do
+        local st = steps[k]
+        while data.heals[h] and data.heals[h].t <= st.b do
+            if data.heals[h].t >= from then st.heal = st.heal + data.heals[h].amount end
+            h = h + 1
+        end
+    end
+    local startHp = HpAt(hp, from)
+    local first = steps[1] and steps[1].a or d.t
+    local top = format(T("proof.chron.head"), head, Clock(d.t - fight.from))
+    if startHp then
+        top = top .. ", " .. format(T("proof.chron.fall"), Short(startHp.hp), Dec(d.t - first))
+    end
+    top = top .. "; " .. Killer(d, name, fight.boss)
+    local k = d.killer
+    if k and (k.over or 0) > 0 then top = top .. format(T("proof.chron.over"), Short(k.over)) end
+    local out = { top }
+    local skip = #steps - CHRON_LINES
+    if skip < 2 then skip = 0 end
+    if skip > 0 then
+        local dmg, heal = 0, 0
+        for q = 1, skip do
+            for r = 1, #steps[q].hits do dmg = dmg + steps[q].hits[r].amount end
+            heal = heal + steps[q].heal
+        end
+        local line = format(T("proof.chron.early"), Dec(steps[1].a - d.t), Dec(steps[skip].b - d.t), Short(dmg))
+        if heal > 0 then line = line .. format(T("proof.chron.heal"), Short(heal)) end
+        out[#out + 1] = line
+    end
+    for q = skip + 1, #steps do
+        local st = steps[q]
+        local last = q == #steps
+        local mark = last and (ICON_KILL .. " ") or st.big and (ICON_BIG .. " ") or ""
+        local ago = st.b - d.t
+        local line = (ago > -0.05 and Dec(0) or Dec(ago)) .. " " .. mark .. StepDamage(st.hits)
+        local after = not last and HpAt(hp, st.b + HP_LAG)
+        if after then
+            local pct = floor(after.pct * 100 + 0.5)
+            if pct == 0 and after.hp > 0 then pct = 1 end
+            line = line .. format(T("proof.chron.hp"), Short(after.hp), pct)
+        end
+        if st.heal > 0 then line = line .. format(T("proof.chron.heal"), Short(st.heal)) end
+        if last then line = line .. T("proof.chron.kill") end
+        out[#out + 1] = line
     end
     local tail = (d.mc and format(T("proof.mc"), Plain(d.mc.by))) or (d.scripted and T("proof.scripted"))
         or (p and Guard(p, d))
     if tail then
-        out[#out] = out[#out] .. ";"
-        out[#out + 1] = tail
+        if #out[#out] + 2 + #tail <= LIMIT then out[#out] = out[#out] .. "; " .. tail else out[#out + 1] = tail end
     end
+    out.lines = true
     return out
 end
 local function ChronClause(fight, head, p, d, name)
     if not d then return Compose(head, { T("proof.nodeath") }) end
-    local keep = CHRON
-    local out = ChronList(fight, head, p, d, name, keep)
-    while keep > 0 and #Proof.Split(out) > CHRON_MSGS do
-        keep = keep - 1
-        out = ChronList(fight, head, p, d, name, keep)
-    end
-    return out
+    return ChronLines(fight, head, p, d, name)
 end
 local function Clause(view, fight, head, p, d, name)
     if view == "chron" then return ChronClause(fight, head, p, d, name) end
@@ -532,8 +681,16 @@ function Proof.Messages(ask)
     local out = {}
     local list = Proof.Clauses(ask)
     for i = 1, #list do
-        local parts = Proof.Split(list[i])
-        for k = 1, #parts do out[#out + 1] = parts[k] end
+        local c = list[i]
+        if c.lines then
+            for q = 1, #c do
+                local parts = Proof.Split(c[q])
+                for k = 1, #parts do out[#out + 1] = parts[k] end
+            end
+        else
+            local parts = Proof.Split(c)
+            for k = 1, #parts do out[#out + 1] = parts[k] end
+        end
     end
     return out
 end
@@ -628,9 +785,6 @@ function Proof.Queue(text, chat, target)
     queue[#queue + 1] = { text = text, chat = chat, target = target }
     Drain()
     if queue[1] then pump:Show() end
-end
-function Proof.Fast(chat)
-    return FAST[chat] == true
 end
 pump:SetScript("OnUpdate", ns.Prof.Wrap("bg.proof", function(self)
     if not queue[1] then

@@ -1,12 +1,16 @@
 local _, ns = ...
 local sqrt = math.sqrt
 local min = math.min
+local abs = math.abs
+local huge = math.huge
 local tsort = table.sort
 local SAME = 1
 local POST = 0.1
 local POST_MAX = 2.5
 local LIMIT = 400
 local NEAR_YD = 2
+local CHAN_MATCH = 0.6
+local TOTEM_AT = { fire = { 1.2, 0 }, earth = { -1.2, 0 }, water = { 0, 1.2 }, air = { 0, -1.2 } }
 local CL = {}
 ns.ReplayClass = CL
 function CL.New(fight)
@@ -33,17 +37,78 @@ function CL.New(fight)
     end
     if D.circle.make then want[D.circle.make] = true end
     if D.circle.port then want[D.circle.port] = true end
+    local trapCast, trapHit = {}, {}
+    for _, tp in ipairs(D.traps or {}) do
+        for _, id in ipairs(tp.cast) do trapCast[id], want[id] = tp, true end
+        for _, id in ipairs(tp.hit) do trapHit[id], want[id] = tp, true end
+    end
     for key in pairs(cone) do wantKey[key] = true end
     local beacon = D.beacon and ns.SpellKey(D.beacon)
     if beacon then wantKey[beacon] = true end
+    for _, set in ipairs({ D.totems or {}, D.chans or {}, D.chains or {} }) do
+        for id in pairs(set) do want[id] = true end
+    end
+    if D.recall then want[D.recall] = true end
     return {
         D = D, fight = fight, zones = {}, rings = {}, cones = {}, jumps = {}, circles = {}, beams = {}, trails = {},
         open = {}, drop = {}, seen = {}, byAura = byAura, byCast = byCast, cone = cone, jump = jump,
-        beacon = beacon, want = want, wantKey = wantKey,
+        totems = {}, live = {}, slots = {}, chans = {}, chains = {},
+        beacon = beacon, want = want, wantKey = wantKey, traps = {}, trapCast = trapCast, trapHit = trapHit,
     }
 end
 local function Add(list, rec)
     if #list < LIMIT then list[#list + 1] = rec end
+end
+local function TotemOff(ctx, rec, ts)
+    if rec.to and rec.to <= ts then return end
+    rec.to = ts
+    ctx.live[rec.guid] = nil
+    local slot = ctx.slots[rec.name]
+    if slot and slot[rec.el] == rec then slot[rec.el] = nil end
+end
+local function OnTotem(ctx, ts, name, guid, id)
+    local def = ctx.D.totems[id]
+    if not guid then return end
+    local slot = ctx.slots[name]
+    if not slot then
+        slot = {}
+        ctx.slots[name] = slot
+    end
+    local old = slot[def.el]
+    if old then TotemOff(ctx, old, ts) end
+    local rec = { name = name, from = ts, el = def.el, guid = guid, id = id, life = def.dur or ctx.D.totemDur,
+                  r = def.r or ctx.D.totemR or 0 }
+    slot[def.el] = rec
+    ctx.live[guid] = rec
+    Add(ctx.totems, rec)
+end
+local function TotemsOff(ctx, name, ts)
+    local slot = ctx.slots[name]
+    if not slot then return end
+    for _, rec in pairs(slot) do TotemOff(ctx, rec, ts) end
+end
+function CL.Died(ctx, ts, dstGUID, dst)
+    local rec = dstGUID and ctx.live[dstGUID]
+    if rec then
+        TotemOff(ctx, rec, ts)
+    elseif dst then
+        TotemsOff(ctx, dst, ts)
+    end
+end
+local function OnChain(ctx, ts, name, dstGUID, dst, id)
+    local key = "chain" .. name
+    local cur = ctx.open[key]
+    if not cur or cur.id ~= id or ts - cur.from > ctx.D.chainJoin then
+        cur = { name = name, from = ts, id = id, hops = {}, guids = {} }
+        ctx.open[key] = cur
+        Add(ctx.chains, cur)
+    end
+    local n = #cur.hops
+    if n >= 6 then return end
+    for i = 1, n do
+        if cur.hops[i] == dst and cur.guids[i] == dstGUID then return end
+    end
+    cur.hops[n + 1], cur.guids[n + 1] = dst or false, dstGUID or false
 end
 local function OnSelfAura(ctx, ts, sub, name, id)
     local hit = ctx.byAura[id]
@@ -122,9 +187,33 @@ local function OnCone(ctx, ts, name, guid, def)
     last.to = ts
     if guid then last.guids[guid] = true end
 end
+local function OnTrap(ctx, ts, sub, src, id)
+    local list = ctx.traps
+    local def = ctx.trapCast[id]
+    if def then
+        if sub == "SPELL_CREATE" then Add(list, { name = src, from = ts, def = def }) end
+        return
+    end
+    def = ctx.trapHit[id]
+    if not (sub == "SPELL_DAMAGE" or sub == "SPELL_MISSED" or sub == "SPELL_AURA_APPLIED") then return end
+    for i = #list, 1, -1 do
+        local r = list[i]
+        if ts - r.from > def.life + def.burn + 1 then break end
+        if r.name == src and r.def == def and r.hit and ts <= r.hit + def.burn then return end
+    end
+    for i = #list, 1, -1 do
+        local r = list[i]
+        if ts - r.from > def.life + 1 then return end
+        if r.name == src and r.def == def and not r.hit and ts >= r.from then
+            r.hit = ts
+            return
+        end
+    end
+end
 function CL.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1, id, sk)
     id = id or tonumber(a1)
     if not id or not src then return end
+    if ctx.trapCast[id] or ctx.trapHit[id] then OnTrap(ctx, ts, sub, src, id) end
     if sub == "SPELL_AURA_APPLIED" or sub == "SPELL_AURA_REMOVED" or sub == "SPELL_AURA_REFRESH" then
         local key = sk or ns.SpellKey(id)
         if key == ctx.beacon and dst then
@@ -137,16 +226,29 @@ function CL.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1, id, sk)
         if sub == "SPELL_AURA_APPLIED" and ctx.cone[key] then OnCone(ctx, ts, src, dstGUID, ctx.cone[key]) end
     elseif sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_SUMMON" then
         OnSpot(ctx, ts, src, id)
+        local D = ctx.D
         if sub == "SPELL_CAST_SUCCESS" then
             local j = ctx.jump[id]
             if j then Add(ctx.jumps, { name = src, from = ts, def = j }) end
-            if id == ctx.D.circle.port then Add(ctx.jumps, { name = src, from = ts, port = true }) end
+            if id == D.circle.port then Add(ctx.jumps, { name = src, from = ts, port = true }) end
+            if id == D.recall then TotemsOff(ctx, src, ts) end
+            local ch = D.chans and D.chans[id]
+            if ch and dst and dst ~= src then
+                Add(ctx.chans, { name = src, from = ts, id = id, def = ch, dst = dst, guid = dstGUID })
+            end
+        elseif D.totems and D.totems[id] then
+            OnTotem(ctx, ts, src, dstGUID, id)
         end
     elseif sub == "SPELL_CREATE" and id == ctx.D.circle.make then
         OnCircle(ctx, ts, sub, src)
-    elseif sub == "SPELL_DAMAGE" or sub == "SPELL_MISSED" then
-        local def = ctx.cone[sk or ns.SpellKey(id)]
-        if def then OnCone(ctx, ts, src, dstGUID, def) end
+    elseif sub == "SPELL_DAMAGE" or sub == "SPELL_MISSED" or sub == "SPELL_HEAL" then
+        local chains = ctx.D.chains
+        if chains and chains[id] then
+            OnChain(ctx, ts, src, dstGUID, dst, id)
+        elseif sub ~= "SPELL_HEAL" then
+            local def = ctx.cone[sk or ns.SpellKey(id)]
+            if def then OnCone(ctx, ts, src, dstGUID, def) end
+        end
     end
 end
 local function ByFrom(a, b)
@@ -184,11 +286,69 @@ local function Aim(raw, x, y, scene, adds, bosses)
     if d < NEAR_YD * scene.ppy then return nil, 0 end
     return dx / d, dy / d
 end
+local function Totems(ctx, out, Spot, ppy, hi)
+    local D = ctx.D
+    for _, r in ipairs(ctx.totems) do
+        local x, y = Spot(r.name, r.from)
+        local to = min(r.to or huge, r.from + r.life, hi)
+        if x and to > r.from then
+            local o = TOTEM_AT[r.el] or TOTEM_AT.fire
+            out.totems[#out.totems + 1] = { from = r.from, to = to, x = x + o[1] * ppy, y = y + o[2] * ppy,
+                                            tone = D.totemTone[r.el], icon = r.id, r = r.r }
+        end
+    end
+end
+local function Chans(ctx, out, byK, Target, casts, hi)
+    local list = ctx.chans
+    for i, r in ipairs(list) do
+        local k, tg = byK[r.name], Target(r.dst, r.guid)
+        if k and tg and tg ~= k then
+            local to
+            local cs = casts[r.name]
+            for _, rec in ipairs(cs and cs.R or {}) do
+                if rec.chan and abs(rec.from - r.from) <= CHAN_MATCH then
+                    to = rec.stop
+                    break
+                end
+                if rec.from > r.from + CHAN_MATCH then break end
+            end
+            if not to then
+                to = r.from + r.def.dur
+                for j = i + 1, #list do
+                    if list[j].name == r.name then
+                        to = min(to, list[j].from)
+                        break
+                    end
+                end
+            end
+            to = min(to, hi)
+            if to > r.from then
+                out.chans[#out.chans + 1] = { from = r.from, to = to, k = k, tg = tg, tone = r.def.tone }
+            end
+        end
+    end
+end
+local function Chains(ctx, out, byK, Target, hi)
+    local D = ctx.D
+    for _, r in ipairs(ctx.chains) do
+        local k = byK[r.name]
+        local hops = {}
+        for i = 1, #r.hops do
+            local tg = Target(r.hops[i] or nil, r.guids[i] or nil)
+            if tg and tg ~= hops[#hops] and not (#hops == 0 and tg == k) then hops[#hops + 1] = tg end
+        end
+        if k and #hops > 0 and r.from < hi then
+            out.chains[#out.chains + 1] = { from = r.from, to = min(r.from + D.chainShow, hi), k = k, hops = hops,
+                                            tone = D.chains[r.id] }
+        end
+    end
+end
 function CL.Done(ctx, L, scene, bosses)
     local hi, ppy = ctx.fight.to, scene.ppy
     local byK = ns.Replay.ByK(scene)
     local PosAt = ns.Replay.PosAtTime
-    local out = { zones = {}, cones = {}, rings = {}, arrows = {}, circles = {}, beams = {}, trails = {} }
+    local out = { zones = {}, cones = {}, rings = {}, arrows = {}, circles = {}, beams = {}, trails = {}, totems = {},
+                  chans = {}, chains = {} }
     local function Spot(name, ts)
         local k = byK[name]
         if not k then return nil, 0 end
@@ -278,6 +438,29 @@ function CL.Done(ctx, L, scene, bosses)
     for _, r in ipairs(ctx.beams) do
         local k, p = byK[r.name], byK[r.p]
         if k and p then out.beams[#out.beams + 1] = { from = r.from, to = min(r.to or hi, hi), k = k, p = p } end
+    end
+    Totems(ctx, out, Spot, ppy, hi)
+    local function Target(name, guid)
+        local k = name and byK[name]
+        if k then return k end
+        local add = guid and adds[guid]
+        if add then return add end
+        if guid and (bosses or {})[ns.NpcKey(guid) or 0] then return 0 end
+        return nil
+    end
+    Chans(ctx, out, byK, Target, scene.units and scene.units.casts or {}, hi)
+    Chains(ctx, out, byK, Target, hi)
+    for _, r in ipairs(ctx.traps) do
+        local x, y = Spot(r.name, r.from)
+        local d = r.def
+        local armTo = min(r.hit or r.from + d.life, hi)
+        if x and d.arm and armTo > r.from then
+            out.zones[#out.zones + 1] = { from = r.from, to = armTo, x = x, y = y, r = d.arm, tone = d.tone, icon = d.icon, trap = true }
+        end
+        if x and r.hit and d.show > 0 then
+            out.zones[#out.zones + 1] = { from = r.hit, to = min(r.hit + d.show, hi), x = x, y = y, r = d.r, tone = d.tone,
+                                          icon = d.icon, trap = true, ice = d.ice }
+        end
     end
     for _, list in pairs(out) do tsort(list, ByFrom) end
     L.cls = out

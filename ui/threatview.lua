@@ -14,7 +14,6 @@ local PULLW = 3
 local NAMEPAD = 6
 local MARKW = 52
 local MARKGAP = 8
-local TICKH = 4
 local LEVEL = 90
 local HEADH = 22
 local NEAR = 1.5

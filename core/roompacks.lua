@@ -48,6 +48,7 @@ function Packs.Hint(room)
         end
     end
     if not code then return "" end
+    if ns.WebNoPacks then return ns.T("pack.web") end
     local key = Packs.State(code) == "off" and "pack.off" or "pack.missing"
     return string.format(ns.T(key), Packs.Label(code))
 end

@@ -165,6 +165,7 @@ local ICON_OVERRIDE = {}
 for _, id in ipairs({ 72762, 72754, 73708, 73709, 73710 }) do
     ICON_OVERRIDE[id] = "Interface\\Icons\\Spell_Shadow_DeathAndDecay"
 end
+ICON_OVERRIDE[69037] = "Interface\\Icons\\Achievement_Boss_SvalaSorrowgrave"
 function ns.SpellIcon(id)
     if not id then return nil end
     local over = ICON_OVERRIDE[id]

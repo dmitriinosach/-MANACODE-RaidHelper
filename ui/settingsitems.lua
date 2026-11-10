@@ -46,7 +46,7 @@ local function Themes()
     local out = {}
     for i = 1, #Kit.order do
         local key = Kit.order[i]
-        out[i] = { key = key, label = Kit.Get(key).labelKey }
+        out[i] = { key = key, label = Kit.Get(key).labelKey, swatch = Kit.Swatch(key) }
     end
     return out
 end
@@ -71,7 +71,7 @@ S.Section("look", "theme", {
     label = "set.theme",
     order = 10,
     items = {
-        { kind = "choice", key = "theme", buttons = true, label = "set.theme.pick", options = Themes, default = "dark",
+        { kind = "choice", key = "theme", pick = true, label = "set.theme.pick", options = Themes, default = Kit.DEFAULT,
           get = Kit.Key, set = function(k) Kit.SetTheme(k) end },
     },
 })
@@ -324,6 +324,31 @@ S.Section("gp", "preset", {
           run = function() if ns.FaultsPage then ns.FaultsPage.Open("rules") else ns.Shell.Open("gp") end end },
     },
 })
+local function EpWhen()
+    local out = {}
+    local list = ns.RaidEP and ns.RaidEP.WHEN or {}
+    for i = 1, #list do out[i] = { key = list[i], label = "rep.when." .. list[i] } end
+    return out
+end
+S.Section("gp", "raidep", {
+    label = "rep.set",
+    order = 25,
+    items = {
+        { kind = "choice", key = "when", label = "rep.set.when", tip = "rep.set.when.tip", options = EpWhen,
+          get = function() return ns.RaidEP.When() end,
+          set = function(k) ns.RaidEP.SetWhen(k) end },
+        { kind = "slider", key = "standby", label = "rep.set.standby", min = 0, max = 100, step = 5,
+          default = ns.raidEp.STANDBY,
+          get = function() return ns.RaidEP.StandbyPct() end,
+          set = function(v) ns.RaidEP.SetStandbyPct(v) end },
+        { kind = "slider", key = "minguild", label = "rep.set.minguild", tip = "rep.set.minguild.tip", min = 0, max = 40,
+          step = 1, default = ns.raidEp.MIN_GUILD,
+          get = function() return ns.RaidEP.MinGuild() end,
+          set = function(v) ns.RaidEP.SetMinGuild(v) end },
+        { kind = "button", key = "open", label = "rep.set.open",
+          run = function() if ns.RaidEPView then ns.RaidEPView.Open() end end },
+    },
+})
 S.Section("gp", "signal", {
     label = "set.gp.signal",
     order = 30,
@@ -343,6 +368,15 @@ S.Section("gp", "proof", {
           end },
     },
 })
+S.Section("gp", "raidroll", {
+    label = "set.gp.rr",
+    order = 22,
+    items = {
+        { kind = "check", key = "pen", label = "set.gp.rr.pen", tip = "set.gp.rr.pen.tip", default = true,
+          get = function() return ns.RaidRollPen == nil or ns.RaidRollPen.On() end,
+          set = function(on) if ns.RaidRollPen then ns.RaidRollPen.SetOn(on) end end },
+    },
+})
 local function PauseText()
     local R = ns.Recorder
     return T((R and R.IsOn() and R.IsPaused()) and "set.svc.resume" or "set.svc.pause")
@@ -354,6 +388,19 @@ end
 local function AdvText()
     return T(S.Advanced() and "set.svc.adv.hide" or "set.svc.adv.show")
 end
+S.Category("notify", { label = "set.cat.notify", sub = "set.cat.notify.sub", order = 25, group = "general" })
+S.Section("notify", "notify", {
+    label = "set.cat.notify",
+    order = 10,
+    items = {
+        { kind = "check", key = "pull", label = "set.notify.pull", tip = "set.notify.pull.tip", default = true,
+          get = function() return ns.RecPull == nil or ns.RecPull.Notify() end,
+          set = function(on) if ns.RecPull then ns.RecPull.SetNotify(on) end end },
+        { kind = "check", key = "ep", label = "set.notify.ep", tip = "set.notify.ep.tip", default = true,
+          get = function() return ns.RaidEP == nil or ns.RaidEP.Notify() end,
+          set = function(on) if ns.RaidEP then ns.RaidEP.SetNotify(on) end end },
+    },
+})
 S.Section("svc", "tools", {
     label = "set.svc.tools",
     order = 10,

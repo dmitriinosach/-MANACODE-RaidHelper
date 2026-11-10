@@ -36,25 +36,56 @@ local SMOKE = "Spells\\ALPHACLOUD"
 local RUNE = "Spells\\DemonicRuneSummon01"
 local WISP = "Spells\\MAIL_RAIDHUNTER_G_01_PARTICLE01A"
 local WISP_K = 0.78
+local BACK_K = 1.12
 local SPIN = 2 * math.pi / 5.5
 local GROW = 0.63
 local BORN = 0.2
 local PUFF_DRAW = 48
 local PUFF_GROW = 0.45
 local PUFF_CORE = 0.55
+local TOTEM_DRAW = 24
+local TOTEM_ICON = 10
+local TOTEM_YD = 0.8
+local TOTEM_MIN = 3
+local TOTEM_A = 0.9
+local TOTEM_HOVER = 9
+local REACH_FILL_A = 0.12
+local CHAN_DRAW = 16
+local CHAN_W = 2.5
+local CHAN_CORE = 0.7
+local CHAN_PULSE = 9
+local CHAIN_DRAW = 6
+local CHAIN_HOPS = 6
+local CHAIN_W = 3
+local CHAIN_CORE = 1
+local CHAIN_IN = 0.1
+local CHAIN_FADE = 0.4
+local HIT_YD = 1.5
+local HIT_MIN = 6
+local OTHER_A = 0.5
 local V = {}
 ns.ReplayClassView = V
 local Kit = ns.Kit
+local RD = ns.ReplayDraw
 local Replay = ns.Replay
-local KINDS = { "zones", "rings", "cones", "arrows", "circles", "beams" }
-local pool = { zones = {}, edges = {}, marks = {}, rings = {}, cones = {}, arrows = {}, heads = {}, circles = {}, wisps = {},
-               beams = {}, icons = {}, puffs = {}, cores = {} }
-local used = { zones = 0, rings = 0, cones = 0, arrows = 0, circles = 0, beams = 0, icons = 0, puffs = 0 }
+local KINDS = { "zones", "rings", "cones", "arrows", "circles", "beams", "totems", "chans", "chains" }
+local pool = { zones = {}, edges = {}, marks = {}, rings = {}, cones = {}, arrows = {}, heads = {}, circles = {}, wisps = {}, runeBacks = {},
+               beams = {}, icons = {}, puffs = {}, cores = {}, tIcons = {}, tRings = {}, chans = {}, chanCores = {},
+               bolts = {}, hits = {} }
+local used = { zones = 0, rings = 0, cones = 0, arrows = 0, circles = 0, beams = 0, icons = 0, puffs = 0, totems = 0,
+               chans = 0, bolts = 0, hits = 0 }
 local memo = { cls = nil, from = 0, to = -1 }
-local active = { zones = {}, rings = {}, cones = {}, arrows = {}, circles = {}, beams = {} }
-local nact = { zones = 0, rings = 0, cones = 0, arrows = 0, circles = 0, beams = 0 }
+local active = { zones = {}, rings = {}, cones = {}, arrows = {}, circles = {}, beams = {}, totems = {}, chans = {},
+                 chains = {} }
+local nact = { zones = 0, rings = 0, cones = 0, arrows = 0, circles = 0, beams = 0, totems = 0, chans = 0, chains = 0 }
 local view
-local probe = { zones = 0, rings = 0, cones = 0, arrows = 0, circles = 0, beams = 0, icons = 0, collects = 0, puffs = 0 }
+local hw, hh = 0, 0
+local ICON_TC = { 0.07, 0.07, 0.07, 0.93, 0.93, 0.07, 0.93, 0.93 }
+local probe = { zones = 0, rings = 0, cones = 0, arrows = 0, circles = 0, beams = 0, icons = 0, collects = 0, puffs = 0,
+                totems = 0, chans = 0, chains = 0, bolts = 0, hits = 0 }
+local tSx, tSy, tIt = {}, {}, {}
+local hoverTotem
+local roles = {}
 local function Tex(layer, path, draw, token)
     local tex = layer:CreateTexture(nil, draw)
     tex:SetTexture(path)
@@ -77,6 +108,7 @@ function V.Build(v, layer)
         pool.heads[i] = Tex(layer, CONE, "BORDER")
     end
     for i = 1, CIRCLE_DRAW do
+        pool.runeBacks[i] = Tex(layer, DISC, "BACKGROUND")
         pool.circles[i] = Tex(layer, RUNE, "BORDER")
         pool.circles[i]:SetBlendMode("ADD")
         for j = 2 * i - 1, 2 * i do
@@ -88,6 +120,26 @@ function V.Build(v, layer)
     for i = 1, PUFF_DRAW do
         pool.puffs[i] = Tex(layer, SMOKE, "BACKGROUND")
         pool.cores[i] = Tex(layer, SMOKE, "BACKGROUND")
+    end
+    for i = 1, TOTEM_DRAW do
+        pool.tRings[i] = Tex(layer, RING_S, "BORDER")
+        tSx[i], tSy[i] = 0, 0
+        local tex = layer:CreateTexture(nil, "ARTWORK")
+        tex:SetWidth(TOTEM_ICON)
+        tex:SetHeight(TOTEM_ICON)
+        tex:Hide()
+        pool.tIcons[i] = tex
+    end
+    pool.reach = { Tex(layer, DISC, "BACKGROUND"), Tex(layer, RING, "BORDER") }
+    for i = 1, CHAN_DRAW do
+        pool.chans[i] = Tex(layer, LINE, "BORDER")
+        pool.chans[i]:SetBlendMode("ADD")
+        pool.chanCores[i] = Tex(layer, LINE, "BORDER", "sem.rep.chanCore")
+    end
+    for i = 1, CHAIN_DRAW * CHAIN_HOPS do pool.hits[i] = Tex(layer, RING_S, "BORDER") end
+    for i = 1, CHAIN_DRAW * CHAIN_HOPS * 2 do
+        pool.bolts[i] = Tex(layer, LINE, "BORDER")
+        pool.bolts[i]:SetBlendMode("ADD")
     end
     for i = 1, ICON_DRAW do
         local tex = layer:CreateTexture(nil, "ARTWORK")
@@ -103,7 +155,8 @@ local function HideAll()
     end
     for k in pairs(used) do used[k] = 0 end
 end
-function V.Use(scene)
+function V.Use(scene, who)
+    roles = who or {}
     if not view then return end
     HideAll()
     memo.cls = nil
@@ -132,11 +185,7 @@ local function Collect(cls, t)
     probe.collects = probe.collects + 1
     return nx
 end
-local function Screen(cam, scene, x, y)
-    local gx, gy, lift = ns.ReplayGeo.Where(cam, scene, x, y)
-    local sx, sy, k = Replay.Project(cam, gx, gy)
-    return sx, sy - lift, k
-end
+local Screen = RD.Screen
 local function Where(scene, it)
     if not it.k then return it.x, it.y end
     local st = scene.states[it.k]
@@ -158,9 +207,8 @@ local function PutIcon(sx, sy, id)
         tex.id = id
         Kit.Icon.Spell(tex, id)
     end
-    tex:ClearAllPoints()
-    tex:SetPoint("CENTER", view, "CENTER", sx, -sy)
-    tex:Show()
+    local half = ICON / 2
+    if not Kit.Crop(tex, view, hw, hh, sx - half, sy - half, sx + half, sy + half, ICON_TC) then return false end
     used.icons = n
     return true
 end
@@ -312,14 +360,17 @@ local function PlaceMoves(scene, cam, t)
         end
         local R = it.r * scene.ppy * (BORN + (1 - BORN) * max(0, g))
         local rune, w1, w2 = pool.circles[nc + 1], pool.wisps[2 * nc + 1], pool.wisps[2 * nc + 2]
+        local back = pool.runeBacks[nc + 1]
         if PutFloor(rune, scene, cam, it.x, it.y, R, 0) then
             nc = nc + 1
             Tone(rune, "sem.rep.clsRune", a)
+            if PutFloor(back, scene, cam, it.x, it.y, R * BACK_K, 0) then Tone(back, "sem.rep.clsRuneBack", a) end
             if PutFloor(w1, scene, cam, it.x, it.y, R * WISP_K, age * SPIN) then Tone(w1, "sem.rep.clsWisp", a) end
             if PutFloor(w2, scene, cam, it.x, it.y, R * WISP_K, math.pi - age * SPIN) then Tone(w2, "sem.rep.clsWisp", a) end
         else
             w1:Hide()
             w2:Hide()
+            back:Hide()
         end
     end
     for i = n + 1, used.arrows do
@@ -328,6 +379,7 @@ local function PlaceMoves(scene, cam, t)
     end
     for i = nc + 1, used.circles do
         pool.circles[i]:Hide()
+        pool.runeBacks[i]:Hide()
         pool.wisps[2 * i - 1]:Hide()
         pool.wisps[2 * i]:Hide()
     end
@@ -374,25 +426,21 @@ local function PlaceTrails(scene, cam, t)
                         local age = (t - ts) / d.life
                         local rw = d.r * (1 + PUFF_GROW * age) * scene.ppy * cam.zoom * k
                         local rh = max(1, rw * min(1, cam.tilt * k))
-                        n = n + 1
-                        local p, c = pool.puffs[n], pool.cores[n]
-                        p:ClearAllPoints()
-                        p:SetPoint("CENTER", view, "CENTER", sx, -sy)
-                        p:SetWidth(rw * 2)
-                        p:SetHeight(rh * 2)
-                        Tone(p, d.tone, 1 - age)
-                        p:Show()
-                        c:ClearAllPoints()
-                        c:SetPoint("CENTER", view, "CENTER", sx, -sy)
-                        c:SetWidth(rw * 2 * PUFF_CORE)
-                        c:SetHeight(rh * 2 * PUFF_CORE)
-                        local r1, g1, b1, a1 = Kit.Color(d.core)
-                        if d.old then
-                            local r2, g2, b2, a2 = Kit.Color(d.old)
-                            r1, g1, b1, a1 = r1 + (r2 - r1) * age, g1 + (g2 - g1) * age, b1 + (b2 - b1) * age, a1 + (a2 - a1) * age
+                        local p, c = pool.puffs[n + 1], pool.cores[n + 1]
+                        local cw, ch = rw * PUFF_CORE, rh * PUFF_CORE
+                        if Kit.Crop(p, view, hw, hh, sx - rw, sy - rh, sx + rw, sy + rh) then
+                            n = n + 1
+                            Tone(p, d.tone, 1 - age)
+                            if Kit.Crop(c, view, hw, hh, sx - cw, sy - ch, sx + cw, sy + ch) then
+                                local r1, g1, b1, a1 = Kit.Color(d.core)
+                                if d.old then
+                                    local r2, g2, b2, a2 = Kit.Color(d.old)
+                                    r1, g1, b1, a1 = r1 + (r2 - r1) * age, g1 + (g2 - g1) * age, b1 + (b2 - b1) * age,
+                                        a1 + (a2 - a1) * age
+                                end
+                                c:SetVertexColor(r1, g1, b1, a1 * (1 - age))
+                            end
                         end
-                        c:SetVertexColor(r1, g1, b1, a1 * (1 - age))
-                        c:Show()
                     end
                 end
                 ts = ts + d.step
@@ -406,11 +454,185 @@ local function PlaceTrails(scene, cam, t)
     used.puffs = n
     probe.puffs = n
 end
+local function PlaceTotems(scene, cam, t)
+    local Ellipse = ns.ReplayLayersView.Ellipse
+    local n, reach = 0, nil
+    local list = active.totems
+    local half = TOTEM_ICON / 2
+    for i = 1, nact.totems do
+        local it = list[i]
+        if n >= TOTEM_DRAW then break end
+        local sx, sy, k = Screen(cam, scene, it.x, it.y)
+        if k > 0 then
+            local rw = max(TOTEM_MIN, TOTEM_YD * scene.ppy * cam.zoom * k)
+            local rh = max(1, rw * min(1, cam.tilt * k))
+            local ring, icon = pool.tRings[n + 1], pool.tIcons[n + 1]
+            local cy = sy - half
+            if Kit.Crop(icon, view, hw, hh, sx - half, cy - half, sx + half, cy + half, ICON_TC) then
+                n = n + 1
+                if icon.id ~= it.icon then
+                    icon.id = it.icon
+                    Kit.Icon.Spell(icon, it.icon)
+                end
+                local a = Fade(TOTEM_A, it, t)
+                icon:SetAlpha(a)
+                if Ellipse(ring, sx, sy, rw, rh) then Tone(ring, it.tone, a) end
+                tSx[n], tSy[n], tIt[n] = sx, cy, it
+                if it == hoverTotem and (it.r or 0) > 0 then
+                    local Rw = it.r * scene.ppy * cam.zoom * k
+                    local Rh = max(1, Rw * min(1, cam.tilt * k))
+                    reach = Rw
+                    if Ellipse(pool.reach[1], sx, sy, Rw, Rh) then Tone(pool.reach[1], it.tone, REACH_FILL_A) end
+                    if Ellipse(pool.reach[2], sx, sy, Rw, Rh) then Tone(pool.reach[2], it.tone, a) end
+                end
+            else
+                ring:Hide()
+            end
+        end
+    end
+    for i = n + 1, used.totems do
+        pool.tIcons[i]:Hide()
+        pool.tRings[i]:Hide()
+        tIt[i] = nil
+    end
+    if not reach then
+        pool.reach[1]:Hide()
+        pool.reach[2]:Hide()
+    end
+    used.totems = n
+    probe.totems, probe.reach = n, reach or 0
+end
+function V.Hover(mx, my)
+    local best, bestD = nil, TOTEM_HOVER * TOTEM_HOVER
+    for i = 1, mx and used.totems or 0 do
+        local dx, dy = tSx[i] - mx, tSy[i] - my
+        local d = dx * dx + dy * dy
+        if d < bestD then best, bestD = tIt[i], d end
+    end
+    hoverTotem = best
+    return best ~= nil
+end
+local function TargetAt(scene, cam, tg, t)
+    local x, y
+    if type(tg) == "number" then
+        local s = tg == 0 and scene.bossState or scene.states[tg]
+        if not (s and s.vis) or s.dead then return 0, 0, false end
+        x, y = s.x, s.y
+    else
+        if tg.from > t or tg.to <= t then return 0, 0, false end
+        x, y = Replay.PosHold(tg, t, huge)
+        if not x or x < 0 then return 0, 0, false end
+    end
+    local sx, sy, k = Screen(cam, scene, x, y)
+    return sx, sy, k > 0
+end
+local function Whose(scene, k, focus)
+    local name = scene.tracks[k] and scene.tracks[k].name
+    local mine = name ~= nil and name == focus
+    local UV = ns.ReplayUnitsView
+    if UV and UV.CastShown and not UV.CastShown(roles[name or ""] or "dd", mine) then return nil end
+    return (focus and not mine) and OTHER_A or 1
+end
+local function PlaceChans(scene, cam, t, focus)
+    local n = 0
+    local list = active.chans
+    local pulse = 0.75 + 0.25 * sin(t * CHAN_PULSE)
+    for i = 1, nact.chans do
+        local it = list[i]
+        if n >= CHAN_DRAW then break end
+        local s = scene.states[it.k]
+        local a = s and s.vis and not s.dead and Whose(scene, it.k, focus)
+        if a then
+            local ax, ay, ka = Screen(cam, scene, s.x, s.y)
+            local bx, by, ok = TargetAt(scene, cam, it.tg, t)
+            local glow, core = pool.chans[n + 1], pool.chanCores[n + 1]
+            if ka > 0 and ok and PutLine(glow, ax, ay, bx, by, CHAN_W) then
+                n = n + 1
+                a = a * min(1, (t - it.from) / BORN, (it.to - t) / BORN)
+                Tone(glow, it.tone, a * pulse)
+                if PutLine(core, ax, ay, bx, by, CHAN_CORE) then Tone(core, "sem.rep.chanCore", a) end
+            else
+                core:Hide()
+            end
+        end
+    end
+    for i = n + 1, used.chans do
+        pool.chans[i]:Hide()
+        pool.chanCores[i]:Hide()
+    end
+    used.chans = n
+    probe.chans = n
+end
+local function PutHit(ring, scene, cam, tg, t)
+    local x, y
+    if type(tg) == "number" then
+        local s = tg == 0 and scene.bossState or scene.states[tg]
+        if not (s and s.vis) or s.dead then return false end
+        x, y = s.x, s.y
+    else
+        if tg.from > t or tg.to <= t then return false end
+        x, y = Replay.PosHold(tg, t, huge)
+        if not x or x < 0 then return false end
+    end
+    local sx, sy, k = Screen(cam, scene, x, y)
+    if k <= 0 then return false end
+    local rw = max(HIT_MIN, HIT_YD * scene.ppy * cam.zoom * k)
+    return ns.ReplayLayersView.Ellipse(ring, sx, sy, rw, max(1, rw * min(1, cam.tilt * k)))
+end
+local function PlaceChains(scene, cam, t, focus)
+    local n, nh, nc = 0, 0, 0
+    local list = active.chains
+    local per = CHAIN_HOPS * 2
+    for i = 1, nact.chains do
+        local it = list[i]
+        if nc >= CHAIN_DRAW then break end
+        local s = scene.states[it.k]
+        local a = s and s.vis and not s.dead and Whose(scene, it.k, focus)
+        if a then
+            local base, hbase = nc * per, nc * CHAIN_HOPS
+            local m, mh = base, hbase
+            a = a * min(1, (t - it.from) / CHAIN_IN, (it.to - t) / CHAIN_FADE)
+            local ax, ay, ka = Screen(cam, scene, s.x, s.y)
+            local okA = ka > 0
+            for h = 1, min(#it.hops, CHAIN_HOPS) do
+                local tg = it.hops[h]
+                local bx, by, okB = TargetAt(scene, cam, tg, t)
+                if okB then
+                    if okA and PutLine(pool.bolts[m + 1], ax, ay, bx, by, CHAIN_W) then
+                        Tone(pool.bolts[m + 1], it.tone, a)
+                        m = m + 1
+                        if PutLine(pool.bolts[m + 1], ax, ay, bx, by, CHAIN_CORE) then
+                            Tone(pool.bolts[m + 1], "sem.rep.chanCore", a)
+                            m = m + 1
+                        end
+                    end
+                    local ring = pool.hits[mh + 1]
+                    if PutHit(ring, scene, cam, tg, t) then
+                        Tone(ring, it.tone, a)
+                        mh = mh + 1
+                    end
+                    ax, ay, okA = bx, by, true
+                end
+            end
+            for j = m + 1, base + per do pool.bolts[j]:Hide() end
+            for j = mh + 1, hbase + CHAIN_HOPS do pool.hits[j]:Hide() end
+            if m > base or mh > hbase then
+                nc = nc + 1
+                n, nh = n + (m - base), nh + (mh - hbase)
+            end
+        end
+    end
+    for j = nc * per + 1, used.bolts do pool.bolts[j]:Hide() end
+    for j = nc * CHAIN_HOPS + 1, used.hits do pool.hits[j]:Hide() end
+    used.bolts, used.hits = nc * per, nc * CHAIN_HOPS
+    probe.chains, probe.bolts, probe.hits = nc, n, nh
+end
 function V.Place(scene, cam, t)
     if not view then return end
     local cls = scene.layers and scene.layers.cls
     if not cls then
-        if used.zones + used.rings + used.cones + used.arrows + used.circles + used.beams + used.icons + used.puffs > 0 then
+        if used.zones + used.rings + used.cones + used.arrows + used.circles + used.beams + used.icons + used.puffs
+            + used.totems + used.chans + used.bolts + used.hits > 0 then
             HideAll()
         end
         return
@@ -421,11 +643,16 @@ function V.Place(scene, cam, t)
     end
     local icons = used.icons
     used.icons = 0
+    hw, hh = cam.w / 2, cam.h / 2
     PlaceRound(scene, cam, t)
     PlaceCones(scene, cam, t)
     PlaceMoves(scene, cam, t)
     PlaceBeams(scene, cam)
     PlaceTrails(scene, cam, t)
+    local focus = ns.ReplayLayersView.FocusName()
+    PlaceTotems(scene, cam, t)
+    PlaceChans(scene, cam, t, focus)
+    PlaceChains(scene, cam, t, focus)
     for i = used.icons + 1, icons do pool.icons[i]:Hide() end
     probe.icons = used.icons
 end

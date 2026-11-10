@@ -37,8 +37,9 @@ local function lift(c, top)
     return tone(c, top / m)
 end
 Kit.themes = {}
-Kit.order = { "dark", "scroll" }
-Kit.DEFAULT = "dark"
+Kit.order = { "scroll", "dark" }
+Kit.DEFAULT = "scroll"
+Kit.alias = { dusk = "clean" }
 Kit.themes.dark = {
     labelKey = "set.theme.dark",
     window = {
@@ -421,6 +422,8 @@ Kit.themes.dark = {
         rep = {
             defile = { 0.45, 0.16, 0.62, 0.85 },
             defileAim = { 0.80, 0.50, 1, 0.9 },
+            defileCloud = { 0.34, 0.34, 0.42, 0.45 },
+            defileCore = { 0.03, 0.03, 0.05, 0.6 },
             shadow = { 0.55, 0.30, 0.80, 0.8 },
             swarm = { 0.50, 0.28, 0.80, 0.40 },
             swarmCore = { 0.16, 0.04, 0.26, 0.80 },
@@ -456,7 +459,14 @@ Kit.themes.dark = {
             mc = { 1, 0.16, 0.10, 1 },
             mcBody = { 0.82, 0.05, 0.04, 0.95 },
             mcIcon = { 1, 0.42, 0.38, 1 },
-            cyclone = { 0.82, 1, 0.88, 0.9 },
+            cyclone = { 0.84, 0.88, 0.92, 0.97 },
+            cycloneShade = { 0.08, 0.09, 0.11, 0.88 },
+            valkyr = { 1, 0.84, 0.28, 1 },
+            badgeRim = { 0.82, 0.84, 0.88, 0.95 },
+            pale = { 0.85, 0.85, 0.88, 0.4 },
+            sheep = { 1, 1, 1, 0.95 },
+            frog = { 0.55, 0.9, 0.4, 1 },
+            ccFoe = { 1, 0.28, 0.2, 0.9 },
             victim = { 1, 0.25, 0.15, 1 },
             hitbox = { 0.74, 0.30, 0.32, 0.35 },
             spread = { 1, 1, 1, 0.85 },
@@ -474,12 +484,22 @@ Kit.themes.dark = {
             ddHp = { 0.86, 0.87, 0.89, 1 },
             pct = { 1, 1, 1, 1 },
             mana = { 0.22, 0.52, 1, 1 },
+            rage = { 1, 0.55, 0.12, 1 },
             manaBg = { 0, 0, 0, 0.65 },
             cast = { 1, 0.78, 0.25, 1 },
             castChan = { 0.55, 0.85, 1, 1 },
             castCut = { 1, 0.18, 0.14, 1 },
+            gcd = { 1, 1, 1, 1 },
+            addHp = { 0.32, 0.83, 0.45, 1 },
             castBg = { 0, 0, 0, 0.7 },
             castText = { 1, 1, 1, 1 },
+            raidBg = { 0.07, 0.07, 0.08, 0.92 },
+            raidEdge = { 0, 0, 0, 0.9 },
+            raidText = { 1, 1, 1, 1 },
+            raidOff = { 0.62, 0.62, 0.62, 1 },
+            raidFill = { 0.36, 0.36, 0.36, 1 },
+            raidLow = { 1, 0.18, 0.12, 1 },
+            raidLowBg = { 0.32, 0.04, 0.03, 0.95 },
             nick = { 0.86, 0.86, 0.86, 0.9 },
             side = { 0.62, 0.62, 0.62, 1 },
             stand = { 0.36, 0.36, 0.38, 1 },
@@ -528,6 +548,9 @@ Kit.themes.dark = {
             clsBootsCore = { 1, 0.90, 0.35, 0.90 },
             clsBootsOld = { 0.95, 0.42, 0.10, 0.60 },
             clsAmz = { 0.45, 0.95, 0.45, 0.65 },
+            clsTrapIce = { 0.62, 0.90, 1, 0.9 },
+            clsTrapIceFog = { 0.70, 0.90, 1, 0.20 },
+            clsTrapIceCore = { 0.88, 0.97, 1, 0.22 },
             clsHymn = { 1, 0.90, 0.55, 0.9 },
             clsHope = { 0.55, 0.75, 1, 0.9 },
             clsTide = { 0.35, 0.65, 1, 0.9 },
@@ -535,8 +558,19 @@ Kit.themes.dark = {
             clsJump = { 0.80, 0.85, 1, 0.85 },
             clsPort = { 0.70, 0.35, 0.95, 0.9 },
             clsRune = { 1, 1, 1, 0.85 },
+            clsRuneBack = { 0.04, 0.03, 0.08, 0.62 },
             clsWisp = { 0.26, 0.89, 0.07, 0.45 },
             clsBeacon = { 1, 0.85, 0.35, 0.55 },
+            totemFire = { 1, 0.45, 0.15, 0.85 },
+            totemEarth = { 0.80, 0.60, 0.32, 0.85 },
+            totemWater = { 0.35, 0.65, 1, 0.85 },
+            totemAir = { 0.78, 0.92, 1, 0.85 },
+            chanShadow = { 0.70, 0.40, 1, 0.80 },
+            chanArcane = { 0.95, 0.55, 1, 0.80 },
+            chanHoly = { 1, 0.88, 0.45, 0.80 },
+            chanCore = { 1, 1, 1, 0.70 },
+            chainHeal = { 0.40, 1, 0.70, 0.90 },
+            chainBolt = { 0.55, 0.78, 1, 0.95 },
             count = { 1, 0.95, 0.55, 1 },
             ph = {
                 a = { 0.30, 0.48, 0.78, 0.80 },
@@ -806,7 +840,15 @@ Kit.themes.scroll = {
             mc = { 0.96, 0.12, 0.08, 1 },
             mcBody = { 0.76, 0.04, 0.03, 0.95 },
             mcIcon = { 1, 0.40, 0.36, 1 },
-            cyclone = { 0.78, 0.98, 0.84, 0.9 },
+            cyclone = { 0.80, 0.84, 0.89, 0.97 },
+            cycloneShade = { 0.10, 0.10, 0.12, 0.88 },
+            valkyr = { 0.98, 0.80, 0.24, 1 },
+            badgeRim = { 0.86, 0.80, 0.66, 0.95 },
+            pale = { 0.8, 0.8, 0.84, 0.4 },
+            sheep = { 0.98, 0.97, 0.95, 0.95 },
+            frog = { 0.5, 0.85, 0.36, 1 },
+            ccFoe = { 0.96, 0.26, 0.18, 0.9 },
+            raidFill = { 0.40, 0.40, 0.40, 1 },
             bar = {
                 add = { 0.36, 0.52, 0.96 },
                 addEnd = { 0.14, 0.36, 0.92 },
@@ -855,6 +897,339 @@ Kit.themes.scroll = {
         },
     },
 }
+local DLG_DARK = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark"
+local ACH_BG = "Interface\\AchievementFrame\\UI-Achievement-AchievementBackground"
+local BLACK = { 0, 0, 0 }
+local function mix(c, to, k, a)
+    return { c[1] + (to[1] - c[1]) * k, c[2] + (to[2] - c[2]) * k, c[3] + (to[3] - c[3]) * k, a }
+end
+local CLEAN = {
+    look = "flat",
+    text = { 0.96, 0.93, 0.87 }, heading = { 0.96, 0.93, 0.87 }, secondary = { 0.74, 0.68, 0.58 }, off = { 0.52, 0.47, 0.40 },
+    gold = { 1, 0.82, 0 }, accent = { 0.95, 0.78, 0.28 }, positive = { 0.40, 0.82, 0.48 }, negative = { 1, 0.52, 0.44 },
+    background = { 0.135, 0.115, 0.09 }, panel = { 0.185, 0.16, 0.125 }, card = { 0.235, 0.205, 0.165 },
+    field = { 0.075, 0.065, 0.05 }, edge = { 0.46, 0.40, 0.30 }, line = { 1, 0.90, 0.70, 0.12 },
+    hover = { 1, 0.90, 0.70, 0.10 }, selected = { 1, 0.82, 0.30, 0.10 },
+    control = { bg = { 0.32, 0.275, 0.215 }, hover = { 0.40, 0.345, 0.27 }, down = { 0.24, 0.205, 0.16 },
+        edge = { 0.60, 0.52, 0.40 }, text = { 0.96, 0.93, 0.87 } },
+    main = { bg = { 0.40, 0.30, 0.08 }, hover = { 0.50, 0.38, 0.11 }, down = { 0.30, 0.22, 0.05 },
+        edge = { 0.88, 0.72, 0.24 }, text = { 1, 0.82, 0 } },
+    quiet = { bg = { 1, 0.90, 0.70, 0.05 }, hover = { 1, 0.90, 0.70, 0.11 }, down = { 0, 0, 0, 0.25 },
+        edge = { 0.46, 0.40, 0.30 }, text = { 0.88, 0.84, 0.76 } },
+    chosen = { bg = { 0.46, 0.40, 0.31 }, edge = { 0.70, 0.61, 0.47 }, text = { 1, 1, 1 } },
+}
+local function onClean(over)
+    local out = {}
+    for k, v in pairs(CLEAN) do out[k] = v end
+    for k, v in pairs(over) do out[k] = v end
+    return out
+end
+Kit.bases = {
+    clean = CLEAN,
+    slate = onClean({
+        grain = { path = ACH_BG, alpha = 0.15 },
+        background = { 0.105, 0.125, 0.155 }, panel = { 0.145, 0.17, 0.205 }, card = { 0.19, 0.215, 0.25 },
+        field = { 0.07, 0.08, 0.1 }, hover = { 0.8, 0.88, 1, 0.09 }, selected = { 1, 0.82, 0.30, 0.10 },
+        edge = { 0.4, 0.46, 0.54 }, line = { 0.8, 0.88, 1, 0.12 },
+        text = { 0.93, 0.95, 0.98 }, heading = { 0.93, 0.95, 0.98 }, secondary = { 0.7, 0.75, 0.82 },
+        off = { 0.48, 0.52, 0.58 },
+        gold = { 1, 0.82, 0 }, accent = { 0.96, 0.78, 0.3 }, positive = { 0.45, 0.85, 0.52 }, negative = { 1, 0.54, 0.46 },
+        control = { bg = { 0.25, 0.29, 0.35 }, hover = { 0.31, 0.36, 0.43 }, down = { 0.18, 0.21, 0.26 },
+            edge = { 0.52, 0.58, 0.67 }, text = { 0.93, 0.95, 0.98 } },
+        main = { bg = { 0.36, 0.29, 0.1 }, hover = { 0.46, 0.37, 0.13 }, down = { 0.27, 0.21, 0.06 },
+            edge = { 0.9, 0.74, 0.26 }, text = { 1, 0.84, 0.1 } },
+        quiet = { bg = { 0.8, 0.88, 1, 0.05 }, hover = { 0.8, 0.88, 1, 0.11 }, down = { 0, 0, 0, 0.25 },
+            edge = { 0.4, 0.46, 0.54 }, text = { 0.84, 0.88, 0.93 } },
+        chosen = { bg = { 0.4, 0.46, 0.54 }, edge = { 0.64, 0.7, 0.78 }, text = { 1, 1, 1 } },
+    }),
+    blizzard = onClean({
+        look = "blizzard",
+        grain = { path = DLG_DARK, alpha = 0.30, tile = 128 },
+        background = { 0.06, 0.06, 0.09 }, panel = { 0.09, 0.09, 0.16 }, card = { 0.13, 0.13, 0.21 },
+        field = { 0.04, 0.04, 0.07 }, hover = { 1, 0.82, 0, 0.08 }, selected = { 1, 0.82, 0, 0.16 },
+        edge = { 0.8, 0.66, 0.36 }, line = { 1, 0.82, 0, 0.14 },
+        text = { 1, 1, 1 }, heading = { 1, 0.82, 0 }, secondary = { 0.8, 0.72, 0.52 }, off = { 0.52, 0.52, 0.52 },
+        gold = { 1, 0.82, 0 }, accent = { 1, 0.82, 0 }, positive = { 0.3, 0.9, 0.3 }, negative = { 1, 0.4, 0.36 },
+        control = { bg = { 0.34, 0.1, 0.07 }, hover = { 0.45, 0.15, 0.1 }, down = { 0.24, 0.07, 0.05 },
+            edge = { 0.76, 0.6, 0.28 }, text = { 1, 0.82, 0 } },
+        main = { bg = { 0.48, 0.14, 0.09 }, hover = { 0.58, 0.2, 0.12 }, down = { 0.34, 0.1, 0.07 },
+            edge = { 1, 0.82, 0 }, text = { 1, 1, 1 } },
+        quiet = { bg = { 1, 1, 1, 0.04 }, hover = { 1, 0.82, 0, 0.1 }, down = { 0, 0, 0, 0.25 },
+            edge = { 0.5, 0.42, 0.26 }, text = { 0.9, 0.86, 0.74 } },
+        chosen = { bg = { 0.36, 0.3, 0.14 }, edge = { 1, 0.82, 0 }, text = { 1, 1, 1 } },
+    }),
+    night = onClean({
+        background = { 0.035, 0.035, 0.04 }, panel = { 0.065, 0.065, 0.075 }, card = { 0.105, 0.105, 0.12 },
+        field = { 0.02, 0.02, 0.025 }, hover = { 1, 1, 1, 0.1 }, selected = { 1, 0.82, 0.30, 0.13 },
+        edge = { 0.44, 0.44, 0.48 }, line = { 1, 1, 1, 0.14 },
+        text = { 0.98, 0.98, 0.98 }, heading = { 0.98, 0.98, 0.98 }, secondary = { 0.76, 0.76, 0.78 },
+        off = { 0.55, 0.55, 0.57 },
+        gold = { 1, 0.85, 0.1 }, accent = { 1, 0.72, 0.3 }, positive = { 0.45, 0.9, 0.55 }, negative = { 1, 0.52, 0.46 },
+        control = { bg = { 0.2, 0.2, 0.23 }, hover = { 0.27, 0.27, 0.31 }, down = { 0.14, 0.14, 0.16 },
+            edge = { 0.64, 0.64, 0.68 }, text = { 0.98, 0.98, 0.98 } },
+        main = { bg = { 0.38, 0.3, 0.06 }, hover = { 0.5, 0.4, 0.09 }, down = { 0.27, 0.21, 0.04 },
+            edge = { 1, 0.85, 0.1 }, text = { 1, 0.88, 0.2 } },
+        quiet = { bg = { 1, 1, 1, 0.05 }, hover = { 1, 1, 1, 0.11 }, down = { 0, 0, 0, 0.3 },
+            edge = { 0.44, 0.44, 0.48 }, text = { 0.88, 0.88, 0.9 } },
+        chosen = { bg = { 0.42, 0.42, 0.46 }, edge = { 0.72, 0.72, 0.76 }, text = { 1, 1, 1 } },
+    }),
+}
+local LOOKS = {
+    flat = {
+        window = { bgFile = WHITE8, edgeFile = TIP_EDGE, tile = true, tileSize = 16, edgeSize = 16, insets = INSET4 },
+        pad = 0, inset = 4,
+        tab = { h = 24, seat = 3, join = 4, rim = 5, x = 10 },
+    },
+    blizzard = {
+        window = {
+            bgFile = WHITE8, edgeFile = DLG_BORDER, tile = true, tileSize = 32, edgeSize = 32,
+            insets = { left = 7, right = 8, top = 8, bottom = 7 },
+        },
+        pad = 8, inset = 8, frame = true,
+        tab = { h = 28, seat = 6, join = 12, rim = 13, x = 16 },
+        edge = DLG_BORDER,
+    },
+}
+local function themeOf(key, b)
+    local look = LOOKS[b.look]
+    local tint = b.line
+    local wash = mix(lift(b.panel, 1), WHITE, 0.5)
+    local pale = math.max(b.background[1], b.background[2], b.background[3]) > 0.1
+    local white = WHITE
+    local ctl, main, quiet, chosen = b.control, b.main, b.quiet, b.chosen
+    local g = b.grain
+    local decor = {}
+    if g and g.tile then
+        decor[1] = { kind = "backdrop", bgFile = g.path, tileSize = g.tile, color = { 1, 1, 1, g.alpha }, inset = look.inset }
+    elseif g then
+        decor[1] = { tex = g.path, color = { 1, 1, 1, g.alpha }, layer = "BACKGROUND", inset = look.inset }
+    end
+    local deep = mix(b.field, b.background, 0.5)
+    local th = {
+        labelKey = "set.theme." .. key,
+        swatch = { rgba(b.background, 1), rgba(ctl.bg, 1), rgba(main.bg, 1), rgba(b.heading, 1) },
+        window = {
+            backdrop = look.window,
+            bg = rgba(b.background, 1),
+            border = look.frame and { 1, 1, 1, 1 } or rgba(b.edge, 1),
+            base = rgba(b.field, 1),
+            pad = look.pad,
+            decor = decor,
+            grip = rgba(b.accent, 1),
+            gripLit = mix(b.accent, white, 0.5, 1),
+            gripPress = mix(b.accent, BLACK, 0.25, 1),
+            gripGlow = mix(b.accent, white, 0.5, 0.35),
+            glyph = rgba(b.gold, 1),
+            glyphLit = mix(b.gold, white, 0.5, 1),
+            glyphOff = rgba(b.off, 1),
+        },
+        tab = {
+            h = look.tab.h, seat = look.tab.seat, join = look.tab.join, rim = look.tab.rim, x = look.tab.x,
+            fill = { tex = WHITE8, color = rgba(b.field, 1) },
+            fillHover = { tex = WHITE8, color = mix(b.field, b.panel, 0.7, 1) },
+            fillOn = { tex = WHITE8, coord = { 0, 1, 0, 1 }, color = rgba(b.background, 1) },
+            text = b.secondary,
+            textHover = b.text,
+            textOn = b.gold,
+            icon = rgba(b.secondary, 1),
+            iconHover = rgba(b.text, 1),
+            iconOn = mix(b.gold, white, 0.3, 1),
+        },
+        panel = { bg = rgba(b.panel, 0.85), border = rgba(b.edge, 0.9) },
+        plate = { bg = rgba(b.panel, 1), border = rgba(ctl.edge, 1) },
+        surface = {
+            page = rgba(b.background, 1),
+            solid = rgba(b.background, 1),
+            bg = rgba(b.panel, 0.75),
+            alt = rgba(wash, 0.03),
+            line = rgba(tint, 0.07),
+            grid = rgba(tint, 0.09),
+            edge = rgba(tint, 0.22),
+            hover = b.hover,
+            selected = rgba(b.selected, 0.16),
+            head = rgba(b.edge, 0.35),
+            headOn = rgba(chosen.bg, 0.70),
+            headText = b.secondary,
+            headOnText = b.text,
+            panel = rgba(b.panel, 0.7),
+            zebra = rgba(wash, 0.025),
+            handle = rgba(wash, 0.20),
+            label = b.text,
+            labelOff = b.off,
+            laneHead = rgba(wash, 0.11),
+            laneHeadHover = rgba(wash, 0.14),
+            laneHeadIdle = rgba(wash, 0.04),
+            laneText = b.text,
+            drop = mix(b.accent, BLACK, 0.4, 0.70),
+            dropOn = rgba(b.accent, 0.80),
+            dropRow = rgba(b.edge, 0.45),
+            dropSub = mix(b.edge, BLACK, 0.2, 0.55),
+        },
+        fx = {
+            name = b.text,
+            nameOff = b.secondary,
+            count = mix(b.secondary, b.off, 0.3),
+            countOff = b.off,
+            markOn = b.positive,
+            markOff = b.off,
+            line = rgba(tint, 0.10),
+        },
+        button = {
+            bg = rgba(ctl.bg, 0.95),
+            bgHover = rgba(ctl.hover, 0.95),
+            bgDown = rgba(ctl.down, 0.95),
+            bgActive = rgba(chosen.bg, 0.95),
+            bgOff = mix(ctl.down, BLACK, 0.3, 0.90),
+            border = rgba(ctl.edge, 0.9),
+            borderHover = rgba(b.gold, 1),
+            borderActive = rgba(chosen.edge, 1),
+            borderOff = rgba(b.off, 0.6),
+            glow = mix(ctl.edge, white, 0.3),
+            text = ctl.text,
+            textHover = white,
+            textActive = chosen.text,
+            textOff = b.off,
+            main = {
+                bg = rgba(main.bg, 0.95),
+                bgHover = rgba(main.hover, 0.95),
+                bgDown = rgba(main.down, 0.95),
+                border = rgba(main.edge, 0.95),
+                borderHover = rgba(b.gold, 1),
+                glow = b.gold,
+                text = main.text,
+                textHover = mix(main.text, white, 0.4),
+            },
+            quiet = {
+                bg = quiet.bg,
+                bgHover = quiet.hover,
+                bgDown = quiet.down,
+                border = rgba(quiet.edge, 1),
+                borderHover = rgba(ctl.edge, 1),
+                glow = ctl.edge,
+                text = quiet.text,
+                textHover = white,
+            },
+            icon = {
+                borderHover = rgba(b.edge, 1),
+                glow = b.accent,
+                text = b.secondary,
+                textHover = b.accent,
+            },
+            danger = {
+                bgHover = mix(b.negative, BLACK, 0.5, 0.25),
+                bgDown = mix(b.negative, BLACK, 0.7, 0.35),
+                border = mix(b.negative, BLACK, 0.5, 1),
+                borderHover = rgba(b.negative, 1),
+                glow = b.negative,
+                text = b.negative,
+                textHover = mix(b.negative, white, 0.3),
+            },
+            hot = {
+                bg = mix(main.bg, BLACK, 0.3, 0.95),
+                bgHover = rgba(main.bg, 0.95),
+                bgDown = mix(main.bg, BLACK, 0.5, 0.95),
+                border = mix(main.edge, BLACK, 0.6, 1),
+                borderHover = mix(main.edge, BLACK, 0.2, 1),
+                glow = b.gold,
+                text = mix(main.edge, BLACK, 0.2),
+                textHover = b.gold,
+            },
+        },
+        check = { label = b.heading },
+        edit = { bg = rgba(b.field, 0.9), border = rgba(b.edge, 1), borderFocus = rgba(b.gold, 1), text = b.text },
+        list = { bg = rgba(b.panel, 0.97), border = rgba(ctl.edge, 1), head = b.heading },
+        row = { bgHover = b.hover, bgOn = rgba(b.selected, 0.16), text = b.text },
+        card = {
+            bg = mix(b.panel, b.card, 0.4, 0.96),
+            border = mix(b.card, b.edge, 0.5, 1),
+            borderHover = rgba(ctl.edge, 1),
+            borderDim = mix(b.card, b.edge, 0.25, 0.8),
+            sticker = rgba(b.field, 0.95),
+        },
+        scroll = {
+            track = rgba(wash, 0.16),
+            trackIdle = rgba(wash, 0.05),
+            thumb = mix(ctl.edge, b.text, 0.3, 0.95),
+            thumbHot = rgba(b.text, 1),
+        },
+        slider = {
+            track = rgba(wash, 0.16),
+            fill = rgba(b.accent, 0.72),
+            thumb = rgba(ctl.edge, 1),
+            thumbHot = rgba(b.text, 1),
+            thumbOff = rgba(b.off, 1),
+        },
+        nav = { accent = b.heading, group = mix(b.secondary, b.off, 0.5) },
+        tip = {
+            bg = rgba(deep, 1),
+            border = rgba(ctl.edge, 1),
+            title = b.text,
+            body = b.gold,
+            dim = b.secondary,
+        },
+        text = {
+            title = b.heading,
+            primary = b.text,
+            secondary = b.secondary,
+            muted = mix(b.secondary, b.off, 0.35),
+            note = mix(b.off, b.secondary, 0.4),
+            good = b.positive,
+            bad = b.negative,
+            off = b.off,
+        },
+        badge = {
+            bg = mix(b.panel, b.card, 0.35, 1),
+            edge = mix(b.card, b.edge, 0.45, 1),
+            hover = mix(ctl.edge, white, 0.15, 1),
+        },
+        parse = pale and { p75 = { 0.72, 0.38, 1 }, p50 = { 0.20, 0.56, 0.98 } } or {},
+        sem = {
+            enc = rgba(b.panel, 0.62),
+            rep = { raidBg = rgba(deep, 0.92) },
+        },
+        progress = {
+            track = rgba(wash, 0.10),
+            fill = rgba(b.accent, 0.8),
+            text = b.text,
+            queue = b.off,
+        },
+        float = {
+            bg = rgba(b.panel, 0.92),
+            veil = rgba(b.field, 0.65),
+            border = rgba(b.edge, 1),
+            toolHover = rgba(wash, 0.25),
+        },
+        pop = { bg = rgba(b.panel, 1), border = rgba(b.edge, 1) },
+        about = {
+            art = rgba(lift(b.panel, 0.42), 1),
+            line = rgba(b.heading, 0.30),
+            foot = rgba(b.field, 0.60),
+            card = {
+                bg = rgba(b.field, 0.55),
+                border = rgba(b.edge, 0.9),
+                borderHover = rgba(ctl.edge, 1),
+                borderOn = rgba(b.gold, 1),
+            },
+        },
+    }
+    if look.edge then
+        local framed = { "panel", "plate", "list", "pop" }
+        local base = Kit.themes.dark
+        for i = 1, #framed do
+            local grp = th[framed[i]]
+            local bd = base[framed[i]].backdrop
+            grp.backdrop = {
+                bgFile = WHITE8, edgeFile = look.edge, tile = false, edgeSize = 16, insets = bd.insets,
+            }
+            grp.border = { 1, 1, 1, 1 }
+        end
+    end
+    return th
+end
+Kit.themes.dark.swatch = { { 0.03, 0.04, 0.05, 1 }, { 0.10, 0.11, 0.13, 1 }, { 0.165, 0.13, 0.03, 1 }, rgba(GOLD, 1) }
+Kit.themes.scroll.swatch = { { 0.74, 0.62, 0.44, 1 }, tone(dusk, 0.55, 1), tone(EDGE, 0.24, 1), rgba(EDGE, 1) }
+for key, base in pairs(Kit.bases) do Kit.themes[key] = themeOf(key, base) end
+Kit.order = { "scroll", "dark", "clean", "slate", "blizzard", "night" }
 local function deepCopy(src)
     if type(src) ~= "table" then return src end
     local out = {}
@@ -874,7 +1249,7 @@ local function inherit(t, base)
         end
     end
 end
-local ETALON = Kit.themes[Kit.DEFAULT]
+local ETALON = Kit.themes.dark
 for i = 1, #Kit.order do
     local t = Kit.themes[Kit.order[i]]
     if t ~= ETALON then inherit(t, ETALON) end

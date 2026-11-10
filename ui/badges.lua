@@ -174,7 +174,7 @@ local function FullLines(m, parts)
     if base and base[1] and base[1].kind == "head" and base[1].left == m.title then
         out[1], from = base[1], 2
     else
-        out[1] = { kind = "head", left = m.title, right = m.value }
+        out[1] = { kind = "head", left = m.title, right = m.corner and (m.value .. "  " .. m.corner) or m.value }
     end
     for i = 1, #parts do out[#out + 1] = { kind = "sub", left = parts[i] } end
     if base and base[from] then
@@ -195,6 +195,11 @@ local function TotalH(f)
     local t, v, s = Pt(f, "GameFontNormalSmall"), Pt(f, "GameFontHighlightLarge"), Pt(f, "GameFontDisableSmall")
     local body = max(v, 2 * s)
     return max(6 + t + 9 + body + 7, ceil(6 + t * 1.15 + 8 + body * 1.15 + 2))
+end
+local function TotalClick(self, button)
+    if button ~= "LeftButton" or not self.open then return end
+    HideTip()
+    self.open(self)
 end
 function Badges.Total(parent, sized)
     local f = CreateFrame("Frame", nil, parent)
@@ -219,8 +224,13 @@ function Badges.Total(parent, sized)
     ns.Kit.Text(f.subTop, "text.off")
     f.subTop:SetPoint("BOTTOMLEFT", f.sub, "TOPLEFT", 0, 0)
     OneLine(f.subTop)
+    f.corner = Str(f, "GameFontNormalSmall")
+    ns.Kit.Text(f.corner, "text")
+    f.corner:SetJustifyH("RIGHT")
+    OneLine(f.corner)
     f:SetScript("OnEnter", ShowLines)
     f:SetScript("OnLeave", HideTip)
+    f:SetScript("OnMouseUp", TotalClick)
     function f.SetModel(self, m)
         local c = m.color
         Badges.Skin(self, c)
@@ -234,8 +244,12 @@ function Badges.Total(parent, sized)
         if self.unbuff then
             if m.unbuff then self.unbuff:Show() else self.unbuff:Hide() end
         end
+        self.corner:ClearAllPoints()
+        self.corner:SetPoint("TOPRIGHT", -(TOTAL_R + (m.unbuff and UNBUFF + UNBUFF_EDGE or 0) + (m.reserve or 0)), -6)
+        self.corner:SetText(m.corner or "")
         self.lines = m.lines
-        self:EnableMouse(m.lines ~= nil)
+        self.open = m.open
+        self:EnableMouse(m.lines ~= nil or m.open ~= nil)
     end
     function f.Layout(self, width)
         local th = TotalH(self)
@@ -258,7 +272,10 @@ function Badges.Total(parent, sized)
             self.icon:Hide()
         end
         local parts = SubParts(m)
-        local _, cutTitle = Fit(self.title, m.title, inner - (m.unbuff and UNBUFF + UNBUFF_EDGE or 0))
+        local corner = TextNeed(self.corner, m.corner)
+        self.corner:SetText(m.corner or "")
+        local _, cutTitle = Fit(self.title, m.title, inner - (m.unbuff and UNBUFF + UNBUFF_EDGE or 0)
+            - (corner > 0 and corner + SUBGAP or 0) - (m.reserve or 0))
         local vw, cutValue = Fit(self.value, m.value, inner - lead)
         local room = inner - lead - vw - SUBGAP
         if room < SUBMIN then room = 0 end
@@ -268,7 +285,7 @@ function Badges.Total(parent, sized)
         local _, cutBottom = Fit(self.sub, bottom, room)
         local cut = cutTitle or cutValue or cutTop or cutBottom
         self.lines = cut and FullLines(m, parts) or m.lines
-        self:EnableMouse(self.lines ~= nil)
+        self:EnableMouse(self.lines ~= nil or m.open ~= nil)
         return th
     end
     function f.Need(self)
@@ -280,7 +297,10 @@ function Badges.Total(parent, sized)
         local sub = max(TextNeed(self.subTop, top), TextNeed(self.sub, bottom))
         local body = TextNeed(self.value, m.value) + (sub > 0 and SUBGAP + sub or 0)
         if m.icon then body = body + Pt(self, "GameFontHighlightLarge") + SUBGAP end
+        local corner = TextNeed(self.corner, m.corner)
+        self.corner:SetText(m.corner or "")
         local head = TextNeed(self.title, m.title) + (m.unbuff and UNBUFF + UNBUFF_EDGE or 0)
+            + (corner > 0 and corner + SUBGAP or 0) + (m.reserve or 0)
         return TOTAL_L + max(head, body) + TOTAL_R
     end
     return f
@@ -532,6 +552,7 @@ local function HeadLeave(self)
     Hover(self:GetParent(), false)
 end
 local function Reportable(f)
+    if f.modal then return f.chat ~= nil and f.model ~= nil and f.model.chat ~= nil end
     if not (f.chatCtx and f.chat) or f.cellW then return false end
     local list = f.list
     for i = 1, #list do
@@ -559,13 +580,14 @@ local function ChatLines(f, n)
     local R = ns.ChatReport
     local m = f.model
     if not (R and m) then return {} end
+    if m.chat then return m.chat(n, f.chatCtx and f.chatCtx()) end
     local title = m.title or ""
     if f.wide and #f.cols > 1 then title = format("%s (%s)", title, tconcat(f.cols, ", ")) end
     return R.Detail(title, f.chatCtx(), ChatRows(f), n)
 end
-local function ChatButton(f)
-    local b = CreateFrame("Button", nil, f)
-    b:SetFrameLevel(f:GetFrameLevel() + 6)
+function Badges.ChatIcon(parent, build, title, none)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetFrameLevel(parent:GetFrameLevel() + 6)
     b:SetWidth(EXPAND_BOX)
     b:SetHeight(EXPAND_BOX)
     b:SetHitRectInsets(-HIT, -HIT, -HIT, -HIT)
@@ -589,12 +611,22 @@ local function ChatButton(f)
         HideTip()
     end)
     b:SetScript("OnClick", function(self)
-        if ns.ProofView then
-            ns.ProofView.ReportMenu(self, function(n) return ChatLines(f, n) end, "report.menu.detail", true)
-        end
+        if ns.ProofView then ns.ProofView.ReportMenu(self, build, title or "report.menu.detail", true, none) end
     end)
+    return b
+end
+local chatBtns = {}
+local function ChatButton(f)
+    local b = Badges.ChatIcon(f, function(n) return ChatLines(f, n) end)
     b:Hide()
     f.chat = b
+    chatBtns[#chatBtns + 1] = b
+end
+function Badges.ChatShown()
+    for i = 1, #chatBtns do
+        if chatBtns[i]:IsVisible() then return chatBtns[i] end
+    end
+    return nil
 end
 function Badges.ChatHead(f, ctx)
     f.chatCtx = ctx
@@ -645,11 +677,11 @@ local function Chrome(f)
         end
         ExpandOpen(f)
     end)
+    ChatButton(f)
     if f.modal then return end
     local b = Badges.Expand(f, function() ExpandOpen(f) end, function(on) Hover(f, on) end)
     b:SetPoint("TOPRIGHT", -EXPAND_R, -3)
     f.expand = b
-    ChatButton(f)
 end
 local function MechanicHead(f, m)
     local size = LH(f) - 2
@@ -669,7 +701,7 @@ local function Crown(f, lines)
     local list = f.list
     local over = #list > lines
     f.over = (over or f.cut == true) and not f.modal
-    local x = EXPAND_R
+    local x = f.modal and RESERVE or EXPAND_R
     if Reportable(f) then
         f.chat:ClearAllPoints()
         f.chat:SetPoint("TOPRIGHT", -x, -3)
@@ -684,7 +716,7 @@ local function Crown(f, lines)
         if f.over then x = x + EXPAND_BOX + EXPAND_R end
     end
     local right = x > EXPAND_R and x or 8
-    if f.modal then right = RESERVE end
+    if f.modal then right = max(right, RESERVE) end
     f.headR = right
     if over then
         f.more:SetText(format(ns.T("sum.k.more"), f.offset + 1, min(#list, f.offset + lines), #list))
@@ -815,6 +847,13 @@ local function Relh(f)
     f.title:SetHeight(lh - 2)
     f.head:SetHeight(8 + lh)
     for k = 1, #f.rows do PlaceRow(f, f.rows[k], k) end
+end
+function Badges.DetailAt(panels, i, parent, ctx)
+    if not panels[i] then
+        panels[i] = Badges.Detail(parent, nil, true)
+        Badges.ChatHead(panels[i], ctx)
+    end
+    return panels[i]
 end
 function Badges.Detail(parent, modal, sized)
     local f = CreateFrame("Frame", nil, parent)
@@ -1321,6 +1360,9 @@ local function WideAnchor(f, row, k)
     row:SetPoint("TOPLEFT", 6, -y)
     row:SetPoint("TOPRIGHT", -(f.rowR or ROW_R), -y)
 end
+local function WideClick(self, button)
+    if self.fight and self.at then MarkClick(self, button) end
+end
 local function NewWideRow(f, k)
     local row = CreateFrame("Frame", nil, f)
     row.sized = f.sized
@@ -1329,6 +1371,7 @@ local function NewWideRow(f, k)
     row:EnableMouse(k > 0)
     row:SetScript("OnEnter", ShowLines)
     row:SetScript("OnLeave", HideTip)
+    if k > 0 then row:SetScript("OnMouseUp", WideClick) end
     row.name = Str(row, "GameFontHighlightSmall")
     row.name:SetHeight(LH(f))
     row.name:SetJustifyH("LEFT")
@@ -1497,6 +1540,7 @@ local function WideRow(row, e, f)
     end
     row.lines = e and e.lines
     row.tips = e and e.tips
+    row.fight, row.at, row.who = e and e.fight, e and e.at, e and e.who
     for c = 1, #f.cols do row.hits[c]:EnableMouse(row.tips ~= nil and row.tips[c] and true or false) end
     row.tipIcon = nil
 end

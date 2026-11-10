@@ -3,6 +3,7 @@ local Kit = ns.Kit or {}
 ns.Kit = Kit
 local WHITE8 = "Interface\\Buttons\\WHITE8X8"
 local WHITE = { 1, 1, 1 }
+local FULL_TC = { 0, 0, 0, 1, 1, 0, 1, 1 }
 local SOUNDS = {
     open = "igSpellBookOpen",
     tab = "igCharacterInfoTab",
@@ -37,6 +38,13 @@ local function Saved()
     local s = type(db) == "table" and db.settings
     if type(s) == "table" then return s end
     return nil
+end
+Kit.Settings = Saved
+function Kit.HidePools(pools, used)
+    for kind, pool in pairs(pools) do
+        for i = 1, #pool do pool[i]:Hide() end
+        used[kind] = 0
+    end
 end
 local function Flatten(t, prefix, into)
     into = into or C
@@ -160,10 +168,6 @@ function Kit.Hue(tex, token, a)
     local c = C[token]
     if c then tex:SetVertexColor(c[1], c[2], c[3], a or c[4] or 1) end
 end
-function Kit.TipAdd(text, token, wrap)
-    local c = Kit.GameColor(token)
-    GameTooltip:AddLine(text, c[1], c[2], c[3], wrap)
-end
 function Kit.Hex(token)
     local c = C[token] or WHITE
     return string.format("|cff%02x%02x%02x", math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5),
@@ -195,6 +199,30 @@ function Kit.Fill(tex, d)
     tex:SetAlpha(d.alpha or 1)
     tex:SetBlendMode(d.blend or "BLEND")
     if d.layer then tex:SetDrawLayer(d.layer) end
+end
+local function TcAt(c, fx, fy)
+    return c[1] + (c[5] - c[1]) * fx + (c[3] - c[1]) * fy, c[2] + (c[6] - c[2]) * fx + (c[4] - c[2]) * fy
+end
+function Kit.Crop(tex, anchor, hw, hh, l, t, r, b, c)
+    local cl, ct, cr, cb = math.max(l, -hw), math.max(t, -hh), math.min(r, hw), math.min(b, hh)
+    if cr - cl < 1 or cb - ct < 1 then
+        tex:Hide()
+        return false
+    end
+    c = c or FULL_TC
+    local w, h = r - l, b - t
+    local x0, x1, y0, y1 = (cl - l) / w, (cr - l) / w, (ct - t) / h, (cb - t) / h
+    local ulx, uly = TcAt(c, x0, y0)
+    local llx, lly = TcAt(c, x0, y1)
+    local urx, ury = TcAt(c, x1, y0)
+    local lrx, lry = TcAt(c, x1, y1)
+    tex:ClearAllPoints()
+    tex:SetPoint("TOPLEFT", anchor, "CENTER", cl, -ct)
+    tex:SetWidth(cr - cl)
+    tex:SetHeight(cb - ct)
+    tex:SetTexCoord(ulx, uly, llx, lly, urx, ury, lrx, lry)
+    tex:Show()
+    return true
 end
 function Kit.Solid(f, layer, r, g, b, a)
     if type(r) == "table" then r, g, b, a = r[1], r[2], r[3], r[4] end
@@ -303,6 +331,8 @@ end
 function Kit.Load()
     local s = Saved()
     local key = s and s.theme
+    key = key and Kit.alias[key] or key
+    if s and key and s.theme ~= key then s.theme = key end
     if not Kit.themes[key or ""] then
         key = Kit.DEFAULT
         if s then s.theme = key end
@@ -311,6 +341,81 @@ function Kit.Load()
     current = key
     Flatten(Kit.themes[current], nil)
     Kit.Repaint()
+end
+local SWATCH = { "surface.page", "button.bg", "button.main.bg", "text.title" }
+local PICK_ROW, CARD_ROW = 20, 24
+local ROUND_FILL = 0.8
+local PICK_ROLE = { text = "text.primary", textOn = "text.title", textOff = "text.off", fillHover = "row.bgHover",
+                    rim = "surface.edge" }
+local CARD_ROLE = { text = "button.text", textHover = "button.textHover", textOn = "button.textActive",
+                    textOff = "button.textOff", fill = "button.bg", fillHover = "button.bgHover",
+                    fillOn = "button.bgActive", edge = "button.border", edgeHover = "button.borderHover",
+                    edgeOn = "button.borderActive", rim = "surface.edge" }
+local function At(t, path)
+    local node = t
+    for part in path:gmatch("[^%.]+") do
+        if type(node) ~= "table" then return nil end
+        node = node[part]
+    end
+    return type(node) == "table" and type(node[1]) == "number" and node or nil
+end
+function Kit.Swatch(key)
+    local t = Kit.themes[key]
+    if not t then return {} end
+    if type(t.swatch) == "table" then return t.swatch end
+    local out = {}
+    for i = 1, #SWATCH do out[i] = At(t, SWATCH[i]) or WHITE end
+    return out
+end
+function Kit.ThemeItems()
+    local out = {}
+    for i = 1, #Kit.order do
+        local key = Kit.order[i]
+        local name = ns.T(Kit.themes[key].labelKey)
+        out[i] = { key = key, name = name, label = key == Kit.DEFAULT and string.format(ns.T("set.theme.main"), name) or name,
+                   colors = Kit.Swatch(key), on = key == current }
+    end
+    return out
+end
+local function PickColor(role)
+    local token = PICK_ROLE[role]
+    if not (token and C[token]) then return nil end
+    return Kit.Color(token)
+end
+local function CardColor(role)
+    local token = CARD_ROLE[role]
+    if not (token and C[token]) then return nil end
+    return Kit.Color(token)
+end
+local function PickText(fs, text)
+    Kit.Bind(fs, "GameFontNormalSmall")
+    fs:SetText(text)
+end
+local function PickRow()
+    return Kit.GrowH(PICK_ROW, "GameFontNormalSmall")
+end
+local function CardRow()
+    return Kit.GrowH(CARD_ROW, "GameFontNormalSmall")
+end
+local function PickRound()
+    return Kit.Theme().button.backdropRound
+end
+local function CardFrame()
+    return Kit.Theme().button.backdrop
+end
+local function CardCheck()
+    return Kit.Theme().check.mark.tex
+end
+function Kit.ThemePick(parent, onPick, card)
+    local function Pick(key, item)
+        if onPick then onPick(key, item) else Kit.SetTheme(key) end
+    end
+    if card then
+        return ns.ThemePick.New(parent, { color = CardColor, text = PickText, rowH = CardRow, backdrop = CardFrame,
+            check = CardCheck, pad = 8, gapX = 4, gapY = 4, onPick = Pick })
+    end
+    return ns.ThemePick.New(parent, { color = PickColor, text = PickText, rowH = PickRow, backdrop = PickRound,
+        edge = ROUND_FILL, onPick = Pick })
 end
 Flatten(Kit.themes[current], nil)
 if ns.OnReady then ns.OnReady(Kit.Load) end

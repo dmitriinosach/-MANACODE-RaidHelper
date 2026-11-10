@@ -16,6 +16,11 @@ local listeners = {}
 local pending = {}
 local queue = {}
 local waits = {}
+local turn = 0
+local function Turn()
+    turn = turn + 1
+    return turn
+end
 local wordSet
 local wordSrc
 local fails
@@ -159,13 +164,13 @@ function Auto.Try(name)
     end
     if queue[name] then return "pending" end
     if Members() + Pending() >= RAID_MAX then
-        waits[name] = waits[name] or GetTime()
+        waits[name] = waits[name] or Turn()
         return "waiting"
     end
     waits[name] = nil
     local raid = Group()
     if raid == 0 and Members() + Pending() >= PARTY_MAX then
-        queue[name] = GetTime()
+        queue[name] = Turn()
         Convert()
         return "queued"
     end

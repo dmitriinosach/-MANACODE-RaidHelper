@@ -5,6 +5,7 @@ local max = math.max
 local min = math.min
 local TIMES = 8
 local KICK_TIMES = 15
+local DOMINATE = 71289
 local GLYPH = "|T%s:16:16:0:0:64:64:5:59:5:59|t"
 local Tips = {}
 ns.ActionTips = Tips
@@ -390,4 +391,139 @@ function Tips.Kick(k)
         Put(out, "sub", (format(T("sum.tip.more"), k.all - KICK_TIMES):gsub("^%s+", "")))
     end
     return out
+end
+local function MarkRow(p, classOf, n, text, icon, lines, all, t, replay, kind)
+    local row = { who = p.name, class = (classOf and classOf(p.name)) or p.class, n = n, tries = all, lines = lines,
+                  cells = { text }, vals = { n }, tones = { n > 0 and "text.bright" or "text.off" },
+                  marks = { icon and { id = icon } or false } }
+    if replay and t then replay(row, t, kind) end
+    return row
+end
+local function ByDone(rows)
+    table.sort(rows, function(x, y)
+        if x.n ~= y.n then return x.n > y.n end
+        if x.tries ~= y.tries then return x.tries > y.tries end
+        return x.who < y.who
+    end)
+end
+local function KickView(b, s, classOf, fight, replay)
+    local rows = {}
+    for _, p in ipairs(s.players) do
+        local list = p.kickList or {}
+        if #list > 0 then
+            local n, all, sure, lines, icon, top, t = 0, 0, true, {}, nil, -1, nil
+            for k = 1, #list do
+                local kk = list[k]
+                n, all = n + kk.n, all + (kk.all or kk.n)
+                sure = sure and kk.all ~= nil
+                if (kk.all or kk.n) > top then icon, top = kk.id, kk.all or kk.n end
+                if kk.at and kk.at[1] and (not t or kk.at[1] < t) then t = kk.at[1] end
+                if #lines > 0 then lines[#lines + 1] = { kind = "sep" } end
+                local tip = ns.BadgeTips.Kick(kk)
+                for i = 1, #tip do lines[#lines + 1] = tip[i] end
+            end
+            local text = sure and format("%d/%d", n, all) or tostring(n)
+            rows[#rows + 1] = MarkRow(p, classOf, n, text, icon, lines, all, t and fight.from + t, replay, "kick")
+        end
+    end
+    ByDone(rows)
+    local title = format(T("sum.k.kickctl.kicks"), b.total, b.casts)
+    return { title = title, cols = { T("sum.k.kickctl.colkick") }, heads = { false }, rows = rows,
+             tip = { { kind = "head", left = title },
+                     { kind = "row", left = format(T("sum.k.missed"), max(0, b.casts - b.total)) } } }
+end
+local function Held(s, ci, from)
+    local hits = {}
+    for _, p in ipairs(s.players) do
+        local c = p.badges and p.badges[ci]
+        for k = 1, c and c.n or 0 do
+            if c.res and c.res[k] == "ok" then
+                local who = c.notes[k]
+                hits[who] = hits[who] or {}
+                hits[who][#hits[who] + 1] = c.times[k]
+            end
+        end
+    end
+    local eps, held = 0, 0
+    for _, p in ipairs(s.players) do
+        for _, e in ipairs(p.ctl or {}) do
+            eps = eps + 1
+            local t0, t1 = e.t - from - 1, (e.to or (from + 1e6)) - from + 1
+            for _, t in ipairs(hits[p.name] or {}) do
+                if t >= t0 and t <= t1 then
+                    held = held + 1
+                    break
+                end
+            end
+        end
+    end
+    return eps, held
+end
+local function CtlView(s, ci, classOf, fight, replay)
+    local rows, bd = {}, s.badges[ci]
+    for _, p in ipairs(s.players) do
+        local st = p.badges and p.badges[ci]
+        if st and st.n > 0 then
+            local first = ns.ReplayLink and ns.ReplayLink.First(st.times) or st.times[1]
+            rows[#rows + 1] = MarkRow(p, classOf, st.hits, format("%d/%d", st.hits, st.n),
+                st.icon or (s.icons and s.icons[ci]) or bd.id, ns.BadgeTips.Badge(st, bd, fight), st.n,
+                first and fight.from + first, replay, bd.kind)
+        end
+    end
+    ByDone(rows)
+    local eps, held = Held(s, ci, fight.from)
+    local title = format(T("sum.k.kickctl.held"), held, eps)
+    return { title = title, cols = { T("sum.k.kickctl.colctl") }, heads = { false }, rows = rows, spell = bd.id,
+             tip = { { kind = "head", left = title },
+                     { kind = "row", left = format(T("sum.k.kickctl.free"), max(0, eps - held)) } } }
+end
+local function HeldRow(p, inn, class)
+    local sec, out = 0, 0
+    for _, c in ipairs(p.ctl) do
+        sec = sec + max(0, (c.to or c.t) - c.t)
+        out = out + (c.swing or 0) + (c.abil or 0)
+    end
+    sec = floor(sec + 0.5)
+    local times = format(T("sum.k.inctl.cell"), #p.ctl, sec)
+    local lines = { { kind = "head", left = p.name, right = times } }
+    Put(lines, "row", T("sum.k.inctl.got"), ns.Short(inn), nil, inn > 0 and "bad" or nil)
+    ns.BadgeTips.Abil(lines, p.mcGot, false, nil, true)
+    Put(lines, "row", T("sum.k.inctl.dealt"), ns.Short(out), nil, out > 0 and "bad" or nil)
+    ns.BadgeTips.Abil(lines, p.mcOut, false, nil, true)
+    return { who = p.name, class = class, lines = lines, n = #p.ctl, sec = sec, out = out, inn = inn,
+             cells = { times, ns.Short(out), ns.Short(inn) }, vals = { #p.ctl * 1e4 + sec, out, inn },
+             tones = { false, out > 0 and "text.bright" or "text.off", inn > 0 and "text.bright" or "text.off" }, marks = {} }
+end
+local function HeldView(s, classOf)
+    local got = {}
+    for _, p in ipairs(s.players) do
+        for _, m in ipairs(p.mcDmg or {}) do got[m.who] = (got[m.who] or 0) + m.n end
+    end
+    local rows, eps, secs, dealt, taken = {}, 0, 0, 0, 0
+    for _, p in ipairs(s.players) do
+        if p.ctl and #p.ctl > 0 then
+            local r = HeldRow(p, got[p.name] or 0, (classOf and classOf(p.name)) or p.class)
+            rows[#rows + 1] = r
+            eps, secs, dealt, taken = eps + r.n, secs + r.sec, dealt + r.out, taken + r.inn
+        end
+    end
+    table.sort(rows, function(x, y)
+        if x.vals[1] ~= y.vals[1] then return x.vals[1] > y.vals[1] end
+        return x.who < y.who
+    end)
+    local title = format(T("sum.k.inctl.title"), eps, secs)
+    local tip = { { kind = "head", left = title } }
+    Put(tip, "row", T("sum.k.inctl.got"), ns.Short(taken))
+    Put(tip, "row", T("sum.k.inctl.dealt"), ns.Short(dealt))
+    return { title = title, cols = { T("sum.k.inctl.colcnt"), T("sum.k.inctl.coldealt"), T("sum.k.inctl.colgot") },
+             heads = {}, rows = rows, tip = tip, spell = DOMINATE }
+end
+function Tips.KickCtlView(b, s, classOf, fight, replay)
+    if not (s and b and b.def.kind == "casts" and fight and fight.from) then return nil end
+    local ci
+    for i = 1, #(s.badges or {}) do
+        if s.badges[i].kind == "cc" then ci = i end
+    end
+    if not ci then return nil end
+    return { KickView(b, s, classOf, fight, replay), CtlView(s, ci, classOf, fight, replay), HeldView(s, classOf) }
 end

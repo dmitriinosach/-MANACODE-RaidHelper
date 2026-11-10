@@ -23,7 +23,6 @@ local FLASH = 0.8
 local FLASH_YD = 2.5
 local FLASH_DRAW = 16
 local POOL_DRAW = 48
-local MAX_PX = 4000
 local COUNT_PAD = 8
 local COUNT_H = 18
 local SW_GAP = 4
@@ -35,6 +34,9 @@ local STRIPE_PAD = 3
 local V = {}
 ns.ReplayRealmView = V
 local Kit = ns.Kit
+local RD = ns.ReplayDraw
+local Affine = RD.Affine
+local Disc = RD.Disc
 local Replay = ns.Replay
 local Core = ns.ReplayRealm
 local st = { mode = DEFAULT, orbs = {}, beams = {}, flashes = {}, pools = {}, booms = {}, byName = {}, used = 0, usedP = 0,
@@ -55,13 +57,7 @@ end
 function V.Has(scene)
     return scene ~= nil and scene.layers ~= nil and scene.layers.realm ~= nil
 end
-local function Tex(parent, path, layer, token)
-    local tex = parent:CreateTexture(nil, layer)
-    tex:SetTexture(path)
-    tex:SetVertexColor(Kit.Color(token))
-    tex:Hide()
-    return tex
-end
+local Tex = RD.Tex
 local function SwHeight()
     return max(COUNT_H, math.ceil(Kit.FontSize("GameFontNormalSmall", true) * 1.15) + 6)
 end
@@ -119,51 +115,11 @@ function V.Use(scene)
     st.veilOn = false
     st.byName, st.counted = scene and Replay.ByK(scene) or EMPTY, nil
 end
-local function Inverse(ox, oy, ux, uy, vx, vy, x, y)
-    local det = ux * vy - uy * vx
-    if det == 0 then return 0, 0 end
-    local dx, dy = x - ox, y - oy
-    return (dx * vy - dy * vx) / det, (ux * dy - uy * dx) / det
-end
 local function PutAffine(tex, ox, oy, ux, uy, vx, vy)
-    local l = min(ox, ox + ux, ox + vx, ox + ux + vx)
-    local r = max(ox, ox + ux, ox + vx, ox + ux + vx)
-    local t = min(oy, oy + uy, oy + vy, oy + uy + vy)
-    local b = max(oy, oy + uy, oy + vy, oy + uy + vy)
-    if r - l > MAX_PX or b - t > MAX_PX then
-        tex:Hide()
-        return false
-    end
-    l, t, r, b = max(l, -hw), max(t, -hh), min(r, hw), min(b, hh)
-    if r - l < 1 or b - t < 1 then
-        tex:Hide()
-        return false
-    end
-    local ulx, uly = Inverse(ox, oy, ux, uy, vx, vy, l, t)
-    local llx, lly = Inverse(ox, oy, ux, uy, vx, vy, l, b)
-    local urx, ury = Inverse(ox, oy, ux, uy, vx, vy, r, t)
-    local lrx, lry = Inverse(ox, oy, ux, uy, vx, vy, r, b)
-    tex:ClearAllPoints()
-    tex:SetPoint("TOPLEFT", view, "CENTER", l, -t)
-    tex:SetWidth(r - l)
-    tex:SetHeight(b - t)
-    tex:SetTexCoord(ulx, uly, llx, lly, urx, ury, lrx, lry)
-    tex:Show()
-    return true
+    return Affine(tex, view, hw, hh, ox, oy, ux, uy, vx, vy)
 end
 local function PutDisc(tex, sx, sy, rw, rh)
-    if rw * 2 > MAX_PX or sx + rw < -hw or sx - rw > hw or sy + rh < -hh or sy - rh > hh then
-        tex:Hide()
-        return false
-    end
-    local LV = ns.ReplayLayersView
-    if LV and LV.Sharp then LV.Sharp(tex, rw) end
-    tex:ClearAllPoints()
-    tex:SetPoint("CENTER", view, "CENTER", sx, -sy)
-    tex:SetWidth(rw * 2)
-    tex:SetHeight(max(1, rh * 2))
-    tex:Show()
-    return true
+    return Disc(tex, view, hw, hh, sx, sy, rw, rh)
 end
 local function Twilight(scene, name, t)
     return Core.In(scene.layers.realm.spans[name], t)
@@ -270,13 +226,21 @@ function V.Sample(scene, t, figs)
             Figs.Ghost(fig, s.ghost)
         end
     end
+    st.split = split
     local b = scene.bossState
-    local phys, twi = true, false
-    if split then phys, twi = Core.In(R.boss[1], t), Core.In(R.boss[2], t) end
-    if not phys and not twi then phys = true end
-    b.realm, b.ghost = (twi and not phys) and 2 or 1, false
-    if not ((phys and show[1]) or (twi and show[2])) then b.vis = false end
-    if figs[n + 1] then Figs.Dusk(figs[n + 1], mode == "both" and twi and not phys) end
+    if scene.layers and scene.layers.boss2 then
+        b.realm = 1
+        b.ghost = split and not show[1] and mode == "mine"
+        if split and not (Core.In(R.boss[1], t) and (show[1] or b.ghost)) then b.vis = false end
+        if figs[n + 1] then Figs.Dusk(figs[n + 1], false) end
+    else
+        local phys, twi = true, false
+        if split then phys, twi = Core.In(R.boss[1], t), Core.In(R.boss[2], t) end
+        if not phys and not twi then phys = true end
+        b.realm, b.ghost = (twi and not phys) and 2 or 1, false
+        if not ((phys and show[1]) or (twi and show[2])) then b.vis = false end
+        if figs[n + 1] then Figs.Dusk(figs[n + 1], mode == "both" and twi and not phys) end
+    end
     local veil = view ~= nil and show[2] and not show[1]
     if veil ~= st.veilOn then
         st.veilOn = veil
@@ -285,13 +249,17 @@ function V.Sample(scene, t, figs)
     Switch(R, t, show, split)
 end
 function V.HideAdd(scene, a)
+    if a.boss and st.mode == "mine" then return false end
     return not st.show[a.realm or 1]
 end
+function V.AddLook(a)
+    local w = a.realm or 1
+    return (a.boss and st.split and not st.show[w]) == true, st.split == true and st.mode == "both" and w == 2
+end
 local function Screen(cam, scene, x, y, z)
-    local gx, gy, lift = ns.ReplayGeo.Where(cam, scene, x, y)
-    local sx, sy, k = Replay.Project(cam, gx, gy)
+    local sx, sy, k = RD.Screen(cam, scene, x, y)
     local up = z * scene.ppy * sqrt(max(0, 1 - cam.tilt * cam.tilt)) * cam.zoom
-    return sx, sy - lift - up, k
+    return sx, sy - up, k
 end
 local function PlaceCutter(cut, scene, cam, t)
     local burn = Core.Burning(cut, t)

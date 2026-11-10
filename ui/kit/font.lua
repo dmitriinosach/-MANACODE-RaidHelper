@@ -24,12 +24,7 @@ local listeners = {}
 local boundTo = setmetatable({}, WEAK)
 local pending = setmetatable({}, WEAK)
 local delta, face = 0, "client"
-local function Saved()
-    local db = ns.GetDB and ns.GetDB()
-    local s = type(db) == "table" and db.settings
-    if type(s) == "table" then return s end
-    return nil
-end
+local Saved = Kit.Settings
 local function Clamp(v)
     v = floor((tonumber(v) or 0) + 0.5)
     if v < DMIN then return DMIN end

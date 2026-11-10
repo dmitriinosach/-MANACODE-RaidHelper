@@ -94,10 +94,10 @@ function FC.New(fight)
         veh = {}, dead = {}, stoneT = {}, last = {}, heroAt = -1e9, auraIds = {}, helpIds = {},
         aim = aim, aimAt = {}, btT = {}, btN = {},
         r = { n = 0, t = {}, kind = {}, icon = {}, imp = {}, key = {}, head = {}, obj = {}, who = {}, text = {},
-              tip = {}, lane = {}, to = {} },
+              tip = {}, lane = {}, to = {}, target = {} },
     }
 end
-local function Row(fc, ts, kind, icon, imp, key, head, obj, who, text, tip, lane, to)
+local function Row(fc, ts, kind, icon, imp, key, head, obj, who, text, tip, lane, to, target)
     local r = fc.r
     if r.n >= RAW_LIMIT then return end
     local n = r.n + 1
@@ -105,6 +105,7 @@ local function Row(fc, ts, kind, icon, imp, key, head, obj, who, text, tip, lane
     r.t[n], r.kind[n], r.icon[n], r.imp[n] = ts - fc.from, kind, icon or 0, imp and true or false
     r.key[n], r.head[n], r.obj[n], r.who[n] = key, head, obj, who
     r.text[n], r.tip[n], r.lane[n], r.to[n] = text, tip or text, lane or who, to or false
+    r.target[n] = target
 end
 function FC.Add(fc, ts, kind, icon, imp, who, text)
     Row(fc, ts, kind, icon, imp, false, text, false, who, text)
@@ -184,7 +185,8 @@ local function Help(fc, ts, who, dst, spell, id)
         text = format(ns.T("rep.f.on"), spell, who)
         tip = format(ns.T("rep.f.on"), spell, WithClass(who))
     end
-    Row(fc, ts, "help", tonumber(id), false, "p|" .. spell .. "|" .. who, spell, false, to or who, text, tip, who)
+    Row(fc, ts, "help", tonumber(id), false, "p|" .. spell .. "|" .. who, spell, false, to or who, text, tip, who,
+        nil, dst and fc.players[dst] and dst or false)
 end
 local function Taunt(fc, ts, who, dst, spell, id)
     if not Fresh(fc, "t" .. spell .. who .. (dst or ""), ts, SAME) then return end
@@ -197,7 +199,7 @@ local function Taunt(fc, ts, who, dst, spell, id)
         text = format(ns.T("rep.f.on"), spell, who)
         tip = format(ns.T("rep.f.on"), spell, WithClass(who))
     end
-    Row(fc, ts, "taunt", tonumber(id), false, "t|" .. spell .. "|" .. who, spell, false, who, text, tip, who, dst)
+    Row(fc, ts, "taunt", tonumber(id), false, "t|" .. spell .. "|" .. who, spell, false, who, text, tip, who, dst, dst or false)
 end
 local function Defensive(fc, ts, who, dst, spell, id)
     local to = dst and dst ~= who and fc.players[dst] and dst or nil
@@ -211,13 +213,14 @@ local function Defensive(fc, ts, who, dst, spell, id)
         text = format(ns.T("rep.f.on"), spell, who)
         tip = format(ns.T("rep.f.on"), spell, WithClass(who))
     end
-    Row(fc, ts, "def", tonumber(id), false, "d|" .. spell, spell, false, on, text, tip, who)
+    Row(fc, ts, "def", tonumber(id), false, "d|" .. spell, spell, false, on, text, tip, who,
+        nil, dst and fc.players[dst] and dst or false)
 end
 local function Hero(fc, ts, who, spell, id)
     if ts - fc.heroAt < HERO_GAP then return end
     fc.heroAt = ts
     Row(fc, ts, "hero", tonumber(id), true, false, spell, false, who, format(ns.T("rep.f.on"), spell, who),
-        format(ns.T("rep.f.on"), spell, WithClass(who)))
+        format(ns.T("rep.f.on"), spell, WithClass(who)), who, nil, false)
 end
 local function Rez(fc, ts, dst, by, spell, id)
     fc.dead[dst] = nil
@@ -240,7 +243,7 @@ local function Dispel(fc, ts, sub, who, dst, dstFlags, a1, a2, a4, a5)
     if sub == "SPELL_STOLEN" then tip = tip .. "\n" .. ns.T("rep.f.stolen") end
     local icon = tonumber(a4) or tonumber(a1)
     Row(fc, ts, "dispel", icon, fc.keyDisp[ns.SpellKey(a4) or 0] == true, "x|" .. what, ns.T("rep.f.dispel.head"),
-        what, on, text, tip, who)
+        what, on, text, tip, who, nil, dst or false)
 end
 local function Kick(fc, ts, who, dst, a1, a2, a5)
     local what = type(a5) == "string" and a5 or "?"
@@ -279,7 +282,7 @@ local function OnCast(fc, ts, sub, srcGUID, src, srcFlags, dstGUID, dst, a1, a2,
     OwnCast(fc, ts, who, a1, a2, sk)
     if fc.quiet[sk] then return end
     if fc.taunts[sk] then
-        Taunt(fc, ts, who, dst, a2, a1)
+        if who == src then Taunt(fc, ts, who, dst, a2, a1) end
         return
     end
     local help = fc.help[sk]
@@ -389,6 +392,17 @@ local function Names(names)
     for i = 1, NAMES_MAX do out[i] = names[i] end
     return format(ns.T("rep.f.more"), concat(out, ", "), #names - NAMES_MAX)
 end
+local function AddUse(L, g, r, i)
+    local target = r.target[i]
+    if target == nil then return end
+    local action = L.fdAction[g]
+    if not action then
+        action = { spell = r.obj[i] or r.head[i], uses = {} }
+        L.fdAction[g] = action
+    end
+    local uses = action.uses
+    uses[#uses + 1] = { by = r.lane[i], target = target, t = r.t[i] }
+end
 local function Merge(L, r, order)
     local open, cnt, names, seen, tips, heads, objs = {}, {}, {}, {}, {}, {}, {}
     local n = 0
@@ -397,6 +411,7 @@ local function Merge(L, r, order)
         local key = r.key[i]
         local g = key and open[key]
         if g and r.t[i] - L.fdT[g] <= MERGE then
+            AddUse(L, g, r, i)
             cnt[g] = cnt[g] + 1
             local who = r.who[i]
             if who and not seen[g][who] then
@@ -416,6 +431,7 @@ local function Merge(L, r, order)
                 r.kind[i]
             L.fdWho[n] = r.who[i] or false
             L.fdLane[n] = r.lane[i] or false
+            AddUse(L, n, r, i)
             cnt[n], names[n], seen[n], tips[n] = 1, {}, {}, { r.tip[i] }
             local who = r.who[i]
             if who then
@@ -450,7 +466,7 @@ end
 local kept = setmetatable({}, { __mode = "k" })
 function FC.Pack(L)
     return { lang = ns.lang, n = L.nf or 0, t = L.fdT, icon = L.fdIcon, text = L.fdText, tip = L.fdTip, imp = L.fdImp,
-             kind = L.fdKind, who = L.fdWho, all = L.fdAll or {}, by = L.fdLane or {} }
+             kind = L.fdKind, who = L.fdWho, all = L.fdAll or {}, by = L.fdLane or {}, action = L.fdAction }
 end
 function FC.Peek(fight)
     local f = kept[fight]
@@ -478,7 +494,7 @@ function FC.Reuse(L, f, res)
         return (a.i or 1e9) < (b.i or 1e9)
     end)
     L.fdT, L.fdIcon, L.fdText, L.fdImp, L.fdKind, L.fdTip = {}, {}, {}, {}, {}, {}
-    L.fdWho, L.fdAll, L.fdLane = {}, {}, {}
+    L.fdWho, L.fdAll, L.fdLane, L.fdAction = {}, {}, {}, {}
     for n = 1, #rows do
         local r = rows[n]
         local i = r.i
@@ -486,6 +502,7 @@ function FC.Reuse(L, f, res)
             L.fdT[n], L.fdIcon[n], L.fdText[n], L.fdImp[n], L.fdKind[n] = f.t[i], f.icon[i], f.text[i], f.imp[i], f.kind[i]
             L.fdTip[n], L.fdWho[n], L.fdLane[n] = f.tip[i], f.who[i] or false, f.by[i] or f.who[i] or false
             if f.all[i] then L.fdAll[n] = f.all[i] end
+            if f.action then L.fdAction[n] = f.action[i] end
         else
             L.fdT[n], L.fdIcon[n], L.fdText[n], L.fdImp[n], L.fdKind[n] = r.t, "phase", r.label, true, "phase"
             L.fdTip[n], L.fdWho[n], L.fdLane[n] = r.label, false, false
@@ -514,7 +531,7 @@ function FC.Done(fc, L, res)
         return a < b
     end)
     L.fdT, L.fdIcon, L.fdText, L.fdImp, L.fdKind, L.fdTip = {}, {}, {}, {}, {}, {}
-    L.fdWho, L.fdAll, L.fdLane = {}, {}, {}
+    L.fdWho, L.fdAll, L.fdLane, L.fdAction = {}, {}, {}, {}
     Merge(L, r, order)
     L.feedRaw = r.n
 end

@@ -1,5 +1,4 @@
 local ADDON, ns = ...
-local max = math.max
 local min = math.min
 local RIM = "Interface\\AddOns\\" .. ADDON .. "\\art\\replay\\rim"
 local DISC = "Interface\\AddOns\\" .. ADDON .. "\\art\\replay\\disc256"
@@ -8,11 +7,11 @@ local FLASH = 1
 local RING_DRAW = 30
 local MARK_DRAW = 30
 local MARK_YD = 1.6
-local MAX_PX = 4000
 local V = {}
 ns.ReplaySpreadView = V
 local Kit = ns.Kit
-local Replay = ns.Replay
+local RD = ns.ReplayDraw
+local Disc = RD.Disc
 local Core = ns.ReplaySpread
 local rings, marks, flashes = {}, {}, {}
 local used = { ring = 0, mark = 0, flash = 0 }
@@ -22,25 +21,9 @@ local near, bad = {}, {}
 local probe = { rings = 0, bad = 0, marks = 0, flashes = 0, own = 0, list = {} }
 function V.Build(v, layer)
     view = v
-    for i = 1, RING_DRAW do
-        local tex = layer:CreateTexture(nil, "BORDER")
-        tex:SetTexture(RIM)
-        tex:Hide()
-        rings[i] = tex
-    end
-    for i = 1, MARK_DRAW do
-        local tex = layer:CreateTexture(nil, "BORDER")
-        tex:SetTexture(RIM)
-        tex:SetVertexColor(Kit.Color("sem.rep.spreadBad"))
-        tex:Hide()
-        marks[i] = tex
-    end
-    for i = 1, FLASH_DRAW do
-        local tex = layer:CreateTexture(nil, "BORDER")
-        tex:SetTexture(DISC)
-        tex:Hide()
-        flashes[i] = tex
-    end
+    for i = 1, RING_DRAW do rings[i] = RD.Tex(layer, RIM, "BORDER") end
+    for i = 1, MARK_DRAW do marks[i] = RD.Tex(layer, RIM, "BORDER", "sem.rep.spreadBad") end
+    for i = 1, FLASH_DRAW do flashes[i] = RD.Tex(layer, DISC, "BORDER") end
 end
 local function HideFrom(n, m, f)
     f = f or 0
@@ -55,23 +38,10 @@ function V.Use(scene)
     HideFrom(0, 0, 0)
 end
 local function PutDisc(tex, sx, sy, rw, rh)
-    if rw * 2 > MAX_PX or sx + rw < -hw or sx - rw > hw or sy + rh < -hh or sy - rh > hh then
-        tex:Hide()
-        return false
-    end
-    local LV = ns.ReplayLayersView
-    if LV and LV.Sharp then LV.Sharp(tex, rw) end
-    tex:ClearAllPoints()
-    tex:SetPoint("CENTER", view, "CENTER", sx, -sy)
-    tex:SetWidth(rw * 2)
-    tex:SetHeight(max(1, rh * 2))
-    tex:Show()
-    return true
+    return Disc(tex, view, hw, hh, sx, sy, rw, rh)
 end
 local function Screen(cam, scene, st)
-    local gx, gy, lift = ns.ReplayGeo.Where(cam, scene, st.x, st.y)
-    local sx, sy, k = Replay.Project(cam, gx, gy)
-    return sx, sy - lift, k
+    return RD.Screen(cam, scene, st.x, st.y)
 end
 local function Ring(tex, cam, scene, st, yd)
     local sx, sy, k = Screen(cam, scene, st)

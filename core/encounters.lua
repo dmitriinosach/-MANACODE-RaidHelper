@@ -652,9 +652,7 @@ function Encounters.Scan(onDone)
         return false
     end
     return ns.Jobs.Run(SCAN_KEY, function()
-        local list = ScanAll()
-        ns.Effects.Migrate()
-        return list
+        return ScanAll()
     end, function(list)
         fights = list or {}
         if ns.FightTree then ns.FightTree.Lend(fights) end
@@ -952,6 +950,18 @@ local function SwingLabel(srcName)
     if not srcName then return ns.T("tl.swing") end
     return string.format(ns.T("tl.swing.src"), srcName)
 end
+local CAUGHT_WIN = 1
+local function Fold(e, miss, n, amount, over, absorbed)
+    if miss then
+        if miss == "ABSORB" then e.absorbed = (e.absorbed or 0) + n end
+        if e.miss then e.missN = (e.missN or 0) + n end
+        return
+    end
+    e.amount = (e.amount or 0) + amount
+    e.over = (e.over or 0) + over
+    e.absorbed = (e.absorbed or 0) + absorbed
+    e.miss, e.missN = nil, nil
+end
 local function ByMc(fight, srcName, srcFlags)
     return srcName ~= nil and fight.players[srcName] ~= nil and srcFlags ~= nil and band(srcFlags, F_PLAYER) == 0
 end
@@ -966,6 +976,7 @@ local function BuildTimeline(fight, who, idx)
     local bossSeen = {}
     local fixates = ns.fixates or {}
     local chasers = {}
+    local caughtE = {}
     local owners = {}
     local cast = ns.CastResult.New(who)
     local starts = ns.CastGcd.New(who)
@@ -1060,6 +1071,19 @@ local function BuildTimeline(fight, who, idx)
                     out.taken[#out.taken + 1] = { t = ts, label = ns.EnvName(a1), amount = tonumber(a2) or 0,
                                                   over = tonumber(a3) or 0, absorbed = tonumber(a7) or 0,
                                                   kind = "hit" }
+                elseif srcGUID and caughtE[srcGUID] and ts - caughtE[srcGUID].t <= CAUGHT_WIN
+                    and (sub:find("_DAMAGE", 1, true) or MISSED_SUBS[sub]) then
+                    local e = caughtE[srcGUID]
+                    if MISSED_SUBS[sub] then
+                        Fold(e, tostring((swing and a1 or a4) or "MISS"), tonumber(swing and a2 or a5) or 0)
+                    else
+                        Fold(e, nil, 0, tonumber(swing and a1 or a4) or 0, tonumber(swing and a2 or a5) or 0,
+                            tonumber(swing and a6 or a9) or 0)
+                    end
+                    if swing then
+                        e.label, e.id = string.format(ns.T("tl.caught"), srcName), chasers[srcGUID].id
+                        e.swing, e.tick = nil, nil
+                    end
                 elseif swing and srcGUID and chasers[srcGUID] then
                     local hit = sub == "SWING_DAMAGE"
                     out.taken[#out.taken + 1] = { t = ts, label = string.format(ns.T("tl.caught"), srcName),
@@ -1108,6 +1132,10 @@ local function BuildTimeline(fight, who, idx)
                 elseif sub == "UNIT_DIED" then
                     out.deaths[#out.deaths + 1] = ts
                 end
+                local prev = srcGUID and caughtE[srcGUID]
+                local last = srcGUID and chasers[srcGUID] and not (prev and ts - prev.t <= CAUGHT_WIN)
+                    and out.taken[#out.taken]
+                if last and last.t == ts and last.chaser == srcGUID then caughtE[srcGUID] = last end
             end
         end
     end
@@ -1142,7 +1170,7 @@ local function BuildTimeline(fight, who, idx)
         out.pull = { t = ts, src = srcName,
                      spell = (not swing) and tostring(a2 or a1) or nil,
                      pet = band(srcFlags, F_PLAYER) == 0,
-                     owner = srcGUID and owners[srcGUID] or nil }
+                     owner = srcGUID and (owners[srcGUID] or (ns.GetDB().pets or {})[srcGUID]) or nil }
     end
     out.hp = ns.Streams.HpList(idx.segs, who, from, to)
     out.mana = ns.Streams.ManaList(idx.segs, who, from, to)

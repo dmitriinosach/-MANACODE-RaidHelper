@@ -41,8 +41,8 @@ ns.covers = {
     cast = { [42650] = 4 },
     late = 2,
     raid = {
-        [64205] = { class = "PALADIN", cd = 120, dur = 10, split = true },
-        [31821] = { class = "PALADIN", cd = 120, dur = 6, aura = true },
+        [64205] = { class = "PALADIN", cd = 120, dur = 10, split = true, talent = true },
+        [31821] = { class = "PALADIN", cd = 120, dur = 6, aura = true, talent = true },
     },
     auras = { 48945, 48942, 48943, 48947, 54043, 19746, 32223 },
 }

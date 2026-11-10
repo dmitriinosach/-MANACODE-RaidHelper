@@ -1,6 +1,12 @@
 local _, ns = ...
 local STARS = "Environments\\Stars\\"
 ns.replaySky = {
+    rotunda = {
+        fade = { night = { 0, 0 }, day = { 0, 0 }, cloudDay = { 0, 0 }, cloudNight = { 0, 0 } },
+        light = {
+            0, { top = "04060a", mid = "0a1220", hor = "10203a", fog = "060a12" },
+        },
+    },
     citadel = {
         fade = { night = { 0, 0 }, day = { 0, 0 }, cloudDay = { 0, 0 }, cloudNight = { 0, 0 } },
         light = {

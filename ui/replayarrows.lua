@@ -1,5 +1,4 @@
 local ADDON, ns = ...
-local max = math.max
 local min = math.min
 local sqrt = math.sqrt
 local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\replay\\"
@@ -8,7 +7,6 @@ local CONE = ART .. "cone"
 local ARROW_DRAW = 30
 local BOSS_DRAW = 4
 local ICON_DRAW = 5
-local MAX_PX = 4000
 local LINE_W = 2
 local HEAD_L = 10
 local HEAD_W = 9
@@ -22,23 +20,20 @@ local MODES = { all = true, focus = true, off = true }
 local V = {}
 ns.ReplayArrowsView = V
 local Kit = ns.Kit
+local RD = ns.ReplayDraw
+local Affine = RD.Affine
 local Replay = ns.Replay
 local AR = ns.ReplayArrows
-local RU = ns.ReplayUnits
 local shafts, heads, icons = {}, {}, {}
 local bossIdx = {}
 local used = { arrow = 0, icon = 0 }
 local view
 local hw, hh = 0, 0
-local st = { focus = nil, data = nil, units = nil }
+local ICON_TC = { 0.07, 0.07, 0.07, 0.93, 0.93, 0.07, 0.93, 0.93 }
+local st = { focus = nil, data = nil, boss = false, bossK = 1 }
 local probe = { arrows = 0, heal = 0, boss = 0, icons = 0, toBoss = 0, toAdd = 0, short = 0, off = 0 }
 local iconOf = {}
-local function Tex(layer, path, draw)
-    local tex = layer:CreateTexture(nil, draw)
-    tex:SetTexture(path)
-    tex:Hide()
-    return tex
-end
+local Tex = RD.Tex
 function V.Build(v, layer)
     view = v
     for i = 1, ARROW_DRAW + BOSS_DRAW do
@@ -50,6 +45,7 @@ function V.Build(v, layer)
         icons[i]:SetTexCoord(0.07, 0.93, 0.07, 0.93)
         icons[i]:SetWidth(ICON)
         icons[i]:SetHeight(ICON)
+        icons[i].size = ICON
         icons[i]:Hide()
     end
 end
@@ -65,7 +61,6 @@ local function HideAll()
 end
 function V.Use(scene)
     st.data = scene and scene.layers and scene.layers.arrows or nil
-    st.units = scene and (scene.units or (scene.base and scene.base.units)) or nil
     if not view then return end
     HideRange(shafts, 0, #shafts)
     HideRange(heads, 0, #heads)
@@ -76,11 +71,7 @@ end
 function V.Focus(name)
     st.focus = name
 end
-local function Saved()
-    local settings = ns.GetDB().settings
-    if type(settings.iso) ~= "table" then settings.iso = {} end
-    return settings.iso
-end
+local Saved = RD.Saved
 function V.Mode()
     local m = Saved().arrows
     return MODES[m] and m or "all"
@@ -89,37 +80,12 @@ function V.SetMode(m)
     Saved().arrows = MODES[m] and m ~= "all" and m or nil
     if m == "off" and view then HideAll() end
 end
-local function Inverse(ox, oy, ux, uy, vx, vy, x, y)
-    local det = ux * vy - uy * vx
-    if det == 0 then return 0, 0 end
-    local dx, dy = x - ox, y - oy
-    return (dx * vy - dy * vx) / det, (ux * dy - uy * dx) / det
+function V.SetBoss(force, k)
+    st.boss = force and true or false
+    st.bossK = k or 1
 end
 local function PutAffine(tex, ox, oy, ux, uy, vx, vy)
-    local l = min(ox, ox + ux, ox + vx, ox + ux + vx)
-    local r = max(ox, ox + ux, ox + vx, ox + ux + vx)
-    local t = min(oy, oy + uy, oy + vy, oy + uy + vy)
-    local b = max(oy, oy + uy, oy + vy, oy + uy + vy)
-    if r - l > MAX_PX or b - t > MAX_PX then
-        tex:Hide()
-        return false
-    end
-    l, t, r, b = max(l, -hw), max(t, -hh), min(r, hw), min(b, hh)
-    if r - l < 1 or b - t < 1 then
-        tex:Hide()
-        return false
-    end
-    local ulx, uly = Inverse(ox, oy, ux, uy, vx, vy, l, t)
-    local llx, lly = Inverse(ox, oy, ux, uy, vx, vy, l, b)
-    local urx, ury = Inverse(ox, oy, ux, uy, vx, vy, r, t)
-    local lrx, lry = Inverse(ox, oy, ux, uy, vx, vy, r, b)
-    tex:ClearAllPoints()
-    tex:SetPoint("TOPLEFT", view, "CENTER", l, -t)
-    tex:SetWidth(r - l)
-    tex:SetHeight(b - t)
-    tex:SetTexCoord(ulx, uly, llx, lly, urx, ury, lrx, lry)
-    tex:Show()
-    return true
+    return Affine(tex, view, hw, hh, ox, oy, ux, uy, vx, vy)
 end
 function V.Arrow(shaft, head, ax, ay, bx, by, w, hl, hwid, gap, side)
     local dx, dy = bx - ax, by - ay
@@ -150,11 +116,7 @@ function V.Arrow(shaft, head, ax, ay, bx, by, w, hl, hwid, gap, side)
     end
     return true, (sx + hx) / 2, (sy + hy) / 2
 end
-local function Screen(cam, scene, x, y)
-    local gx, gy, lift = ns.ReplayGeo.Where(cam, scene, x, y)
-    local sx, sy, k = Replay.Project(cam, gx, gy)
-    return sx, sy - lift, k
-end
+local Screen = RD.Screen
 local function Target(scene, cam, tg, t)
     local x, y
     if type(tg) == "number" then
@@ -178,33 +140,23 @@ local function IconOf(id)
     end
     return tex or nil
 end
-local function PutIcon(ni, tex, x, y)
+local function PutIcon(ni, tex, x, y, size)
     local ic = tex and icons[ni + 1]
-    if not ic or x < -hw or x > hw or y < -hh or y > hh then return ni end
+    if not ic then return ni end
     if ic.tex ~= tex then
         ic.tex = tex
         ic:SetTexture(tex)
     end
-    ic:ClearAllPoints()
-    ic:SetPoint("CENTER", view, "CENTER", x, -y)
-    ic:Show()
+    local half = (size or ICON) / 2
+    if not Kit.Crop(ic, view, hw, hh, x - half, y - half, x + half, y + half, ICON_TC) then return ni end
     return ni + 1
-end
-local function SpellNow(name, t)
-    local u = st.units
-    if not u then return nil end
-    local rec = RU.CastAt(u.casts and u.casts[name], t)
-    if rec and rec.id then return rec.id end
-    local ins = u.inst and u.inst[name]
-    local j = RU.InstAt(ins, t)
-    if j > 0 and t - ins.T[j] < 1 then return ins.R[j] end
-    return nil
 end
 function V.Place(scene, cam, t)
     if not view then return end
     local data = st.data
     local mode = V.Mode()
-    if not data or mode == "off" then
+    local off = mode == "off"
+    if not data or (off and not st.boss) then
         if used.arrow + used.icon > 0 then HideAll() end
         return
     end
@@ -213,7 +165,7 @@ function V.Place(scene, cam, t)
     probe.short, probe.off = 0, 0
     local na, ni, nh, nb, nTo, nAdd = 0, 0, 0, 0, 0, 0
     local lanes = data.lanes
-    for k = 1, #scene.tracks do
+    for k = 1, off and 0 or #scene.tracks do
         local name = scene.tracks[k].name
         local mine = name == focus
         local lane = (mode == "all" or mine) and lanes[k]
@@ -234,7 +186,6 @@ function V.Place(scene, cam, t)
                         heads[na]:SetVertexColor(r, g, b, a)
                         if heal then nh = nh + 1 end
                         if tg == 0 then nTo = nTo + 1 elseif type(tg) == "table" then nAdd = nAdd + 1 end
-                        if mine then ni = PutIcon(ni, IconOf(SpellNow(name, t)), mx, my) end
                     end
                 end
             end
@@ -254,7 +205,8 @@ function V.Place(scene, cam, t)
                     if tk == b.hk then
                         ok, mx, my = true, (ax + bx) / 2, (ay + by) / 2
                     else
-                        ok, mx, my = V.Arrow(shafts[na + 1], heads[na + 1], ax, ay, bx, by, LINE_W + 1, HEAD_L, HEAD_W,
+                        local w = st.boss and (LINE_W + 1) * st.bossK or LINE_W + 1
+                        ok, mx, my = V.Arrow(shafts[na + 1], heads[na + 1], ax, ay, bx, by, w, HEAD_L, HEAD_W,
                             GAP, SIDE)
                         if ok then
                             na = na + 1
@@ -265,7 +217,7 @@ function V.Place(scene, cam, t)
                     end
                     if ok then
                         nb = nb + 1
-                        ni = PutIcon(ni, IconOf(data.boss.I[j]), mx, my)
+                        ni = PutIcon(ni, IconOf(data.boss.I[j]), mx, my, st.boss and ICON * st.bossK or ICON)
                     end
                 end
             end

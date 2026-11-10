@@ -1,9 +1,4 @@
 local _, ns = ...
-local max = math.max
-local min = math.min
-local sin = math.sin
-local pi = math.pi
-local format = string.format
 local STEPS = {
     { key = "zoom", target = "view" },
     { key = "turn", target = "view" },
@@ -12,195 +7,64 @@ local STEPS = {
     { key = "pick", target = "fig" },
     { key = "menu", target = "gear" },
 }
+local ID = "iso"
 local TURN_MIN = 0.35
 local TILT_MIN = 0.08
-local DONE_HOLD = 0.9
-local RETARGET = 0.5
 local W = 380
-local PAD = 10
-local LINE_H = 14
-local BTN_W = 100
-local BTN_H = 20
-local GAP = 8
 local LIFT = 34
-local EDGE = 2
-local GLOW_OUT = 4
-local GLOW_IN = -3
-local PULSE_HZ = 1.5
-local GLOW_LOW = 0.35
-local LEVEL = 8
 local Tour = {}
 ns.ReplayTour = Tour
 local Kit = ns.Kit
-local ceil = math.ceil
-local m = { W = W, line = LINE_H, btnW = BTN_W, btnH = BTN_H }
-local function Metrics()
-    local k = max(1, Kit.FontScale("GameFontNormalSmall", true), Kit.FontScale("GameFontHighlight", true))
-    local pt = max(Kit.FontSize("GameFontNormalSmall", true), Kit.FontSize("GameFontHighlight", true))
-    m.W = ceil(W * k)
-    m.line = max(LINE_H, ceil(pt * 1.15))
-    m.btnW = ceil(BTN_W * k)
-    m.btnH = max(BTN_H, ceil(pt * 1.15) + 6)
-end
-local st = { step = 0, up = false, down = false, retarget = 0, phase = 0 }
-local box, text, count, ok, skip, nextBtn, glow
-local function Glow(f, inner)
-    st.target = f
-    if not f then
-        glow:Hide()
-        return
-    end
-    local d = inner and GLOW_IN or GLOW_OUT
-    glow:ClearAllPoints()
-    glow:SetPoint("TOPLEFT", f, "TOPLEFT", -d, d)
-    glow:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", d, -d)
-    glow:Show()
-end
-local function Retarget()
-    local def = STEPS[st.step]
+local KT = Kit.Tour
+local st = { up = false, down = false }
+local function Target(def)
     local ui = st.ui
-    if def.target == "view" then
-        Glow(ui.view, true)
-    elseif def.target == "scrub" then
-        Glow(ui.scrub, false)
-    elseif def.target == "gear" then
-        Glow(ui.gearBtn, false)
-    else
-        Glow(st.api.Figure(), false)
+    if def.target == "view" then return ui.view end
+    if def.target == "scrub" then return ui.scrub end
+    if def.target == "gear" then return ui.gearBtn end
+    return st.api.Figure()
+end
+local function Steps()
+    local list = {}
+    for i = 1, #STEPS do
+        local def = STEPS[i]
+        list[i] = {
+            key = def.key, text = ns.T("iso.tour." .. i), wait = true, inset = def.target == "view",
+            target = function() return Target(def) end,
+            action = function() st.up, st.down = false, false end,
+        }
     end
-    st.retarget = 0
+    return list
 end
-local function Fit()
-    Metrics()
-    box:SetWidth(m.W)
-    text:ClearAllPoints()
-    text:SetPoint("TOPLEFT", box, "TOPLEFT", PAD, -(PAD + m.line + GAP / 2))
-    text:SetWidth(m.W - PAD * 2)
-    for _, b in ipairs({ skip, nextBtn }) do
-        b:SetWidth(m.btnW)
-        b:SetHeight(m.btnH)
-    end
-    box:SetHeight(PAD + m.line + GAP / 2 + max(m.line, text:GetStringHeight() or m.line) + GAP + m.btnH + PAD)
-end
-local function ShowStep()
-    local n = #STEPS
-    st.doneT, st.up, st.down = nil, false, false
-    count:SetText(format(ns.T("iso.tour.count"), st.step, n))
-    text:SetText(ns.T("iso.tour." .. st.step))
-    ok:Hide()
-    nextBtn.text:SetText(ns.T(st.step >= n and "iso.tour.finish" or "iso.tour.next"))
-    Fit()
-    box:Show()
-    Retarget()
-end
-local function Close(save)
-    if save and st.api then st.api.Saved().tour = true end
-    st.step, st.doneT, st.target = 0, nil, nil
-    if box then box:Hide() end
-    if glow then glow:Hide() end
-end
-local function Next()
-    if st.step == 0 then return end
-    if st.step >= #STEPS then
-        Close(true)
-        return
-    end
-    st.step = st.step + 1
-    ShowStep()
-end
-local function Tick(self, elapsed)
-    if st.step == 0 then return end
-    st.phase = (st.phase + max(0, elapsed) * PULSE_HZ) % 1
-    glow:SetAlpha(GLOW_LOW + (1 - GLOW_LOW) * (sin(st.phase * 2 * pi) + 1) / 2)
-    if st.doneT then
-        st.doneT = st.doneT + max(0, elapsed)
-        if st.doneT >= DONE_HOLD then Next() end
-        return
-    end
-    st.retarget = st.retarget + max(0, elapsed)
-    if STEPS[st.step].target == "fig" and st.retarget >= RETARGET then
-        if not (st.target and st.target:IsShown()) then Retarget() else st.retarget = 0 end
-    end
-end
-local function Btn(parent, key)
-    local b = Kit.Button(parent)
-    b:SetWidth(BTN_W)
-    b:SetHeight(BTN_H)
-    Kit.Bind(b.text, "GameFontNormalSmall")
-    b.text:SetText(ns.T(key))
-    return b
-end
-local function BuildGlow(ui)
-    glow = CreateFrame("Frame", nil, ui.top)
-    glow:SetFrameLevel(min(127, ui.top:GetFrameLevel() + LEVEL - 1))
-    local spec = {
-        { "TOPLEFT", "TOPRIGHT", true }, { "BOTTOMLEFT", "BOTTOMRIGHT", true },
-        { "TOPLEFT", "BOTTOMLEFT", false }, { "TOPRIGHT", "BOTTOMRIGHT", false },
-    }
-    for i = 1, #spec do
-        local s = spec[i]
-        local e = glow:CreateTexture(nil, "OVERLAY")
-        e:SetPoint(s[1], glow, s[1], 0, 0)
-        e:SetPoint(s[2], glow, s[2], 0, 0)
-        if s[3] then e:SetHeight(EDGE) else e:SetWidth(EDGE) end
-        Kit.Paint(e, "sem.pick")
-    end
-    glow:Hide()
+local function Finish(how)
+    if how ~= "hide" and st.api then st.api.Saved().tour = true end
 end
 function Tour.Bind(ui, api)
     st.ui, st.api = ui, api
-    box = CreateFrame("Frame", nil, ui.top)
-    box:SetWidth(W)
-    box:SetPoint("BOTTOM", ui.view, "BOTTOM", 0, LIFT)
-    box:SetFrameLevel(min(127, ui.top:GetFrameLevel() + LEVEL))
-    box:EnableMouse(true)
-    local bg = box:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints(box)
-    Kit.Paint(bg, "surface.shade")
-    local line = box:CreateTexture(nil, "BORDER")
-    line:SetPoint("TOPLEFT", box, "TOPLEFT", 0, 0)
-    line:SetPoint("TOPRIGHT", box, "TOPRIGHT", 0, 0)
-    line:SetHeight(EDGE)
-    Kit.Paint(line, "sem.pick")
-    count = Kit.Str(box, "GameFontNormalSmall")
-    count:SetPoint("TOPLEFT", box, "TOPLEFT", PAD, -PAD)
-    Kit.Text(count, "text.title")
-    ok = Kit.Str(box, "GameFontNormalSmall")
-    ok:SetPoint("TOPRIGHT", box, "TOPRIGHT", -PAD, -PAD)
-    ok:SetText(ns.T("iso.tour.ok"))
-    Kit.Text(ok, "text.good")
-    ok:Hide()
-    text = Kit.Str(box, "GameFontHighlight")
-    text:SetPoint("TOPLEFT", box, "TOPLEFT", PAD, -(PAD + LINE_H + GAP / 2))
-    text:SetWidth(W - PAD * 2)
-    text:SetJustifyH("LEFT")
-    Kit.Text(text, "text.primary")
-    skip = Btn(box, "iso.tour.skip")
-    skip:SetPoint("BOTTOMLEFT", box, "BOTTOMLEFT", PAD, PAD)
-    skip.onClick = function() Close(true) end
-    nextBtn = Btn(box, "iso.tour.next")
-    nextBtn:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -PAD, PAD)
-    nextBtn.onClick = Next
-    box:SetScript("OnUpdate", ns.Prof.Wrap("ui.iso", Tick))
-    box:Hide()
-    BuildGlow(ui)
 end
-Kit.OnFont(function()
-    if st.step > 0 and box and box:IsShown() then Fit() end
-end)
 function Tour.Start()
-    if not box then return end
-    st.step = 1
-    ShowStep()
+    local ui = st.ui
+    if not ui then return end
+    KT.Start(ui.frame, Steps(), {
+        id = ID, title = ns.T("iso.tour"), dim = false, width = W, above = ui.top, back = false, onFinish = Finish,
+        place = function(card) card:SetPoint("BOTTOM", ui.view, "BOTTOM", 0, LIFT) end,
+    })
 end
 function Tour.Auto()
-    if st.step == 0 and st.api and st.api.Saved().tour ~= true then Tour.Start() end
+    if KT.Active(ID) or not st.api then return end
+    if st.api.Saved().tour ~= true then
+        Tour.Start()
+    elseif ns.NewsView then
+        ns.NewsView.Iso(st.ui)
+    end
 end
 function Tour.Stop()
-    Close(false)
+    if KT.Active(ID) or KT.Active("news.iso") then KT.Close("hide") end
 end
 function Tour.Note(kind, v)
-    if st.step == 0 or st.doneT or STEPS[st.step].key ~= kind then return end
+    if not KT.Active(ID) then return end
+    local p = KT.Probe()
+    if p.done or p.key ~= kind then return end
     if kind == "zoom" then
         if (v or 0) > 0 then st.up = true else st.down = true end
         if not (st.up and st.down) then return end
@@ -209,11 +73,12 @@ function Tour.Note(kind, v)
     elseif kind == "tilt" and (v or 0) < TILT_MIN then
         return
     end
-    st.doneT = 0
-    ok:Show()
+    KT.Done()
 end
 function Tour.Probe()
-    return { step = st.step, steps = #STEPS, shown = box ~= nil and box:IsShown(), done = st.doneT ~= nil,
-             key = STEPS[st.step] and STEPS[st.step].key, target = st.target,
-             glow = glow ~= nil and glow:IsShown(), skip = skip, next = nextBtn, box = box, w = m.W }
+    local p = KT.Probe()
+    local on = KT.Active(ID)
+    return { step = on and p.index or 0, steps = #STEPS, shown = on, done = on and p.done, key = on and p.key or nil,
+             target = on and p.target or nil, glow = on and p.ring ~= nil and p.ring:IsShown(), skip = p.skip,
+             next = p.next, box = p.card, w = p.w }
 end

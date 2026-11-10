@@ -4,6 +4,7 @@ ns.deathDeps = {
     tank = 10,
     lead = 15,
     quiet = 30,
+    early = { n = 4, span = 5 },
     range = 30,
     posGap = 2,
     posHold = 10,

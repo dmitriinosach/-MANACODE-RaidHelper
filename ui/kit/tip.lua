@@ -1,6 +1,5 @@
 local _, ns = ...
 local Kit = ns.Kit
-local C = Kit.C
 local max = math.max
 local min = math.min
 local ceil = math.ceil
@@ -103,7 +102,7 @@ local ROUND_FILL = 0.8
 local KEY_PAD = 5
 local KEY_SIDE = 2
 local KEY_MINW = 28
-Kit.KEYCAP = { lmb = "key.lmb", rmb = "key.rmb", shift = "key.shift", ctrl = "key.ctrl" }
+Kit.KEYCAP = { lmb = "key.lmb", rmb = "key.rmb", shift = "key.shift", ctrl = "key.ctrl", alt = "key.alt" }
 local KINDS = {
     head = { font = "GameFontNormal", left = "tip.title", right = "tip.dim", small = "GameFontHighlightSmall" },
     title = { font = "GameFontNormal", left = "tip.title", wrap = true, gap = 0 },
@@ -170,11 +169,7 @@ local function Pooled(pool, i)
     end
     return fs
 end
-local function Tone(token)
-    local c = C[token]
-    if not c then return 1, 1, 1 end
-    return c[1], c[2], c[3]
-end
+local Tone = Kit.RGB
 local function Fill(fs, text, font, justify, r, g, b, grow)
     local object = Kit.FontFor(font, tipSized) or _G[font]
     local path, size, flags
@@ -442,6 +437,20 @@ function Tip.Show(owner, lines, icon, reach, reachLeft)
         f:SetPoint("LEFT", owner, "RIGHT", TIP_GAP + r, 0)
     else
         f:SetPoint("RIGHT", owner, "LEFT", -TIP_GAP - l, 0)
+    end
+    f:Show()
+end
+function Tip.ShowRight(owner, lines, icon)
+    Watch(owner)
+    local f, width = Layout(lines, icon, owner)
+    dockSide = nil
+    f:ClearAllPoints()
+    local right = owner:GetRight()
+    local scale = owner:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    if right and right * scale + width + TIP_GAP > (UIParent:GetWidth() or 0) then
+        f:SetPoint("RIGHT", owner, "LEFT", -TIP_GAP, 0)
+    else
+        f:SetPoint("LEFT", owner, "RIGHT", TIP_GAP, 0)
     end
     f:Show()
 end

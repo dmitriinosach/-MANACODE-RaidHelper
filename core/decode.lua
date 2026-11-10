@@ -12,7 +12,6 @@ local B_COMMA = 44
 local B_SEMI = 59
 local B_S = 115
 local B_B = 98
-local B_G = 103
 local FIELD = "^([^,;]*)()"
 local HEAD = "^(-?%d*),(g?)(%d+),([^,;]*),([^,;]*)()"
 local Decode = {}

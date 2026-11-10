@@ -9,7 +9,9 @@ local MENU_W = 160
 local SEG_W, SEG_CAP_GAP = 210, 10
 local max = math.max
 local ceil = math.ceil
-local list, catcher, openOn, head
+local list, catcher, openOn, head, menuOn
+local picks
+local pickUsed = 0
 local pool = {}
 local used = 0
 local function RootOf(f)
@@ -67,6 +69,18 @@ local function AcquireSeg()
     p.cap:Show()
     return p
 end
+local function PickRun(key, item)
+    if item.run then item.run(key) end
+end
+local function AcquirePick(opt, onPick)
+    if not picks then picks = Kit.ThemePick(list, PickRun) end
+    pickUsed = pickUsed + 1
+    return picks:Draw(pickUsed, { key = opt.key, label = opt.label or "", colors = opt.swatch, on = opt.check == true,
+                                  run = opt.onSwatch or function()
+                                      Kit.SelectClose()
+                                      onPick(opt.key, opt)
+                                  end })
+end
 local notes, noteUsed = {}, 0
 local function AcquireNote()
     noteUsed = noteUsed + 1
@@ -97,6 +111,9 @@ local function EnsureList(sel)
     catcher:SetFrameStrata("FULLSCREEN_DIALOG")
     catcher:EnableMouse(true)
     catcher:SetScript("OnMouseDown", function() Kit.SelectClose() end)
+    catcher:SetScript("OnHide", function(self)
+        if self:IsShown() then Kit.SelectClose() end
+    end)
     catcher:Hide()
     list = CreateFrame("Frame", nil, catcher)
     list:SetFrameLevel(catcher:GetFrameLevel() + 10)
@@ -110,6 +127,7 @@ local function EnsureList(sel)
 end
 function Kit.SelectClose()
     if catcher then catcher:Hide() end
+    menuOn = nil
     if openOn then
         openOn.active = false
         Kit.StyleButton(openOn)
@@ -125,6 +143,7 @@ local function ShowList(sel, options, value, onPick, owner, title)
     checkUsed = 0
     segUsed = 0
     noteUsed = 0
+    pickUsed = 0
     local rowH = Kit.GrowH(ROW_H, "GameFontNormalSmall")
     local headH = Kit.GrowH(HEAD_H, "GameFontNormalSmall")
     local w = (sel and sel:GetWidth() or MENU_W) - LIST_PAD * 2
@@ -138,7 +157,11 @@ local function ShowList(sel, options, value, onPick, owner, title)
     end
     local rows, capW = {}, 0
     for _, opt in ipairs(options or {}) do
-        if opt.seg then
+        if opt.swatch then
+            local row = AcquirePick(opt, onPick)
+            if row.need > w then w = row.need end
+            rows[#rows + 1] = { pick = row }
+        elseif opt.seg then
             local p = AcquireSeg()
             p.cap:SetText(opt.label or "")
             p.seg:SetCells(opt.seg, opt.value)
@@ -200,7 +223,8 @@ local function ShowList(sel, options, value, onPick, owner, title)
     for i = checkUsed + 1, #checks do checks[i]:Hide() end
     for i = segUsed + 1, #segs do segs[i].seg:Hide() segs[i].cap:Hide() end
     for i = noteUsed + 1, #notes do notes[i]:Hide() end
-    if used + checkUsed + segUsed == 0 then Kit.SelectClose() return end
+    if picks then picks:HideFrom(pickUsed + 1) end
+    if used + checkUsed + segUsed + pickUsed == 0 then Kit.SelectClose() return end
     local y = LIST_PAD + (title and headH or 0)
     for i = 1, #rows do
         local r = rows[i]
@@ -220,8 +244,8 @@ local function ShowList(sel, options, value, onPick, owner, title)
             f:ClearAllPoints()
             f:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PAD + 2, -y)
         else
-            f = r.check or r.button
-            if r.button then f:SetWidth(w) end
+            f = r.check or r.button or r.pick
+            if not r.check then f:SetWidth(w) end
             f:ClearAllPoints()
             f:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PAD, -y)
             h = rowH
@@ -309,17 +333,25 @@ function Kit.Menu(items, anchor)
             options[#options + 1] = { key = i, label = it.text, disabled = true, tipTitle = false }
         else
             options[#options + 1] = { key = i, label = it.text, disabled = it.disabled, tip = it.tip, tipTitle = false,
-                                      check = it.checked, seg = it.seg, value = it.value, note = it.note, kind = it.kind,
+                                      check = it.checked, seg = it.seg, swatch = it.swatch, value = it.value, note = it.note, kind = it.kind,
                                       onSeg = it.seg and function(k)
                                           it.value = k
                                           if it.func then it.func(k) end
                                           Kit.Menu(build or items, anchor)
-                                      end }
+                                      end,
+                                      onSwatch = it.swatch and build and function()
+                                          if it.func then it.func() end
+                                          Kit.Menu(build, anchor)
+                                      end or nil }
         end
     end
     ShowList(anchor, options, value, function(key)
         local it = items[key]
         if it and it.func then it.func() end
     end, nil, title)
+    if catcher and catcher:IsShown() then menuOn = anchor end
+end
+function Kit.MenuOpenAt(anchor)
+    return anchor ~= nil and menuOn == anchor and catcher ~= nil and catcher:IsShown() or false
 end
 Kit.OnTheme(PaintList)

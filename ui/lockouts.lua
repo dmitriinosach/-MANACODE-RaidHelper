@@ -104,10 +104,7 @@ local function Take(kind)
     return f
 end
 local function HideAll()
-    for kind, pool in pairs(pools) do
-        for i = 1, #pool do pool[i]:Hide() end
-        used[kind] = 0
-    end
+    Kit.HidePools(pools, used)
 end
 local function DrawNote(text, y, w)
     local row = Take("note")

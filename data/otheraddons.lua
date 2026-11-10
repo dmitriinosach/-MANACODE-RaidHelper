@@ -50,13 +50,23 @@ ns.otherAddons = {
         },
     },
     {
-        folder = "VuhDo_KickFix",
-        url = "https://github.com/dmitriinosach/-MANACODE-VuhDo-KickFix",
-        name = { ruRU = "VuhDo KickFix", enUS = "VuhDo KickFix" },
+        folder = "ManaCode_AuctionScan",
+        url = "https://github.com/dmitriinosach/-MANACODE-MarketBasedAuction",
+        name = { ruRU = "Market Based Auction", enUS = "Market Based Auction" },
         desc = {
-            ruRU = "Фикс панелей VuhDo 2.22 после кика в бою",
-            enUS = "Fixes VuhDo 2.22 frames after a kick in combat",
-            esES = "Arregla los marcos de VuhDo 2.22 tras una interrupción en combate",
+            ruRU = "Рынок аукциона: цены, крафты, реагенты, распыление, покупка и продажа",
+            enUS = "Auction market: prices, crafting, reagents, disenchanting, buying and selling",
+            esES = "Mercado de subastas: precios, fabricación, componentes, desencantamiento, compra y venta",
+        },
+    },
+    {
+        folder = "ManaCode_Talents",
+        url = "https://github.com/dmitriinosach/-MANACODE-Talents",
+        name = { ruRU = "Talents", enUS = "Talents" },
+        desc = {
+            ruRU = "Таланты всех классов: конструктор, осмотр, сравнение и обмен с другими игроками",
+            enUS = "Talents for every class: builder, inspect, compare and share with other players",
+            esES = "Talentos de todas las clases: editor, inspección, comparación e intercambio con otros jugadores",
         },
     },
 }

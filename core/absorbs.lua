@@ -15,7 +15,6 @@ local DEFAULT_AMOUNT = 1000
 local LOW_HP = 36
 local SHARE_TOL = 0.01
 local HINTS = 2
-local PASSIVE_DUR = 86400
 local UNRANKED = 1000
 local SOUL_LINK = 25228
 local KINGS = 64413

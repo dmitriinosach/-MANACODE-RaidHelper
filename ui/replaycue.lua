@@ -26,19 +26,17 @@ local EMPTY = {}
 local V = {}
 ns.ReplayCueView = V
 local Kit = ns.Kit
+local RD = ns.ReplayDraw
+local Affine = RD.Affine
 local Replay = ns.Replay
 local rims, fills, flashes, counts, icons = {}, {}, {}, {}, {}
 local shafts, heads, links = {}, {}, {}
 local used = { ring = 0, fill = 0, flash = 0, count = 0, icon = 0, arrow = 0, link = 0 }
 local view
 local hw, hh = 0, 0
+local ICON_TC = { 0.07, 0.07, 0.07, 0.93, 0.93, 0.07, 0.93, 0.93 }
 local probe = { rings = 0, fills = 0, flashes = 0, counts = 0, icons = 0, arrows = 0, links = 0, count = nil, fillR = 0 }
-local function Tex(layer, path, draw)
-    local tex = layer:CreateTexture(nil, draw)
-    tex:SetTexture(path)
-    tex:Hide()
-    return tex
-end
+local Tex = RD.Tex
 function V.Build(v, layer)
     view = v
     for i = 1, RING_DRAW do
@@ -102,43 +100,10 @@ local function PutEllipse(tex, sx, sy, rw, rh)
     if LV and LV.Sharp then LV.Sharp(tex, rw) end
     return PutRect(tex, sx - rw, sy - rh, sx + rw, sy + rh)
 end
-local function Inverse(ox, oy, ux, uy, vx, vy, x, y)
-    local det = ux * vy - uy * vx
-    if det == 0 then return 0, 0 end
-    local dx, dy = x - ox, y - oy
-    return (dx * vy - dy * vx) / det, (ux * dy - uy * dx) / det
-end
 local function PutAffine(tex, ox, oy, ux, uy, vx, vy)
-    local l = min(ox, ox + ux, ox + vx, ox + ux + vx)
-    local r = max(ox, ox + ux, ox + vx, ox + ux + vx)
-    local t = min(oy, oy + uy, oy + vy, oy + uy + vy)
-    local b = max(oy, oy + uy, oy + vy, oy + uy + vy)
-    if r - l > MAX_PX or b - t > MAX_PX then
-        tex:Hide()
-        return false
-    end
-    l, t, r, b = max(l, -hw), max(t, -hh), min(r, hw), min(b, hh)
-    if r - l < 1 or b - t < 1 then
-        tex:Hide()
-        return false
-    end
-    local ulx, uly = Inverse(ox, oy, ux, uy, vx, vy, l, t)
-    local llx, lly = Inverse(ox, oy, ux, uy, vx, vy, l, b)
-    local urx, ury = Inverse(ox, oy, ux, uy, vx, vy, r, t)
-    local lrx, lry = Inverse(ox, oy, ux, uy, vx, vy, r, b)
-    tex:ClearAllPoints()
-    tex:SetPoint("TOPLEFT", view, "CENTER", l, -t)
-    tex:SetWidth(r - l)
-    tex:SetHeight(b - t)
-    tex:SetTexCoord(ulx, uly, llx, lly, urx, ury, lrx, lry)
-    tex:Show()
-    return true
+    return Affine(tex, view, hw, hh, ox, oy, ux, uy, vx, vy)
 end
-local function Screen(cam, scene, x, y)
-    local gx, gy, lift = ns.ReplayGeo.Where(cam, scene, x, y)
-    local sx, sy, k = Replay.Project(cam, gx, gy)
-    return sx, sy - lift, k
-end
+local Screen = RD.Screen
 local function Fade(a, from, to, t)
     local left = to - t
     if left < 1 then a = a * max(0, left) end
@@ -183,22 +148,19 @@ local function PlaceRings(scene, cam, t, list)
                     local up = 0
                     local tex = def.tex and icons[ni + 1]
                     if tex then
-                        ni = ni + 1
-                        local size = max(ICON_MIN, min(ICON_MAX, ICON_YD * s))
+                        local half = max(ICON_MIN, min(ICON_MAX, ICON_YD * s)) / 2
                         if tex.tex ~= def.tex then
                             tex.tex = def.tex
                             tex:SetTexture(def.tex)
                         end
-                        tex:SetWidth(size)
-                        tex:SetHeight(size)
-                        tex:ClearAllPoints()
-                        tex:SetPoint("CENTER", view, "CENTER", sx, -sy)
-                        tex:Show()
-                        up = size / 2 + ICON_GAP
+                        if Kit.Crop(tex, view, hw, hh, sx - half, sy - half, sx + half, sy + half, ICON_TC) then
+                            ni = ni + 1
+                            up = half + ICON_GAP
+                        end
                     end
                     local left = max(1, ceil(o.boom - t))
                     local fs = counts[nc + 1]
-                    if fs then
+                    if fs and sx > -hw and sx < hw and sy - up > -hh and sy - up < hh then
                         nc = nc + 1
                         if fs.left ~= left then
                             fs.left = left

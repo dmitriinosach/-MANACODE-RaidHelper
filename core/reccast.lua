@@ -12,19 +12,21 @@ local EVENTS = {
 }
 local RecCast = { SUB = SUB, CAST = CAST, CHANNEL = CHANNEL, MOVED = MOVED, CUT = CUT }
 ns.RecCast = RecCast
-local UNITS = { player = true }
-for i = 1, MAX_RAID do UNITS[ns.Units.raid[i]] = true end
-for i = 1, MAX_PARTY do UNITS[ns.Units.party[i]] = true end
+local TARGET = { player = "target" }
+for i = 1, MAX_RAID do TARGET[ns.Units.raid[i]] = ns.Units.raid[i] .. "target" end
+for i = 1, MAX_PARTY do TARGET[ns.Units.party[i]] = ns.Units.party[i] .. "target" end
 local open = {}
 local frame = CreateFrame("Frame")
 local function Writing()
     local R = ns.Recorder
     return R ~= nil and R.IsOn() and not R.IsPaused() and R.InZone() and ns.Store.Live() ~= nil
 end
-local function Put(name, kind, left)
+local function Put(name, kind, left, unit)
     local ms = left and floor(left + 0.5) or nil
     if ms and ms < 0 then ms = 0 end
-    ns.Store.Append(ns.Recorder.Now(), SUB, nil, name, 0, nil, nil, 0, kind, ms)
+    local of = unit and TARGET[unit]
+    local aimGUID = of and UnitGUID(of)
+    ns.Store.Append(ns.Recorder.Now(), SUB, nil, name, 0, aimGUID, aimGUID and UnitName(of) or nil, 0, kind, ms)
 end
 local function OnStart(unit, name, chan)
     local info = chan and UnitChannelInfo or UnitCastingInfo
@@ -34,7 +36,7 @@ local function OnStart(unit, name, chan)
     local o = open[name]
     if o and o.start == start and o.chan == chan then return end
     open[name] = { start = start, stop = stop, chan = chan }
-    Put(name, chan and CHANNEL or CAST, stop - GetTime() * 1000)
+    Put(name, chan and CHANNEL or CAST, stop - GetTime() * 1000, unit)
 end
 local function OnMoved(unit, name, chan)
     local o = open[name]
@@ -58,7 +60,7 @@ local function OnStop(name, chan)
     open[name] = nil
 end
 local function OnEvent(_, event, unit)
-    if not UNITS[unit] or not Writing() then return end
+    if not TARGET[unit] or not Writing() then return end
     local name = UnitName(unit)
     if not name then return end
     if event == "UNIT_SPELLCAST_START" then

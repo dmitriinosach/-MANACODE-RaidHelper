@@ -31,6 +31,7 @@ local CHOICE_W = 180
 local FIELD_W = 120
 local BTN_MIN = 120
 local BTN_PAD = 24
+local KEY_W = 160
 local SEG_MIN = 72
 local SEG_GAP = 4
 local ARM = 10
@@ -261,7 +262,7 @@ local function Options(it)
     for i = 1, #(o or {}) do
         local src = o[i]
         out[i] = { key = src.key, label = Text(src.label or src.key), tip = src.tip and Text(src.tip) or nil,
-                   tipTitle = src.tip and false or nil }
+                   tipTitle = src.tip and false or nil, swatch = src.swatch }
     end
     return out
 end
@@ -290,10 +291,29 @@ local function BuildButtons(r, it)
         end
     end
 end
+local function BuildPick(r, it)
+    local pick = Kit.ThemePick(r, function(k) Apply(it, k) end, true)
+    r.pick = pick
+    r.pickH = ROW
+    r.PlaceSegs = function()
+        local cur, on, items = it.get and it.get(), Enabled(it), {}
+        local opts = Options(it)
+        for i = 1, #opts do
+            local o = opts[i]
+            items[i] = { key = o.key, label = o.label, colors = o.swatch, on = o.key == cur, disabled = not on }
+        end
+        local top = max(0, floor((ROW - Kit.GrowH(24, SMALL)) / 2))
+        local _, h = pick:Fill(items, LABEL_W, top, max(1, (r:GetWidth() or 0) - LABEL_W))
+        r.pickH = max(ROW, h + top * 2)
+    end
+    r.Height = function() return r.pickH end
+end
 local function BuildChoice(r, it)
     local label = Label(r, "text.primary")
     local sel
-    if it.buttons then
+    if it.pick then
+        BuildPick(r, it)
+    elseif it.buttons then
         BuildButtons(r, it)
     else
         sel = Kit.Select(r)
@@ -431,12 +451,40 @@ local function BuildCustom(r, it)
         if it.refresh then it.refresh(r, it) end
     end
 end
+local function BuildKey(r, it)
+    local label = Label(r, "text.primary")
+    local b = Kit.Button(r)
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    local function Fit()
+        b:SetWidth(max(KEY_W, b.text:GetStringWidth() + BTN_PAD))
+    end
+    local field = ns.SysOpts.KeyField(b, { command = it.command, T = ns.T, wait = "set.keys.wait", none = "set.keys.none",
+        paint = function(_, text, waiting)
+            b:SetText(text)
+            b:SetActive(waiting)
+            Fit()
+        end })
+    b.onClick = function(_, mouse) field:Click(mouse) end
+    r.field, r.button = field, b
+    r.Place = function()
+        PlaceLabel(r, label)
+        b:ClearAllPoints()
+        b:SetPoint("LEFT", r, "TOPLEFT", LABEL_W, -ROW / 2)
+        Fit()
+    end
+    r.Refresh = function()
+        label:SetText(Text(it.label))
+        field:Refresh()
+        Tip(b, it, false)
+    end
+end
 local BUILD = {
     check = BuildCheck,
     choice = BuildChoice,
     slider = BuildSlider,
     field = BuildField,
     button = BuildButton,
+    key = BuildKey,
     text = BuildText,
     custom = BuildCustom,
 }
@@ -457,7 +505,8 @@ local function BuildItem(parent, it)
 end
 local function ItemHeight(it, w)
     local r = it.w
-    local h = ROW
+    local own = rawget(r, "Height")
+    local h = own and own() or ROW
     if it.kind == "custom" then
         return Height(it.height, r)
     elseif it.kind == "text" or not BUILD[it.kind] then
@@ -877,7 +926,10 @@ Settings.Category("cost", { label = "set.cat.cost", sub = "set.cat.cost.sub", or
 Settings.Category("lead", { label = "set.cat.lead", sub = "set.cat.lead.sub", order = 70, group = "lead" })
 Settings.Category("guild", { label = "set.cat.guild", sub = "set.cat.guild.sub", order = 80, group = "other" })
 Settings.Category("svc", { label = "set.cat.svc", sub = "set.cat.svc.sub", order = 90, group = "other" })
-Kit.OnTheme(PaintNav)
+Kit.OnTheme(function()
+    PaintNav()
+    Settings.Refresh()
+end)
 Kit.OnFont(function()
     if not page then return end
     Sizes()

@@ -64,6 +64,17 @@ function Roll.Sums(raid, alt)
     end
     return out
 end
+function Roll.PenOf(who, n, sums)
+    for i = 1, #throws do
+        local t = throws[i]
+        if t.who == who and t.n == n then return t.pen end
+    end
+    if not sums then
+        local raid, alt = Roll.Here()
+        sums = raid and Roll.Sums(raid, alt) or {}
+    end
+    return sums[who] or 0
+end
 function Roll.OnSystem(msg)
     local who, n, lo, hi = Roll.Parse(msg)
     if not who then return end

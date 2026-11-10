@@ -35,7 +35,6 @@ local TEXTTOP = -5
 local INFOTOP = -19
 local DAY = 86400
 local FITKEY = nil
-local RAIDR = 7
 local OKSZ = 13
 local TIPMAX = 10
 local OKX = -6

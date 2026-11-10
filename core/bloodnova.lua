@@ -1,8 +1,6 @@
 local _, ns = ...
 local floor = math.floor
 local sqrt = math.sqrt
-local tsort = table.sort
-local MAP_UNITS = 10000
 local HIT = { SPELL_DAMAGE = true, SPELL_MISSED = true, DAMAGE_SHIELD_MISSED = true }
 local BN = {}
 ns.BloodNova = BN
@@ -33,28 +31,8 @@ local function Free(p)
     if p.role == "heal" then return true end
     return not ns.IsMelee(p)
 end
-local function Marks(fight)
-    local out = {}
-    local segs = ns.Encounters.Segs(fight)
-    for i = 1, #segs do
-        local m = ns.Decode.Maps(segs[i])
-        for k = 1, #m do out[#out + 1] = m[k] end
-    end
-    tsort(out, function(a, b) return a.t < b.t end)
-    return out
-end
-local function Scale(marks, t)
-    local mark = marks[1]
-    for i = 1, #marks do
-        if marks[i].t <= t then mark = marks[i] else break end
-    end
-    if not mark then return nil, nil end
-    local scale = ns.mapScale or {}
-    local byArea = scale[mark.name or ""] or (ns.mapAreas and scale[ns.mapAreas[mark.area] or ""])
-    local size = byArea and byArea[mark.level]
-    if not size then return nil, nil end
-    return size.w / MAP_UNITS, size.h / MAP_UNITS
-end
+local Marks = ns.MapPos.Marks
+local Scale = ns.MapPos.Scale
 local function PosAt(st, name, t)
     local fight = st.fight
     local segs = ns.Encounters.Segs(fight)

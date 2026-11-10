@@ -63,17 +63,20 @@ Replay.MOVE_YPS = MOVE_YPS
 Replay.ROOMS = {
     lanathel = { boss = ns.ENC.lanathel, floor = 6, tex = "lanathel", cx = 511, cy = 310, r = 160, pack = "ICC" },
     lichking = { boss = ns.ENC.lichking, floor = 7, tex = "lichking", cx = 500, cy = 349, r = 255, pack = "ICC",
-                 sky = "icecrown" },
-    marrowgar = { boss = ns.ENC.marrowgar, floor = 1, tex = "marrowgar", cx = 390, cy = 402, r = 66, pack = "ICC" },
+                 sky = "icecrown", fit = 74 },
+    marrowgar = { boss = ns.ENC.marrowgar, floor = 1, tex = "marrowgar", cx = 390, cy = 402, r = 66, pack = "ICC",
+                  sky = "rotunda" },
     deathwhisper = { boss = ns.ENC.deathwhisper, floor = 1, tex = "deathwhisper", cx = 390, cy = 540, r = 66, pack = "ICC" },
     gunship = { boss = ns.ENC.gunship, floor = 2, tex = "gunship", cx = 625, cy = 318, r = 100 },
-    deathbringer = { boss = ns.ENC.saurfang, floor = 3, tex = "deathbringer", cx = 520, cy = 300, r = 230, pack = "ICC" },
+    deathbringer = { boss = ns.ENC.saurfang, floor = 3, tex = "deathbringer", cx = 520, cy = 300, r = 230, pack = "ICC",
+                     sky = "icecrown" },
     festergut = { boss = ns.ENC.festergut, floor = 5, tex = "festergut", cx = 199, cy = 440, r = 48, pack = "ICC" },
     rotface = { boss = ns.ENC.rotface, floor = 5, tex = "rotface", cx = 199, cy = 270, r = 48, pack = "ICC" },
     putricide = { boss = ns.ENC.putricide, floor = 5, tex = "putricide", cx = 125, cy = 355, r = 52, pack = "ICC" },
     council = { boss = ns.ENC.council, floor = 5, tex = "council", cx = 518, cy = 95, r = 58, pack = "ICC", sky = "citadel" },
     valithria = { boss = ns.ENC.valithria, floor = 5, tex = "valithria", cx = 769, cy = 475, r = 85, pack = "ICC" },
-    sindragosa = { boss = ns.ENC.sindragosa, floor = 4, tex = "sindragosa", cx = 365, cy = 115, r = 78, pack = "ICC" },
+    sindragosa = { boss = ns.ENC.sindragosa, floor = 4, tex = "sindragosa", cx = 365, cy = 115, r = 78, pack = "ICC",
+                   sky = "icecrown" },
     frostmourne = { boss = ns.ENC.lichking, floor = 8, tex = "frostmourne", cx = 470, cy = 365, r = 130, pack = "ICC" },
     halion = { boss = ns.ENC.halion, floor = 0, tex = "halion", cx = 495, cy = 366, r = 80, pack = "RS" },
     leviathan = { boss = ns.ENC.leviathan, floor = 1, tex = "leviathan", cx = 493, cy = 276, r = 40, pack = "ULD" },
@@ -905,8 +908,14 @@ function Replay.Frame(cam)
     return min(cam.w * 0.94 / (2 * half), cam.h * 0.92 / max(1e-6, bottom - top))
 end
 function Replay.Fit(cam, scene)
-    cam.cx, cam.cy = scene.cx, scene.cy
-    cam.r = max(1, scene.r)
+    local room = scene.room
+    if room and room.fit then
+        cam.cx, cam.cy = room.cx, room.cy
+        cam.r = max(1, room.fit * scene.ppy)
+    else
+        cam.cx, cam.cy = scene.cx, scene.cy
+        cam.r = max(1, scene.r)
+    end
     cam.zoom = Replay.Frame(cam)
 end
 local function ScreenY(cam, ry)

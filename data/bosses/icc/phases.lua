@@ -75,7 +75,9 @@ ns.bossPhases[ns.ENC.putricide] = {
 ns.bossPhases[ns.ENC.council] = {
     steps = { FIGHT },
     waves = {
-        invocation = { label = "ph.w.invocation", on = { "SPELL_AURA_APPLIED", 70952, 70981, 70982 } },
+        valanar = { label = "ph.w.valanar", on = { "SPELL_AURA_APPLIED", 70952 }, stop = { "SPELL_AURA_REMOVED", 70952 } },
+        taldaram = { label = "ph.w.taldaram", on = { "SPELL_AURA_APPLIED", 70982 }, stop = { "SPELL_AURA_REMOVED", 70982 } },
+        keleseth = { label = "ph.w.keleseth", on = { "SPELL_AURA_APPLIED", 70981 }, stop = { "SPELL_AURA_REMOVED", 70981 } },
     },
 }
 ns.bossPhases[ns.ENC.lanathel] = {

@@ -1190,9 +1190,6 @@ end
 function Panel.SetBusy(key, on)
     busyParts[key] = on and true or nil
 end
-function Panel.IsBusy(key)
-    return busyParts[key] == true
-end
 function Panel.SetLocked(on)
     Saved().locked = on and true or false
     if frame then DressLock() end

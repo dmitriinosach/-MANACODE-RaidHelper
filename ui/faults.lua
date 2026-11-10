@@ -8,13 +8,13 @@ local Kit = ns.Kit
 local PAD = 12
 local BTNH = 20
 local LOGH = 20
-local TABS = { "give", "rules", "log", "roll", "soft" }
+local TABS = { "give", "rules", "log", "roll", "soft", "ep" }
 local PREV = "Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Up"
 local NEXT = "Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up"
 local LOGCOLS = { { "time", 44 }, { "who", 110 }, { "what", 0 }, { "sys", 80 }, { "n", 80 }, { "by", 100 } }
 local Page = {}
 ns.FaultsPage = Page
-local frame, sysBtn, give, rules, log, roll, soft
+local frame, sysBtn, give, rules, log, roll, soft, ep
 local tabBtns = {}
 local btns = {}
 local top, bar, foot, logh, btnh = 40, 26, 30, LOGH, BTNH
@@ -130,6 +130,13 @@ local function BuildGive()
     end)
     give.all:SetPoint("LEFT", give.open, "RIGHT", 4, 0)
     Fit(give.all, ns.T("fp.filter.all"))
+    give.chat = Btn(give, "HTP_FailWatchFaultsChat", "quiet", function()
+        ns.ProofView.ReportMenu(give.chat, function(n)
+            return ns.GPList.ChatLines(current, current and ns.Summary.Peek(current), model, n)
+        end, "report.menu.list", true, "report.none.list")
+    end)
+    give.chat:SetPoint("LEFT", give.all, "RIGHT", 10, 0)
+    Fit(give.chat, ns.T("report.btn"))
     give.giveAll = Btn(give, "HTP_FailWatchFaultsGiveAll", "main", function()
         if current and model then ns.GPList.Issue(current, model.all) end
     end)
@@ -211,7 +218,12 @@ local function BuildLog()
     log.title:SetPoint("TOPLEFT", 0, -2)
     log.sums = Kit.Str(log, "GameFontHighlight")
     ns.Kit.Text(log.sums, "text.bright")
-    log.sums:SetPoint("TOPRIGHT", 0, -2)
+    log.chat = Btn(log, "HTP_FailWatchFaultsLogChat", "quiet", function()
+        ns.ProofView.ReportMenu(log.chat, Page.LogChat, "report.menu.list", true, "report.none.list")
+    end)
+    log.chat:SetPoint("TOPRIGHT", 0, 0)
+    log.sums:SetPoint("RIGHT", log.chat, "LEFT", -10, 0)
+    Fit(log.chat, ns.T("report.btn"))
     log.head = LogRow(log)
     for i = 1, #LOGCOLS do
         local fs = log.head.cells[LOGCOLS[i][1]]
@@ -241,6 +253,17 @@ local function LogRaid()
     if last and last.raid then return last.raid, last.rl or RaidLabel(last.raid) end
     return nil, ns.T("fp.log.all")
 end
+function Page.LogChat(n)
+    local raid, label, alt = LogRaid()
+    local rows, out = ns.Ledger.Log(raid, alt), {}
+    for i = #rows, 1, -1 do
+        local row = rows[i]
+        local what, sys, num = LogTexts(row)
+        out[#out + 1] = { who = row.who or "?", val = num .. " " .. sys,
+            rest = { what, row.by and format(ns.T("report.by"), row.by) or nil } }
+    end
+    return ns.ChatReport.Detail(ns.T("report.t.log"), label, out, n)
+end
 local function PaintLog()
     local raid, label, alt = LogRaid()
     local rows = ns.Ledger.Log(raid, alt)
@@ -251,6 +274,7 @@ local function PaintLog()
         if sums[s] then parts[#parts + 1] = ns.Ledger.Unit(s) .. " " .. sums[s] end
     end
     log.sums:SetText(concat(parts, ", "))
+    if #rows > 0 then log.chat:Enable() else log.chat:Disable() end
     local width = log:GetWidth() or 600
     LogLayout(log.head, width)
     local slots = max(1, floor(((log:GetHeight() or 300) - bar - logh - 4) / logh))
@@ -279,6 +303,7 @@ local function PaintGive()
         give.busy:Show()
         give.giveAll:Disable()
         give.giveSel:Disable()
+        give.chat:Disable()
         return
     end
     local n, total = 0, 0
@@ -293,6 +318,7 @@ local function PaintGive()
     local summary = ns.Summary.Peek(current)
     if not summary then
         model = nil
+        give.chat:Disable()
         give.list:Hide()
         give.busy:SetText(ns.T("sum.busy"))
         give.busy:Show()
@@ -317,6 +343,7 @@ local function PaintGive()
     give.total:SetText(total)
     Fit(give.giveAll, ns.GPList.AllText(model))
     if model.pending > 0 then give.giveAll:Enable() else give.giveAll:Disable() end
+    if #model.items > 0 then give.chat:Enable() else give.chat:Disable() end
     local marked, count = ns.GPList.Marked(model, give.list.sel), 0
     for _ in pairs(give.list.sel) do count = count + 1 end
     give.marked:SetText(format(ns.T("fp.marked"), count))
@@ -333,6 +360,7 @@ function Page.Refresh()
     if tab == "log" then log:Show() else log:Hide() end
     if tab == "roll" then roll:Show() else roll:Hide() end
     if tab == "soft" then soft:Show() else soft:Hide() end
+    if tab == "ep" then ep:Show() else ep:Hide() end
     if tab == "give" then PaintGive() end
     if tab == "log" then PaintLog() end
     if tab == "roll" then
@@ -343,6 +371,7 @@ function Page.Refresh()
         ns.FaultsSoft.Place(bar, logh, btnh)
         ns.FaultsSoft.Paint()
     end
+    if tab == "ep" then ns.RaidEPView.Paint() end
     if tab == "rules" and ns.GPSettings then ns.GPSettings.Refresh() end
 end
 local function SetTab(key)
@@ -368,6 +397,8 @@ local function Place()
     give.open:SetPoint("TOPLEFT", 0, -bar)
     Fit(give.open, ns.T("fp.filter.open"))
     Fit(give.all, ns.T("fp.filter.all"))
+    Fit(give.chat, ns.T("report.btn"))
+    Fit(log.chat, ns.T("report.btn"))
     give.giveAll:SetPoint("TOPRIGHT", 0, -bar)
     give.list:SetPoint("TOPLEFT", 0, -(bar * 2 + 4))
     give.busy:SetPoint("TOPLEFT", give.list, "TOPLEFT", 6, -(bar - 2))
@@ -383,6 +414,9 @@ local function Place()
     soft:SetPoint("TOPLEFT", PAD, -top)
     soft:SetPoint("BOTTOMRIGHT", -PAD, PAD)
     ns.FaultsSoft.Place(bar, logh, btnh)
+    ep:SetPoint("TOPLEFT", PAD, -top)
+    ep:SetPoint("BOTTOMRIGHT", -PAD, PAD)
+    ns.RaidEPView.Place(bar, logh, btnh)
 end
 function Page.Attach(host)
     frame = host
@@ -403,6 +437,7 @@ function Page.Attach(host)
     BuildLog()
     roll = ns.FaultsRoll.Build(frame, Btn)
     soft = ns.FaultsSoft.Build(frame, Btn)
+    ep = ns.RaidEPView.Build(frame, Btn)
     Place()
     ns.GPList.OnChange(function() Page.Refresh() end)
     Kit.OnFont(function()
@@ -431,4 +466,7 @@ function Page.Open(key, f)
 end
 function Page.Tab()
     return tab
+end
+function Page.TabButton(key)
+    return tabBtns[key]
 end

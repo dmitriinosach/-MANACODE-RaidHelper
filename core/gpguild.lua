@@ -93,16 +93,7 @@ function GPGuild.Sum(s)
     end
     return format("%04x%04x%04x%04x", floor(h / 65536), h % 65536, b, a)
 end
-local function Cut(s, n)
-    if #s <= n then return s end
-    local i = n
-    while i > 0 do
-        local c = s:byte(i + 1)
-        if not c or c < 128 or c >= 192 then break end
-        i = i - 1
-    end
-    return s:sub(1, i)
-end
+local Cut = ns.CutText
 local function Text(s, n)
     if type(s) ~= "string" then return "" end
     s = s:gsub("[%c|]", ""):gsub("^%s+", "")

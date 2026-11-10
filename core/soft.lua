@@ -27,16 +27,7 @@ local function Store()
     end
     return s
 end
-local function Cut(s, n)
-    if #s <= n then return s end
-    local i = n
-    while i > 0 do
-        local c = s:byte(i + 1)
-        if not c or c < 128 or c >= 192 then break end
-        i = i - 1
-    end
-    return s:sub(1, i)
-end
+local Cut = ns.CutText
 function Soft.Parse(msg)
     if type(msg) ~= "string" then return nil end
     local word, rest = msg:match("^%s*([^%s:]+)%s*:?%s*(.-)%s*$")

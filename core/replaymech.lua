@@ -7,7 +7,6 @@ local floor = math.floor
 local tsort = table.sort
 local CAST_MERGE = 1.5
 local BOOM_EARLY = 0.5
-local MAP_UNITS = 10000
 local POS_HOLD = 2
 local POS_GAP = 2
 local HIT = { SPELL_DAMAGE = true, SPELL_MISSED = true, SPELL_PERIODIC_DAMAGE = true }
@@ -834,28 +833,8 @@ function M.Flasks(ctx, L, scene)
     tsort(cue.rings, ByFrom)
     return out
 end
-local function Marks(fight)
-    local out = {}
-    local segs = ns.Encounters.Segs(fight)
-    for i = 1, #segs do
-        local m = ns.Decode.Maps(segs[i])
-        for k = 1, #m do out[#out + 1] = m[k] end
-    end
-    tsort(out, function(a, b) return a.t < b.t end)
-    return out
-end
-local function Scale(marks, t)
-    local mark = marks[1]
-    for i = 1, #marks do
-        if marks[i].t <= t then mark = marks[i] else break end
-    end
-    if not mark then return nil, nil end
-    local scale = ns.mapScale or {}
-    local byArea = scale[mark.name or ""] or (ns.mapAreas and scale[ns.mapAreas[mark.area] or ""])
-    local size = byArea and byArea[mark.level]
-    if not size then return nil, nil end
-    return size.w / MAP_UNITS, size.h / MAP_UNITS
-end
+local Marks = ns.MapPos.Marks
+local Scale = ns.MapPos.Scale
 function M.LogPos(fight)
     local tracks, marks = {}, nil
     local segs = ns.Encounters.Segs(fight)
@@ -875,20 +854,7 @@ function M.LogPos(fight)
             end
             tracks[name] = tr
         end
-        local n = #tr.t
-        if n == 0 then return nil, 0 end
-        local lo, hi = 1, n + 1
-        while lo < hi do
-            local mid = floor((lo + hi) / 2)
-            if tr.t[mid] <= t then lo = mid + 1 else hi = mid end
-        end
-        local i = lo - 1
-        local x, y
-        if i >= 1 and t - tr.t[i] <= POS_HOLD then
-            x, y = tr.x[i], tr.y[i]
-        elseif lo <= n and tr.t[lo] - t <= POS_GAP then
-            x, y = tr.x[lo], tr.y[lo]
-        end
+        local x, y = ns.MapPos.Near(tr, t, POS_HOLD, POS_GAP)
         if not x then return nil, 0 end
         marks = marks or Marks(fight)
         local yw, yh = Scale(marks, t)

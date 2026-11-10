@@ -29,7 +29,11 @@ local SAME_USE = 15
 local CD_FLOOR = 0.5
 local RANK = { red = 3, yellow = 2, green = 1 }
 local MCD_TOP = 3
+local MC_TIP = 8
 local MELEE = "#melee"
+local SWING = "#swing"
+local REST = "#rest"
+local MELEE_ID = 6603
 local GAINED = { SPELL_AURA_APPLIED = true, SPELL_AURA_REFRESH = true, SPELL_AURA_APPLIED_DOSE = true }
 local USE = { SPELL_CAST_SUCCESS = true, SPELL_AURA_APPLIED = true, SPELL_DAMAGE = true, SPELL_MISSED = true }
 local HARM = { SPELL_DAMAGE = true, SPELL_MISSED = true, SPELL_AURA_APPLIED = true, SPELL_PERIODIC_DAMAGE = true }
@@ -67,7 +71,7 @@ local function Norm(amount, resisted, blocked, absorbed, crit)
 end
 function Ctl.Begin(rule, byName, owners, pets, drain)
     local st = { rule = rule, aura = tonumber(rule.aura), byName = byName, owners = owners, pets = pets,
-                 who = {}, procOf = {}, open = 0, lastEnd = -AFTER - 1, n = 0, mcd = {},
+                 who = {}, procOf = {}, open = 0, lastEnd = -AFTER - 1, n = 0, mcd = {}, got = {},
                  lt = {}, ld = {}, lm = {}, la = {}, lsp = {} }
     for _, id in ipairs(rule.procs or {}) do st.procOf[ns.SpellKey(id)] = true end
     if drain then
@@ -189,7 +193,41 @@ local function Hurt(st, ts, src, dst, sk, amount)
     local key = sk or MELEE
     h.by[key] = (h.by[key] or 0) + amount
 end
-function Ctl.Feed(st, ts, sub, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a4, a5, a6, a7, a8)
+local function Abil(map, swing, a1, a2, amount, crit)
+    local key = swing and SWING or tostring(a2 or a1)
+    local r = map[key]
+    if not r then
+        r = { a = 0, n = 0, c = 0, id = swing and MELEE_ID or tonumber(a1) }
+        map[key] = r
+    end
+    r.a, r.n = r.a + amount, r.n + 1
+    if On(crit) then r.c = r.c + 1 end
+end
+local function Trim(map)
+    local list = {}
+    for key, r in pairs(map) do
+        r.a = floor(r.a + 0.5)
+        if r.c == 0 then r.c = nil end
+        list[#list + 1] = { key = key, r = r }
+    end
+    if #list <= MC_TIP then return map end
+    tsort(list, function(x, y)
+        if x.r.a ~= y.r.a then return x.r.a > y.r.a end
+        return x.key < y.key
+    end)
+    local out, rest = {}, { a = 0, n = 0, k = 0 }
+    for i = 1, #list do
+        local e = list[i]
+        if i <= MC_TIP then
+            out[e.key] = e.r
+        else
+            rest.a, rest.n, rest.k = rest.a + e.r.a, rest.n + e.r.n, rest.k + 1
+        end
+    end
+    out[REST] = rest
+    return out
+end
+function Ctl.Feed(st, ts, sub, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a2, a4, a5, a6, a7, a8, a10)
     local byName = st.byName
     if sub == "FW_WPN" then
         Weapon(st, ts, srcName, a1, a2, a4)
@@ -210,11 +248,21 @@ function Ctl.Feed(st, ts, sub, srcName, srcFlags, dstGUID, dstName, dstFlags, a1
     local swing = find(sub, "SWING", 1, true) == 1
     local hurt = find(sub, "_DAMAGE", 1, true) ~= nil
     local held = dst and hurt and not c and srcName ~= dstName and byName[srcName] and st.who[dstName]
-    if held and held.cur then Hurt(st, ts, srcName, dstName, not swing and sk or nil, tonumber(swing and a1 or a4) or 0) end
+    local amount = hurt and (tonumber(swing and a1 or a4) or 0) or 0
+    if held and held.cur then
+        Hurt(st, ts, srcName, dstName, not swing and sk or nil, amount)
+        local g = st.got[dstName] or {}
+        st.got[dstName] = g
+        Abil(g, swing, a1, a2, amount, swing and a7 or a10)
+    end
     local ally = dst or (dstGUID ~= nil and (st.owners[dstGUID] or st.pets[dstGUID]) ~= nil)
         or (dstFlags ~= nil and band(dstFlags, F_PETS) > 0 and band(dstFlags, F_BY_PLAYER) > 0
             and band(dstFlags, F_OURS) > 0)
     if c and ally and dstName ~= srcName then
+        if hurt then
+            w.outAb = w.outAb or {}
+            Abil(w.outAb, swing, a1, a2, amount, swing and a7 or a10)
+        end
         if st.drainName and HARM[sub] and sk and st.drainName[sk] then
             Harm(c, sub, dstName, sk, a4)
         end
@@ -323,7 +371,12 @@ local function Blame(st, victim, t)
     if not first then return nil end
     local kill = last ~= nil and lm[last] == by and last or nil
     local gap = t - first
-    c.kills[#c.kills + 1] = victim
+    local k = #c.kills + 1
+    while k > 1 and c.kills[k - 1] > victim do
+        c.kills[k] = c.kills[k - 1]
+        k = k - 1
+    end
+    c.kills[k] = victim
     return { by = by, ctl = c, gap = gap, hits = hits, one = hits == 1, share = (sums[by] or 0) / math.max(1, total),
              grade = (gap < REACT or hits == 1) and "green" or "yellow",
              spell = kill and st.lsp[kill] or nil, amount = kill and la[kill] or nil, dot = t > c.to }
@@ -402,6 +455,10 @@ local function HurtList(st)
             p.mcDmg = list
         end
     end
+    for dst, g in pairs(st.got) do
+        local p = st.byName[dst]
+        if p then p.mcGot = Trim(g) end
+    end
 end
 function Ctl.Finish(st, s, till)
     HurtList(st)
@@ -426,6 +483,7 @@ function Ctl.Finish(st, s, till)
                 c.used, c.dd, c.da = nil, nil, nil
             end
             p.ctl = w.list
+            if w.outAb then p.mcOut = Trim(w.outAb) end
         end
     end
     for i = 1, #s.players do

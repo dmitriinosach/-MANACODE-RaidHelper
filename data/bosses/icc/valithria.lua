@@ -1,7 +1,7 @@
 local _, ns = ...
 ns.summaries[ns.ENC.valithria] = {
     badges = {
-        { kind = "ticks", spell = 71940, id = 71941, gap = 5, tip = "sum.b.portals" },
+        { kind = "ticks", spell = 71940, id = 71941, gap = 5, tip = "sum.b.portals", dream = 70766, waves = 20 },
         { kind = "stack", spell = 71940, id = 71941, tip = "sum.b.dreamstacks" },
         { kind = "stack", spell = 70873, id = 70873, tip = "sum.b.dreamstacks" },
         { kind = "lost", spell = 71940, id = 71941, stop = "ph.dream", grade = "yellow", rule = "vali.vigor",

@@ -206,14 +206,15 @@ local function Judge(st, p, h, te, died)
             if u.ok then ep.given = true end
         end
     end
+    local tal = p.talents
     for q = 1, #st.order do
         local id = st.order[q]
         local key = ns.SpellKey(id)
         local rc = st.raid[key]
-        if not used[key] and rc.class == p.class then
+        if not used[key] and rc.class == p.class and not (rc.talent and tal and not tal[id]) then
             local last = LastPress(st, name, key, te)
             if not last then
-                ep.never[#ep.never + 1] = id
+                if not rc.talent or (tal and tal[id]) then ep.never[#ep.never + 1] = id end
             elseif te - last >= rc.cd then
                 ep.ready[#ep.ready + 1] = id
             else

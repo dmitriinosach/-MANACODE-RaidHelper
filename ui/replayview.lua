@@ -8,6 +8,7 @@ local BTN_H = 20
 local ROW = 24
 local GAP = 4
 local CHECK = 20
+local SIZE_VALUE_W = 40
 local View = {}
 ns.ReplayViewMenu = View
 local Kit = ns.Kit
@@ -76,6 +77,15 @@ local function Place()
                 PlaceRow(it.row, y)
                 y = y + m.row
             end
+        elseif it.kind == "slider" then
+            local obj = it.obj
+            obj:ClearAllPoints()
+            obj:SetPoint("TOPLEFT", menu, "TOPLEFT", PAD, -y)
+            obj:SetWidth(m.W - PAD * 2)
+            obj:SetHeight(m.btn)
+            obj:SetLabelWidth(LABEL_W)
+            Rect(it.name, PAD, y, m.W - PAD * 2, m.btn)
+            y = y + m.row
         else
             if not tail then
                 y = y + GAP
@@ -139,8 +149,10 @@ local function WorldRow()
         if has then row.btns[i]:Show() else row.btns[i]:Hide() end
     end
     if has then Mark(row, Realm.Mode()) end
-    st.hasWorld = has
-    Place()
+    if st.hasWorld ~= has then
+        st.hasWorld = has
+        Place()
+    end
 end
 local function ThroneRow()
     local mode, has = ns.ReplayLive.ThroneMode()
@@ -151,8 +163,10 @@ local function ThroneRow()
         if has then row.btns[i]:Show() else row.btns[i]:Hide() end
     end
     if has then Mark(row, mode) end
-    st.hasThrone = has
-    Place()
+    if st.hasThrone ~= has then
+        st.hasThrone = has
+        Place()
+    end
 end
 function View.Refresh()
     local api = st.api
@@ -165,8 +179,8 @@ function View.Refresh()
     WorldRow()
     st.heal:SetChecked(api.Heal())
     st.follow:SetChecked(ns.ReplayFollow.On())
-    st.casts:SetChecked(ns.ReplayUnitsView.CastsAll())
-    if st.sound then st.sound:SetChecked(ns.ReplayBarsView.Sound()) end
+    Mark(st.rows.casts, ns.ReplayUnitsView.CastsAll() and "all" or "focus")
+    st.size:SetValue((ns.ReplayUnitsView.Size()))
 end
 local function Pick(key, opt)
     local api = st.api
@@ -182,6 +196,8 @@ local function Pick(key, opt)
         ns.ReplayRealmView.SetMode(opt.key)
     elseif key == "throne" then
         ns.ReplayIso.SetThrone(opt.key)
+    elseif key == "casts" then
+        ns.ReplayUnitsView.SetCastsAll(opt.key == "all")
     end
     View.Refresh()
 end
@@ -205,6 +221,7 @@ local function Row(menu, key, caption, opts)
     st.rows[key] = row
     st.items[#st.items + 1] = { kind = "row", row = row }
 end
+local WIDE = { ["iso.threat"] = "threat", ["iso.tour"] = "tour", ["iso.camdefault"] = "camdefault" }
 local function Wide(menu, key, fn)
     local b = Kit.Button(menu)
     Kit.ExactSize(b)
@@ -215,7 +232,7 @@ local function Wide(menu, key, fn)
         menu:Hide()
         fn()
     end
-    st.items[#st.items + 1] = { kind = "wide", obj = b, name = key == "iso.threat" and "threat" or "tour" }
+    st.items[#st.items + 1] = { kind = "wide", obj = b, name = WIDE[key] or key }
     return b
 end
 local function Check(menu, key, fn)
@@ -227,6 +244,16 @@ local function Check(menu, key, fn)
     c.onToggle = fn
     st.items[#st.items + 1] = { kind = "check", obj = c, name = key }
     return c
+end
+local function SizeSlider(menu)
+    local _, lo, hi, step = ns.ReplayUnitsView.Size()
+    local s = Kit.Slider(menu, { min = lo, max = hi, step = step, fmt = "%d%%", labelW = LABEL_W, valueW = SIZE_VALUE_W })
+    s.label:SetText(ns.T("iso.labels"))
+    Kit.Text(s.label, "text.secondary")
+    s.tip = ns.T("iso.labels.tip")
+    s.onChange = function(v) ns.ReplayUnitsView.SetSize(v) end
+    st.items[#st.items + 1] = { kind = "slider", obj = s, name = "labels" }
+    return s
 end
 function View.Build(ui, run, api)
     st.api = api
@@ -248,13 +275,12 @@ function View.Build(ui, run, api)
     Row(menu, "throne", "iso.view.throne", Opts("iso.throne.", "iso.tip.throne.", { "pic", "faces" }))
     Row(menu, "cam", "iso.view.cam", Opts("iso.cam.", "iso.tip.cam.", ns.ReplayIsoCam.PRESET_KEYS))
     Row(menu, "arrows", "iso.view.arrows", Opts("iso.arrows.", "iso.tip.arrows.", { "all", "focus", "off" }))
+    Row(menu, "casts", "iso.view.casts", Opts("iso.casts.", "iso.tip.casts.", { "all", "focus" }))
+    st.size = SizeSlider(menu)
     Row(menu, "world", "iso.view.world", Opts("iso.world.", "iso.tip.world.", { "mine", "both", "phys", "twi" }))
     st.heal = Check(menu, "iso.focusheal", function(on) api.SetHeal(on) end)
     st.follow = Check(menu, "iso.follow", function(on) ns.ReplayFollow.SetOn(on) end)
-    st.casts = Check(menu, "iso.castsall", function(on) ns.ReplayUnitsView.SetCastsAll(on) end)
-    if ns.ReplayBarsView then
-        st.sound = Check(menu, "iso.barsound", function(on) ns.ReplayBarsView.SetSound(on) end)
-    end
+    st.camdef = Wide(menu, "iso.camdefault", function() ns.ReplayIsoCam.DefaultView() end)
     if ns.ThreatView then st.threat = Wide(menu, "iso.threat", ns.ReplayFollow.Threat) end
     st.tour = Wide(menu, "iso.tour", ns.ReplayTour.Start)
     Place()
@@ -284,5 +310,6 @@ function View.Hide()
 end
 function View.Probe()
     return { rects = st.rects, w = m.W, h = st.hNow or st.h or 0, rows = st.rows, heal = st.heal,
-             follow = st.follow, sound = st.sound, threat = st.threat, tour = st.tour, menu = st.menu }
+             follow = st.follow, size = st.size, threat = st.threat, tour = st.tour, raid = st.raid, camdef = st.camdef,
+             menu = st.menu }
 end

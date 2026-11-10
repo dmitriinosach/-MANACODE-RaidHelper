@@ -15,11 +15,19 @@ local FOLLOW_AFTER = 4
 local LEAD_ROWS = 3
 local OFF_ALPHA = 0.35
 local MARK_W = 2
+local NAME_GAP = 4
+local TIP_USES = 8
+local CHECK = 18
+local LABEL_GAP = 4
+local HEAD_GAP = 6
+local ARROW = 10
 local F = {}
 ns.ReplayFeed = F
 local Kit = ns.Kit
+local RD = ns.ReplayDraw
+local Who = ns.ReplayWho
 local ceil = math.ceil
-local m = { headH = HEAD_H, rowH = ROW_H, icon = ICON, timeW = TIME_W, checkX = 70, k = 1 }
+local m = { headH = HEAD_H, rowH = ROW_H, icon = ICON, timeW = TIME_W, checkX = 0, k = 1 }
 local function Metrics()
     local k = max(1, Kit.FontScale("GameFontHighlightSmall", true), Kit.FontScale("GameFontNormalSmall", true))
     local pt = Kit.FontSize("GameFontHighlightSmall", true)
@@ -29,20 +37,16 @@ local function Metrics()
     m.icon = max(ICON, m.rowH - 4)
     m.timeW = ceil(TIME_W * k)
     m.headH = max(HEAD_H, ceil(nt * 1.15) + 12)
-    m.checkX = ceil(70 * k)
 end
-local side, title, check
+local side, title, check, snd, sndList
 local rows = {}
 local kinds = {}
 local vis = {}
 local count = {}
+local filters = {}
 local st = { n = 0, top = 1, cur = 0, scrolledAt = -1e9, L = nil, onSeek = nil, rows = 0, width = 0, drawnTop = -1,
-             drawnCur = -1, focus = nil, hi = 0 }
-local function Saved()
-    local settings = ns.GetDB().settings
-    if type(settings.iso) ~= "table" then settings.iso = {} end
-    return settings.iso
-end
+             drawnCur = -1, focus = nil, hi = 0, rare = {}, rareN = 0, fight = nil }
+local Saved = RD.Saved
 local function Off()
     local saved = Saved()
     if type(saved.feedOff) ~= "table" then saved.feedOff = {} end
@@ -80,6 +84,126 @@ local function RowClick(self)
     if self.mine then who = st.focus end
     st.onSeek(L.fdT[self.idx], who or nil)
 end
+local function RowRoom()
+    return st.width - PAD * 2 - m.timeW - m.icon - 10
+end
+local function NamesWidth(row)
+    return (row.actor:GetStringWidth() or 0) + (row.target:GetStringWidth() or 0)
+end
+local function ActionLines(action)
+    if action.tipLines then return action.tipLines end
+    local lines = { { kind = "head", left = action.spell } }
+    for i, use in ipairs(action.uses) do
+        if i > TIP_USES then break end
+        lines[#lines + 1] = Who.Row(Who.Use(use.by, use.target and { use.target } or {}), Clock(use.t))
+    end
+    if #action.uses > TIP_USES then
+        lines[#lines + 1] = { kind = "note", left = format(ns.T("rep.mk.rest"), #action.uses - TIP_USES) }
+    end
+    action.tipLines = lines
+    return lines
+end
+function F.RowLines(row)
+    if row.action then row.lines = ActionLines(row.action) end
+    return row.lines
+end
+local function RowEnter(self)
+    F.RowLines(self)
+    Kit.ShowLines(self)
+end
+local function ActionText(row, action)
+    row.lines, row.action = nil, action
+    row.actor:Show()
+    row.target:Show()
+    local font = Kit.FontFor("GameFontHighlightSmall", true)
+    local path, fsize, flags
+    if font then path, fsize, flags = font:GetFont() end
+    local room = RowRoom()
+    local c = action.fit
+    if c and c.room == room and c.font == font and c.fsize == fsize then
+        if c.size and path then
+            row.nameShrink = true
+            row.actor:SetFont(path, c.size, flags)
+            row.target:SetFont(path, c.size, flags)
+        elseif row.nameShrink then
+            row.nameShrink = nil
+            row.actor:SetFontObject(font)
+            row.target:SetFontObject(font)
+        end
+        row.actor:SetText(c.by)
+        row.target:SetText(c.to)
+        row.text:Show()
+        local spellW = Kit.Fit(row.text, action.spell, c.spellRoom)
+        row.target:ClearAllPoints()
+        row.target:SetPoint("LEFT", row.actor, "RIGHT", spellW + (spellW > 0 and 2 * NAME_GAP or NAME_GAP), 0)
+        return
+    end
+    local actors, targets, seenBy, seenTo = {}, {}, {}, {}
+    for _, use in ipairs(action.uses) do
+        local by, target = use.by, use.target
+        if not seenBy[by] then
+            seenBy[by] = true
+            actors[#actors + 1] = by
+        end
+        if target and not seenTo[target] then
+            seenTo[target] = true
+            targets[#targets + 1] = target
+        end
+    end
+    if row.nameShrink then
+        row.nameShrink = nil
+        row.actor:SetFontObject(font)
+        row.target:SetFontObject(font)
+    end
+    local byN, toN = min(5, #actors), min(5, #targets)
+    local nameRoom = RowRoom() - 2 * NAME_GAP
+    local used, byText, toText
+    repeat
+        byText = Who.List(actors, nil, byN) or ""
+        toText = Who.List(targets, nil, toN) or ""
+        row.actor:SetText(byText)
+        row.target:SetText(toText)
+        used = NamesWidth(row)
+        if used < nameRoom or (byN <= 1 and toN <= 1) then break end
+        if toN >= byN then toN = toN - 1 else byN = byN - 1 end
+    until false
+    local shrunk
+    if used > nameRoom and font and path and fsize then
+        row.nameShrink = true
+        shrunk = max(1, floor(fsize * nameRoom / used))
+        row.actor:SetFont(path, shrunk, flags)
+        row.target:SetFont(path, shrunk, flags)
+        used = NamesWidth(row)
+    end
+    action.fit = { room = room, font = font, fsize = fsize, size = shrunk, by = byText, to = toText,
+                   spellRoom = nameRoom - used }
+    row.text:Show()
+    local spellW = Kit.Fit(row.text, action.spell, nameRoom - used)
+    row.target:ClearAllPoints()
+    row.target:SetPoint("LEFT", row.actor, "RIGHT", spellW + (spellW > 0 and 2 * NAME_GAP or NAME_GAP), 0)
+end
+local function RowText(row, L, i)
+    if row.data == L and row.idx == i then return end
+    row.data, row.idx = L, i
+    row.time:SetText(Clock(L.fdT[i]))
+    SetIcon(row.icon, L.fdIcon[i])
+    local action = L.fdAction and L.fdAction[i]
+    row.text:ClearAllPoints()
+    if action then
+        row.text:SetPoint("LEFT", row.actor, "RIGHT", NAME_GAP, 0)
+        row.tip = nil
+        ActionText(row, action)
+    else
+        row.text:SetPoint("LEFT", row.icon, "RIGHT", PAD, 0)
+        row.text:SetWidth(RowRoom())
+        row.text:SetText(L.fdText[i])
+        row.text:Show()
+        row.actor:Hide()
+        row.target:Hide()
+        row.lines, row.action = nil, nil
+        row.tip = L.fdTip and L.fdTip[i] or L.fdText[i]
+    end
+end
 local function Draw()
     local L = st.L
     if not L then
@@ -94,11 +218,8 @@ local function Draw()
         local pos = st.top + r - 1
         local i = vis[pos]
         if pos <= st.n and i then
-            row.idx = i
-            row.time:SetText(Clock(L.fdT[i]))
-            row.text:SetText(L.fdText[i])
-            row.tip = L.fdTip and L.fdTip[i] or L.fdText[i]
-            SetIcon(row.icon, L.fdIcon[i])
+            row:Show()
+            RowText(row, L, i)
             row.mine = Mine(L, i, st.focus)
             if row.mine then
                 hi = hi + 1
@@ -110,7 +231,6 @@ local function Draw()
             end
             row.on = pos == st.cur
             Kit.StyleRow(row)
-            row:Show()
         else
             row.idx, row.mine = nil, nil
             row:Hide()
@@ -135,17 +255,30 @@ local function StyleKind(b)
     local n = count[b.kind] or 0
     b.tip = format(ns.T(on and "rep.k.on" or "rep.k.off"), ns.T(b.def.tip), n)
 end
+local function Fight()
+    if st.fight then return st.fight end
+    local sc = ns.ReplayIso and ns.ReplayIso.Scene and ns.ReplayIso.Scene()
+    return sc and sc.layers == (st.base or st.L) and sc.fight or nil
+end
+local function Pass(L, i)
+    for _, fn in pairs(filters) do
+        if not fn(L, i) then return false end
+    end
+    return true
+end
 local function Refilter()
     local L = st.L
     local only = Saved().feedImp == true
     local off = Off()
     for k in pairs(count) do count[k] = nil end
     local n = 0
+    local rare = st.rare
+    if L and only then rare, st.rareN = ns.ReplayRare.Mark(L, Fight(), st.rare) end
     if L then
         for i = 1, L.nf do
             local kind = L.fdKind and L.fdKind[i] or "boss"
             count[kind] = (count[kind] or 0) + 1
-            if not off[kind] and (not only or L.fdImp[i]) then
+            if not off[kind] and (not only or rare[i]) and Pass(L, i) then
                 n = n + 1
                 vis[n] = i
             end
@@ -186,8 +319,16 @@ end
 local function PlaceHead()
     title:ClearAllPoints()
     title:SetPoint("LEFT", side, "TOPLEFT", PAD + 2, -floor(m.headH / 2))
+    local y = -floor((m.headH - CHECK) / 2)
+    m.checkX = ceil(check.label:GetStringWidth() or 0) + LABEL_GAP + PAD
     check:ClearAllPoints()
-    check:SetPoint("TOPRIGHT", side, "TOPRIGHT", -m.checkX, -floor((m.headH - 18) / 2))
+    check:SetPoint("TOPRIGHT", side, "TOPRIGHT", -m.checkX, y)
+    local x = m.checkX + CHECK + HEAD_GAP
+    sndList:ClearAllPoints()
+    sndList:SetPoint("TOPRIGHT", side, "TOPRIGHT", -x, -floor((m.headH - (sndList:GetHeight() or 0)) / 2))
+    x = x + (sndList:GetWidth() or 0) + 1 + ceil(snd.label:GetStringWidth() or 0) + LABEL_GAP
+    snd:ClearAllPoints()
+    snd:SetPoint("TOPRIGHT", side, "TOPRIGHT", -x, y)
     for i = 1, #kinds do
         kinds[i]:ClearAllPoints()
         kinds[i]:SetPoint("TOPLEFT", side, "TOPLEFT", PAD + (i - 1) * (KIND_SIZE + 2 + KIND_GAP), -(m.headH - 1))
@@ -204,19 +345,25 @@ local function PlaceRow(row, r)
     row.icon:SetHeight(m.icon)
     row.icon:ClearAllPoints()
     row.icon:SetPoint("LEFT", row, "LEFT", m.timeW + 2, 0)
-    row.text:ClearAllPoints()
-    row.text:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
-    row.text:SetWidth(width - PAD * 2 - m.timeW - m.icon - 10)
     row.text:SetHeight(m.rowH - 4)
+    row.data = nil
 end
 local function NewRow(r)
     local row = Kit.Row(side, st.width - PAD * 2)
     Kit.Bind(row.text, "GameFontHighlightSmall")
+    Kit.OneLine(row.text)
     row.time = Kit.Str(row, "GameFontHighlightSmall")
     row.time:SetPoint("LEFT", row, "LEFT", 2, 0)
     row.time:SetJustifyH("LEFT")
     Kit.Text(row.time, "text.secondary")
     row.icon = row:CreateTexture(nil, "ARTWORK")
+    row.actor = Kit.Str(row, "GameFontHighlightSmall")
+    Kit.OneLine(row.actor)
+    row.actor:SetPoint("LEFT", row.icon, "RIGHT", PAD, 0)
+    Kit.Text(row.actor, "text.secondary")
+    row.target = Kit.Str(row, "GameFontHighlightSmall")
+    Kit.OneLine(row.target)
+    Kit.Text(row.target, "text.secondary")
     PlaceRow(row, r)
     row.mark = row:CreateTexture(nil, "ARTWORK")
     row.mark:SetWidth(MARK_W)
@@ -225,9 +372,35 @@ local function NewRow(r)
     Kit.Paint(row.mark, "sem.rep.focus")
     row.mark:Hide()
     row.onClick = RowClick
+    row:HookScript("OnEnter", RowEnter)
+    row:HookScript("OnLeave", Kit.HideLines)
     row:Hide()
     rows[r] = row
     return row
+end
+local function SoundTip()
+    local Snd = ns.ReplaySound
+    sndList.tip = Snd.Tip(st.base or st.L)
+    snd:SetChecked(Snd.On())
+    if sndList.hovered then Kit.TipShow(sndList) end
+end
+local function BuildSound(parent)
+    local Snd = ns.ReplaySound
+    snd = Kit.Check(parent)
+    snd:SetWidth(CHECK)
+    snd:SetHeight(CHECK)
+    Kit.Bind(snd.label, "GameFontNormalSmall")
+    snd.label:SetText(ns.T("rep.snd"))
+    snd.tip = ns.T("rep.snd.tip")
+    snd.tipTitle = false
+    snd:SetChecked(Snd.On())
+    snd.onToggle = function(on) Snd.SetOn(on) end
+    sndList = Kit.IconButton(parent, nil, ARROW)
+    Kit.Arrow(sndList.icon, false)
+    sndList.tipTitle = ns.T("rep.snd.menu")
+    sndList.clickSfx = "open"
+    sndList.onClick = function(self) Snd.Menu(self, SoundTip) end
+    SoundTip()
 end
 function F.Build(parent, width, height, onSeek)
     side = parent
@@ -249,6 +422,7 @@ function F.Build(parent, width, height, onSeek)
         Saved().feedImp = on
         Refilter()
     end
+    BuildSound(parent)
     local defs = ns.replayFeed.kinds
     for i = 1, #defs do kinds[i] = KindButton(parent, i, defs[i]) end
     PlaceHead()
@@ -260,9 +434,9 @@ function F.Build(parent, width, height, onSeek)
 end
 function F.Fit(width, height)
     if not side then return end
-    local was = m.rowH * 1000 + m.timeW * 10 + m.headH * 100000 + m.checkX
+    local was = m.rowH * 1000 + m.timeW * 10 + m.headH * 100000
     Metrics()
-    local now = m.rowH * 1000 + m.timeW * 10 + m.headH * 100000 + m.checkX
+    local now = m.rowH * 1000 + m.timeW * 10 + m.headH * 100000
     local n = max(0, floor((height - m.headH - KIND_H) / m.rowH))
     if n == st.rows and now == was and width == st.width and height == st.height then return end
     st.width, st.height = width, height
@@ -278,10 +452,23 @@ end
 function F.SetHeight(height)
     F.Fit(st.width, height)
 end
-function F.Use(L)
-    st.L = L
+function F.Use(L, fight)
+    st.base, st.L, st.fight = L, L, fight
+    for r = 1, #rows do rows[r].data = nil end
     Refilter()
+    if sndList then SoundTip() end
     return L ~= nil and L.nf > 0
+end
+function F.SetSource(src)
+    local L = src or st.base
+    if st.L == L then return end
+    st.L = L
+    for r = 1, #rows do rows[r].data = nil end
+    Refilter()
+end
+function F.SetFilter(key, fn)
+    filters[key] = fn
+    if side then Refilter() end
 end
 function F.Update(sec)
     local L = st.L
@@ -308,5 +495,7 @@ function F.Ready()
     return side ~= nil
 end
 function F.Stats()
-    return { shown = st.n, rows = st.rows, kinds = #kinds, count = count, focus = st.focus, hi = st.hi }
+    return { shown = st.n, rows = st.rows, kinds = #kinds, count = count, focus = st.focus, hi = st.hi, rare = st.rareN,
+             head = { title = title, imp = check, snd = snd, sndList = sndList },
+             mode = st.L and st.L ~= st.base and st.L.mode or nil, vis = vis, L = st.L }
 end

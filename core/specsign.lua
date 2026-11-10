@@ -49,19 +49,19 @@ local function Mark(st, name, id)
     end
     seen[t] = (seen[t] or 0) + 1
 end
-local function Inspected(st, ts, a1, a2, a3)
-    local trees, ages = ns.Specs.Parse(a1, a2, a3)
+local function Inspected(st, ts, a1, a2, a3, a4)
+    local trees, ages, tal = ns.Specs.Parse(a1, a2, a3, a4)
     for name, t in pairs(trees) do
         if st.byName[name] then
             local age = ages[name]
-            st.insp[name] = { t = t, at = age and ts - age or nil }
+            st.insp[name] = { t = t, at = age and ts - age or nil, tal = tal[name] }
         end
     end
 end
-function SpecSign.Feed(st, ts, sub, srcName, dstName, a1, a2, a3)
+function SpecSign.Feed(st, ts, sub, srcName, dstName, a1, a2, a3, a4)
     if ts > st.to then return end
     if sub == INSPECT_SUB then
-        Inspected(st, ts, a1, a2, a3)
+        Inspected(st, ts, a1, a2, a3, a4)
         return
     end
     local id = tonumber(a1)
@@ -89,6 +89,9 @@ function SpecSign.Finish(st, players)
         local p = players[i]
         local name = p.name
         p.tree, p.treeBy, p.treeClash = nil, nil, nil
+        local ins, sw = st.insp[name], st.swap[name]
+        local fresh = ins and not (sw and (not ins.at or sw > ins.at))
+        p.talents = fresh and ins.tal or nil
         local seen = st.seen[name]
         local list = {}
         for t = 1, TREES do
@@ -98,9 +101,8 @@ function SpecSign.Finish(st, players)
             p.treeClash = concat(list, "/")
         elseif #list == 1 then
             p.tree, p.treeBy = list[1], SpecSign.SIGN
-        else
-            local ins, sw = st.insp[name], st.swap[name]
-            if ins and not (sw and (not ins.at or sw > ins.at)) then p.tree, p.treeBy = ins.t, SpecSign.INSPECT end
+        elseif fresh then
+            p.tree, p.treeBy = ins.t, SpecSign.INSPECT
         end
     end
 end

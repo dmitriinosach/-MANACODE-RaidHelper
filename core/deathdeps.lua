@@ -5,7 +5,6 @@ local sqrt = math.sqrt
 local abs = math.abs
 local tsort = table.sort
 local MELEE = "#melee"
-local MAP_UNITS = 10000
 local OPEN_MAX = 60
 local SAME = 0.1
 local PASS = 0.6
@@ -69,30 +68,11 @@ function DD.Feed(w, ts, sub, srcKey, srcName, dstName, a1, sk, a4)
     Mark(w, dstName, sk, ts, sub ~= "SPELL_AURA_REMOVED")
 end
 local function Marks(w, fight)
-    if w.marks then return w.marks end
-    local out = {}
-    local segs = ns.Encounters.Segs(fight)
-    for i = 1, #segs do
-        local m = ns.Decode.Maps(segs[i])
-        for k = 1, #m do out[#out + 1] = m[k] end
-    end
-    tsort(out, function(a, b) return a.t < b.t end)
-    w.marks = out
-    return out
+    if not w.marks then w.marks = ns.MapPos.Marks(fight) end
+    return w.marks
 end
 local function Scale(w, fight, t)
-    local marks = Marks(w, fight)
-    local mark
-    for i = 1, #marks do
-        if marks[i].t <= t then mark = marks[i] else break end
-    end
-    if not mark then mark = marks[1] end
-    if not mark then return nil, nil end
-    local scale = ns.mapScale or {}
-    local byArea = scale[mark.name or ""] or (ns.mapAreas and scale[ns.mapAreas[mark.area] or ""])
-    local size = byArea and byArea[mark.level]
-    if not size then return nil, nil end
-    return size.w / MAP_UNITS, size.h / MAP_UNITS
+    return ns.MapPos.Scale(Marks(w, fight), t)
 end
 local function Track(w, fight, name)
     w.tracks = w.tracks or {}
@@ -430,6 +410,20 @@ function DD.FirstCause(s, fight, pens)
     if not (list[last].d.tail or list[last].d.mass) and fight.to - list[last].d.t > ns.deathDeps.quiet then return nil end
     local first = last
     while first > 1 and list[first].d.t - list[first - 1].d.t <= lead do first = first - 1 end
+    local early = ns.deathDeps.early
+    if early then
+        for i = 1, first - 1 do
+            local n = 0
+            for k = i, first - 1 do
+                if list[k].d.t - list[i].d.t > early.span then break end
+                n = n + 1
+            end
+            if n >= early.n then
+                first = i
+                break
+            end
+        end
+    end
     local lo, hi = list[first].d.t - lead, list[first].d.t + SAME
     local best
     local function Offer(t, who, text)

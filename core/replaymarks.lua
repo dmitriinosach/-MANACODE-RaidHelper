@@ -10,6 +10,10 @@ local MASS_GAP = 3
 local DRIFT = 2
 local CHANGE_LEAD = 8
 local CHANGE_LAG = 3
+local BAND_JOIN = 2
+local FOLD_SHARE = 0.06
+local FOLD_MAX = 0.3
+local FOLD_MIN = 20
 local MK = { DRIFT = DRIFT }
 ns.ReplayMarks = MK
 function MK.Defs(boss)
@@ -72,7 +76,7 @@ local function PhaseIcon(def, look, key)
     end
     return nil
 end
-local function PhaseIds(def, boss)
+local function PhaseIds(def, boss, look)
     local set = {}
     for _, step in ipairs(def and def.steps or {}) do
         for _, on in ipairs(step.on or {}) do
@@ -83,25 +87,78 @@ local function PhaseIds(def, boss)
     for _, g in ipairs(gone or {}) do
         for _, id in ipairs(g.ids) do set[id] = true end
     end
+    for kind in pairs(look and look.bands or {}) do
+        local on = def and def.waves and def.waves[kind] and def.waves[kind].on
+        for k = 2, on and #on or 0 do set[on[k]] = true end
+    end
     return set
 end
-local function Split(phases, away, look)
-    if not (look and look.away) or #away == 0 then return phases end
+local function ByFrom(a, b)
+    return a.from < b.from
+end
+local function Bands(away, res, look)
+    local out = {}
+    if not look then return out end
+    if look.away then
+        for _, a in ipairs(away) do
+            out[#out + 1] = { from = a.from, to = a.to, key = "away", label = look.away, icon = look.icons.away }
+        end
+    end
+    for kind, label in pairs(look.bands or {}) do
+        local times, ends = res and res.waves[kind], res and res.ends[kind]
+        for j = 1, times and #times or 0 do
+            local to = ends and ends[j]
+            if to and to > times[j] then
+                out[#out + 1] = { from = times[j], to = to, key = kind, label = label, icon = look.icons[kind] }
+            end
+        end
+    end
+    tsort(out, ByFrom)
+    local kept = {}
+    for k = 1, #out do
+        local b, prev = out[k], kept[#kept]
+        if prev and b.from < prev.to then b.from = prev.to end
+        if prev and b.from - prev.to < BAND_JOIN then prev.to = b.from end
+        if b.to > b.from then kept[#kept + 1] = b end
+    end
+    return kept
+end
+local function Split(phases, bands)
+    if #bands == 0 then return phases end
     local out = {}
     for k = 1, #phases do
         local ph = phases[k]
         local from = ph.from
-        for _, a in ipairs(away) do
-            if a.from >= from and a.from < ph.to then
-                if a.from > from then
-                    out[#out + 1] = { from = from, to = a.from, key = ph.key, label = ph.label, icon = ph.icon }
+        for _, b in ipairs(bands) do
+            if b.to > from and b.from < ph.to then
+                local at = max(b.from, from)
+                if at - from >= BAND_JOIN then
+                    out[#out + 1] = { from = from, to = at, key = ph.key, label = ph.label, icon = ph.icon }
+                    from = at
                 end
-                local to = min(a.to, ph.to)
-                out[#out + 1] = { from = a.from, to = to, key = "away", label = look.away, icon = look.icons.away }
+                local to = min(b.to, ph.to)
+                if ph.to - to < BAND_JOIN then to = ph.to end
+                out[#out + 1] = { from = from, to = to, key = b.key, label = b.label, icon = b.icon }
                 from = to
             end
         end
         if ph.to > from then out[#out + 1] = { from = from, to = ph.to, key = ph.key, label = ph.label, icon = ph.icon } end
+    end
+    return out
+end
+local function Fold(phases, collapse, folds)
+    local out = {}
+    for k = 1, #phases do
+        local ph = phases[k]
+        local keep = collapse[ph.key]
+        local cut = keep and ph.to - keep
+        if cut and cut - ph.from >= FOLD_MIN then
+            out[#out + 1] = { from = ph.from, to = cut, key = ph.key, label = ph.label, icon = ph.icon, fold = true }
+            out[#out + 1] = { from = cut, to = ph.to, key = ph.key, label = ph.label, icon = ph.icon }
+            folds[#folds + 1] = { from = ph.from, to = cut }
+        else
+            out[#out + 1] = ph
+        end
     end
     return out
 end
@@ -121,8 +178,9 @@ function MK.Done(mc, L, res)
     if #phases == 0 then
         phases[1] = { from = 0, to = mc.to - mc.from, key = "fight", label = "ph.fight", icon = look and look.icons.fight }
     end
-    phases = Split(phases, L.away or {}, look)
-    local ids, starts = PhaseIds(def, mc.boss), {}
+    local bands = Bands(L.away or {}, res, look)
+    phases = Split(phases, bands)
+    local ids, starts = PhaseIds(def, mc.boss, look), {}
     for k = 2, #phases do starts[#starts + 1] = phases[k].from end
     for _, a in ipairs(L.away or {}) do starts[#starts + 1] = a.at end
     local kept, dropped = {}, {}
@@ -144,7 +202,9 @@ function MK.Done(mc, L, res)
         end
     end
     tsort(waves, function(a, b) return a.times[1] < b.times[1] end)
-    L.phases, L.waves = phases, waves
+    local folds = {}
+    if look and look.collapse then phases = Fold(phases, look.collapse, folds) end
+    L.phases, L.waves, L.folds = phases, waves, folds
     tsort(mc.list, ByTime)
     L.marks = mc.list
 end
@@ -259,12 +319,54 @@ end
 local function LastT(g)
     return g.items[#g.items].t
 end
-local function Group(marks, from, dur, width, win)
+function MK.Scale(from, to, folds)
+    local sc = { from = from, to = to, folds = {}, share = 0, rate = 0 }
+    local folded = 0
+    for _, f in ipairs(folds or {}) do
+        local a, b = max(f.from, from), min(f.to, to)
+        if b > a then
+            sc.folds[#sc.folds + 1] = { from = a, to = b }
+            folded = folded + b - a
+        end
+    end
+    local n = #sc.folds
+    sc.share = n > 0 and min(FOLD_SHARE, FOLD_MAX / n) or 0
+    sc.rate = (1 - n * sc.share) / max(0.001, to - from - folded)
+    return sc
+end
+function MK.Frac(sc, t)
+    if t <= sc.from then return 0 end
+    local f, at = 0, sc.from
+    for _, d in ipairs(sc.folds) do
+        if t < d.from then break end
+        f = f + (d.from - at) * sc.rate
+        if t < d.to then return min(1, f + (t - d.from) / (d.to - d.from) * sc.share) end
+        f, at = f + sc.share, d.to
+    end
+    return min(1, f + (t - at) * sc.rate)
+end
+function MK.TimeAt(sc, x)
+    local f, at = 0, sc.from
+    for _, d in ipairs(sc.folds) do
+        local f1 = f + (d.from - at) * sc.rate
+        if x < f1 then return at + (x - f) / sc.rate end
+        if x < f1 + sc.share then return d.to end
+        f, at = f1 + sc.share, d.to
+    end
+    return min(sc.to, at + (x - f) / sc.rate)
+end
+function MK.Skip(folds, a, b)
+    for _, d in ipairs(folds or {}) do
+        if a < d.from and b >= d.from and b < d.to then return d.to end
+    end
+    return b
+end
+local function Group(marks, sc, width, win)
     local groups, open = {}, {}
     local again = ns.replayMarks.again
     for i = 1, #marks do
         local m = marks[i]
-        local x = max(0, (m.t - from) / dur * width)
+        local x = max(0, MK.Frac(sc, m.t) * width)
         local g = open[m.key]
         if g and x - g.x0 < win and m.t - LastT(g) <= again then
             g.items[#g.items + 1] = m
@@ -349,14 +451,14 @@ local function Join(g, h)
         end
     end
 end
-function MK.Pack(marks, from, to, width, step, edge)
+function MK.Pack(marks, from, to, width, step, edge, sc)
     edge = edge or 0
-    local dur = max(0.001, to - from)
+    sc = sc or MK.Scale(from, to, nil)
     local inRange = {}
     for i = 1, #marks do
         if marks[i].t <= to then inRange[#inRange + 1] = marks[i] end
     end
-    local groups = Group(inRange, from, dur, width, step)
+    local groups = Group(inRange, sc, width, step)
     local drift, wf, wn = Place(groups, width, step, edge)
     while drift > step * DRIFT do
         local i, j = Nearest(groups, wf, wf + wn - 1)

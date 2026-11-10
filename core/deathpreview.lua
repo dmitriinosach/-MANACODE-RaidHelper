@@ -141,7 +141,12 @@ end
 local function Materialize(pv, st)
     if st.started then return end
     st.started = true
-    for key, a in pairs(st.pre) do
+    local keys = {}
+    for key in pairs(st.pre) do keys[#keys + 1] = key end
+    table.sort(keys, function(a, b) return st.pre[a].n < st.pre[b].n end)
+    for i = 1, #keys do
+        local key = keys[i]
+        local a = st.pre[key]
         local row = AuraRow(pv, st.open, key, a.id, a.label, a.src)
         OpenSpan(pv, st.live, row, pv.from, a.stack)
     end
@@ -154,7 +159,8 @@ local function Aura(pv, st, ts, sub, src, a1, a2, a5)
         if sub == "SPELL_AURA_REMOVED" then
             st.pre[key] = nil
         elseif not cur then
-            st.pre[key] = { id = id, label = key, src = src, stack = tonumber(a5) or 1 }
+            st.preN = (st.preN or 0) + 1
+            st.pre[key] = { id = id, label = key, src = src, stack = tonumber(a5) or 1, n = st.preN }
         elseif sub ~= "SPELL_AURA_REFRESH" and sub ~= "SPELL_AURA_APPLIED" then
             cur.stack = tonumber(a5) or cur.stack
         end

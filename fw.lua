@@ -114,6 +114,13 @@ function ns.Clock(sec, signed, tenths)
     if tenths then return string.format("%s%d:%04.1f", sign, m, sec - m * 60) end
     return string.format("%s%d:%02d", sign, m, math.floor(sec - m * 60))
 end
+function ns.RowClick(self, button)
+    if button == "RightButton" then
+        if self.onRightClick then self.onRightClick(self) end
+    elseif self.onClick then
+        self.onClick(self)
+    end
+end
 function ns.Short(n, mDigits, kWhole, mWhole)
     if n >= 1e6 then
         if mWhole and n >= mWhole then return string.format("%.0f", n / 1e6) .. ns.T("num.m") end
@@ -125,6 +132,16 @@ function ns.Short(n, mDigits, kWhole, mWhole)
         return ns.Dec(string.format("%.1f", n / 1e3)) .. ns.T("num.k")
     end
     return tostring(math.floor(n + 0.5))
+end
+function ns.CutText(s, n)
+    if #s <= n then return s end
+    local i = n
+    while i > 0 do
+        local c = s:byte(i + 1)
+        if not c or c < 128 or c >= 192 then break end
+        i = i - 1
+    end
+    return s:sub(1, i)
 end
 ns.PULL_LEAD = 35
 ns.CLASS_ORDER = {
@@ -570,6 +587,10 @@ local function AddonVersion()
     return GetAddOnMetadata(ADDON, "Version")
 end
 ns.AddonVersion = AddonVersion
+local prevAddon = nil
+function ns.PrevAddon()
+    return prevAddon
+end
 ns.TUNE = { react = 3, tail = 40, waveMin = 5, waveStep = 1, rebuff = 90, expectGood = 100, expectFair = 85,
             preview = 8 }
 local TUNE_GRADE = { react = true, tail = true, waveMin = true, waveStep = true, rebuff = true }
@@ -639,11 +660,8 @@ local function ApplyDefaults(db)
     if type(db.gpIssued) ~= "table" then db.gpIssued = {} end
     if type(db.prices) ~= "table" then db.prices = {} end
     if type(db.gp) ~= "table" then db.gp = {} end
-    db.gp.preset, db.gp.own, db.gp.epgpReason = nil, nil, nil
     if type(db.gp.manual) ~= "table" then db.gp.manual = {} end
     if type(db.gp.bump) ~= "table" then db.gp.bump = {} end
-    db.gp.mini = nil
-    db.fable = nil
     if type(db.gp.proof) ~= "string" then db.gp.proof = "RAID" end
     if type(db.gp.guild) ~= "table" then db.gp.guild = {} end
     if type(db.faults) ~= "table" then db.faults = {} end
@@ -667,11 +685,6 @@ local function ApplyDefaults(db)
         db.recording = true
         db.settings.autoRaid = true
     end
-    if db.geoAuto ~= 1 then
-        db.geoAuto = 1
-        local iso = db.settings.iso
-        if type(iso) == "table" then iso.geo = nil end
-    end
 end
 local function InstallWidgetFallback()
     if ns.MakeButton and ns.MakeRowButton then return end
@@ -693,13 +706,7 @@ local function InstallWidgetFallback()
         r.text = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         r.text:SetPoint("LEFT", 0, 0)
         r.text:SetJustifyH("LEFT")
-        r:SetScript("OnClick", function(self, button)
-            if button == "RightButton" then
-                if self.onRightClick then self.onRightClick(self) end
-            elseif self.onClick then
-                self.onClick(self)
-            end
-        end)
+        r:SetScript("OnClick", ns.RowClick)
         r:SetScript("OnEnter", function(self)
             if not self.on then self.bg:SetTexture(1, 1, 1, 0.08) end
             if not self.tipTitle and not self.tipLink then return end
@@ -750,6 +757,7 @@ loader:SetScript("OnEvent", function(self, _, name)
         db.settings.autoRaid = false
         db.paused = nil
     end
+    prevAddon = type(db.fmt) == "table" and db.fmt.addon or nil
     if rec and not recLock then db.fmt = { rec = rec, addon = AddonVersion() } end
     InstallWidgetFallback()
     for i = 1, #readyCallbacks do

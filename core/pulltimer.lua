@@ -73,8 +73,13 @@ function PullTimer.OnPull(ts)
     if not a or a.pulled or not ns.Store then return false end
     local ago = GetTime() - a.start
     if ago < 0 or ago > ns.pullTimer.window then return false end
-    a.pulled = true
+    a.pulled, a.pulledAt = true, GetTime()
     return ns.Store.Append(ts, SUB, nil, a.who, 0, nil, nil, 0, a.sec, math.floor(ago * 10 + 0.5) / 10) and true or false
+end
+function PullTimer.AtPull()
+    local a = active
+    if not a or not a.pulled or GetTime() - a.pulledAt > 5 then return nil, nil, nil end
+    return a.who, a.sec, a.ends
 end
 function PullTimer.Forget()
     active = nil

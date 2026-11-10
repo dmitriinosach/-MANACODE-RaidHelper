@@ -12,7 +12,6 @@ local TOTALMIN = 140
 local BUSYW = 320
 local BUSYH = 14
 local BUSYGAP = 8
-local BUSYPAD = 4
 local Kit = ns.Kit
 local Badges = ns.Badges
 local Grid = ns.Grid
@@ -57,11 +56,7 @@ local function Stat(i)
     return stats[i]
 end
 local function Panel(i)
-    if not panels[i] then
-        panels[i] = Badges.Detail(content, nil, true)
-        Badges.ChatHead(panels[i], ChatCtx)
-    end
-    return panels[i]
+    return Badges.DetailAt(panels, i, content, ChatCtx)
 end
 local function Progress()
     if not busy or not busy:IsShown() then return end
@@ -185,13 +180,16 @@ local function SidePanel(panel, parent, d, out)
     out[#out + 1] = panel
     return panel
 end
+local function Shows(key)
+    return not ns.SumHide or ns.SumHide.Shows(key)
+end
 local function SideItems(raid, res, d)
     local parent = ns.SumSide and ns.SumSide.Parent(content) or content
     local out = {}
     gpPanel = SidePanel(gpPanel, parent, d, out)
-    local ach = ns.AchView and ns.AchView.RaidItem(parent, raid, res.earned, SideWheel, Render)
+    local ach = Shows("#ach") and ns.AchView and ns.AchView.RaidItem(parent, raid, res.earned, SideWheel, Render)
     if ach then out[#out + 1] = ach end
-    lootPanel = SidePanel(lootPanel, parent, ns.Loot and ns.Loot.RaidDetail(raid), out)
+    lootPanel = SidePanel(lootPanel, parent, Shows("#loot") and ns.Loot and ns.Loot.RaidDetail(raid) or nil, out)
     return out
 end
 local function DrawSide(list, y, w)
@@ -246,7 +244,7 @@ Render = function()
     local model = ns.RaidModel.Build(res)
     local w = max(200, host:GetWidth() - MARGIN * 2 - BAR_ROOM)
     local totals = model.totals
-    local shards = ns.Loot and ns.Loot.ShardTotal(raid)
+    local shards = Shows("#loot") and ns.Loot and ns.Loot.ShardTotal(raid)
     if shards then
         totals = {}
         for i = 1, #model.totals do totals[i] = model.totals[i] end
@@ -325,6 +323,9 @@ function View.ScrollTo(y)
     if not (pane and shownKey) then return end
     local raid = ns.RaidSummary.Find(shownKey)
     if raid and ns.RaidSummary.Get(raid) then pane:ScrollTo(y) else keep = y end
+end
+function View.Probe()
+    return { host = host, content = content }
 end
 function View.ShownKey()
     if not View.IsShown() then return nil end

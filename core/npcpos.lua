@@ -37,6 +37,7 @@ ns.NpcPos = NpcPos
 NpcPos.off = false
 NpcPos.WINDOW = WINDOW
 NpcPos.EASE = EASE
+NpcPos.STEP = STEP
 local px, py, qx, qy, sx, sy = {}, {}, {}, {}, {}, {}
 function NpcPos.New(scene, c)
     if NpcPos.off then return nil end
@@ -263,11 +264,13 @@ local function EstimateR(np, T, K, rData)
     local v = spans[max(1, min(#spans, floor(#spans * R_Q + 0.5)))]
     return max(max(R_MIN, R_LO * rData), min(v, rData + R_UP))
 end
-local function Primary(np)
+local function Primary(np, worlds, w)
     local best, bestN = nil, MIN_HITS - 1
     for guid, n in pairs(np.hitN) do
         local key = ns.NpcKey(guid)
-        if key and np.bosses[key] and n > bestN then best, bestN = guid, n end
+        if key and np.bosses[key] and n > bestN and (not worlds or worlds[ns.NpcEntry(guid) or 0] == w) then
+            best, bestN = guid, n
+        end
     end
     return best
 end
@@ -374,26 +377,13 @@ local function ActiveAt(np, t, primary)
     if i > 0 then return np.c.actG[i] end
     return primary
 end
-function NpcPos.Place(np, HolderAt)
-    local p0 = debugprofilestop()
-    Order(np)
-    local c, scene, st, ppy = np.c, np.scene, np.stats, np.ppy
-    local guid = Primary(np)
-    st.guid = guid
-    if not guid and not (c.fixed and c.fixed.n > 0) and not (c.actT and c.actT[1]) then
-        PlaceAdds(np)
-        st.ms = debugprofilestop() - p0
-        scene.npcPos = np
-        return false
-    end
-    local L = c.L
-    np.bodies, np.actI = {}, 0
-    local rDef = L.hitbox + REACH_PAD
-    st.r, st.rData = rDef, rDef
-    if guid then st.r = Body(np, guid).rYd end
+local function Walk(np, guid, HolderAt, name)
+    local c, st, ppy = np.c, np.stats, np.ppy
+    np.actI = 0
+    local rDef = c.L.hitbox + REACH_PAD
     local useHolder = ns.ReplayLayers.HasHolders(c)
     local stepMax = SPEED * ppy * STEP
-    local tr = ns.Replay.NewTrack(scene.bossName or ns.EncName(scene.fight.boss))
+    local tr = ns.Replay.NewTrack(name)
     tr.fx, tr.fy, tr.hk, tr.src, tr.gl = {}, {}, {}, {}, {}
     local soft, hard = {}, {}
     local ax, ay, at = nil, 0, -1e9
@@ -501,10 +491,39 @@ function NpcPos.Place(np, HolderAt)
         t = t + STEP
     end
     Settle(tr, soft, hard, stepMax)
+    return tr
+end
+function NpcPos.Place(np, HolderAt, worlds)
+    local p0 = debugprofilestop()
+    Order(np)
+    local c, scene, st = np.c, np.scene, np.stats
+    local guid = worlds and Primary(np, worlds, 1) or Primary(np)
+    st.guid = guid
+    np.second = nil
+    if not guid and not (c.fixed and c.fixed.n > 0) and not (c.actT and c.actT[1]) then
+        PlaceAdds(np)
+        st.ms = debugprofilestop() - p0
+        scene.npcPos = np
+        return false
+    end
+    local L = c.L
+    np.bodies = {}
+    local rDef = L.hitbox + REACH_PAD
+    st.r, st.rData = rDef, rDef
+    if guid then st.r = Body(np, guid).rYd end
+    local tr = Walk(np, guid, HolderAt, scene.bossName or ns.EncName(scene.fight.boss))
     if tr.n > 0 then
         scene.boss = tr
         scene.bossName = scene.bossName or ns.EncName(scene.fight.boss)
         L.bossMoved = true
+    end
+    local other = guid and worlds and Primary(np, worlds, 2)
+    if other and other ~= guid then
+        local witness = np.witness
+        np.witness = nil
+        local tr2 = Walk(np, other, HolderAt, np.names[other] or scene.bossName or "")
+        np.witness = witness
+        if tr2.n > 0 then np.second = { guid = other, tr = tr2, world = worlds[ns.NpcEntry(other) or 0] } end
     end
     PlaceAdds(np)
     st.ms = debugprofilestop() - p0
