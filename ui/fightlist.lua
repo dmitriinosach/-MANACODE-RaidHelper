@@ -1034,10 +1034,10 @@ Tips.enc = function(r)
             break
         end
     end
-    out[#out + 1] = Line(ns.T(enc.passed and "fl.tip.enc.kill" or "fl.tip.enc.last"), "text.primary", true)
-    if ns.FightTree.Wipes(enc) > 0 then out[#out + 1] = Line(ns.T("fl.tip.enc.wipes"), "text.primary") end
-    out[#out + 1] = Line(ns.T("fl.tip.enc.nav"), "text.primary")
-    out[#out + 1] = Line(ns.T("fl.tip.enc.menu"), "text.primary")
+    out[#out + 1] = Line(ns.T("fl.tip.enc.nav"), "text.primary", true)
+    out[#out + 1] = { kind = "foot", key = "lmb", left = ns.T(enc.passed and "fl.tip.enc.kill" or "fl.tip.enc.last") }
+    if ns.FightTree.Wipes(enc) > 0 then out[#out + 1] = { kind = "foot", key = "lmb", left = ns.T("fl.tip.enc.wipes") } end
+    out[#out + 1] = { kind = "foot", key = "rmb", left = ns.T("fl.tip.enc.menu") }
     return out
 end
 function Del.Land(key, lost)
@@ -1143,7 +1143,7 @@ Tips.player = function(c)
     elseif p.deaths == 0 and p.faults == 0 then
         out[#out + 1] = Line(ns.T("fl.tip.clean"), "sem.win")
     end
-    out[#out + 1] = Line(ns.T("fl.tip.player"), "text.primary", true)
+    out[#out + 1] = { kind = "foot", key = "lmb", left = ns.T("fl.tip.player") }
     return out
 end
 local function Wheel(frame, bar, move)

@@ -93,7 +93,7 @@ function TT.Build(host, list, isFolded, onFold)
         ns.Kit.Text(h.text, "surface.laneText")
         h:SetScript("OnEnter", function(self)
             ns.Kit.Paint(self.bg, "surface.laneHeadHover")
-            self.tipTitle, self.tip, self.tipTone = ns.T("tl.track." .. self.key), ns.T("tl.track.fold"), "text.secondary"
+            self.tipTitle, self.tipClick = ns.T("tl.track." .. self.key), ns.T("tl.track.fold")
             ns.Kit.TipShow(self)
         end)
         h:SetScript("OnLeave", function(self)

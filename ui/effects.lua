@@ -118,6 +118,7 @@ local function Paint(row, item, hidden)
         row.tipTitle = nil
         row.tipLink = nil
         row.tipLines = nil
+        row.tipClick = nil
         row:Hide()
         return
     end
@@ -135,13 +136,13 @@ local function Paint(row, item, hidden)
         Tint(row.mark, TONE.trashMark)
         Tint(row.text, TONE.trashName)
         Tint(row.count, TONE.trashCount)
-        lines[#lines + 1] = ns.T("fx.hint.show")
+        row.tipClick = ns.T("fx.hint.show")
     else
         row.mark:SetText("V")
         Tint(row.mark, TONE.markOn)
         Tint(row.text, TONE.name)
         Tint(row.count, TONE.count)
-        lines[#lines + 1] = ns.T("fx.hint.toggle")
+        row.tipClick = ns.T("fx.hint.toggle")
     end
     Tint(row.n, hidden and TONE.trashCount or TONE.count)
     Tint(row.share, hidden and TONE.trashCount or TONE.count)
@@ -319,6 +320,7 @@ local function AttachCol(parent, key, left, width)
     end
     b.tipTitle = ns.T(COL_KEY[key])
     b.tip = ns.T(COL_KEY[key] .. ".tip")
+    b.tipClick = ns.T("fx.col.sort")
     b.tipAnchor = "ANCHOR_LEFT"
     b.onClick = function()
         Ui().fxSort = key ~= "name" and key or nil

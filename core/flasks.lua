@@ -1,6 +1,6 @@
 local _, ns = ...
-local ceil, max, min = math.ceil, math.max, math.min
-local gmatch = string.gmatch
+local max, min, floor = math.max, math.min, math.floor
+local gmatch, format = string.gmatch, string.format
 local tsort, concat = table.sort, table.concat
 local HOUR = 3600
 local ALCH_DUR = 7000
@@ -9,22 +9,49 @@ local TOUCH = 600
 local RECENT = 12 * HOUR
 local PICK = 3
 local AURAS = 40
-local DEF = { hours = 2, limit = 2, own = "warn", whisper = false, auto = true }
+local KIT_ITEMS = 6
+local KIT_MAX = 40
+local QMARK = "Interface\\Icons\\INV_Misc_QuestionMark"
+local DEF = { own = "warn", whisper = false, auto = true }
+local ALCHEMY = { flask = true, elixir = true, potion = true }
+local CAT_ORDER = { flask = 1, elixir = 2, potion = 3, food = 4, other = 5 }
 local Flasks = {}
 ns.Flasks = Flasks
 Flasks.DEF = DEF
 Flasks.HOUR = HOUR
+Flasks.KIT_ITEMS = KIT_ITEMS
+Flasks.KIT_MAX = KIT_MAX
 local on = false
 local listeners = {}
 local sources = {}
 local byId
 local byKey
 local byAura
+local kindAt = {}
+for i = 1, #ns.flaskKinds do kindAt[ns.flaskKinds[i]] = i end
 local function Notify()
     for i = 1, #listeners do listeners[i]() end
 end
 function Flasks.OnChange(fn)
     listeners[#listeners + 1] = fn
+end
+local function CopyKit(src, name)
+    local roles = {}
+    for i = 1, #ns.flaskKinds do
+        local kind = ns.flaskKinds[i]
+        local list, out = src.roles and src.roles[kind] or {}, {}
+        for k = 1, #list do out[k] = { id = list[k].id, n = list[k].n } end
+        roles[kind] = out
+    end
+    return { name = name, roles = roles }
+end
+local function KitsOf(o)
+    local k = o.kits
+    if type(k) ~= "table" or type(k.list) ~= "table" or #k.list == 0 then
+        k = { list = { CopyKit(ns.flaskKit, ns.T("flask.kit.def")) }, cur = 1 }
+        o.kits = k
+    end
+    if type(k.cur) ~= "number" or not k.list[k.cur] then k.cur = 1 end
 end
 local function Opt()
     local s = ns.GetDB().settings
@@ -33,12 +60,12 @@ local function Opt()
         o = {}
         s.flasks = o
     end
-    if type(o.kinds) ~= "table" then o.kinds = {} end
+    o.kinds, o.hours, o.limit, o.gap = nil, nil, nil, nil
     if type(o.alch) ~= "table" then o.alch = {} end
-    o.gap = nil
     for k, v in pairs(DEF) do
         if type(o[k]) ~= type(v) then o[k] = v end
     end
+    KitsOf(o)
     return o
 end
 function Flasks.Get(key)
@@ -66,23 +93,135 @@ function Flasks.ById(id)
     Index()
     return byId[id]
 end
-function Flasks.Item(kind)
-    local key = Opt().kinds[kind]
-    return Flasks.ByKey(key or "") or Flasks.ByKey(ns.flaskDefault[kind] or "")
+function Flasks.IsKind(kind)
+    return kind ~= nil and kindAt[kind] ~= nil
 end
-function Flasks.ItemKey(kind)
-    local it = Flasks.Item(kind)
-    return it and it.key or ""
+function Flasks.Kits()
+    return Opt().kits
 end
-function Flasks.SetItem(kind, key)
-    if not Flasks.ByKey(key) or not ns.flaskDefault[kind] then return end
-    Opt().kinds[kind] = key ~= ns.flaskDefault[kind] and key or nil
+function Flasks.Kit()
+    local k = Opt().kits
+    return k.list[k.cur]
+end
+function Flasks.KitItems(kind)
+    local kit = Flasks.Kit()
+    if type(kit.roles) ~= "table" then kit.roles = {} end
+    local list = kit.roles[kind]
+    if type(list) ~= "table" then
+        list = {}
+        kit.roles[kind] = list
+    end
+    return list
+end
+function Flasks.KitIds()
+    local out, seen = {}, {}
+    for i = 1, #ns.flaskKinds do
+        local list = Flasks.KitItems(ns.flaskKinds[i])
+        for k = 1, #list do
+            local id = list[k].id
+            if not seen[id] then
+                seen[id] = true
+                out[#out + 1] = id
+            end
+        end
+    end
+    return out
+end
+function Flasks.Known(id)
+    if Flasks.ById(id) then return true end
+    local ids = Flasks.KitIds()
+    for i = 1, #ids do
+        if ids[i] == id then return true end
+    end
+    return false
+end
+function Flasks.Norm(kind, id)
+    if not Flasks.IsKind(kind) then return 0 end
+    local list = Flasks.KitItems(kind)
+    for i = 1, #list do
+        if list[i].id == id then return list[i].n end
+    end
+    return 0
+end
+function Flasks.KitPick(i)
+    local k = Opt().kits
+    if not k.list[i] or k.cur == i then return end
+    k.cur = i
     Notify()
 end
-function Flasks.ItemName(it)
-    if not it then return "?" end
-    local name = GetItemInfo and GetItemInfo(it.id)
-    return name or (GetSpellInfo and GetSpellInfo(it.spell)) or "?"
+local function AddKit(name, from)
+    local k = Opt().kits
+    local n = #k.list + 1
+    k.list[n] = CopyKit(from, name or format(ns.T("flask.kit.new"), n))
+    k.cur = n
+    Notify()
+end
+function Flasks.KitNew()
+    AddKit(nil, { roles = {} })
+end
+function Flasks.KitCopy()
+    local kit = Flasks.Kit()
+    AddKit(format(ns.T("flask.kit.copy"), kit.name or ""), kit)
+end
+function Flasks.KitRename(name)
+    name = (name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if name == "" or name == Flasks.Kit().name then return end
+    Flasks.Kit().name = name
+    Notify()
+end
+function Flasks.KitDelete()
+    local k = Opt().kits
+    if #k.list < 2 then return false end
+    table.remove(k.list, k.cur)
+    k.cur = min(k.cur, #k.list)
+    Notify()
+    return true
+end
+function Flasks.KitAdd(kind, id)
+    if not Flasks.IsKind(kind) or type(id) ~= "number" then return false end
+    local list = Flasks.KitItems(kind)
+    if #list >= KIT_ITEMS then return false end
+    for i = 1, #list do
+        if list[i].id == id then return false end
+    end
+    list[#list + 1] = { id = id, n = 1 }
+    Notify()
+    return true
+end
+function Flasks.KitCount(kind, i, n)
+    local e = Flasks.KitItems(kind)[i]
+    if not e then return end
+    n = max(1, min(KIT_MAX, floor(n)))
+    if e.n == n then return end
+    e.n = n
+    Notify()
+end
+function Flasks.KitRemove(kind, i)
+    local list = Flasks.KitItems(kind)
+    if not list[i] then return end
+    table.remove(list, i)
+    Notify()
+end
+function Flasks.Name(id)
+    local name = GetItemInfo(id)
+    if name then return name end
+    local c = ns.consumeItems and ns.consumeItems[id]
+    if c then return c.craft and GetSpellInfo(c.craft) or c.item end
+    local it = Flasks.ById(id)
+    local spell = it and GetSpellInfo(it.spell)
+    return spell or ("#" .. tostring(id))
+end
+function Flasks.Icon(id)
+    local tex = GetItemIcon and GetItemIcon(id)
+    if tex then return tex end
+    local _, _, _, _, _, _, _, _, _, t = GetItemInfo(id)
+    if t then return t end
+    local c = ns.consumeItems and ns.consumeItems[id]
+    local _, _, craft = GetSpellInfo(c and c.craft or 0)
+    return craft or QMARK
+end
+function Flasks.IconText(id, size)
+    return format("|T%s:%d|t", Flasks.Icon(id), size or 0)
 end
 local function Same(a, b)
     if not a or not b then return false end
@@ -122,22 +261,21 @@ function Flasks.Reset(now)
     Fresh(now or time(), RaidNow())
     Notify()
 end
-local function Count(j, name)
+local function Count(j, name, id)
     local n = 0
     for i = 1, #j.list do
         local e = j.list[i]
-        if e.n == name then n = n + (e.c or 1) end
+        if e.n == name and (not id or e.i == id) then n = n + (e.c or 1) end
     end
     return n
 end
-function Flasks.Count(name)
-    return Count(Flasks.Journal(), name)
+function Flasks.Count(name, id)
+    return Count(Flasks.Journal(), name, id)
 end
 function Flasks.KindOf(role, class)
-    if role == "tank" or role == "sp" or role == "ap" then return role end
-    if role == "heal" then return "sp" end
+    if Flasks.IsKind(role) then return role end
     if role == "melee" then return "ap" end
-    if role == "ranged" then return class == "HUNTER" and "ap" or "sp" end
+    if role == "ranged" then return class == "HUNTER" and "ap" or "caster" end
     return nil
 end
 function Flasks.UnitOf(name)
@@ -162,12 +300,15 @@ function Flasks.RoleSource(key, fn, order)
         if sources[i].key == key then table.remove(sources, i) end
     end
     sources[#sources + 1] = { key = key, fn = fn, order = order or 50 }
-    tsort(sources, function(a, b) return a.order < b.order end)
+    tsort(sources, function(a, b)
+        if a.order ~= b.order then return a.order < b.order end
+        return a.key < b.key
+    end)
 end
 function Flasks.Role(name)
     local j = Flasks.Journal()
     local hand = j.hand[name]
-    if hand then return hand, "hand" end
+    if Flasks.IsKind(hand) then return hand, "hand" end
     local class = Flasks.ClassOf(name)
     local fixed = class and ns.flaskClass[class]
     if fixed then return fixed, "class" end
@@ -179,7 +320,7 @@ function Flasks.Role(name)
     return nil, nil
 end
 function Flasks.SetHand(name, kind)
-    if kind and not ns.flaskDefault[kind] then return end
+    if kind and not Flasks.IsKind(kind) then return end
     local j = Flasks.Journal()
     j.hand[name] = kind
     Notify()
@@ -285,50 +426,59 @@ function Flasks.Has(name)
     if ok and type(n) == "number" then return n end
     return nil
 end
-function Flasks.Norm(name)
-    local o = Opt()
-    local dur = Flasks.IsAlchemist(name) and 2 or 1
-    local norm = min(o.limit, ceil(o.hours - 1e-9))
-    return max(1, norm), dur
-end
-function Flasks.Decide(name, now, stock)
+function Flasks.Decide(name, now, stock, force)
     now = now or time()
     local j = Flasks.Journal(now)
-    local n = Count(j, name)
-    local norm, dur = Flasks.Norm(name)
-    local plan = { name = name, give = false, n = n, norm = norm, limit = Opt().limit, left = max(0, norm - n),
-                   dur = dur, alch = dur > 1 }
+    local plan = { name = name, give = false, rows = {}, list = {}, short = {}, n = 0, norm = 0,
+                   alch = Flasks.IsAlchemist(name) }
     plan.kind, plan.src = Flasks.Role(name)
-    if plan.kind then plan.item = Flasks.Item(plan.kind) end
-    if n >= norm then
+    if not plan.kind then
+        plan.why = "role"
+        return plan
+    end
+    local items, left = Flasks.KitItems(plan.kind), 0
+    for i = 1, #items do
+        local e = items[i]
+        local got = Count(j, name, e.id)
+        local row = { id = e.id, norm = e.n, got = got, need = max(0, e.n - got), put = 0,
+                      own = Flasks.ById(e.id) ~= nil or nil }
+        plan.rows[i] = row
+        plan.n, plan.norm, left = plan.n + min(got, e.n), plan.norm + e.n, left + row.need
+    end
+    if left == 0 then
         plan.why = "norm"
         return plan
     end
     plan.has = Flasks.Has(name)
-    if plan.has and plan.has > 0 then
-        local own = Opt().own
-        if own == "skip" then
-            plan.why = "own"
-            return plan
+    local rule = Opt().own
+    local theirs = plan.has ~= nil and plan.has > 0
+    for i = 1, #plan.rows do
+        local row = plan.rows[i]
+        if row.need > 0 then
+            if row.own and theirs and rule == "skip" and not force then
+                row.skip = "own"
+                plan.skips = true
+            else
+                if row.own and theirs and rule ~= "ignore" then plan.warn = "own" end
+                row.put = stock and min(row.need, max(0, stock(row.id) or 0)) or row.need
+                if row.put > 0 then plan.list[#plan.list + 1] = row end
+                if row.put < row.need then plan.short[#plan.short + 1] = row end
+            end
         end
-        if own == "warn" then plan.warn = "own" end
     end
-    if not plan.item then
-        plan.why = "role"
-        return plan
-    end
-    if stock and (stock(plan.item.id) or 0) < 1 then
-        plan.why = "bags"
+    if plan.skips and not plan.warn then plan.warn = "skip" end
+    if #plan.list == 0 then
+        plan.why = #plan.short > 0 and "bags" or "own"
         return plan
     end
     plan.give = true
     return plan
 end
-function Flasks.Record(name, item, kind, now, forced, count, manual)
+function Flasks.Record(name, id, kind, now, forced, count, manual)
     now = now or time()
     local j = Flasks.Journal(now)
     local c = count and count > 1 and count or nil
-    j.list[#j.list + 1] = { n = name, i = item.id, k = kind, t = now, f = forced or nil, c = c, m = manual or nil }
+    j.list[#j.list + 1] = { n = name, i = id, k = kind, t = now, f = forced or nil, c = c, m = manual or nil }
     j.last = now
     Notify()
 end
@@ -383,6 +533,85 @@ function Flasks.Given(raid)
         out[id] = (out[id] or 0) + (j.list[i].c or 1)
     end
     return out
+end
+function Flasks.Members()
+    local out, me = {}, UnitName("player")
+    local n = GetNumRaidMembers() or 0
+    if n > 0 then
+        for i = 1, n do
+            local name, _, _, _, _, class = GetRaidRosterInfo(i)
+            if name and name ~= me then out[#out + 1] = { name = name, class = class } end
+        end
+        return out
+    end
+    for i = 1, GetNumPartyMembers() or 0 do
+        local unit = "party" .. i
+        local name = UnitName(unit)
+        local _, class = UnitClass(unit)
+        if name then out[#out + 1] = { name = name, class = class } end
+    end
+    return out
+end
+function Flasks.Others(except)
+    local j, out = Flasks.Journal(), {}
+    local list = Flasks.Members()
+    for i = 1, #list do
+        local name = list[i].name
+        local kind = name ~= except and Flasks.Role(name)
+        if kind then
+            local items = Flasks.KitItems(kind)
+            for k = 1, #items do
+                local e = items[k]
+                local need = max(0, e.n - Count(j, name, e.id))
+                if need > 0 then out[e.id] = (out[e.id] or 0) + need end
+            end
+        end
+    end
+    return out
+end
+local function TableOrder(a, b)
+    if a.here ~= b.here then return a.here end
+    local ka, kb = kindAt[a.kind or ""] or 9, kindAt[b.kind or ""] or 9
+    if ka ~= kb then return ka < kb end
+    return a.name < b.name
+end
+local function TableAdd(rows, byName, name, class, here)
+    local r = byName[name]
+    if r then
+        r.here = r.here or here
+        return
+    end
+    r = { name = name, class = class, here = here, cells = {}, got = 0, norm = 0, short = 0 }
+    byName[name] = r
+    rows[#rows + 1] = r
+end
+function Flasks.Table()
+    local j = Flasks.Journal()
+    local ids = Flasks.KitIds()
+    local rows, byName = {}, {}
+    local list = Flasks.Members()
+    for i = 1, #list do TableAdd(rows, byName, list[i].name, list[i].class, true) end
+    for i = 1, #j.list do TableAdd(rows, byName, j.list[i].n, nil, false) end
+    for name in pairs(j.hand) do TableAdd(rows, byName, name, nil, false) end
+    local t = { ids = ids, rows = rows, given = 0, people = 0, short = 0, miss = 0 }
+    t.given, t.people = Flasks.Stats()
+    for i = 1, #rows do
+        local r = rows[i]
+        r.class = r.class or Flasks.ClassOf(r.name)
+        r.kind, r.src = Flasks.Role(r.name)
+        for k = 1, #ids do
+            local id = ids[k]
+            local cell = { got = Count(j, r.name, id), norm = Flasks.Norm(r.kind, id) }
+            r.cells[id] = cell
+            r.got, r.norm = r.got + cell.got, r.norm + cell.norm
+            r.short = r.short + max(0, cell.norm - cell.got)
+        end
+        if r.here and r.short > 0 then
+            t.short, t.miss = t.short + 1, t.miss + r.short
+        end
+    end
+    tsort(rows, TableOrder)
+    return t
 end
 function Flasks.InGroup()
     return (GetNumRaidMembers() or 0) > 0 or (GetNumPartyMembers() or 0) > 0
@@ -443,13 +672,69 @@ function Flasks.Sync()
     Notify()
 end
 function Flasks.Bags()
-    local out, seen = {}, {}
-    for i = 1, #ns.flaskKinds do
-        local it = Flasks.Item(ns.flaskKinds[i])
-        if it and not seen[it] then
-            seen[it] = true
-            out[#out + 1] = { item = it, n = GetItemCount(it.id) or 0 }
+    local ids, out = Flasks.KitIds(), {}
+    for i = 1, #ids do out[i] = { id = ids[i], n = GetItemCount(ids[i]) or 0 } end
+    return out
+end
+local alchIds
+local function AlchIds()
+    if alchIds then return alchIds end
+    alchIds = {}
+    for i = 1, #ns.flaskItems do alchIds[ns.flaskItems[i].id] = "flask" end
+    for _, c in pairs(ns.consumeCast or {}) do
+        if c.id and ALCHEMY[c.cat] then alchIds[c.id] = c.cat end
+    end
+    return alchIds
+end
+local function KnownCat(id)
+    local c = ns.consumeItems and ns.consumeItems[id]
+    return c and c.cat or AlchIds()[id]
+end
+local function AlchKinds()
+    local out = {}
+    for i = 1, #ns.flaskAnchor do
+        local id = ns.flaskAnchor[i]
+        local name, _, _, _, _, class, sub = GetItemInfo(id)
+        local cat = KnownCat(id)
+        if name and class and sub and cat then out[class .. "/" .. sub] = cat end
+    end
+    return out
+end
+function Flasks.Cat(id, kinds)
+    local cat = KnownCat(id)
+    if cat then return cat end
+    local name, _, _, _, _, class, sub = GetItemInfo(id)
+    if not (name and class and sub) then return nil end
+    return (kinds or AlchKinds())[class .. "/" .. sub]
+end
+function Flasks.Fits(id, kinds)
+    return Flasks.Cat(id, kinds) ~= nil
+end
+local function AddOrder(a, b)
+    if (a.n > 0) ~= (b.n > 0) then return a.n > 0 end
+    local ca, cb = CAT_ORDER[a.cat] or 9, CAT_ORDER[b.cat] or 9
+    if ca ~= cb then return ca < cb end
+    if a.name ~= b.name then return a.name < b.name end
+    return a.id < b.id
+end
+function Flasks.AddList(kind)
+    local kinds, out, seen = AlchKinds(), {}, {}
+    local list = Flasks.KitItems(kind)
+    for i = 1, #list do seen[list[i].id] = true end
+    for bag = 0, 4 do
+        for slot = 1, GetContainerNumSlots(bag) or 0 do
+            local link = GetContainerItemLink(bag, slot)
+            local id = link and tonumber(link:match("item:(%d+)"))
+            if id and not seen[id] then
+                seen[id] = true
+                local cat = Flasks.Cat(id, kinds)
+                if cat then out[#out + 1] = { id = id, n = GetItemCount(id) or 0, name = Flasks.Name(id), cat = cat } end
+            end
         end
     end
+    for id, c in pairs(ns.consumeItems or {}) do
+        if not seen[id] then out[#out + 1] = { id = id, n = GetItemCount(id) or 0, name = Flasks.Name(id), cat = c.cat } end
+    end
+    tsort(out, AddOrder)
     return out
 end

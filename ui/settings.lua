@@ -217,6 +217,7 @@ end
 local function Tip(f, it, title)
     if title then f.tipTitle = Maybe(it.label) or false end
     f.tip = Maybe(it.tip)
+    f.tipAlt = Maybe(it.tipAlt)
     f.tipDim = Maybe(it.warn)
 end
 local function Apply(it, v)

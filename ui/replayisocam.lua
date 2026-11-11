@@ -82,6 +82,7 @@ local function UpdateCamUi()
     if not ui.modeBtn then return end
     ui.modeBtn.text:SetText(ns.T(run.flat and "iso.cam.2d" or "iso.cam.3d"))
     ui.modeBtn.tip = ns.T(run.flat and "iso.tip.to3d" or "iso.tip.to2d")
+    ui.modeBtn.tipClick = ns.T(run.flat and "iso.tip.to3d.act" or "iso.tip.to2d.act")
     local nav = ui.nav
     if nav and nav.tiltmore then
         Allow(nav.tiltmore, not run.flat, ns.T(run.flat and "iso.tip.tilt2d" or "iso.tip.tiltmore"))

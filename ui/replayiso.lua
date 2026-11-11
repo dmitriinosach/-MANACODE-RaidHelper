@@ -300,6 +300,7 @@ local function UpdateSceneBtn()
     b.icon:SetTexture(onBase and IsoBuild.ICONS.throne or IsoBuild.ICONS.soul)
     b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     b.tip = format(ns.T(run.pin and "iso.tip.scene.pin" or "iso.tip.scene.auto"), b.label)
+    b.tipClick = ns.T(run.pin and "iso.tip.scene.pin.act" or "iso.tip.scene.auto.act")
     b:SetActive(run.pin ~= nil)
     b:Show()
     if not was then IsoBuild.LayoutNav() end

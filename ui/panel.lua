@@ -473,7 +473,7 @@ local function IconTip(b)
         open = ns.Shell.IsFolded()
         hide, show = "panel.tip.gp.hide", "panel.tip.gp.open"
     end
-    lines[#lines + 1] = TipLine(ns.T(open and hide or show), "text.secondary")
+    lines[#lines + 1] = { kind = "foot", key = "lmb", left = ns.T(open and hide or show) }
     ns.Tip.Dock(b, lines)
 end
 local function IconTipHide()
@@ -598,7 +598,7 @@ local function PaintGlyph(b)
 end
 local function CtrlTip(b)
     local k = b.kind
-    b.tipTitle, b.tip = nil, nil
+    b.tipTitle, b.tip, b.tipClick = nil, nil, nil
     if k == "add" then
         local d = Spare()
         b.tipTitle = ns.T("panel.row.add")
@@ -609,12 +609,13 @@ local function CtrlTip(b)
         local locked = Panel.IsLocked()
         b.tipTitle = ns.T(locked and "panel.unlock" or "panel.lock")
         b.tip = ns.T(locked and "panel.unlock.tip" or "panel.lock.tip")
+        b.tipClick = ns.T(locked and "panel.unlock.act" or "panel.lock.act")
     elseif k == "compact" then
         b.tipTitle = ns.T("panel.compact")
         b.tip = ns.T("panel.compact.tip")
     elseif k == "less" or k == "more" then
         b.tipTitle = format(ns.T("panel.scale.tip"), floor((Panel.Scale()) * 100 + 0.5))
-        b.tip = ns.T(k == "less" and "shell.scale.less.tip" or "shell.scale.more.tip")
+        b.tipClick = ns.T(k == "less" and "shell.scale.less.tip" or "shell.scale.more.tip")
     else
         local key = b.row and b.row.key
         local d = key and Neighbour(key, k == "next" and 1 or -1)

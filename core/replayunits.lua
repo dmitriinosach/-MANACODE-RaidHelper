@@ -33,7 +33,7 @@ local function CastTime(id)
     return v / 1000
 end
 function RU.New(scene)
-    return { names = ns.Replay.ByK(scene), open = {}, fw = {}, succ = {}, done = {}, out = {}, inst = {}, vpow = {},
+    return { names = ns.Replay.ByK(scene), open = {}, fw = {}, succ = {}, wait = {}, done = {}, out = {}, inst = {}, vpow = {},
              stats = { casts = 0, chans = 0, ends = 0, cuts = 0, guessed = 0, instants = 0 } }
 end
 local function Add(c, name, rec)
@@ -60,6 +60,17 @@ local function Close(c, name, ts, cut)
         rec.stop = Cap(rec, ts)
         c.done[name] = { id = rec.id, ts = ts }
     end
+end
+local function Live(c, name, ts)
+    local rec = c.open[name]
+    if not rec then return nil end
+    local want = rec.to or (rec.from + CastTime(rec.id))
+    if want > rec.from and ts > want + MATCH then
+        c.open[name] = nil
+        rec.stop = want
+        return nil
+    end
+    return rec
 end
 local function Noise(id)
     return id == nil or AUTO[id] == true or (ns.recProcs ~= nil and ns.recProcs[id] ~= nil)
@@ -93,9 +104,10 @@ local function OpenChan(c, name, from, id, left, aim)
     c.open[name] = rec
     c.stats.chans = c.stats.chans + 1
     Add(c, name, rec)
+    return rec
 end
-local function OnFw(c, ts, name, kind, left, aim)
-    local rec = c.open[name]
+local function OnFw(c, ts, name, kind, left, aim, spell)
+    local rec = Live(c, name, ts)
     if kind == K_CAST then
         if rec and not rec.chan and not rec.to and abs(rec.from - ts) <= MATCH then
             rec.to = ts + (left or 0) / 1000
@@ -111,7 +123,14 @@ local function OnFw(c, ts, name, kind, left, aim)
             if s.inst then s.inst.drop = true end
             OpenChan(c, name, ts, s.id, left or 0, aim)
         else
-            c.fw[name] = { ts = ts, kind = kind, left = left or 0, aim = aim }
+            local p = { ts = ts, kind = kind, left = left or 0, aim = aim }
+            c.fw[name] = p
+            if spell then
+                local rec = OpenChan(c, name, ts, nil, left or 0, aim)
+                rec.name = spell
+                p.rec = rec
+                c.wait[name] = rec
+            end
         end
     elseif kind == K_MOVED then
         if rec and left then rec.to = ts + left / 1000 end
@@ -119,9 +138,9 @@ local function OnFw(c, ts, name, kind, left, aim)
         Close(c, name, ts, true)
     end
 end
-function RU.Event(c, ts, sub, src, dst, a1, a2, a4, id)
+function RU.Event(c, ts, sub, src, dst, a1, a2, a3, id)
     if sub == FW then
-        if src and c.names[src] then OnFw(c, ts, src, tonumber(a1) or -1, tonumber(a2), dst ~= "" and dst or nil) end
+        if src and c.names[src] then OnFw(c, ts, src, tonumber(a1) or -1, tonumber(a2), dst ~= "" and dst or nil, a3) end
         return
     end
     if sub == VPOW then
@@ -138,7 +157,7 @@ function RU.Event(c, ts, sub, src, dst, a1, a2, a4, id)
         return
     end
     if sub == "SPELL_INTERRUPT" then
-        if dst and c.open[dst] then Close(c, dst, ts, true) end
+        if dst and Live(c, dst, ts) then Close(c, dst, ts, true) end
         return
     end
     if sub == "UNIT_DIED" then
@@ -147,6 +166,11 @@ function RU.Event(c, ts, sub, src, dst, a1, a2, a4, id)
     end
     if not src or not c.names[src] then return end
     id = id or tonumber(a1)
+    local w = c.wait[src]
+    if w and id and a2 == w.name then
+        w.id = id
+        c.wait[src] = nil
+    end
     if sub == "SPELL_CAST_START" then
         Close(c, src, ts, false)
         local rec = { from = ts, id = id }
@@ -160,20 +184,25 @@ function RU.Event(c, ts, sub, src, dst, a1, a2, a4, id)
         c.stats.casts = c.stats.casts + 1
         Add(c, src, rec)
     elseif sub == "SPELL_CAST_SUCCESS" then
-        local rec = c.open[src]
+        local rec = Live(c, src, ts)
         if rec and not rec.chan and rec.id == id then
             c.open[src] = nil
             rec.stop = ts
             return
         end
         local p = TakeFw(c, src, ts, K_CHAN)
-        if p then
+        if p and p.rec then
+            if p.rec.name ~= a2 then
+                c.fw[src] = p
+                OnSucc(c, src, ts, id)
+            end
+        elseif p then
             OpenChan(c, src, p.ts, id, p.left, p.aim)
         else
             OnSucc(c, src, ts, id)
         end
     elseif DAMAGE[sub] then
-        local rec = c.open[src]
+        local rec = Live(c, src, ts)
         if rec and not rec.chan and not rec.to and rec.id == id then
             c.open[src] = nil
             rec.stop = ts
@@ -200,7 +229,7 @@ local function Finish(c, to)
         for i = 1, #list do
             local rec = list[i]
             if not rec.to then rec.to = rec.stop end
-            if rec.stop and rec.stop > rec.from then
+            if rec.stop and rec.stop > rec.from and (rec.id or not rec.name) then
                 R[#R + 1] = rec
                 F[#F + 1] = rec.from
             end

@@ -1386,7 +1386,7 @@ function Layers.Build(scene)
         end
     end
     for o = 1, #segs do
-        for ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, _, a4, a5
+        for ts, sub, srcGUID, src, srcFlags, dstGUID, dst, dstFlags, a1, a2, a3, a4, a5
             in ns.Store.Events(segs[o], fight.from, fight.to, MAX_TAIL) do
             Step()
             Progress(Read() - read0, span)
@@ -1397,7 +1397,7 @@ function Layers.Build(scene)
             if ph and (ph.due or (id and phHooks[id])) then Feed(ph, ts, sub, a1) end
             if ru and ((src and ruNames[src])
                 or (dst and ruOpen[dst] and (sub == "UNIT_DIED" or sub == "SPELL_INTERRUPT"))) then
-                RU.Event(ru, ts, sub, src, dst, a1, a2, a4, id)
+                RU.Event(ru, ts, sub, src, dst, a1, a2, a3, id)
             end
             if ar and arSubs[sub] then AR.Event(ar, ts, sub, src, dstGUID, dst, id, srcKey) end
             if rd and rdSubs[sub] then RD.Event(rd, ts, sub, src, dst, a1, a2, a4, sk) end

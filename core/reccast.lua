@@ -21,12 +21,12 @@ local function Writing()
     local R = ns.Recorder
     return R ~= nil and R.IsOn() and not R.IsPaused() and R.InZone() and ns.Store.Live() ~= nil
 end
-local function Put(name, kind, left, unit)
+local function Put(name, kind, left, unit, spell)
     local ms = left and floor(left + 0.5) or nil
     if ms and ms < 0 then ms = 0 end
     local of = unit and TARGET[unit]
     local aimGUID = of and UnitGUID(of)
-    ns.Store.Append(ns.Recorder.Now(), SUB, nil, name, 0, aimGUID, aimGUID and UnitName(of) or nil, 0, kind, ms)
+    ns.Store.Append(ns.Recorder.Now(), SUB, nil, name, 0, aimGUID, aimGUID and UnitName(of) or nil, 0, kind, ms, spell)
 end
 local function OnStart(unit, name, chan)
     local info = chan and UnitChannelInfo or UnitCastingInfo
@@ -36,7 +36,7 @@ local function OnStart(unit, name, chan)
     local o = open[name]
     if o and o.start == start and o.chan == chan then return end
     open[name] = { start = start, stop = stop, chan = chan }
-    Put(name, chan and CHANNEL or CAST, stop - GetTime() * 1000, unit)
+    Put(name, chan and CHANNEL or CAST, stop - GetTime() * 1000, unit, chan and spell or nil)
 end
 local function OnMoved(unit, name, chan)
     local o = open[name]

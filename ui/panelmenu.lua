@@ -68,6 +68,7 @@ local function RowEnter(r)
     if ns.PanelActs then ns.PanelActs.Hide() end
     r.tipTitle = false
     r.tip = Tip(r)
+    r.tipClick = r.key == "lock" and ns.T(ns.Panel.IsLocked() and "panel.unlock.act" or "panel.lock.act") or nil
     ns.Kit.TipShow(r)
 end
 local function RowLeave(r)

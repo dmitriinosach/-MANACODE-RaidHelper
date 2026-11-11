@@ -21,6 +21,9 @@ end
 local SPOTS = {
     ["set.notify"] = { page = "settings", cat = "notify", sec = "notify" },
     ["set.show"] = { page = "settings", cat = "parse", sec = "show" },
+    ["set.flasks"] = { page = "settings", cat = "flasks", sec = "state" },
+    ["set.kits"] = { page = "settings", cat = "flasks", sec = "what" },
+    ["set.trade"] = { page = "settings", cat = "flasks", sec = "rules" },
     ["shell.theme"] = { find = function()
         local p = ns.Shell and ns.Shell.Probe()
         return p and p.theme

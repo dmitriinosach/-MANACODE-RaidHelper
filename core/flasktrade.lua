@@ -1,6 +1,7 @@
 local _, ns = ...
 local format = string.format
 local match = string.match
+local concat = table.concat
 local tonumber = tonumber
 local BAGS = 4
 local GIVE_SLOTS = 6
@@ -52,6 +53,25 @@ local function Offered(id)
     end
     return n
 end
+local function Put()
+    local n = 0
+    for i = 1, #(cur.items or {}) do n = n + cur.items[i].put end
+    return n
+end
+Trade.Put = Put
+local function Full()
+    for i = 1, #(cur.items or {}) do
+        local q = cur.items[i]
+        if q.put < q.need then return false end
+    end
+    return true
+end
+local function Mine(id)
+    for i = 1, #(cur.items or {}) do
+        if cur.items[i].id == id then return cur.items[i] end
+    end
+    return nil
+end
 local function FindSlot(id, left)
     local bb, bs, bc, sb, ss, sc
     local locked = 0
@@ -95,33 +115,37 @@ local function FreeSlot()
     return nil
 end
 local function Ours()
-    local it = cur.item
-    if not it or not cur.slots or (cur.put or 0) < 1 or cur.put ~= cur.need then return false end
-    local n = 0
+    if not cur.items or not cur.slots or Put() < 1 or not Full() then return false end
+    local sums = {}
     for i = 1, ALL_SLOTS do
         local name, _, c = GetTradePlayerItemInfo(i)
         if name then
-            if not cur.slots[i] or LinkId(GetTradePlayerItemLink(i)) ~= it.id then return false end
-            n = n + (c or 1)
+            local id = cur.slots[i]
+            if not id or LinkId(GetTradePlayerItemLink(i)) ~= id then return false end
+            sums[id] = (sums[id] or 0) + (c or 1)
         end
     end
-    return n == cur.put and (GetPlayerTradeMoney() or 0) == 0
+    for i = 1, #cur.items do
+        local q = cur.items[i]
+        if (sums[q.id] or 0) ~= q.put then return false end
+    end
+    return (GetPlayerTradeMoney() or 0) == 0
 end
 local function Arm()
     local list
     for i = 1, GIVE_SLOTS do
         local name, _, c = GetTradePlayerItemInfo(i)
         local id = name and LinkId(GetTradePlayerItemLink(i))
-        local it = id and F.ById(id)
-        if it then
+        local q = id and Mine(id)
+        if id and (q or F.Known(id)) then
             list = list or {}
             local a
             for k = 1, #list do
-                if list[k].item == it then a = list[k] end
+                if list[k].id == id then a = list[k] end
             end
             if not a then
-                local ours = it == cur.item
-                a = { item = it, count = 0, stock = Stock(it.id), forced = ours and cur.forced or nil, manual = not ours or nil,
+                local ours = q ~= nil and q.put > 0
+                a = { id = id, count = 0, stock = Stock(id), forced = ours and cur.forced or nil, manual = not ours or nil,
                       kind = ours and cur.kind or (cur.plan and cur.plan.kind) or "" }
                 list[#list + 1] = a
             end
@@ -149,11 +173,21 @@ local function TargetEmpty()
     end
     return (GetTargetTradeMoney() or 0) == 0
 end
+local function Names(rows, miss)
+    local parts = {}
+    for i = 1, #rows do
+        local r = rows[i]
+        local n = miss and (r.need - r.put) or r.put
+        parts[i] = F.Name(r.id) .. (n > 1 and (" x" .. n) or "")
+    end
+    return concat(parts, ", ")
+end
+Trade.Names = Names
 local function Reason(plan)
     local who = plan.name
     if plan.why == "norm" then return format(T("flask.why.norm"), who, plan.n, plan.norm) end
     if plan.why == "own" then return format(T("flask.why.own"), who, plan.has or 0) end
-    if plan.why == "bags" then return format(T("flask.why.bags"), F.ItemName(plan.item)) end
+    if plan.why == "bags" then return format(T("flask.why.bags"), Names(plan.short, true)) end
     return format(T("flask.why.role"), who)
 end
 Trade.Reason = Reason
@@ -161,7 +195,7 @@ local function Whisper(plan)
     if not F.Get("whisper") then return end
     local key
     if plan.why == "norm" then
-        key = format(T("flask.tell.norm"), plan.norm)
+        key = T("flask.tell.norm")
     elseif plan.why == "own" then
         key = T("flask.tell.own")
     end
@@ -198,13 +232,12 @@ local function Split(bag, slot, n)
     return true
 end
 local function Forget()
-    cur.item, cur.kind, cur.forced = nil, nil, nil
-    cur.need, cur.put, cur.slots = nil, nil, nil
-    cur.split, cur.waits, cur.pending = nil, nil, nil
+    cur.items, cur.qi, cur.kind, cur.forced, cur.slots = nil, nil, nil, nil, nil
+    cur.split, cur.waits = nil, nil
 end
 local function Failed()
     if cur.status == "split" then return end
-    if (cur.put or 0) == 0 then Forget() end
+    if Put() == 0 then Forget() end
 end
 local Retry
 local function Wait()
@@ -217,9 +250,8 @@ local function Wait()
     After(DELAY, Retry)
     return false
 end
-local function Fill()
-    local id = cur.item.id
-    while cur.put < cur.need do
+local function FillOne(q)
+    while q.put < q.need do
         if CursorHasItem() then
             cur.status = "cursor"
             return false
@@ -229,53 +261,58 @@ local function Fill()
             cur.status = "full"
             return false
         end
-        local left = cur.need - cur.put
-        local bag, slot, count, busy = FindSlot(id, left)
+        local left = q.need - q.put
+        local bag, slot, count, busy = FindSlot(q.id, left)
         if bag and count <= left and (count == left or not cur.split) then
             if not Drop(ts, bag, slot) then
                 cur.status = "pick"
                 return false
             end
-            cur.slots[ts] = count
-            cur.put = cur.put + count
-            cur.pending, cur.split, cur.waits = true, nil, nil
+            cur.slots[ts] = q.id
+            q.put = q.put + count
+            q.pending, cur.split, cur.waits = true, nil, nil
         elseif bag and count > left and not cur.split then
             if not Split(bag, slot, left) then return false end
             return Wait()
         elseif busy or cur.split then
             return Wait()
         else
-            cur.status = "bags"
-            return false
+            q.need = q.put
+            return nil
         end
+    end
+    return true
+end
+local function Fill()
+    while cur.qi <= #cur.items do
+        local ok = FillOne(cur.items[cur.qi])
+        if ok == false then return false end
+        cur.qi = cur.qi + 1
+    end
+    if Put() == 0 then
+        cur.status = "bags"
+        return false
     end
     cur.status = "placed"
     return true
 end
 local function Start(plan, forced)
-    local it = plan.item
-    local need = plan.left > 0 and plan.left or plan.limit - plan.n
-    local have = Stock(it.id)
-    cur.item, cur.kind, cur.forced = it, plan.kind, forced or nil
-    if have < 1 then
-        cur.status = "bags"
-        Failed()
-        return
+    local items = {}
+    for i = 1, #plan.list do
+        local row = plan.list[i]
+        items[i] = { id = row.id, need = row.put, put = 0 }
     end
-    if have < need then
-        need = have
-    end
-    cur.need, cur.put, cur.slots = need, 0, {}
+    cur.items, cur.qi, cur.kind, cur.forced, cur.slots = items, 1, plan.kind, forced or nil, {}
     cur.split, cur.waits, cur.many = nil, nil, nil
     if not Fill() then Failed() end
 end
 Retry = function()
-    if not cur.open or not cur.item or not cur.need or cur.put >= cur.need or InCombatLockdown() then return end
+    if not cur.open or not cur.items or Full() or InCombatLockdown() then return end
     if not Fill() then Failed() end
     Changed()
 end
 local function Withdraw()
-    if not cur.item or CursorHasItem() then return end
+    if not cur.items or CursorHasItem() then return end
     for ts in pairs(cur.slots or {}) do
         if GetTradePlayerItemInfo(ts) then
             ClickTradeButton(ts)
@@ -322,21 +359,25 @@ local function Soon()
     end)
 end
 local function ItemChanged()
-    if cur.item and (cur.put or 0) > 0 then
-        local n = Offered(cur.item.id)
-        if n > cur.put then
-            Withdraw()
-            cur.status, cur.many = "many", n
-            Changed()
-            return
-        end
-        if n == cur.put then
-            cur.pending = nil
-        elseif not cur.pending then
-            Forget()
-            cur.status = "removed"
-            Changed()
-            return
+    local list = cur.items or {}
+    for i = 1, #list do
+        local q = list[i]
+        if q.put > 0 then
+            local n = Offered(q.id)
+            if n > q.put then
+                Withdraw()
+                cur.status, cur.many = "many", n
+                Changed()
+                return
+            end
+            if n == q.put then
+                q.pending = nil
+            elseif not q.pending then
+                Forget()
+                cur.status = "removed"
+                Changed()
+                return
+            end
         end
     end
     Soon()
@@ -348,12 +389,12 @@ local function Plan(force)
         Changed()
         return
     end
-    local plan = F.Decide(cur.partner, time(), Stock)
+    local plan = F.Decide(cur.partner, time(), Stock, force)
     cur.plan = plan
-    local give = plan.give or (force and plan.item and plan.why ~= "bags" and plan.n < plan.limit)
-    if give then
-        if cur.item and cur.item ~= plan.item then Withdraw() end
-        if not cur.item then Start(plan, not plan.give) end
+    cur.others = F.Others(cur.partner)
+    if plan.give then
+        if cur.items and cur.kind ~= plan.kind then Withdraw() end
+        if not cur.items then Start(plan, force) end
     else
         cur.status = plan.why
         Whisper(plan)
@@ -405,6 +446,7 @@ local function OnShow()
         return
     end
     F.ScanAura(name)
+    R.AskAlch(name)
     cur.status = "wait"
     if R.Want(name) and R.Ask(name) then
         cur.inspect = true
@@ -420,20 +462,21 @@ local function Complete(s)
     local now = time()
     for i = 1, #list do
         local a = list[i]
-        F.Record(s.partner, a.item, a.kind, now, a.forced, a.count, a.manual)
+        F.Record(s.partner, a.id, a.kind, now, a.forced, a.count, a.manual)
     end
     if blocked then blocked, fails = false, BLOCK_AFTER - 1 end
     Changed()
 end
 local function Gone(list)
     for i = 1, #list do
-        if Stock(list[i].item.id) < list[i].stock then return true end
+        if Stock(list[i].id) < list[i].stock then return true end
     end
     return false
 end
 local function OnClosed()
     if not cur.open then return end
     cur.open = false
+    R.AlchCancel()
     if cur.armed and not cur.done then
         local list, sess = cur.armed, cur
         After(STOCK_WAIT, function()
@@ -450,9 +493,9 @@ local function Resume()
         return
     end
     F.ScanAura(cur.partner)
-    cur.status = (cur.put or 0) > 0 and "placed" or "wait"
+    cur.status = Put() > 0 and "placed" or "wait"
     cur.inspect = nil
-    if cur.item and cur.need and cur.put < cur.need then
+    if cur.items and not Full() then
         cur.waits = nil
         Retry()
     end
@@ -471,18 +514,21 @@ function Trade.Choose(kind)
     if not cur.open or not cur.partner then return end
     cur.inspect = nil
     F.SetHand(cur.partner, kind)
-    local want = F.Item(kind)
-    if cur.item and cur.item ~= want then Withdraw() end
+    if cur.items then Withdraw() end
     Plan(false)
 end
 function Trade.Force()
     if not cur.open or not cur.partner then return end
     cur.inspect = nil
+    if cur.items then Withdraw() end
     Plan(true)
 end
 function Trade.Accept()
     if not cur.open or InCombatLockdown() then return end
-    if cur.item and Offered(cur.item.id) > (cur.put or 0) then return end
+    local list = cur.items or {}
+    for i = 1, #list do
+        if Offered(list[i].id) > list[i].put then return end
+    end
     AcceptTrade()
 end
 function Trade.Cancel()
@@ -517,6 +563,8 @@ local function OnEvent(_, event, a, b)
     elseif event == "INSPECT_TALENT_READY" then
         local who = R.Ready()
         if who and cur.open and who == cur.partner then Inspected() end
+    elseif event == "INSPECT_ACHIEVEMENT_READY" then
+        if R.AlchReady() and cur.open then Changed() end
     elseif event == "TRADE_CLOSED" then
         OnClosed()
     elseif event == "UI_INFO_MESSAGE" or event == "UI_ERROR_MESSAGE" then
@@ -564,3 +612,4 @@ frame:RegisterEvent("RAID_ROSTER_UPDATE")
 frame:RegisterEvent("PARTY_MEMBERS_CHANGED")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("INSPECT_TALENT_READY")
+frame:RegisterEvent("INSPECT_ACHIEVEMENT_READY")

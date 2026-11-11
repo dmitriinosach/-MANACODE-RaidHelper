@@ -32,7 +32,7 @@ local function build()
     dot:SetScript("OnEnter", function(self)
         self.tipTitle = ns.T("appTitle")
         self.tip = tipText()
-        self.tipDim = ns.T("dotClick")
+        self.tipClick = ns.T("dotClick")
         self.tipAnchor = "ANCHOR_TOPRIGHT"
         ns.TipShow(self)
     end)

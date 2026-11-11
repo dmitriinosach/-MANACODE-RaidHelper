@@ -254,6 +254,7 @@ local function StyleKind(b)
     Kit.Paint(b.bg, on and "row.bgOn" or "row.bg")
     local n = count[b.kind] or 0
     b.tip = format(ns.T(on and "rep.k.on" or "rep.k.off"), ns.T(b.def.tip), n)
+    b.tipClick = ns.T(on and "fx.hint.toggle" or "fx.hint.show")
 end
 local function Fight()
     if st.fight then return st.fight end

@@ -60,7 +60,7 @@ if ns.Settings and not ns.ReadOnly then
     local items = {}
     for i = 1, #KEYS do
         local k = KEYS[i]
-        items[i] = { kind = "key", key = k.id, label = k.label, tip = "set.keys.tip", command = HEADER .. "_" .. k.id:upper() }
+        items[i] = { kind = "key", key = k.id, label = k.label, tipAlt = "set.keys.tip", command = HEADER .. "_" .. k.id:upper() }
     end
     S.Section("keys", "keys", { label = "set.keys", order = 10, items = items })
 end

@@ -60,6 +60,7 @@ function Acts.Dress(b)
     b.tipTitle = it.title
     if type(it.tip) == "function" then b.tip = it.tip() else b.tip = it.tip end
     b.tipDim = not ok and why or it.hint
+    b.tipClick = ok and it.click or nil
     return ok, why, on
 end
 local Dress = Acts.Dress

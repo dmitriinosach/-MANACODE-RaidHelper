@@ -390,10 +390,12 @@ local function PullTotal(s, m)
     local early = pull.timer and pull.timer.early
     m.subs = { mark .. format(ns.T("sum.pull.line"), W.Who(pull), W.How(pull)) }
     if early then m.subs[2] = ns.Kit.Hex("text.warn") .. format(ns.T("sum.pull.early"), Tips.Dec(early, 1)) .. "|r" end
-    m.lines = { TotalHead(m), { kind = "text", left = mark .. W.Text(pull) } }
+    m.lines = { TotalHead(m), { kind = "row", left = ns.T("sum.pull.row"), right = W.Who(pull) },
+                { kind = "sub", left = mark .. W.How(pull) } }
     if pull.timer then
         local key = early and "sum.pull.timerearly" or "sum.pull.timer"
-        m.lines[3] = { kind = "text", left = format(ns.T(key), pull.timer.sec, pull.timer.who, Tips.Dec(early or 0, 1)) }
+        m.lines[4] = { kind = "sub", left = format(ns.T(key), pull.timer.sec, pull.timer.who, Tips.Dec(early or 0, 1)),
+                       tone = early and "warn" or nil }
     end
 end
 local function WipeTotal(s, m)
@@ -403,7 +405,8 @@ local function WipeTotal(s, m)
     m.subs = m.subs or {}
     m.subs[#m.subs + 1] = format(ns.T("sum.dd.firstshort"), cause.who, at)
     m.lines = m.lines or { TotalHead(m) }
-    m.lines[#m.lines + 1] = { kind = "text", left = format(ns.T("sum.dd.first"), cause.text, cause.who, at) }
+    m.lines[#m.lines + 1] = { kind = "row", left = ns.T("sum.dd.start"), right = cause.who .. ", " .. at }
+    m.lines[#m.lines + 1] = { kind = "sub", left = cause.text }
 end
 local function MarksTotal(s, m)
     local list = s.marks
@@ -577,6 +580,7 @@ local function DrawStats(s, w)
             WipeTotal(s, m)
             MarksTotal(s, m)
             ZoneTotal(s, m)
+            m.whole = m.lines ~= nil
         end
         if c[1] == "sum.s.dps" or c[1] == "sum.s.hps" then
             m.lines = Tips.Combat(s, m.title, m.value, c[1] == "sum.s.dps" and s.dmg or s.heal)
@@ -603,7 +607,7 @@ end
 local function FailHeadEnter(self)
     ns.Tip.Show(self, {
         { kind = "head", left = failPanel.title:GetText() },
-        { kind = "note", left = ns.T("sum.gp.hint") },
+        { kind = "foot", key = "rmb", left = ns.T("sum.gp.hint") },
     })
 end
 local function FailFolded()

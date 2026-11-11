@@ -35,9 +35,9 @@ local NAV_W = NAV_BTN + NAV_RIGHT * 2
 local NAV = {
     { "left", "iso.tip.left", sep = true }, { "right", "iso.tip.right" },
     { "tiltmore", "iso.tip.tiltmore", sep = true }, { "tiltless", "iso.tip.tiltless" },
-    { "mode", "iso.tip.to2d", sep = true },
+    { "mode", "iso.tip.to2d", sep = true, act = "iso.tip.to2d.act" },
     { "reset", "iso.tip.reset", sep = true },
-    { "scene", "iso.tip.scene.auto", sep = true },
+    { "scene", "iso.tip.scene.auto", sep = true, act = "iso.tip.scene.auto.act" },
     { "view", "iso.view.tip", sep = true },
     { "help", "iso.tip.help", sep = true },
 }
@@ -250,17 +250,18 @@ local function Resize(vw, vh)
     Reframe()
     run.marksDirty = true
 end
-local function NavButton(parent, icon, tip)
+local function NavButton(parent, icon, tip, act)
     local b = Kit.TabPart(parent, nil, icon, NAV_ICON)
     b:SetWidth(NAV_BTN)
     b:SetHeight(NAV_BTN)
     b.tip = ns.T(tip)
+    b.tipClick = act and ns.T(act) or nil
     b.tipTitle = false
     b.tipAnchor = "ANCHOR_LEFT"
     return b
 end
 local function BuildCompass(top)
-    local b = NavButton(ui.navGroup, nil, "iso.tip.north")
+    local b = NavButton(ui.navGroup, nil, "iso.tip.north", "iso.tip.north.act")
     b.onClick = function() Turn(-cam.angle) end
     ui.needle = b:CreateTexture(nil, "OVERLAY")
     ui.needle:SetTexture(ICONS.needle)
@@ -322,7 +323,7 @@ local function BuildNav(top)
     for i = 1, #NAV do
         local d = NAV[i]
         local name = d[1]
-        local b = NavButton(ui.navGroup, name == "scene" and ICONS.throne or ICONS[name], d[2])
+        local b = NavButton(ui.navGroup, name == "scene" and ICONS.throne or ICONS[name], d[2], d.act)
         if d.sep then
             b.sep = ui.navGroup:CreateTexture(nil, "ARTWORK")
             b.sep:SetWidth(NAV_BTN)

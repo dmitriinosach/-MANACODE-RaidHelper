@@ -503,7 +503,7 @@ local function buildMenu()
     menu.diceBtn = ns.MakeKitButton(menu)
     menu.diceBtn:SetSize(100, 20)
     menu.diceBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    menu.diceBtn.tip = ns.T("tipDiceHow")
+    menu.diceBtn.tipClick = ns.T("tipDiceHow")
     menu.diceBtn.onClick = function(self, btn)
         local m = menu.member
         if not m then return end

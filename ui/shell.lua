@@ -308,7 +308,7 @@ local function MakeAct(g, label, tip, delta, base)
     local b = Kit.TabPart(g)
     Kit.ButtonFont(b, base or "GameFontNormalLarge")
     b:SetText(ns.T(label))
-    b.tip = tip and ns.T(tip) or nil
+    b.tipClick = tip and ns.T(tip) or nil
     b.onClick = function() SetScale(Scale() + delta) end
     return b
 end
@@ -327,6 +327,7 @@ end
 local function FontButtons()
     fontLess = MakeAct(viewGroup, "shell.font.less", "shell.font.less.tip", 0, "GameFontNormal")
     fontMore = MakeAct(viewGroup, "shell.font.more", "shell.font.more.tip", 0)
+    fontLess.tip, fontMore.tip = ns.T("shell.font.note"), ns.T("shell.font.note")
     fontLess.onClick = function() Kit.SetFontDelta(Kit.FontDelta() - 1) end
     fontMore.onClick = function() Kit.SetFontDelta(Kit.FontDelta() + 1) end
     Kit.OnFont(function()
@@ -381,7 +382,7 @@ local function ThemeButton()
         t:SetPoint("LEFT", b.rim, "LEFT", 1 + (i - 1) * SWATCH_W, 0)
         b.chips[i] = t
     end
-    b.tip = ns.T("shell.theme.act")
+    b.tipClick = ns.T("shell.theme.act")
     b.onClick = ThemeClick
     themeBtn = b
     Kit.OnTheme(PaintTheme)

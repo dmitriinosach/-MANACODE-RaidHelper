@@ -7,6 +7,7 @@ local ROW_H, ROW_GAP, LIST_PAD = 20, 2, 6
 local HEAD_H = 18
 local MENU_W = 160
 local SEG_W, SEG_CAP_GAP = 210, 10
+local CLEAR = { 0, 0, 0, 0 }
 local max = math.max
 local ceil = math.ceil
 local list, catcher, openOn, head, menuOn
@@ -25,11 +26,32 @@ end
 local function PaintList()
     if list then Kit.Backdrop(list, Kit.Theme().list) end
 end
+local function StyleItem(b)
+    if b.kind then
+        Kit.StyleButton(b)
+        return
+    end
+    local base = Kit.Theme().button
+    local bg, t = CLEAR, base.text
+    if b.btnDisabled then
+        t = base.textOff
+    elseif b.active then
+        bg, t = Kit.C["row.bgOn"], base.textActive
+    elseif b.hovered then
+        bg, t = Kit.C["row.bgHover"], base.textHover
+    end
+    if b.tint and not b.btnDisabled then t = b.tint end
+    b:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 1)
+    b:SetBackdropBorderColor(0, 0, 0, 0)
+    b.text:SetTextColor(t[1], t[2], t[3])
+    b.glow:Hide()
+end
 local function Acquire()
     used = used + 1
     local b = pool[used]
     if not b then
         b = Kit.Button(list)
+        b.kitStyle = StyleItem
         b:SetHeight(ROW_H)
         b.text:ClearAllPoints()
         b.text:SetPoint("LEFT", b, "LEFT", 8, 0)
@@ -201,7 +223,9 @@ local function ShowList(sel, options, value, onPick, owner, title)
             end
             b:SetText(opt.label or opt.key)
             b.tip = opt.tip
+            b.tipLink = opt.tipLink
             b.tipTitle = opt.tipTitle
+            if opt.tipTitle == nil and not opt.tip then b.tipTitle = false end
             if type(value) == "table" then b.active = value[opt.key] == true else b.active = value ~= nil and opt.key == value end
             b.tint = opt.color
             if opt.disabled then b:Disable() else b:Enable() end
@@ -209,7 +233,7 @@ local function ShowList(sel, options, value, onPick, owner, title)
                 Kit.SelectClose()
                 onPick(opt.key, opt)
             end
-            Kit.StyleButton(b)
+            b.kitStyle(b)
             local need = b.text:GetStringWidth() + 22
             if need > w then w = need end
             rows[#rows + 1] = { button = b }

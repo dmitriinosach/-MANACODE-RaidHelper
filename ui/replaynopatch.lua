@@ -84,7 +84,8 @@ function NoPatch.Use(scene)
         st.text = format(ns.T("iso.nopatch"), np.who or ns.T("iso.nopatch.who"))
         row.text:SetText(st.text)
         row.tipTitle = st.text
-        row.tip = format(ns.T("iso.nopatch.at"), ns.Clock(np.at - scene.pull)) .. "\n\n" .. ns.T("iso.nopatch.tip")
+        row.tip = format(ns.T("iso.nopatch.at"), ns.Clock(np.at - scene.pull))
+        row.tipClick = ns.T("iso.nopatch.tip")
         row:Show()
     elseif row then
         row:Hide()

@@ -82,7 +82,7 @@ local function Label(c, key, label, y)
     head.icon:Hide()
     head.label:SetWidth(c.nameW - 6)
     head.label:SetText((Folded(key) and "+ " or "- ") .. label)
-    head.tip, head.tip2 = label, ns.T("tl.track.fold")
+    head.tip, head.act = label, ns.T("tl.track.fold")
     head.jumpTo, head.spellId = nil, nil
     head.foldKey = key
     head.onClick = FoldClick

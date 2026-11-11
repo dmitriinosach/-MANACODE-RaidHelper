@@ -284,7 +284,7 @@ function Badges.Total(parent, sized)
         local _, cutTop = Fit(self.subTop, top, room)
         local _, cutBottom = Fit(self.sub, bottom, room)
         local cut = cutTitle or cutValue or cutTop or cutBottom
-        self.lines = cut and FullLines(m, parts) or m.lines
+        self.lines = cut and not m.whole and FullLines(m, parts) or m.lines
         self:EnableMouse(self.lines ~= nil or m.open ~= nil)
         return th
     end

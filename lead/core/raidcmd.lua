@@ -180,7 +180,7 @@ local function marksRow()
     keep.label, keep.title, keep.tip = ns.T("marksKeep"), ns.T("marksKeepTitle"), ns.T("tipMarksKeep")
     for i = 1, ns.Marks.COUNT do
         local it = markItems[i + 1]
-        it.title, it.hint = ns.T("mark" .. i), ns.T("marksTipHow")
+        it.title, it.click = ns.T("mark" .. i), ns.T("marksTipHow")
     end
     return { id = "marks", title = ns.T("actMarksRow"), items = markItems, status = ns.Marks.Status }
 end

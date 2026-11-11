@@ -780,7 +780,8 @@ end
 local function HeadEnter(self)
     if not ns.Tip then return end
     local lines = { { kind = "head", left = titleText.miniText or "" } }
-    lines[2] = { kind = "text", left = ns.T(live and "mini.head.live" or "mini.head.tip") }
+    if live then lines[#lines + 1] = { kind = "text", left = ns.T("mini.head.live") } end
+    lines[#lines + 1] = { kind = "foot", key = "lmb", left = ns.T(live and "mini.head.live.act" or "mini.head.tip") }
     ns.Tip.Show(self, lines)
 end
 local function RowButton(kind)

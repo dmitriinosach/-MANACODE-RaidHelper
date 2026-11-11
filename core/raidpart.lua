@@ -203,11 +203,15 @@ function RaidPart.Feed(st, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName
 end
 local function ByA(a, b)
     if a.e.a ~= b.e.a then return a.e.a > b.e.a end
+    local x, y = a.e.i or 0, b.e.i or 0
+    if x ~= y then return x < y end
     return a.k < b.k
 end
 local function ByB(a, b)
     local x, y = a.e.b or 0, b.e.b or 0
     if x ~= y then return x > y end
+    x, y = a.e.i or 0, b.e.i or 0
+    if x ~= y then return x < y end
     return a.k < b.k
 end
 local function Trim(map, boss)

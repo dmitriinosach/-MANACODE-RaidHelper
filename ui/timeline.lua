@@ -138,8 +138,9 @@ local function GetBlock()
             if self.tip4 then lines[#lines + 1] = { self.tip4 } end
             if self.tip5 then lines[#lines + 1] = { self.tip5, "tip.dim", true } end
             if self.cast and ns.TimelineCast then ns.TimelineCast.Tip(lines, self.cast, player) end
+            if self.act then lines[#lines + 1] = { kind = "foot", key = "lmb", left = self.act } end
             if self.jumpTo and fight and fight.players[self.jumpTo] then
-                lines[#lines + 1] = { format(ns.T("tl.jump"), self.jumpTo), "badge.link", true }
+                lines[#lines + 1] = { kind = "foot", key = "lmb", left = format(ns.T("tl.jump"), self.jumpTo) }
             end
             lines[#lines + 1] = ns.ReplayLink.Line(fight, self.at, player)
             ns.Tip.Show(self, lines, icon)
@@ -178,6 +179,7 @@ local function GetBlock()
     b.tip3, b.at = nil, nil
     b.tip4 = nil
     b.tip5 = nil
+    b.act = nil
     b.cast = nil
     b.wide = nil
     if b.castLabel then
@@ -539,7 +541,7 @@ local function DrawAuras(bound)
         elseif row.info then
             local head = DrawHead(row, y, indent)
             head.label:SetText(row.label)
-            head.tip, head.tip2 = row.label, ns.T("tl.fx.allTip")
+            head.tip, head.act = row.label, ns.T("tl.fx.allTip")
             head.cat = nil
             head.onClick = TL.ToggleShowAll
         elseif row.head then

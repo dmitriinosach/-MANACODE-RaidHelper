@@ -34,17 +34,32 @@ local function Line(text, c)
         GameTooltip:AddLine(text, c[1], c[2], c[3], true)
     end
 end
+local function Feet(f)
+    local more = f.tipFoot
+    if not (f.tipClick or f.tipAlt or (more and more[1])) then return nil end
+    local out = {}
+    if f.tipClick then out[#out + 1] = { kind = "foot", key = "lmb", left = f.tipClick } end
+    if f.tipAlt then out[#out + 1] = { kind = "foot", key = "rmb", left = f.tipAlt } end
+    for i = 1, more and #more or 0 do out[#out + 1] = more[i] end
+    return out
+end
 function Kit.TipShow(f)
     local body = f.tip
     local title = f.tipTitle
     if title == nil then title = OwnText(f) end
     if title == false or title == "" then title = nil end
     local link = f.tipLink
+    local feet = Feet(f)
     if title and body and title == body then body = nil end
-    if not title and not link and not body and not f.tipDim then return end
-    if not link and Kit.Sized(f) then
+    if not title and not link and not body and not f.tipDim and not feet then return end
+    local spell = link and feet and Kit.Tip.SpellLines(tonumber(link:match("^spell:(%d+)$")))
+    if (not link or spell) and (feet or Kit.Sized(f)) then
         local lines = {}
-        if title then lines[#lines + 1] = { kind = "title", left = title, rgb = f.tipColor or Kit.GameColor("tip.title") } end
+        if spell then
+            for i = 1, #spell do lines[#lines + 1] = spell[i] end
+        elseif title then
+            lines[#lines + 1] = { kind = "title", left = title, rgb = f.tipColor or Kit.GameColor("tip.title") }
+        end
         if body then lines[#lines + 1] = { kind = "text", left = body, rgb = f.tipBodyColor or Kit.GameColor(f.tipTone or "tip.body") } end
         if f.tipDim then lines[#lines + 1] = { kind = "note", left = f.tipDim, rgb = Kit.GameColor("tip.dim") } end
         local more = f.tipLines
@@ -52,6 +67,7 @@ function Kit.TipShow(f)
             local d = Kit.GameColor("tip.dim")
             for i = 1, #more do lines[#lines + 1] = { kind = "note", left = more[i], rgb = d } end
         end
+        for i = 1, feet and #feet or 0 do lines[#lines + 1] = feet[i] end
         GameTooltip:Hide()
         sizedShown = true
         Kit.Tip.Dock(f, lines)
@@ -73,6 +89,11 @@ function Kit.TipShow(f)
     if more then
         local d = Kit.GameColor("tip.dim")
         for i = 1, #more do GameTooltip:AddLine(more[i], d[1], d[2], d[3]) end
+    end
+    for i = 1, feet and #feet or 0 do
+        local key = feet[i].key
+        local name = key and Kit.KEYCAP[key]
+        Line((name and ns.T(name) or key or "") .. " — " .. feet[i].left, Kit.GameColor("tip.dim"))
     end
     GameTooltip:Show()
 end

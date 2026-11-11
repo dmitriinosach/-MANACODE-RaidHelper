@@ -3,8 +3,8 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 1.11.0
-## X-Date: 2026-11-10
+## Version: 1.12.0
+## X-Date: 2026-11-11
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
 ## SavedVariablesPerCharacter: ManaCodeRaidHelperChar
@@ -359,6 +359,8 @@ ui\sysopts.lua
 ui\threatview.lua
 ui\sumhide.lua
 ui\flasks.lua
+ui\flaskkits.lua
+ui\flasklog.lua
 ui\autoinvite.lua
 ui\servercmd.lua
 ui\devtool.lua

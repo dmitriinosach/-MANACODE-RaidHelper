@@ -120,12 +120,12 @@ function RL.SetFight(f)
         head:Enable()
         Kit.Tint(head.icon, "text.good")
         head.tip = RL.TryText(f)
-        head.tipDim = ns.T("rp.head.click")
+        head.tipClick = ns.T("rp.mini.click")
     else
         head:Disable()
         Kit.Tint(head.icon, "button.textOff")
         head.tip = ns.T(bare and "rec.bare" or (f and "rp.head.none" or "rp.head.off"))
-        head.tipDim = nil
+        head.tipClick = nil
     end
 end
 local function MiniEnter(self)

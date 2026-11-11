@@ -4,7 +4,7 @@ local abs = math.abs
 local format = string.format
 local tsort = table.sort
 local TOTALS_VERSION = 75
-local TOTALS_CODE = "feaafe1abc"
+local TOTALS_CODE = "beb72b2f7c"
 local TRASH_VERSION = 3
 local ABIL_KEEP = 10
 local TRASH_KEY = "#trash"
@@ -110,6 +110,8 @@ local function EmptyStat(st)
 end
 local function ByAmount(a, b)
     if a.r.a ~= b.r.a then return a.r.a > b.r.a end
+    local x, y = a.r.id or 0, b.r.id or 0
+    if x ~= y then return x < y end
     return a.key < b.key
 end
 local function Top(own, pets)

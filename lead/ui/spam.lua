@@ -319,7 +319,7 @@ local function buildText()
         self:SetVerticalScroll(v)
     end)
     body:SetMaxLetters(600)
-    body.tip = ns.T("tipLinks")
+    body.tipFoot = { { kind = "foot", key = "shift", left = ns.T("tipLinks") } }
     hooksecurefunc("ChatEdit_InsertLink", function(text)
         if text and body.focused and body:IsVisible() and not ChatEdit_GetActiveWindow() then
             body:Insert(text)
