@@ -186,6 +186,7 @@ local function CloseSegment(why, enc)
     if kill and RequestRaidInfo then RequestRaidInfo() end
     if kill and ns.AutoRec and ns.AutoRec.Killed then ns.AutoRec.Killed(enc) end
     if kill and ns.RaidEP then ns.RaidEP.Killed(enc) end
+    if kill and ns.GearLvl then ns.GearLvl.Arm() end
 end
 function Recorder.LastClose()
     return closed.why, closed.enc, closed.at
@@ -505,6 +506,7 @@ local function RecordEvent(ts, ...)
         ns.RecRaid.Pull(ts)
         if ns.FlaskReady then ns.FlaskReady.Pull() end
         ns.Specs.Take(ts)
+        if ns.GearLvl then ns.GearLvl.Pull(ts, enc) end
         if ns.PullTimer then ns.PullTimer.OnPull(ts) end
         ns.RecPull.Pull(sub, srcGUID, srcName, srcFlags, spellName,
             enc ~= nil and not ns.Encounters.IsDummy(ns.NpcKey(dstGUID)))

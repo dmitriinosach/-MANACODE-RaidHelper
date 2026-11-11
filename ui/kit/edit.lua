@@ -3,7 +3,12 @@ local Kit = ns.Kit
 local edits = {}
 local function PaintEdit(e)
     local g = Kit.Theme().edit
-    Kit.Backdrop(e.kitFrame or e, g, e.focused and g.borderFocus or g.border)
+    local f = e.kitFrame or e
+    Kit.Backdrop(f, g, e.focused and g.borderFocus or e.kitEdge or g.border)
+    if e.kitFlat and not e.focused then
+        f:SetBackdropColor(0, 0, 0, 0)
+        if not e.kitEdge then f:SetBackdropBorderColor(0, 0, 0, 0) end
+    end
     local t, h = g.text, Kit.C["text.halo"]
     e:SetTextColor(t[1], t[2], t[3])
     if h and e.SetShadowColor then e:SetShadowColor(h[1], h[2], h[3], h[4] or 1) end
@@ -31,6 +36,10 @@ local function TextChanged(self)
 end
 local function EditEnter(self)
     Kit.TipShow(self)
+end
+function Kit.EditFlat(e, edge)
+    e.kitFlat, e.kitEdge = true, edge
+    PaintEdit(e)
 end
 function Kit.Edit(parent, multi, name)
     local e = CreateFrame("EditBox", name, parent)

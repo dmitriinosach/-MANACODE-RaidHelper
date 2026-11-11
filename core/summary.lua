@@ -467,6 +467,7 @@ local function Build(fight)
             s.marks = s.marks or {}
             s.marks[#s.marks + 1] = { t = ts, key = a1, text = a2 }
         end
+        if sub == "FW_GEAR" and ts >= from and ts <= to then s.gear = a1 end
         if rf and (rf.subs[sub] or rf.dead[srcName or ""]) then ns.RFury.Feed(rf, ts, sub, srcName, dstName, a1, a2, a3) end
         if cv and cv.subs[sub] then ns.SummaryCover.Feed(cv, ts, sub, srcName, dstName, a1, a4) end
         if pl and pl.subs[sub] then ns.SummaryPull.Feed(pl, ts, sub, srcName, dstName, a1, a4) end

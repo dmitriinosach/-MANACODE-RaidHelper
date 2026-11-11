@@ -8,6 +8,7 @@ local PENDING_TTL = 7 * 86400
 local REMIND_TTL = 6 * 3600
 local REASON_MAX = 120
 local STEP = 10
+local RAID_CONDS = { "nowipe", "fast", "sindra" }
 local EP = {}
 ns.RaidEP = EP
 EP.WHEN = { "ask", "kill", "zone", "group", "off" }
@@ -417,6 +418,22 @@ local function Auto(res, rows)
         end
     end
 end
+local function Gear(res, raid, rows)
+    local last = ns.raidEp.END[raid.map or ""]
+    if not last or not ns.GearLvl then return end
+    for i = 1, #(res.sums or {}) do
+        local e = res.sums[i]
+        if e.fight.boss == last and e.fight.killed and e.s and e.s.gear then
+            local by = ns.GearLvl.Parse(e.s.gear)
+            for _, r in pairs(rows) do
+                for _, c in ipairs(r.chars) do
+                    if by[c] then r.gear = by[c] end
+                end
+            end
+            return
+        end
+    end
+end
 local function Top5(list)
     local dd = {}
     for i = 1, #list do
@@ -490,6 +507,7 @@ local function Make(res, raid, p)
     end
     Top5(list)
     Auto(res, rows)
+    Gear(res, raid, rows)
     tsort(list, function(a, b)
         local ga, gb = a.epgp ~= false, b.epgp ~= false
         if ga ~= gb then return ga end
@@ -603,10 +621,18 @@ function EP.ShareOf(r)
     local e = p and p.edit.rows[r.name]
     return e and e.s or r.share
 end
-function EP.Per(r, key)
+function EP.Help(m, r)
+    local need = EP.Rule(EP.ModeNow(m), "helpIlvl")
+    if need <= 0 or not r.gear or not ns.GearLvl then return nil, need end
+    local ok, slot, lvl = ns.GearLvl.Check(r.gear, need, ns.raidEp.RELIC_MAX)
+    if ok then return "ok", need end
+    return "low", need, slot, lvl
+end
+function EP.Per(m, r, key)
     local p = EP.Pending()
     local e = p and p.edit.rows[r.name]
     if e and e.per and e.per[key] ~= nil then return e.per[key] end
+    if key == "help" then return EP.Help(m, r) == "ok" end
     return r.auto ~= nil and r.auto[key] == true
 end
 function EP.SetChecked(r, on)
@@ -642,25 +668,25 @@ function EP.Sum(m, r)
     local core = EP.Rule(mode, "base") + EP.Rule(mode, "perBoss") * m.kills
     if r.role == "heal" then core = core + EP.Rule(mode, "heal") end
     if r.role == "tank" then core = core + EP.Rule(mode, "tank") end
-    for _, key in ipairs({ "nowipe", "fast", "sindra" }) do
-        if EP.On(m, key) then core = core + EP.Rule(mode, key) end
-    end
-    local customs = EP.Customs()
-    for i = 1, #customs do
-        if EP.CustomOn(i) then core = core + (customs[i].n or 0) end
-    end
     local flags = EP.Keys(mode, "flags")
     for i = 1, #flags do
         if EP.On(m, flags[i], true) then core = core + EP.Rule(mode, "flags." .. flags[i]) end
     end
     Add("core", Round(core * share), share)
+    for _, key in ipairs(RAID_CONDS) do
+        if EP.On(m, key) then Add(key, EP.Rule(mode, key)) end
+    end
+    local customs = EP.Customs()
+    for i = 1, #customs do
+        if EP.CustomOn(i) then Add("custom", customs[i].n or 0, customs[i].name) end
+    end
     if EP.Top5(m, r) then Add("top5", EP.Rule(mode, "top5")) end
     if r.rl then Add("rl", EP.Rule(mode, "rl")) end
     local p = EP.Pending()
     Add("ach", EP.Rule(mode, "ach") * (p and p.edit.ach or 0))
     local per = EP.Keys(mode, "per")
     for i = 1, #per do
-        if EP.Per(r, per[i]) then Add("per." .. per[i], EP.Rule(mode, "per." .. per[i])) end
+        if EP.Per(m, r, per[i]) then Add("per." .. per[i], EP.Rule(mode, "per." .. per[i])) end
     end
     local sum = 0
     for i = 1, #parts do sum = sum + parts[i].n end

@@ -3,7 +3,7 @@
 ## Notes: Raid review from the combat log and raid gathering by template.
 ## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
 ## Author: Manacode
-## Version: 1.12.0
+## Version: 1.13.0
 ## X-Date: 2026-11-11
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
@@ -115,6 +115,7 @@ core\keep.lua
 core\buffsnap.lua
 core\zonebuff.lua
 core\specs.lua
+core\gearlvl.lua
 core\specsign.lua
 core\recmana.lua
 core\reccast.lua

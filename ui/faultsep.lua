@@ -7,9 +7,15 @@ local Kit = ns.Kit
 local CELL_GAP = 10
 local EDIT_W = 62
 local NAME_W = 120
-local COLS = { { "chk", 22 }, { "who", 0 }, { "was", 44 }, { "share", 150 }, { "role", 56 }, { "top", 56 } }
-local PER_W = 70
-local N_W = 70
+local COL_GAP = 6
+local COL_EDGE = 2
+local CHK_W = 24
+local WHO_MIN = 56
+local WHO_LEAST = 24
+local BTN_PAD = 18
+local EDIT_PAD = 16
+local SUM_SAMPLE = "000 000"
+local ROLES = { "tank", "heal", "dps" }
 local SHARE_LABEL = { "rep.share.100", "rep.share.50", "rep.share.25" }
 local ASK_TOP = 120
 local View = {}
@@ -17,6 +23,8 @@ ns.RaidEPView = View
 local box, list, rules, foot, sb
 local cells = {}
 local perKeys = {}
+local lay = { x = {}, w = {}, hide = {} }
+local probe = {}
 local m = { bar = 26, rowh = 20, btnh = 20 }
 local busy = false
 local cur
@@ -203,9 +211,16 @@ local function Specs(md)
     end
     for _, k in ipairs(E.Keys(mode, "per")) do
         local own = OwnTip(mode, "per." .. k)
-        out[#out + 1] = { label = ns.T("rep.pers." .. k), v = E.Rule(mode, "per." .. k), own = E.Own(mode, "per." .. k),
+        local spec = { label = ns.T("rep.pers." .. k), v = E.Rule(mode, "per." .. k), own = E.Own(mode, "per." .. k),
             tip = ns.T("rep.per." .. k) .. (own and "\n" .. own or ""),
             edit = function(n) E.SetRule(mode, "per." .. k, n) end }
+        if k == "help" then
+            local ownLvl = OwnTip(mode, "helpIlvl")
+            spec.v2, spec.tip2 = E.Rule(mode, "helpIlvl"), ns.T("rep.f.helpIlvl.tip") .. (ownLvl and "\n" .. ownLvl or "")
+            spec.own = spec.own or E.Own(mode, "helpIlvl")
+            spec.edit2 = function(n) E.SetRule(mode, "helpIlvl", n) end
+        end
+        out[#out + 1] = spec
     end
     local customs = E.Customs()
     for i = 1, #customs do
@@ -242,25 +257,66 @@ local function BoxSize()
     local w, h = box:GetWidth() or 0, box:GetHeight() or 0
     return w > 1 and w or 600, h > 1 and h or 400
 end
-local function Cells(r, width)
-    local cols = {}
-    for i = 1, #COLS do cols[i] = COLS[i] end
-    for i = 1, #perKeys do cols[#cols + 1] = { "p" .. i, PER_W } end
-    cols[#cols + 1] = { "n", N_W }
-    local fixed = 0
-    for i = 1, #cols do fixed = fixed + Kit.FontGrow(cols[i][2]) + 6 end
-    local x = 2
-    for i = 1, #cols do
-        local key, w = cols[i][1], Kit.FontGrow(cols[i][2])
-        if w == 0 then w = max(Kit.FontGrow(80), width - fixed - 8) end
-        r.x[key], r.w[key] = x, w
-        x = x + w + 6
+local function Need(kind, text)
+    local fs = probe[kind]
+    fs:SetText(text)
+    local w = floor((fs:GetStringWidth() or 0) + 0.999)
+    if kind == "btn" then return w + BTN_PAD end
+    if kind == "edit" then return w + EDIT_PAD end
+    return w + 2
+end
+local function ShareCells()
+    local opts = {}
+    for s = 1, #ns.raidEp.SHARES do opts[s] = { key = s, label = ns.T(SHARE_LABEL[s]) } end
+    return opts
+end
+local function Columns(md, width)
+    local w, hide = {}, {}
+    w.chk = CHK_W
+    w.was = max(Need("text", ns.T("rep.col.was")), Need("text", format("%d/%d", md.kills, md.kills)))
+    box.head.share:SetCells(ShareCells(), 1)
+    w.share = max(Need("text", ns.T("rep.col.share")), box.head.share:Measure(10000))
+    w.role = Need("text", ns.T("rep.col.role"))
+    for i = 1, #ROLES do w.role = max(w.role, Need("text", ns.T("rep.role." .. ROLES[i]))) end
+    w.top = max(Need("text", ns.T("rep.col.top")), Need("btn", ns.T("rep.top5")))
+    local order = { "chk", "who", "was", "share", "role", "top" }
+    for k = 1, #perKeys do
+        w["p" .. k] = Need("btn", ns.T("rep.pers." .. perKeys[k]))
+        order[#order + 1] = "p" .. k
     end
+    w.n = max(Need("text", ns.T("rep.col.n")), Need("edit", SUM_SAMPLE))
+    order[#order + 1] = "n"
+    local least = Kit.FontGrow(WHO_MIN)
+    local function Rest()
+        local used = COL_EDGE * 2
+        for i = 1, #order do
+            local key = order[i]
+            if not hide[key] then used = used + (w[key] or 0) + COL_GAP end
+        end
+        return width - used + COL_GAP
+    end
+    if Rest() < least then hide.role = true end
+    if Rest() < least then hide.was = true end
+    w.who = max(min(least, Kit.FontGrow(WHO_LEAST)), Rest())
+    local x, at = COL_EDGE, {}
+    for i = 1, #order do
+        local key = order[i]
+        if not hide[key] then
+            at[key] = x
+            x = x + w[key] + COL_GAP
+        end
+    end
+    lay.x, lay.w, lay.hide = at, w, hide
 end
 local function At(r, key, region, w)
+    if lay.hide[key] then
+        region:Hide()
+        return false
+    end
     region:ClearAllPoints()
-    region:SetPoint("LEFT", r, "LEFT", r.x[key], 0)
+    region:SetPoint("LEFT", r, "LEFT", lay.x[key], 0)
     if w then region:SetWidth(w) end
+    return true
 end
 local function RowEnter(self)
     if self.lines then ns.Tip.Show(self, self.lines) end
@@ -276,7 +332,7 @@ local function PerBtn(r, k)
     btn = Kit.Button(r, nil, "quiet")
     btn.onClick = function()
         local it, key = r.item, perKeys[k]
-        if it and it.kind == "row" and key then ns.RaidEP.SetPer(it.r, key, not ns.RaidEP.Per(it.r, key)) end
+        if it and it.kind == "row" and key and cur then ns.RaidEP.SetPer(it.r, key, not ns.RaidEP.Per(cur, it.r, key)) end
     end
     r.pb[k] = btn
     return btn
@@ -286,7 +342,6 @@ local function HidePer(r, from)
 end
 local function Row(wheel)
     local r = CreateFrame("Frame", nil, box)
-    r.x, r.w = {}, {}
     r:EnableMouse(true)
     r:EnableMouseWheel(true)
     r:SetScript("OnMouseWheel", function(_, d) wheel(d) end)
@@ -325,6 +380,8 @@ local function Row(wheel)
     r.drop:SetText("x")
     r.drop.onClick = function() if r.item and r.item.i then ns.RaidEP.DropStandby(r.item.i) end end
     r.n = NumEdit(r)
+    r.n:SetMaxLetters(9)
+    Kit.EditFlat(r.n)
     OnCommit(r.n, function(n)
         local it = r.item
         if not it then return end
@@ -350,6 +407,15 @@ local function WhoText(row)
     if row.left then s = s .. " " .. Kit.Hex("text.warn") .. format(ns.T("rep.left"), date("%H:%M", row.left)) .. "|r" end
     return s
 end
+local function HelpWhy(md, row)
+    local st, need, slot, lvl = ns.RaidEP.Help(md, row)
+    if need <= 0 then return nil end
+    if st == "ok" then return format(ns.T("rep.help.ok"), need) end
+    if st == "low" then
+        return format(ns.T("rep.help.low"), need, ns.GearLvl.SlotName(slot), lvl > 0 and tostring(lvl) or ns.T("rep.help.empty"))
+    end
+    return ns.T("rep.help.none")
+end
 local function ShareIndex(share)
     local S = ns.raidEp.SHARES
     local best, d = 1, 2
@@ -361,21 +427,28 @@ end
 local function RowTip(md, row, parts, own)
     local lines = { { kind = "head", left = row.name } }
     lines[#lines + 1] = { kind = "row", left = ns.T("rep.tip.was"), right = format("%d/%d", row.present, md.kills) }
+    if row.epgp ~= false then
+        lines[#lines + 1] = { kind = "row", left = ns.T("rep.col.role"), right = ns.T("rep.role." .. row.role) }
+    end
     if row.dmg > 0 then lines[#lines + 1] = { kind = "row", left = ns.T("rep.tip.dmg"), right = Num(row.dmg) } end
     local to = ns.RaidEP.Target(row)
     if to and to ~= row.name then lines[#lines + 1] = { kind = "row", left = ns.T("rep.to"), right = to } end
+    local sum = 0
     for i = 1, #parts do
         local p = parts[i]
         local left
         if p.key == "core" then
             left = format(ns.T("rep.tip.core"), ns.T(SHARE_LABEL[ShareIndex(p.arg)]))
+        elseif p.key == "custom" then
+            left = p.arg
         else
             local grp, key = p.key:match("^(%a+)%.(.+)$")
-            left = grp and ns.T("rep.per." .. key) or ns.T("rep.f." .. p.key)
+            left = grp and ns.T("rep.per." .. key) or ns.T(ns.L["rep.tip." .. p.key] and "rep.tip." .. p.key or "rep.f." .. p.key)
         end
+        sum = sum + p.n
         lines[#lines + 1] = { kind = "row", left = left, right = "+" .. Num(p.n) }
     end
-    if own then lines[#lines + 1] = { kind = "row", left = ns.T("rep.tip.own"), right = "" } end
+    if own then lines[#lines + 1] = { kind = "row", left = ns.T("rep.tip.own"), right = Num(sum) } end
     return lines
 end
 local function FillPlayer(r, md, row)
@@ -389,22 +462,25 @@ local function FillPlayer(r, md, row)
     At(r, "chk", r.check)
     r.who:SetText(WhoText(row))
     Kit.ClassText(r.who, row.class)
-    At(r, "who", r.who, r.w.who)
+    At(r, "who", r.who, lay.w.who)
     r.was:SetText(format("%d/%d", row.present, md.kills))
     Kit.Text(r.was, row.final and "text.primary" or "text.warn")
-    At(r, "was", r.was, r.w.was)
-    local opts = {}
-    for s = 1, #ns.raidEp.SHARES do opts[s] = { key = s, label = ns.T(SHARE_LABEL[s]) } end
-    r.share:SetCells(opts, ShareIndex(E.ShareOf(row)))
-    r.share:Layout(r.w.share)
+    r.was:Show()
+    At(r, "was", r.was, lay.w.was)
+    r.share:SetCells(ShareCells(), ShareIndex(E.ShareOf(row)))
+    r.share:Measure(lay.w.share)
+    r.share:Place(lay.w.share)
     r.share:Show()
     At(r, "share", r.share)
     if row.epgp == false then
+        local from = lay.x.role or lay.x.top
         r.role:Hide()
         r.to:Show()
         r.to:SetHeight(m.rowh)
         SetEdit(r.to, to or "")
-        At(r, "role", r.to, r.w.role + r.w.top + 6)
+        r.to:ClearAllPoints()
+        r.to:SetPoint("LEFT", r, "LEFT", from, 0)
+        r.to:SetWidth(lay.x.n - COL_GAP - from)
         HidePer(r)
         r.top:Hide()
     else
@@ -412,28 +488,30 @@ local function FillPlayer(r, md, row)
         r.role:SetText(ns.T("rep.role." .. row.role))
         Kit.Text(r.role, "text.secondary")
         r.role:Show()
-        At(r, "role", r.role, r.w.role)
+        At(r, "role", r.role, lay.w.role)
         local top = E.Top5(md, row)
         r.top:SetText(ns.T("rep.top5"))
         Lit(r.top, top)
         r.top.tipTitle = ns.T("rep.f.top5")
         r.top.tip = format(ns.T(row.top5 and "rep.top5.tip.yes" or "rep.top5.tip.no"), Num(E.Rule(E.ModeNow(md), "top5")))
         r.top:SetHeight(m.rowh)
-        At(r, "top", r.top, r.w.top)
+        At(r, "top", r.top, lay.w.top)
         r.top:Show()
         local mode = E.ModeNow(md)
         for k = 1, #perKeys do
             local key = perKeys[k]
             local btn = PerBtn(r, k)
-            local on = E.Per(row, key)
+            local on = E.Per(md, row, key)
             btn:SetText(ns.T("rep.pers." .. key))
             Lit(btn, on)
             btn.tipTitle = ns.T("rep.per." .. key)
             local tip = format(ns.T("rep.per.sum"), Num(E.Rule(mode, "per." .. key)))
-            if row.why and row.why[key] then tip = tip .. "\n" .. format(ns.T("rep.per.why." .. key), row.why[key]) end
+            local why = key == "help" and HelpWhy(md, row)
+                or row.why and row.why[key] and format(ns.T("rep.per.why." .. key), row.why[key])
+            if why then tip = tip .. "\n" .. why end
             btn.tip = tip
             btn:SetHeight(m.rowh)
-            At(r, "p" .. k, btn, r.w["p" .. k])
+            At(r, "p" .. k, btn, lay.w["p" .. k])
             btn:Show()
         end
         HidePer(r, #perKeys + 1)
@@ -441,9 +519,12 @@ local function FillPlayer(r, md, row)
     r.drop:Hide()
     r.n:Show()
     r.n:SetHeight(m.rowh)
-    SetEdit(r.n, tostring(n))
-    Kit.Text(r.n, own and "text.warn" or "text.primary")
-    At(r, "n", r.n, r.w.n)
+    SetEdit(r.n, Num(n))
+    Kit.EditFlat(r.n, own and Kit.C["text.warn"] or nil)
+    Kit.Text(r.n, own and "text.warn" or "text.bright")
+    r.n.tipTitle = ns.T("rep.col.n")
+    r.n.tip = own and ns.T("rep.own") or nil
+    At(r, "n", r.n, lay.w.n)
     r.lines = RowTip(md, row, parts, own)
 end
 local function FillStandby(r, md, i)
@@ -455,15 +536,15 @@ local function FillStandby(r, md, i)
     At(r, "chk", r.check)
     r.who:SetText(s.name)
     Kit.ClassText(r.who, nil)
-    At(r, "who", r.who, r.w.who)
-    r.was:SetText("")
+    At(r, "who", r.who, lay.w.who)
+    r.was:Hide()
     r.share:Hide()
     r.to:Hide()
     r.top:Hide()
     r.role:SetText(format(ns.T("rep.standby.pct"), ns.RaidEP.StandbyPct()))
     Kit.Text(r.role, "text.secondary")
     r.role:Show()
-    At(r, "role", r.role, r.w.role)
+    At(r, "share", r.role, lay.w.share)
     HidePer(r)
     r.drop:Show()
     r.drop:SetHeight(m.rowh)
@@ -471,14 +552,16 @@ local function FillStandby(r, md, i)
     At(r, "top", r.drop, m.rowh + 4)
     r.n:Show()
     r.n:SetHeight(m.rowh)
-    SetEdit(r.n, tostring(ns.RaidEP.StandbySum(md, s)))
-    Kit.Text(r.n, s.n and "text.warn" or "text.primary")
-    At(r, "n", r.n, r.w.n)
+    SetEdit(r.n, Num(ns.RaidEP.StandbySum(md, s)))
+    Kit.EditFlat(r.n, s.n and Kit.C["text.warn"] or nil)
+    Kit.Text(r.n, s.n and "text.warn" or "text.bright")
+    r.n.tipTitle = ns.T("rep.col.n")
+    r.n.tip = s.n and ns.T("rep.own") or nil
+    At(r, "n", r.n, lay.w.n)
     r.lines = nil
 end
 local function Fill(r, item, k)
     Put(r, k)
-    Cells(r, (BoxSize()))
     r.item = item
     if not cur then return end
     if item.kind == "row" then FillPlayer(r, cur, item.r) else FillStandby(r, cur, item.i) end
@@ -524,6 +607,10 @@ function View.Build(parent, btn)
     rules = CreateFrame("Frame", nil, box)
     rules.add = btn(rules, "HTP_FailWatchRaidEpCustomAdd", "quiet", function() ns.RaidEP.AddCustom() end)
     rules.add.tip = ns.T("rep.custom.add.tip")
+    probe.text = Kit.Str(box, "GameFontHighlightSmall")
+    probe.btn = Kit.Str(box, "GameFontNormalSmall")
+    probe.edit = Kit.Str(box, "ChatFontNormal")
+    for _, fs in pairs(probe) do fs:Hide() end
     box.head = Row(Wheel)
     for _, k in ipairs({ "check", "share", "drop", "n", "to", "top" }) do box.head[k]:Hide() end
     box.headPer = {}
@@ -561,7 +648,7 @@ function View.Build(parent, btn)
     foot.drop = btn(foot, "HTP_FailWatchRaidEpDrop", "quiet", function()
         Kit.Confirm(ns.T("rep.drop.ask"), ns.T("rep.drop"), function() ns.RaidEP.Drop() end)
     end)
-    foot.undo = btn(foot, "HTP_FailWatchRaidEpUndo", "quiet", function() View.Undo() end)
+    foot.undo = btn(foot, "HTP_FailWatchRaidEpUndo", "danger", function() View.Undo(1) end)
     foot.chat = btn(foot, "HTP_FailWatchRaidEpChat", "quiet", function()
         ns.ProofView.ReportMenu(foot.chat, function(n) return View.ChatLines(n) end, "report.menu.list", true, "report.none.list")
     end)
@@ -602,11 +689,12 @@ function View.AddStandby(main)
         ns.Print(ns.T("rep.standby.dup"))
     end
 end
-function View.Undo()
-    local rec = ns.RaidEP.Done()[1]
+function View.Undo(i)
+    local rec = ns.RaidEP.Done()[i]
     if not rec or rec.undone then return end
-    Kit.Confirm(format(ns.T("rep.undo.ask"), #rec.list, Num(rec.total)), ns.T("rep.undo"), function()
-        local ok, why = ns.RaidEP.Undo(1)
+    Kit.Confirm(format(ns.T("rep.undo.ask"), rec.title or "", #rec.list, Num(rec.total)), ns.T("rep.undo"), function()
+        if ns.RaidEP.Done()[i] ~= rec then return end
+        local ok, why = ns.RaidEP.Undo(i)
         if not ok then ns.Print(format(ns.T("rep.auto.cant"), ns.T(why or "led.err.none"))) end
     end)
 end
@@ -639,17 +727,18 @@ local function Items(md)
 end
 local function PaintHead()
     local h = box.head
-    Cells(h, (BoxSize()))
     h.who:SetText(ns.T("rep.col.who"))
-    At(h, "who", h.who, h.w.who)
+    At(h, "who", h.who, lay.w.who)
     h.was:SetText(ns.T("rep.col.was"))
-    At(h, "was", h.was, h.w.was)
+    h.was:Show()
+    At(h, "was", h.was, lay.w.was)
     box.headShare:SetText(ns.T("rep.col.share"))
-    At(h, "share", box.headShare, h.w.share)
+    At(h, "share", box.headShare, lay.w.share)
     h.role:SetText(ns.T("rep.col.role"))
-    At(h, "role", h.role, h.w.role)
+    h.role:Show()
+    At(h, "role", h.role, lay.w.role)
     box.headTop:SetText(ns.T("rep.col.top"))
-    At(h, "top", box.headTop, h.w.top)
+    At(h, "top", box.headTop, lay.w.top)
     for k = 1, max(#perKeys, #box.headPer) do
         local fs = box.headPer[k]
         if not fs then
@@ -671,7 +760,7 @@ local function PaintHead()
             local key = perKeys[k]
             fs:SetText(ns.T("rep.pers." .. key))
             Kit.Text(fs, "text.secondary")
-            At(h, "p" .. k, fs, h.w["p" .. k])
+            At(h, "p" .. k, fs, lay.w["p" .. k])
             fs:Show()
             hit:SetAllPoints(fs)
             hit.lines = { { kind = "head", left = ns.T("rep.per." .. key) },
@@ -683,7 +772,7 @@ local function PaintHead()
         end
     end
     box.headN:SetText(ns.T("rep.col.n"))
-    At(h, "n", box.headN, h.w.n)
+    At(h, "n", box.headN, lay.w.n)
     for _, fs in ipairs({ h.who, h.was, box.headShare, h.role, box.headTop, box.headN }) do Kit.Text(fs, "text.secondary") end
 end
 local function PaintFoot()
@@ -795,6 +884,7 @@ local function PaintModel(md)
     box.head:SetHeight(m.rowh)
     box.head:SetPoint("TOPLEFT", box, "TOPLEFT", 0, -list.top)
     box.head:SetPoint("TOPRIGHT", box, "TOPRIGHT", 0, -list.top)
+    Columns(md, (BoxSize()))
     PaintHead()
     PaintFoot()
     local room = select(2, BoxSize()) - list.top - m.rowh - (m.btnh + 4) * 2 - 8

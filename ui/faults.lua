@@ -11,6 +11,7 @@ local LOGH = 20
 local TABS = { "give", "rules", "log", "roll", "soft", "ep" }
 local PREV = "Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Up"
 local NEXT = "Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up"
+local EP_UNIT = "EP"
 local LOGCOLS = { { "time", 44 }, { "who", 110 }, { "what", 0 }, { "sys", 80 }, { "n", 80 }, { "by", 100 } }
 local Page = {}
 ns.FaultsPage = Page
@@ -194,12 +195,41 @@ local function LogTexts(row)
     if row.want and row.n and row.want > row.n then n = format(ns.T("fp.log.of"), row.n, row.want) end
     return what, sys, n
 end
+local function FillLogEp(r, row)
+    local rec = row.ep
+    r.cells.time:SetText(date("%H:%M", rec.at or 0))
+    r.cells.who:SetText(format(ns.T("fp.log.ep.who"), #rec.list))
+    r.cells.what:SetText(rec.reason or ns.T("rep.panel"))
+    r.cells.sys:SetText(rec.undone and format(ns.T("fp.log.undo"), EP_UNIT) or EP_UNIT)
+    r.cells.n:SetText(ns.RaidEPView.Num(rec.total or 0))
+    r.cells.by:SetText(rec.by or "")
+    ns.Kit.Text(r.cells.sys, rec.undone and "text.bad" or "text.title")
+    r.epIndex = row.i
+    if rec.undone then
+        if r.undo then r.undo:Hide() end
+        return
+    end
+    if not r.undo then
+        r.undo = Btn(r, nil, "danger", function() ns.RaidEPView.Undo(r.epIndex) end)
+    end
+    r.undo:SetHeight(logh - 2)
+    Fit(r.undo, ns.T("rep.undo"))
+    r.undo:ClearAllPoints()
+    r.undo:SetPoint("RIGHT", r.cells.what, "RIGHT", 0, 0)
+    r.cells.what:SetWidth(max(0, r.cells.what:GetWidth() - r.undo:GetWidth() - 6))
+    r.undo:Show()
+end
 local function FillLog(r, row, k)
     r:ClearAllPoints()
     r:SetHeight(logh)
     r:SetPoint("TOPLEFT", 0, -(bar + logh * k))
     r:SetPoint("TOPRIGHT", 0, -(bar + logh * k))
     LogLayout(r, logW)
+    if row.ep then
+        FillLogEp(r, row)
+        return
+    end
+    if r.undo then r.undo:Hide() end
     local what, sys, n = LogTexts(row)
     r.cells.time:SetText(date("%H:%M", row.t or 0))
     r.cells.who:SetText(row.who or "")
@@ -264,17 +294,37 @@ function Page.LogChat(n)
     end
     return ns.ChatReport.Detail(ns.T("report.t.log"), label, out, n)
 end
+local function LogRows(raid, alt)
+    local ledger = ns.Ledger.Log(raid, alt)
+    local done = ns.RaidEP and ns.RaidEP.Done() or {}
+    local eps = {}
+    for i = #done, 1, -1 do
+        local rec = done[i]
+        if not raid or rec.id == raid or rec.id == alt then eps[#eps + 1] = { ep = rec, i = i, t = rec.at or 0 } end
+    end
+    if not eps[1] then return ledger, ledger end
+    local out, k = {}, 1
+    for i = 1, #ledger do
+        while eps[k] and eps[k].t < (ledger[i].t or 0) do
+            out[#out + 1] = eps[k]
+            k = k + 1
+        end
+        out[#out + 1] = ledger[i]
+    end
+    for i = k, #eps do out[#out + 1] = eps[i] end
+    return out, ledger
+end
 local function PaintLog()
     local raid, label, alt = LogRaid()
-    local rows = ns.Ledger.Log(raid, alt)
+    local rows, ledger = LogRows(raid, alt)
     log.title:SetText(format(ns.T("fp.log.raid"), label))
-    local sums, parts = ns.Ledger.Sums(rows), {}
+    local sums, parts = ns.Ledger.Sums(ledger), {}
     for i = 1, #ns.Ledger.ORDER do
         local s = ns.Ledger.ORDER[i]
         if sums[s] then parts[#parts + 1] = ns.Ledger.Unit(s) .. " " .. sums[s] end
     end
     log.sums:SetText(concat(parts, ", "))
-    if #rows > 0 then log.chat:Enable() else log.chat:Disable() end
+    if #ledger > 0 then log.chat:Enable() else log.chat:Disable() end
     local width = log:GetWidth() or 600
     LogLayout(log.head, width)
     local slots = max(1, floor(((log:GetHeight() or 300) - bar - logh - 4) / logh))
@@ -440,6 +490,7 @@ function Page.Attach(host)
     ep = ns.RaidEPView.Build(frame, Btn)
     Place()
     ns.GPList.OnChange(function() Page.Refresh() end)
+    ns.RaidEP.OnChange(function() if tab == "log" then Page.Refresh() end end)
     Kit.OnFont(function()
         Metrics()
         Place()

@@ -33,6 +33,7 @@ local talOf = {}
 local watch
 local readers = {}
 local wants = {}
+local needs = {}
 local askUnit, askGuid, doneGuid, doneName
 local pend, pendAt
 local soonUntil = 0
@@ -136,6 +137,15 @@ function Specs.OnRead(fn)
 end
 function Specs.Want(fn)
     wants[#wants + 1] = fn
+end
+function Specs.Need(fn)
+    needs[#needs + 1] = fn
+end
+local function Needed(name)
+    for i = 1, #needs do
+        if needs[i](name) then return true end
+    end
+    return false
 end
 function Specs.Swap(name)
     if not name then return end
@@ -288,7 +298,7 @@ local function Next(now)
         local u = us[i]
         local name = UnitName(u)
         local at = name and seenAt[name] or -1
-        if name and not UnitIsUnit(u, "player") and (at < 0 or now - at > limit) and UnitIsConnected(u) then
+        if name and not UnitIsUnit(u, "player") and (at < 0 or now - at > limit or Needed(name)) and UnitIsConnected(u) then
             due = true
             if (not bestAt or at < bestAt) and (not tried[name] or now - tried[name] > RETRY)
                 and (not CanInspect or CanInspect(u)) and CheckInteractDistance(u, RANGE) then
