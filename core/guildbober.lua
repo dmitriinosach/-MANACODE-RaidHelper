@@ -27,9 +27,7 @@ function GB.Modes(raid)
     local short = key and SHORT[key]
     local b = ns.Bober
     if not short or not b or not b.ZONES[short] then return {} end
-    local size = tostring(raid.size or 25)
-    if D.sharedDiff[key] then return { short .. size .. "h", short .. size .. "n" } end
-    return { short .. size .. (raid.heroic and "h" or "n") }
+    return { short .. tostring(raid.size or 25) .. (raid.heroic and "h" or "n") }
 end
 local function WeekStart()
     local d = date("*t", ns.GuildLocks.NextReset(time()) - WEEK)

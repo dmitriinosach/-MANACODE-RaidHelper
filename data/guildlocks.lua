@@ -3,7 +3,6 @@ ns.guildLocks = {
     gsMin = { ["10"] = 5000, ["10h"] = 5800, ["25"] = 5300, ["25h"] = 6200 },
     level = 80,
     resetWday = 4,
-    sharedDiff = { IcecrownCitadel = true, TheRubySanctum = true },
     roleGroup = { tank = "tank", heal = "heal", melee = "dd", ranged = "dd", dd = "dd", hybrid = "dd" },
     raids = {
         { key = "icc25h", short = "icc", map = "IcecrownCitadel", size = 25, heroic = true },

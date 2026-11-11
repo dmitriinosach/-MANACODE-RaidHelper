@@ -55,7 +55,6 @@ local MapOf = GuildLocks.MapOf
 function GuildLocks.Same(save, raid)
     local key = MapOf(raid.map) or MapOf(raid.name)
     if not key or save.key ~= key or save.size ~= raid.size then return false end
-    if D.sharedDiff[key] then return true end
     return (save.heroic and true or false) == (raid.heroic and true or false)
 end
 function GuildLocks.NextReset(t)
