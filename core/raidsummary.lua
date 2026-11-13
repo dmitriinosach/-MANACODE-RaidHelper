@@ -251,14 +251,23 @@ local function AddAttempt(st, f, s)
     local piece = s.rp
     if not piece then return end
     local inCut = st.res.cutAt ~= nil and f.from < st.res.cutAt
+    local good = {}
+    for k = 1, #s.players do good[s.players[k].name] = ns.Totals.Good(s.players[k]) end
     for name, r in pairs(piece.rows or {}) do
         local p = st.byName[name]
         if p then
-            p.all = p.all + r.all
-            p.enc = p.enc + r.all
+            local dmg = min(r.all, good[name] or r.all)
+            local off = r.all - dmg
+            p.all = p.all + dmg
+            p.enc = p.enc + dmg
             p.boss = p.boss + r.boss
             p.heal = p.heal + r.heal
-            if inCut then p.cut = p.cut + r.all end
+            if inCut then p.cut = p.cut + dmg end
+            if off > 0 then
+                local w = p.waste
+                w.all, w.enc = w.all + off, w.enc + off
+                if inCut then w.cut = w.cut + off end
+            end
             AddAbs(p.ab, r.ab, true, inCut)
             AddAbs(p.hb, r.hb, false, false)
         end
@@ -360,23 +369,14 @@ local function Settle(st, f, s)
     for k = 1, #names do
         if IsBoss(f, names[k]) then bossy = true end
     end
-    local inCut = st.res.cutAt ~= nil and f.from < st.res.cutAt
     for who, full in pairs(u.full.by) do
         local p = byName[who]
         local waste = full - (u.by[who] or 0)
         if p and waste > 0 then
             local w = p.waste
-            w.enc = w.enc + min(p.enc, waste)
-            p.enc = max(0, p.enc - waste)
             if bossy then
                 w.boss = w.boss + min(p.boss, waste)
                 p.boss = max(0, p.boss - waste)
-            end
-            w.all = w.all + min(p.all, waste)
-            p.all = max(0, p.all - waste)
-            if inCut then
-                w.cut = w.cut + min(p.cut, waste)
-                p.cut = max(0, p.cut - waste)
             end
         end
     end

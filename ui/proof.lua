@@ -1,6 +1,5 @@
 local ADDON, ns = ...
 local format = string.format
-local ICON = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\spam.tga"
 local VIEWS = { "chron", "short" }
 local View = {}
 ns.ProofView = View
@@ -120,11 +119,9 @@ function View.ReportMenu(anchor, build, title, now, none)
         return menu
     end, anchor)
 end
-function View.ReportButton(parent, build, heal)
-    local b = ns.Kit.Button(parent, nil, "quiet")
-    b.text:SetText(T("report.btn"))
-    b.tipTitle = T("report.btn")
-    b.tip = T("report.tip")
+function View.ReportButton(parent, build, heal, box)
+    local b = ns.Kit.ChatButton(parent, box)
+    b.tip = T(heal and "report.tip.heal" or "report.tip")
     b.onClick = function(self)
         if heal then View.ReportMenu(self, build, "report.menu.heal", nil, "report.none.heal")
         else View.ReportMenu(self, build) end
@@ -146,11 +143,9 @@ local function ButtonClick(self, button)
     if self.ask then ns.Proof.Send(self.ask) end
 end
 function View.Button(parent, size)
-    local b = ns.Kit.IconButton(parent, ICON, size)
-    b.tipTitle = false
-    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    b:HookScript("OnEnter", ButtonEnter)
-    b:HookScript("OnLeave", ButtonLeave)
+    local b = ns.Kit.ChatButton(parent, size + 4)
+    b.onEnter = ButtonEnter
+    b.onLeave = ButtonLeave
     b.onClick = ButtonClick
     return b
 end

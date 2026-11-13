@@ -17,14 +17,10 @@ local UNBUFF = 16
 local UNBUFF_EDGE = 6
 local LINES = 7
 local LINEH = 14
-local EXPAND = 12
 local EXPAND_BOX = 16
 local EXPAND_R = 4
-local HIT = 3
 local RESERVE = 24
 local ROW_R = 6
-local EXPAND_TEX = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\expand.tga"
-local CHAT_TEX = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\spam.tga"
 local PERSONALH = 58
 local PERSONAL_R = 7
 local CLASS_ICON = 22
@@ -586,33 +582,14 @@ local function ChatLines(f, n)
     return R.Detail(title, f.chatCtx(), ChatRows(f), n)
 end
 function Badges.ChatIcon(parent, build, title, none)
-    local b = CreateFrame("Button", nil, parent)
-    b:SetFrameLevel(parent:GetFrameLevel() + 6)
-    b:SetWidth(EXPAND_BOX)
-    b:SetHeight(EXPAND_BOX)
-    b:SetHitRectInsets(-HIT, -HIT, -HIT, -HIT)
-    b.plate = b:CreateTexture(nil, "BACKGROUND")
-    b.plate:SetAllPoints()
-    ns.Kit.Paint(b.plate, "surface.hover")
-    b.tex = b:CreateTexture(nil, "ARTWORK")
-    b.tex:SetWidth(EXPAND)
-    b.tex:SetHeight(EXPAND)
-    b.tex:SetPoint("CENTER", 0, 0)
-    b.tex:SetTexture(CHAT_TEX)
-    ns.Kit.Tint(b.tex, "text.bright")
-    b:SetScript("OnEnter", function(self)
-        ns.Kit.Paint(self.plate, "surface.selected")
-        ns.Kit.Tint(self.tex, "text.title")
+    local b = ns.Kit.ChatButton(parent, EXPAND_BOX)
+    b.onEnter = function(self)
         ns.Tip.Dock(self, { { kind = "head", left = ns.T("report.btn") } })
-    end)
-    b:SetScript("OnLeave", function(self)
-        ns.Kit.Paint(self.plate, "surface.hover")
-        ns.Kit.Tint(self.tex, "text.bright")
-        HideTip()
-    end)
-    b:SetScript("OnClick", function(self)
+    end
+    b.onLeave = HideTip
+    b.onClick = function(self)
         if ns.ProofView then ns.ProofView.ReportMenu(self, build, title or "report.menu.detail", true, none) end
-    end)
+    end
     return b
 end
 local chatBtns = {}
@@ -631,33 +608,14 @@ end
 function Badges.ChatHead(f, ctx)
     f.chatCtx = ctx
 end
-local function ExpandLit(b, on)
-    ns.Kit.Paint(b.plate, on and "surface.selected" or "surface.hover")
-    ns.Kit.Tint(b.tex, on and "text.title" or "text.bright")
-end
 function Badges.Expand(parent, onClick, hover)
-    local b = CreateFrame("Button", nil, parent)
-    b:SetFrameLevel(parent:GetFrameLevel() + 6)
-    b:SetWidth(EXPAND_BOX)
-    b:SetHeight(EXPAND_BOX)
-    b:SetHitRectInsets(-HIT, -HIT, -HIT, -HIT)
-    b.plate = b:CreateTexture(nil, "BACKGROUND")
-    b.plate:SetAllPoints()
-    b.tex = b:CreateTexture(nil, "ARTWORK")
-    b.tex:SetWidth(EXPAND)
-    b.tex:SetHeight(EXPAND)
-    b.tex:SetPoint("CENTER", 0, 0)
-    b.tex:SetTexture(EXPAND_TEX)
-    ExpandLit(b, false)
-    b:SetScript("OnEnter", function(self)
-        if hover then hover(true) else ExpandLit(self, true) end
+    local b = ns.Kit.PlateButton(parent, ns.Kit.EXPAND_TEX, EXPAND_BOX)
+    b.hover = hover
+    b.onEnter = function(self)
         ns.Tip.Dock(self, { { kind = "head", left = ns.T("sum.k.all") } })
-    end)
-    b:SetScript("OnLeave", function(self)
-        if hover then hover(false) else ExpandLit(self, false) end
-        HideTip()
-    end)
-    b:SetScript("OnClick", function() onClick() end)
+    end
+    b.onLeave = HideTip
+    b.onClick = function() onClick() end
     b:Hide()
     return b
 end

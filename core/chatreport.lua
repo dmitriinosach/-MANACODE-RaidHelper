@@ -53,7 +53,7 @@ function Report.Lines(head, sec, list, n)
     local out = { head }
     for i = 1, min(n, #list) do
         local e = list[i]
-        out[#out + 1] = format(T("report.row"), i, e.who, Num(e.v / sec), Num(e.v),
+        out[#out + 1] = format(T("report.row"), i, e.who, ns.Rate(e.v / sec), Num(e.v),
             floor(e.v * 100 / max(1, total) + 0.5))
     end
     return out
@@ -62,7 +62,7 @@ function Report.Summary(fight, s, n, heal)
     local list = {}
     for i = 1, #s.players do
         local p = s.players[i]
-        local v = (heal and p.heal or p.goodDmg or p.dmg) or 0
+        local v = heal and (p.heal or 0) or ns.Totals.Good(p)
         if v > 0 then list[#list + 1] = { who = p.name, v = v } end
     end
     local head = format(T(heal and "report.head.heal" or "report.head"), ns.EncName(fight.boss),

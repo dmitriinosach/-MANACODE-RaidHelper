@@ -60,14 +60,24 @@ local GLYPHS = {
 local ICONS = {
     { key = "log", label = "panel.log", tip = "panel.tip.log" },
     { key = "gp", label = "panel.stats", tip = "panel.tip.stats", pic = "stats" },
-    { key = "raid", label = "panel.raid", tip = "panel.tip.raid" },
-    { key = "spam", label = "panel.spam", tip = "panel.tip.spam" },
+    { key = "raid", label = "panel.raid", tip = "panel.tip.raid", page = true },
+    { key = "spam", label = "panel.spam", tip = "panel.tip.spam", page = true },
     { key = "timer", label = "panel.timer" },
     { key = "cd", label = "panel.cd", tip = "panel.tip.cd" },
     { key = "settings", label = "panel.settings", tip = "panel.settings.tip", tool = true },
 }
 local ROW_W = PAD * 2 + #ICONS * ICON + (#ICONS - 2) * GAP + TOOLGAP
 local ROOM_BASE = ROW_W - PAD * 2
+local function IconOn(def)
+    return not def.page or (ns.Shell ~= nil and ns.Shell.Has(def.key))
+end
+local function RowW()
+    local n = 0
+    for i = 1, #ICONS do
+        if IconOn(ICONS[i]) then n = n + 1 end
+    end
+    return PAD * 2 + n * ICON + (n - 2) * GAP + TOOLGAP
+end
 local OUT = PAD + CTRL_GAP
 local REACH = OUT + CTRL * 3 + CTRL_GAP * 2
 local Panel = {}
@@ -105,6 +115,10 @@ local visAcc = 0
 local ctxKey = ""
 local dirty, compactNow, panelHot = false, false, false
 local Relayout
+function Panel.Dirty()
+    dirty = true
+end
+Panel.IconOn = IconOn
 local function Saved()
     local s = ns.GetDB().settings
     if type(s.panel) ~= "table" then s.panel = {} end
@@ -816,9 +830,12 @@ local function Feed(d, v)
     end
 end
 local function LayTop(compact)
+    local at = 0
     for i = 1, #buttons do
         local b = buttons[i]
-        local on = not compact or b == logBtn
+        local has = IconOn(b.def)
+        local on = has and (not compact or b == logBtn)
+        if has and not b.def.tool then at = at + 1 end
         Vis(b, on)
         if on then
             local size = compact and ORB or ICON
@@ -830,7 +847,7 @@ local function LayTop(compact)
             elseif b.def.tool then
                 b:SetPoint("TOPRIGHT", -PAD, -PAD)
             else
-                b:SetPoint("TOPLEFT", PAD + (i - 1) * (ICON + GAP), -PAD)
+                b:SetPoint("TOPLEFT", PAD + (at - 1) * (ICON + GAP), -PAD)
             end
         end
     end
@@ -934,7 +951,7 @@ function Relayout()
         return
     end
     local n, cw = FillRows()
-    local w = max(ROW_W, PAD * 2 + cw)
+    local w = max(RowW(), PAD * 2 + cw)
     local y = LayRows(n, w, PAD + ICON)
     ShowCorners()
     frame:SetWidth(w)

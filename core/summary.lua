@@ -188,6 +188,7 @@ local function NewSummary(fight, def)
             b.hpMax = hp or 0
             b.full = { total = 0, by = {}, split = {}, waves = {} }
             b.hp50 = { total = 0, by = {}, split = {}, waves = {} }
+            b.cutBy = {}
             s.useful = b
         end
         s.blocks[i] = b
@@ -226,6 +227,7 @@ local function Finish(s, fight)
         if b.def.kind == "casts" then b.casts = math.max(b.starts, b.done + b.total) end
     end
     Acc.UsefulEnd(s)
+    ns.Totals.Waste(s)
     Deaths.DropScripted(s, fight.boss)
     TR.Roles(s)
     Shed.Sniffed(s, fight)
@@ -357,7 +359,7 @@ local function Build(fight)
     local mechWant = mech and mech.want
     local guns = s.guns
     local useful = s.useful
-    local bossOnly = ns.dpsModel ~= nil and ns.dpsModel[fight.boss] == "boss"
+    local bossOnly = ns.Totals.BossOnly(fight.boss)
     local liveSk, liveNpc, liveApplied = LiveIndex(s)
     local gw = s.gw
     local dd = ns.DeathDeps and ns.DeathDeps.Begin(fight, def, s)
@@ -670,7 +672,11 @@ local function Build(fight)
                             swing and MELEE_ID or a1, srcKey, dstGUID)
                         if dstBoss then p.bossDmg = p.bossDmg + amount end
                         if dstBoss or not bossOnly then
-                            p.goodDmg = p.goodDmg + amount - math.max(0, tonumber(swing and a2 or a5) or 0)
+                            local cut = amount - math.max(0, tonumber(swing and a2 or a5) or 0)
+                            p.goodDmg = p.goodDmg + cut
+                            if useful and dstKey and useful.names[dstKey] then
+                                useful.cutBy[p.name] = (useful.cutBy[p.name] or 0) + cut
+                            end
                         end
                         if dstKey and watch.targets[dstKey] then
                             p.targetDmg[dstKey] = (p.targetDmg[dstKey] or 0) + amount

@@ -200,7 +200,7 @@ local function Build()
             sep:SetHeight(1)
             ns.Kit.Paint(sep, "surface.edge")
             order[#order + 1] = {}
-        else
+        elseif not defs[it.key] or ns.Panel.IconOn(defs[it.key]) then
             local r = MakeRow(it, defs[it.key])
             rows[#rows + 1] = r
             order[#order + 1] = { row = r }

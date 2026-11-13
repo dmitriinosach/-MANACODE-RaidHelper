@@ -418,9 +418,11 @@ local function BuildView(frame)
     BuildNav(top)
 end
 function IsoBuild.ShowFocus(name)
+    local Realm = ns.ReplayRealmView
     if not name then
         ui.focus:Hide()
         ui.focusX:Hide()
+        if Realm then Realm.Below(0) end
         return
     end
     ui.focus:SetText(string.format(ns.T("iso.focus"), name))
@@ -428,6 +430,10 @@ function IsoBuild.ShowFocus(name)
     ui.focusX:ClearAllPoints()
     ui.focusX:SetPoint("LEFT", ui.focus, "LEFT", ceil((ui.focus:GetStringWidth() or 0) + FOCUS_GAP), 0)
     ui.focusX:Show()
+    if Realm then
+        local th = ui.focus:GetStringHeight() or 0
+        Realm.Below(ceil(max(th, (th + (ui.focusX:GetHeight() or 0)) / 2)) + FOCUS_GAP)
+    end
 end
 local function BuildBottom()
     Bar.Build(ui, run, dim.viewW)

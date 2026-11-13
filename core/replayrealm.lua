@@ -21,6 +21,8 @@ local EMOTE = "FW_EMOTE"
 local STACK = "FW_STACK"
 local PSRC = "FW_PSRC"
 local LEAVE = "SPELL_CAST_SUCCESS"
+local NO_GUID = "realm:2"
+local PROXY_STEP = 0.5
 local R = {}
 ns.ReplayRealm = R
 function R.New(fight)
@@ -34,7 +36,7 @@ function R.New(fight)
         leave = ns.SpellSet(rd.leave), split = ns.SpellSet(rd.split), cutHit = ns.SpellSet(cd and cd.hit),
         cutPulse = ns.SpellSet(cd and cd.pulse), cutStart = ns.SpellSet(cd and cd.start),
         pudAura = {}, pudMark = {}, marks = {}, puds = {}, meteorHit = ns.SpellSet(rd.meteor and rd.meteor.hit),
-        meteors = {}, shared = {}, entry = {},
+        meteors = {}, shared = {}, entry = {}, bossGuid = {},
     }
     R.PudIndex(ctx)
     return ctx
@@ -65,12 +67,13 @@ local function Add(ctx, name, ts, k)
     local n = #e.t + 1
     e.t[n], e.k[n] = ts, k
 end
-local function Boss(ctx, npc, name, ts)
+local function Boss(ctx, npc, name, ts, guid)
     local w = npc and ctx.rd.boss[npc]
     if not w then return end
     local list = ctx.bossT[w]
     list[#list + 1] = ts
     if name then ctx.bossNames[name] = true end
+    if guid and not ctx.bossGuid[w] then ctx.bossGuid[w] = guid end
 end
 local function Puddle(ctx, ts, sub, sid, dst)
     if ctx.meteorHit[sid] and CUT[sub] then
@@ -109,8 +112,8 @@ function R.Event(ctx, ts, sub, srcGUID, src, dstGUID, dst, a1, a2, sk)
     end
     local P = ctx.players
     local sn, dn = Entry(ctx, srcGUID), Entry(ctx, dstGUID)
-    Boss(ctx, sn, src, ts)
-    Boss(ctx, dn, dst, ts)
+    Boss(ctx, sn, src, ts, srcGUID)
+    Boss(ctx, dn, dst, ts, dstGUID)
     if sub == "UNIT_DIED" then
         if dst and P[dst] then Add(ctx, dst, ts, DIED) end
         return
@@ -400,10 +403,14 @@ function R.Done(ctx, L, posAt, ppy)
     end
     local boss = {}
     for w = 1, 2 do boss[w] = Runs(ctx.bossT[w], ctx.rd.join, to) end
-    local p2 = boss[2].from[1]
+    local p2, p3 = boss[2].from[1], ctx.split3
+    for _, s in pairs(spans) do
+        if not p2 or s.from[1] < p2 then p2 = s.from[1] end
+    end
+    if p3 and not (p2 and p2 < p3) then p2 = min(boss[1].to[1] or p3, p3) end
     if p2 then
         boss[1] = { from = { ctx.fight.from }, to = { p2 } }
-        if ctx.split3 and ctx.split3 > p2 then boss[1].from[2], boss[1].to[2] = ctx.split3, to end
+        if p3 and p3 >= p2 then boss[1].from[2], boss[1].to[2] = p3, to end
         boss[2] = { from = { p2 }, to = { to } }
     end
     local seg = (ctx.fight.seg or ctx.fight.segs) and ns.Encounters.Segs(ctx.fight)[1] or nil
@@ -420,6 +427,63 @@ function R.Done(ctx, L, posAt, ppy)
     L.realm = { spans = spans, boss = boss, auras = auras, me = me, p2 = p2, shared = ctx.shared }
     L.cutter = R.Cutter(ctx, posAt, ppy)
     L.puddles = R.Puddles(ctx, posAt, ppy)
+end
+function R.Body(ctx, L, guid)
+    L.realm.body = ctx.rd.boss[Entry(ctx, guid) or 0] or PHYS
+end
+local function Twilit(RL, who, t)
+    local name = who.name
+    if not (R.In(RL.spans[name], t) and R.In(RL.shared[name], t)) then return -1, -1 end
+    local i = ns.Replay.IndexAt(who, t)
+    if i < 1 or who.dz[i] ~= 0 then return -1, -1 end
+    return ns.Replay.PosAtTime(who, t)
+end
+function R.Proxy(ctx, L, tracks, tanks, reach, name)
+    local RL = L.realm
+    local span = RL and RL.body == PHYS and RL.boss[TWI]
+    if not (span and span.from[1]) or next(RL.shared) == nil then return nil end
+    local tr = ns.Replay.NewTrack(name)
+    tr.fx, tr.fy, tr.hk, tr.src = {}, {}, {}, {}
+    local hold, pts = 0, 0
+    local t, to = span.from[1], span.to[#span.to]
+    while t <= to do
+        ns.Jobs.Step(4)
+        local hk, hx, hy = 0, -1, -1
+        if hold > 0 and tanks[tracks[hold].name] then hx, hy = Twilit(RL, tracks[hold], t) end
+        if hx >= 0 then hk = hold end
+        local sx, sy, n = 0, 0, 0
+        for k = 1, #tracks do
+            if k ~= hk then
+                local x, y = Twilit(RL, tracks[k], t)
+                if x >= 0 and hk == 0 and tanks[tracks[k].name] then
+                    hk, hx, hy = k, x, y
+                elseif x >= 0 then
+                    sx, sy, n = sx + x, sy + y, n + 1
+                end
+            end
+        end
+        hold = hk
+        if hk > 0 then
+            local cx, cy, fx, fy = hx, hy, 0, 1
+            if n > 0 then
+                local dx, dy = sx / n - hx, sy / n - hy
+                local d = sqrt(dx * dx + dy * dy)
+                if d > 0.01 then
+                    local off = min(reach, d * 0.5)
+                    cx, cy, fx, fy = hx + dx / d * off, hy + dy / d * off, -dx / d, -dy / d
+                end
+            end
+            ns.Replay.Push(tr, t, cx, cy, 1, 0)
+            tr.fx[tr.n], tr.fy[tr.n], tr.hk[tr.n], tr.src[tr.n] = fx, fy, hk, "holder"
+            pts = pts + 1
+        elseif tr.n > 0 and tr.x[tr.n] >= 0 then
+            ns.Replay.Push(tr, t, -1, -1, 1, 0)
+            tr.fx[tr.n], tr.fy[tr.n], tr.hk[tr.n], tr.src[tr.n] = 0, 1, 0, false
+        end
+        t = t + PROXY_STEP
+    end
+    if pts == 0 then return nil end
+    return { guid = ctx.bossGuid[TWI] or NO_GUID, tr = tr, world = TWI }
 end
 function R.Second(ctx, L, second)
     local w = second.world or TWI

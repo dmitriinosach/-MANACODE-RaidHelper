@@ -212,34 +212,9 @@ function Kit.Arrow(tex, up)
         tex:SetTexCoord(a, b, b, b, a, a, b, a)
     end
 end
-local function Box(list, x, y, w, h, top)
-    list[#list + 1] = { x, y, w, top }
-    list[#list + 1] = { x, y + h - 1, w, 1 }
-    list[#list + 1] = { x, y, 1, h }
-    list[#list + 1] = { x + w - 1, y, 1, h }
-    return list
-end
-local GLYPHS = {
-    fold = Box({ { 5, 5, 6, 5 } }, 0, 1, 12, 10, 1),
-    unfold = Box({}, 0, 1, 12, 10, 3),
-    max = Box({}, 0, 0, 12, 12, 2),
-    unmax = Box({ { 3, 0, 9, 2 }, { 11, 0, 1, 8 }, { 3, 0, 1, 4 }, { 9, 7, 3, 1 } }, 0, 4, 9, 8, 2),
-    close = {},
-    play = {},
-    pause = { { 2, 1, 3, 10 }, { 7, 1, 3, 10 } },
-    back = {},
-    fwd = {},
-}
-for i = 0, 10 do
-    GLYPHS.close[#GLYPHS.close + 1] = { i, i, 2, 2 }
-    GLYPHS.close[#GLYPHS.close + 1] = { 10 - i, i, 2, 2 }
-    GLYPHS.play[#GLYPHS.play + 1] = { 2, i + 1, math.min(10, (5 - math.abs(i - 5)) * 2 + 1), 1 }
-end
-for y = 1, 10 do
-    local d = math.floor(math.abs(y - 5.5))
-    GLYPHS.back[#GLYPHS.back + 1] = { 3 + d, y, 2, 1 }
-    GLYPHS.fwd[#GLYPHS.fwd + 1] = { 7 - d, y, 2, 1 }
-end
+local GLYPH_ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\kit\\glyph_"
+local GLYPHS = { fold = true, unfold = true, max = true, unmax = true, close = true, play = true, pause = true,
+                 back = true, fwd = true }
 local function GlyphStyle(b)
     Kit.StyleButton(b)
     local token = "window.glyph"
@@ -248,28 +223,22 @@ local function GlyphStyle(b)
     elseif b.hovered or b.pressed then
         token = "window.glyphLit"
     end
-    for i = 1, #b.glyph do Kit.Paint(b.glyph[i], token) end
+    for i = 1, #b.glyph do Kit.Tint(b.glyph[i], token) end
     local d = b.pressed and 1 or 0
     b.icon:ClearAllPoints()
     b.icon:SetPoint("CENTER", b, "CENTER", d, -d)
 end
 function Kit.Glyph(b, key)
-    local list = GLYPHS[key]
+    if not GLYPHS[key] then return end
     b.glyphKey = key
-    for i = 1, #list do
-        local g = list[i]
-        local t = b.glyph[i]
-        if not t then
-            t = b:CreateTexture(nil, "OVERLAY")
-            b.glyph[i] = t
-        end
-        t:ClearAllPoints()
-        t:SetWidth(g[3])
-        t:SetHeight(g[4])
-        t:SetPoint("TOPLEFT", b.icon, "TOPLEFT", g[1], -g[2])
-        t:Show()
+    local t = b.glyph[1]
+    if not t then
+        t = b:CreateTexture(nil, "OVERLAY")
+        t:SetAllPoints(b.icon)
+        b.glyph[1] = t
     end
-    for i = #list + 1, #b.glyph do b.glyph[i]:Hide() end
+    t:SetTexture(GLYPH_ART .. key)
+    t:Show()
     b.kitStyle(b)
 end
 function Kit.GlyphButton(parent, key)

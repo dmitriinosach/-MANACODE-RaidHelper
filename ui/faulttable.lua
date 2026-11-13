@@ -154,6 +154,7 @@ local function CheckToggle(box, on)
     if list.onSel then list.onSel() end
 end
 local function RowUp(self, button)
+    self = self.row or self
     local list, d = ListOf(self), self.data
     if not (d and list.fight) then return end
     if button == "RightButton" then
@@ -168,7 +169,8 @@ local function RowUp(self, button)
     end
 end
 local function RowEnter(self)
-    local list, d = ListOf(self), self.data
+    local row = self.row or self
+    local list, d = ListOf(row), row.data
     if not (d and d.ev and list.fight) then return end
     local fight = list.fight
     ns.Tip.Show(self, ns.GPList.EventLines(fight, d.ev))
@@ -194,10 +196,16 @@ local function Row(f, k)
     r:EnableMouse(true)
     r:EnableMouseWheel(true)
     r:SetScript("OnMouseUp", RowUp)
-    r:SetScript("OnEnter", RowEnter)
-    r:SetScript("OnLeave", RowLeave)
     r:SetScript("OnMouseWheel", Wheel)
     r.list = f
+    r.who = CreateFrame("Frame", nil, r)
+    r.who:EnableMouse(true)
+    r.who:EnableMouseWheel(true)
+    r.who:SetScript("OnMouseUp", RowUp)
+    r.who:SetScript("OnEnter", RowEnter)
+    r.who:SetScript("OnLeave", RowLeave)
+    r.who:SetScript("OnMouseWheel", Wheel)
+    r.who.row, r.who.list, r.who.sized = r, f, f.sized
     r.bg = r:CreateTexture(nil, "BACKGROUND")
     r.bg:SetAllPoints()
     if L.checkw > 0 then
@@ -453,6 +461,9 @@ local function Draw(self, fight, model, width, offset, slots)
         r:ClearAllPoints()
         r:SetPoint("TOPLEFT", self, "TOPLEFT", 0, -(L.headh + (k - 1) * L.rowh))
         r:SetPoint("TOPRIGHT", self, "TOPRIGHT", 0, -(L.headh + (k - 1) * L.rowh))
+        r.who:ClearAllPoints()
+        r.who:SetPoint("TOPLEFT", r, "TOPLEFT", c.left, 0)
+        r.who:SetPoint("BOTTOMRIGHT", r, "BOTTOMLEFT", max(c.left + 1, c.nameEnd), 0)
         Blank(r)
         Paint(r, k)
         local d = rows[k + offset]

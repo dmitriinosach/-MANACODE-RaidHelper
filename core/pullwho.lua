@@ -39,7 +39,7 @@ function PullWho.Who(pull)
     return pull.src
 end
 function PullWho.How(pull)
-    if pull.body then return ns.T("pull.body") end
+    if pull.body then return ns.T(pull.pet and "pull.aggro" or "pull.body") end
     return pull.spell or ns.T("tl.pull.melee")
 end
 function PullWho.Text(pull)

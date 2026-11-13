@@ -1,4 +1,4 @@
-local _, ns = ...
+local ADDON_NAME, ns = ...
 local Kit = ns.Kit
 local floor = math.floor
 local ceil = math.ceil
@@ -87,7 +87,12 @@ function Kit.StyleButton(b)
         b:SetBackdropBorderColor(br[1], br[2], br[3], br[4] or 1)
     end
     b.text:SetTextColor(t[1], t[2], t[3])
-    if b.icon and b.kind == "icon" then b.icon:SetVertexColor(t[1], t[2], t[3]) end
+    if b.icon and b.gold then
+        local g = Kit.GoldTone(b, b.hovered or b.pressed or b.active)
+        b.icon:SetVertexColor(g[1], g[2], g[3])
+    elseif b.icon and b.kind == "icon" then
+        b.icon:SetVertexColor(t[1], t[2], t[3])
+    end
     if b.hovered and not b.pressed and not b.btnDisabled and not b.kitShape then
         local g = bt.glow or base.glow
         b.glow:SetTexture(g[1], g[2], g[3], GLOW_A)
@@ -116,7 +121,9 @@ local function ShapeTab(b)
     local below = b.below or 0
     local cut = min(full, Cut(b))
     local h = full - cut
-    local cw, ch = min(e, floor(w / 2)), min(e, h)
+    local deep = b.active and max(0, min(below, full) - cut) or 0
+    if h - deep < 2 then deep = 0 end
+    local cw, ch = min(e, floor(w / 2)), min(e, h - deep)
     local kx, ky = cw / e, ch / e
     local r = b.rim
     for i = 1, #r do
@@ -143,8 +150,32 @@ local function ShapeTab(b)
     r[5]:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, cut)
     r[5]:SetWidth(cw)
     Shown(r[3], w > cw * 2)
-    Shown(r[4], h > ch)
-    Shown(r[5], h > ch)
+    Shown(r[4], h - deep > ch)
+    Shown(r[5], h - deep > ch)
+    local ft = b.foot
+    if deep > 0 then
+        local sh = min(cw - 1, floor((Kit.Theme().tab.shade or 0) * e + 0.5))
+        local k = sh / e
+        r[4]:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, cut + deep)
+        r[5]:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, cut + deep)
+        ft[1]:SetTexture(bd.edgeFile)
+        ft[1]:SetTexCoord(k * SEG, kx * SEG, 0, 1)
+        ft[1]:ClearAllPoints()
+        ft[1]:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", sh, cut)
+        ft[1]:SetWidth(cw - sh)
+        ft[1]:SetHeight(deep)
+        ft[2]:SetTexture(bd.edgeFile)
+        ft[2]:SetTexCoord((2 - kx) * SEG, (2 - k) * SEG, 0, 1)
+        ft[2]:ClearAllPoints()
+        ft[2]:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -sh, cut)
+        ft[2]:SetWidth(cw - sh)
+        ft[2]:SetHeight(deep)
+        ft[1]:Show()
+        ft[2]:Show()
+    else
+        ft[1]:Hide()
+        ft[2]:Hide()
+    end
     local ins = bd.insets or {}
     local side = min(ins.left or 0, ins.right or 0)
     b.fill:ClearAllPoints()
@@ -160,12 +191,13 @@ local function ShapeTab(b)
     s:SetHeight(max(1, below))
     b.kitEdge = bd.edgeFile
     b.kitCut = cut
+    b.kitOn = b.active and true or false
     b.rimH = h
 end
 local function StyleTab(b)
     local tt = Kit.Theme().tab
     local on = b.active and true or false
-    if b.kitEdge ~= Kit.Theme().window.backdrop.edgeFile or b.kitCut ~= Cut(b) then ShapeTab(b) end
+    if b.kitEdge ~= Kit.Theme().window.backdrop.edgeFile or b.kitCut ~= Cut(b) or b.kitOn ~= on then ShapeTab(b) end
     local hot = not on and (b.hovered or b.pressed) and true or false
     local spec = tt.fill
     if on then
@@ -176,6 +208,7 @@ local function StyleTab(b)
     Kit.Fill(b.fill, spec)
     local e = Kit.C["window.border"]
     for i = 1, #b.rim do b.rim[i]:SetVertexColor(e[1], e[2], e[3], e[4] or 1) end
+    for i = 1, #b.foot do b.foot[i]:SetVertexColor(e[1], e[2], e[3], e[4] or 1) end
     b.seam:SetVertexColor(e[1], e[2], e[3], e[4] or 1)
     Shown(b.seam, not on and (b.below or 0) > 0)
     local off = b.btnDisabled and Kit.Theme().button.textOff
@@ -205,6 +238,9 @@ local function PrepTab(b)
     b.fill = b:CreateTexture(nil, "BACKGROUND")
     b.rim = {}
     for i = 1, 5 do b.rim[i] = b:CreateTexture(nil, "BORDER") end
+    b.foot = { b:CreateTexture(nil, "BORDER"), b:CreateTexture(nil, "BORDER") }
+    b.foot[1]:Hide()
+    b.foot[2]:Hide()
     b.seam = b:CreateTexture(nil, "ARTWORK")
     b.seam:Hide()
 end
@@ -350,7 +386,76 @@ function Kit.IconButton(parent, tex, size, name)
     b.icon:SetWidth(size)
     b.icon:SetHeight(size)
     b.icon:SetPoint("CENTER", b, "CENTER", 0, 0)
+    Kit.GoldGear(b, tex)
     Kit.ButtonKind(b, "icon")
+    return b
+end
+function Kit.GoldGear(b, tex)
+    if tex and tex == Kit.GEAR_TEX then b.gold = true end
+end
+function Kit.GoldTone(b, hot)
+    if b.btnDisabled then return Kit.C["window.glyphOff"] end
+    return Kit.C[hot and "window.glyphLit" or "window.glyph"]
+end
+local PLATE_ART = "Interface\\AddOns\\" .. ADDON_NAME .. "\\art\\panel\\"
+Kit.CHAT_TEX = PLATE_ART .. "spam.tga"
+Kit.EXPAND_TEX = PLATE_ART .. "expand.tga"
+local PLATE_BOX = 16
+local PLATE_PAD = 4
+local PLATE_HIT = 3
+function Kit.PlateLit(b, on)
+    b.lit = on and true or false
+    if b.bare then
+        b.plate:Hide()
+        Kit.Tint(b.tex, on and "button.icon.textHover" or "button.icon.text")
+        return
+    end
+    Kit.Paint(b.plate, on and "surface.selected" or "surface.hover")
+    Kit.Tint(b.tex, on and "text.title" or "text.bright")
+end
+local function PlateEnter(self)
+    if self.hover then self.hover(true) else Kit.PlateLit(self, true) end
+    if self.onEnter then self.onEnter(self) else Kit.TipShow(self) end
+end
+local function PlateLeave(self)
+    if self.hover then self.hover(false) else Kit.PlateLit(self, false) end
+    if self.onLeave then self.onLeave(self) else Kit.TipHide() end
+end
+local function PlateClick(self, button)
+    if self.onClick then self.onClick(self, button) end
+end
+local PlateWrap = ns.Prof.Wrap("ui.click", PlateClick)
+function Kit.PlateButton(parent, tex, box)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetFrameLevel(parent:GetFrameLevel() + 6)
+    b:SetHitRectInsets(-PLATE_HIT, -PLATE_HIT, -PLATE_HIT, -PLATE_HIT)
+    b.plate = b:CreateTexture(nil, "BACKGROUND")
+    b.plate:SetAllPoints()
+    b.tex = b:CreateTexture(nil, "ARTWORK")
+    b.tex:SetPoint("CENTER", 0, 0)
+    b.tex:SetTexture(tex)
+    Kit.PlateSize(b, box or PLATE_BOX)
+    b.tipAnchor = "ANCHOR_TOP"
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    b:SetScript("OnEnter", PlateEnter)
+    b:SetScript("OnLeave", PlateLeave)
+    b:SetScript("OnClick", PlateWrap)
+    Kit.PlateLit(b, false)
+    Kit.DevTrack(b)
+    return b
+end
+function Kit.PlateSize(b, box)
+    b:SetWidth(box)
+    b:SetHeight(box)
+    b.tex:SetWidth(max(1, box - PLATE_PAD))
+    b.tex:SetHeight(max(1, box - PLATE_PAD))
+end
+function Kit.ChatButton(parent, box)
+    local b = Kit.PlateButton(parent, Kit.CHAT_TEX, box)
+    b.bare = true
+    b.tipTitle = ns.T and ns.T("report.btn") or nil
+    b.kitChat = true
+    Kit.PlateLit(b, false)
     return b
 end
 local TOOL_PAD = 10
@@ -386,6 +491,8 @@ function Kit.ToolButton(parent, name, icon, kind)
         b.icon:SetHeight(TOOL_ICON)
         b.icon:SetPoint("CENTER", b, "CENTER", 0, 0)
         b.icon:SetTexture(icon)
+        Kit.GoldGear(b, icon)
+        b.kitStyle(b)
     end
     b.tipTitle = false
     b.SetLabel = SetLabel
@@ -456,8 +563,9 @@ local function StylePart(b)
     local t = off or (on and tt.textOn) or (hot and tt.textHover) or tt.text
     b.text:SetTextColor(t[1], t[2], t[3])
     local k = off or (on and tt.iconOn) or (hot and tt.iconHover) or tt.icon
+    if b.gold and not b.glyph then k = Kit.GoldTone(b, on or hot) end
     if b.glyph then
-        for i = 1, #b.glyph do b.glyph[i]:SetTexture(k[1], k[2], k[3], k[4] or 1) end
+        for i = 1, #b.glyph do b.glyph[i]:SetVertexColor(k[1], k[2], k[3], k[4] or 1) end
     elseif b.icon then
         b.icon:SetVertexColor(k[1], k[2], k[3], k[4] or 1)
     end
@@ -485,6 +593,7 @@ function Kit.TabPart(parent, glyph, icon, size)
         b.icon:SetTexture(icon)
         b.icon:SetWidth(size or 16)
         b.icon:SetHeight(size or 16)
+        Kit.GoldGear(b, icon)
         b.bar = b:CreateTexture(nil, "ARTWORK")
         b.bar:SetHeight(2)
         b.bar:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 3, 0)

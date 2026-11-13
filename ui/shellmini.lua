@@ -24,10 +24,13 @@ local BAR_A = 0.38
 local TICK = 1
 local RETRY = 3
 local WHITE8 = "Interface\\Buttons\\WHITE8X8"
-local VIEWS = { "faults", "dps", "hps", "targets", "rolls" }
-local KNOWN = { faults = true, dps = true, hps = true, targets = true, rolls = true }
+local VIEWS = { "faults", "dps", "hps", "deaths", "targets", "rolls" }
+local KNOWN = { faults = true, dps = true, hps = true, deaths = true, targets = true, rolls = true }
 local RATE = { dps = true, hps = true }
-local VIEW_ICON = { faults = "gp", dps = "dps", hps = "hps", targets = "target", rolls = "dice" }
+local VIEW_ICON = { faults = "gp", dps = "dps", hps = "hps", deaths = "death", targets = "target", rolls = "dice" }
+local RAID = "raid"
+local MORE_W = 260
+local NAME_MIN = 64
 local CHAT_SIZE = 18
 local TAB = 24
 local TABGAP = 4
@@ -65,6 +68,8 @@ local model
 local asked
 local tries = 0
 local pickKey
+local pickRef
+local raidShown, raidSum
 local fullSeen
 local seenTop
 local wasCombat = false
@@ -139,6 +144,15 @@ local function OpenNow(f, who, t)
     if ns.Timeline and ns.Timeline.ShowFight then ns.Timeline.ShowFight(f) end
     if who and ns.TimelineLinks then ns.TimelineLinks.Focus(who, t) end
 end
+local function OpenRaid()
+    local raid = raidShown
+    if not (ns.Shell and raid) then return end
+    local function Go()
+        ns.Shell.Open("log")
+        if ns.Timeline and ns.Timeline.ShowRaid then ns.Timeline.ShowRaid(raid) end
+    end
+    if ns.ShellNav then ns.ShellNav.Run(Go) else Go() end
+end
 local function OpenFull(f, who, t)
     if not ns.Shell then return end
     if ns.ShellNav then ns.ShellNav.Run(OpenNow, f, who, t) else OpenNow(f, who, t) end
@@ -147,15 +161,33 @@ local function RowEnter(self)
     local e = self.e
     if not e or not ns.Tip then return end
     local lines = e.lines or (e.tip and e.tip(e.a, e.b, e.c, e.d))
-    if not lines or #lines == 0 then return end
-    ns.Tip.Show(self, lines)
+    if lines and #lines > 0 then ns.Tip.Show(self, lines) end
+    local f = e.fight
+    if not (e.at and f and ns.DeathPreviewView) or (ns.Store and ns.Store.Bare and ns.Store.Bare(f)) then return end
+    self.fight, self.at, self.who, self.preview = f, e.at, e.who, true
+    ns.DeathPreviewView.Enter(self)
 end
 local TipHide = Kit.HideLines
-local function RowClick(self)
+local function RowLeave()
+    TipHide()
+    if ns.DeathPreviewView then ns.DeathPreviewView.Leave() end
+end
+local function RowClick(self, button)
     local e = self.e
     if not e or e.kind == "note" or e.kind == "roll" then return end
+    local f = e.fight or fight
+    local whole = raidSum ~= nil
+    if button == "RightButton" then
+        local one = e.at ~= nil or (RATE[View()] and not whole)
+        if not live and f and e.who and one and ns.GPList then ns.GPList.ManualMenu(f, e.who) end
+        return
+    end
     if live then
         OpenFull(nil)
+    elseif e.at then
+        if not (ns.ReplayLink and ns.ReplayLink.Click(f, e.at, e.who, button)) then OpenFull(f, e.who, e.at) end
+    elseif whole then
+        if e.fight then OpenFull(e.fight) else OpenRaid() end
     elseif View() == "targets" then
         OpenFull(fight)
     else
@@ -180,8 +212,9 @@ local function NewRow(k)
     local r = CreateFrame("Button", nil, frame)
     r:EnableMouse(true)
     r:EnableMouseWheel(true)
+    r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     r:SetScript("OnEnter", RowEnter)
-    r:SetScript("OnLeave", TipHide)
+    r:SetScript("OnLeave", RowLeave)
     r:SetScript("OnClick", RowClick)
     r:SetScript("OnMouseWheel", Wheel)
     r:RegisterForDrag("LeftButton")
@@ -237,9 +270,8 @@ local function Round(parent, file, size)
     return b
 end
 local function RowChat(r)
-    local b = Round(r, "spam", CHAT_SIZE)
+    local b = Kit.ChatButton(r, CHAT_SIZE)
     b:SetPoint("RIGHT", r, "RIGHT", -2, 0)
-    b.tipTitle = ns.T("report.btn")
     b.onClick = function(self)
         local c = r.e and r.e.chat
         local R = ns.ChatReport
@@ -273,15 +305,26 @@ local function PaintRow(r, e)
     else
         Kit.Text(r.name, e.tone or "text.primary")
     end
-    Put(r.val, e.val or "")
+    local wide = frame:GetWidth()
+    local val = e.val or ""
+    if e.more and wide >= MORE_W then val = val .. " " .. e.more end
+    Put(r.val, val)
+    local vw = 0
+    if e.at then
+        if r.valW ~= 0 then r.val:SetWidth(0) end
+        local room = wide - PAD * 2 - leadw - pctw - 8 - NAME_MIN
+        if r.val:GetStringWidth() > room then vw = max(40, floor(room)) end
+    end
+    if r.valW ~= vw then
+        r.valW = vw
+        r.val:SetWidth(vw)
+    end
     Kit.Text(r.val, e.kind == "head" and "text.title" or (e.valTone or "text.secondary"))
     Put(r.pct, e.pct or "")
     Kit.Text(r.pct, e.pctTone or "text.note")
     if e.chat then
         local b = r.chat or RowChat(r)
-        local size = min(rowh - 2, CHAT_SIZE)
-        b:SetWidth(size)
-        b:SetHeight(size)
+        Kit.PlateSize(b, min(rowh - 2, CHAT_SIZE))
         b:Show()
     elseif r.chat then
         r.chat:Hide()
@@ -333,6 +376,10 @@ local function Neighbors()
     navFight, navPick, navList, navN, navLive = fight, pickKey, fights, n, live
     local was1, was2 = older, newer
     older, newer = nil, nil
+    if pickKey == RAID then
+        prevBtn.tip, nextBtn.tip = nil, ns.T("mini.current")
+        return
+    end
     if n == 0 then return end
     local idx = 0
     if fight then
@@ -395,7 +442,7 @@ local function PaintHead()
     end
     Shown(clearBtn, rolls)
     Shown(chat, RATE[view] or rolls)
-    Shown(subText, RATE[view] and (subText.miniText or "") ~= "")
+    Shown(subText, (RATE[view] or view == "deaths") and (subText.miniText or "") ~= "")
     Shown(pickBtn, not rolls)
     Shown(prevBtn, not rolls)
     Shown(nextBtn, not rolls)
@@ -539,6 +586,7 @@ local function Ask(f)
 end
 local function Chosen(fights)
     Adopt(fights)
+    if pickKey == RAID then return (pickRef and Find(fights, pickRef)) or fights[1] end
     if pickKey then
         local f = Find(fights, pickKey)
         if f then return f end
@@ -550,14 +598,16 @@ local function LiveRows(heal)
     local M = ns.Meter
     if not (M and next(heal and M.heals or M.who)) then return false end
     local sec, rate = ns.MiniRows.Live(list, ClassOf, heal)
-    Title(format(ns.T("mini.live"), ns.Clock(sec)), ns.Short(rate))
+    Title(format(ns.T("mini.live"), ns.Clock(sec)), ns.Rate(rate))
     return true
 end
 local function FightRows(f, s)
     local view = View()
     local sub
     if RATE[view] then
-        sub = ns.Short(ns.MiniRows.Dps(list, s, view == "hps"))
+        sub = ns.Rate(ns.MiniRows.Dps(list, s, view == "hps"))
+    elseif view == "deaths" then
+        sub = ns.MiniRows.Deaths(list, f, s)
     elseif view == "targets" then
         ns.MiniRows.Targets(list, f, s)
     else
@@ -565,6 +615,26 @@ local function FightRows(f, s)
         if not model then Only(ns.T("gpmini.none")) end
     end
     Title(FightTitle(f), sub)
+end
+local function RaidRows(ref)
+    local spot = ns.FightTree and ns.FightTree.Spot(ref)
+    local raid = spot and spot.raid
+    if not raid then return false end
+    local R = ns.MiniRows
+    local sum = R.Raid(ns.FightTree.RaidFights(raid), ns.Summary.Peek)
+    raidShown, raidSum = raid, sum
+    local view = View()
+    local sub
+    if RATE[view] then
+        sub = ns.Rate(R.Dps(list, sum, view == "hps"))
+    elseif view == "deaths" then
+        sub = R.RaidDeaths(list, sum, FightTitle)
+    else
+        Only(ns.T("mini.raid.only"))
+    end
+    if sum.miss > 0 then Only(format(ns.T("mini.raid.miss"), sum.miss)) end
+    Title(format(ns.T("mini.raid.title"), sum.n, ns.Clock(sum.dur)), sub)
+    return true
 end
 local function RollRows()
     local R, FR = ns.RollPen, ns.FaultsRoll
@@ -588,7 +658,7 @@ function Mini.Rebuild()
     if not frame then return end
     dirty = false
     wipe(list)
-    model = nil
+    model, raidSum = nil, nil
     if View() == "rolls" then
         live = false
         RollRows()
@@ -618,6 +688,13 @@ function Mini.Rebuild()
         end
         Mini.Draw()
         return
+    end
+    if pickKey == RAID then
+        if RaidRows(f) then
+            Mini.Draw()
+            return
+        end
+        pickKey = nil
     end
     local s, more = Ask(f)
     if s then
@@ -720,6 +797,12 @@ local function Choose(f)
     pool.offset, asked = 0, nil
     Mini.Rebuild()
 end
+local function ChooseRaid(ref)
+    pickKey, pickRef = RAID, ref and Key(ref) or nil
+    manualPhase = phase
+    pool.offset, asked = 0, nil
+    Mini.Rebuild()
+end
 function Mini.Pick(f)
     if not frame then return end
     local E = ns.Encounters
@@ -745,6 +828,9 @@ local function PickMenu(self)
     local raid = spot and spot.raid
     local items = { { text = ns.T("mini.pick"), isTitle = true } }
     items[2] = { text = ns.T("mini.current"), checked = pickKey == nil, func = function() Choose(nil) end }
+    if raid then
+        items[3] = { text = ns.T("mini.raid"), checked = pickKey == RAID, func = function() ChooseRaid(ref) end }
+    end
     local n = 0
     for i = 1, #fights do
         local f = fights[i]
@@ -761,6 +847,16 @@ end
 local function ReportLines(n)
     local heal = View() == "hps"
     if live then return ns.ChatReport.Live(n, heal) end
+    if raidSum then
+        local rows = {}
+        for i = 1, #raidSum.players do
+            local p = raidSum.players[i]
+            local v = heal and p.heal or p.goodDmg
+            if v > 0 then rows[#rows + 1] = { who = p.name, v = v } end
+        end
+        local head = format(ns.T(heal and "report.head.raid.heal" or "report.head.raid"), raidSum.n, ns.Clock(raidSum.dur))
+        return ns.ChatReport.Lines(head, ns.Totals.Time(raidSum), rows, n)
+    end
     local s = fight and ns.Summary.Peek(fight)
     if not s then return {} end
     return ns.ChatReport.Summary(fight, s, n, heal)
@@ -821,8 +917,7 @@ local function Seat()
     Size(prevBtn, titleh)
     Size(nextBtn, titleh)
     local cs = min(titleh, Kit.FontGrow(CHAT_SIZE))
-    chat:SetWidth(cs)
-    chat:SetHeight(cs)
+    Kit.PlateSize(chat, cs)
     local ps = Kit.FontGrow(PICK_ICON)
     pickBtn.icon:SetWidth(ps)
     pickBtn.icon:SetHeight(ps)
@@ -882,11 +977,12 @@ local function BuildHead()
     head:SetScript("OnDragStop", function() Mini.SavePlace() end)
     head:SetScript("OnEnter", HeadEnter)
     head:SetScript("OnLeave", TipHide)
-    head:SetScript("OnClick", function() OpenFull(not live and fight or nil) end)
+    head:SetScript("OnClick", function()
+        if raidSum then OpenRaid() else OpenFull(not live and fight or nil) end
+    end)
     local level = head:GetFrameLevel() + 2
-    chat = Round(frame, "spam", CHAT_SIZE)
+    chat = Kit.ChatButton(frame, CHAT_SIZE)
     chat:SetFrameLevel(level)
-    chat.tipTitle = ns.T("report.btn")
     chat.tip = ns.T("report.tip")
     chat.onClick = function(self)
         if View() == "rolls" then
@@ -1013,7 +1109,7 @@ function Mini.Probe()
     return { frame = frame, rows = rows, list = list, views = viewBtns, restore = restore, close = close,
              grip = grip, head = head, title = titleText, sub = subText, live = live, fight = fight, chat = chat,
              give = give, pick = pickBtn, faults = ft, model = model, pickKey = pickKey, clear = clearBtn, rollPens = rollPens,
-             prev = prevBtn, next = nextBtn, bar = bar, headY = headY, rowTop = rowTop }
+             prev = prevBtn, next = nextBtn, bar = bar, headY = headY, rowTop = rowTop, raid = raidSum }
 end
 if ns.Encounters and ns.Encounters.Invalidate then hooksecurefunc(ns.Encounters, "Invalidate", Invalidated) end
 if ns.GPList and ns.GPList.OnChange then ns.GPList.OnChange(GPChanged) end

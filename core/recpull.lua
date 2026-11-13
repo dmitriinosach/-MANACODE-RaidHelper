@@ -29,6 +29,8 @@ local firstAt = nil
 local firsts = {}
 local nFirst = 0
 local collecting = false
+local bossAt = nil
+local aggro = nil
 local pending = nil
 local touch = {}
 local summoner = {}
@@ -80,6 +82,7 @@ local function Tick(now)
         if not AnyBusy() then
             firstAt, nFirst = nil, 0
             wipe(firsts)
+            bossAt, aggro = nil, nil
         end
         return
     end
@@ -168,6 +171,23 @@ function RecPull.Owner(guid, name)
     if o then pets[guid] = o end
     return o
 end
+local function Engage(now)
+    if aggro or (bossAt and now - bossAt > ns.pullWho.aim) then return end
+    local S = ns.UnitScan.Get()
+    for i = 1, S.n do
+        local unit = S.unit[i]
+        if S.boss[i] and S.near[i] and S.Valid(i) and UnitAffectingCombat(unit) then
+            bossAt = bossAt or now
+            local of = unit .. "target"
+            local guid, name = UnitGUID(of), UnitName(of)
+            if guid and name then
+                aggro = { guid = guid, name = name,
+                          owner = not UnitIsPlayer(of) and RecPull.Owner(guid, name) or nil }
+                return
+            end
+        end
+    end
+end
 function RecPull.Summon(srcName, dstName)
     if not dstName then return end
     if not summoner[dstName] then
@@ -195,6 +215,7 @@ function RecPull.Pull(sub, srcGUID, srcName, srcFlags, spell, boss)
     if pending then return end
     local now = GetTime()
     if not firstAt then Tick(now) end
+    if firstAt then Engage(now) end
     local hit
     if srcName and find(sub, "_DAMAGE", 1, true) then
         local pet = srcFlags ~= nil and band(srcFlags, F_PLAYER) == 0
@@ -208,7 +229,11 @@ local function Flush(now)
     pending = nil
     local d = ns.pullWho
     local list = {}
-    if firstAt and now - firstAt <= d.window + d.delay and nFirst <= d.ties then
+    if aggro and now - bossAt <= d.window + d.delay then
+        local age = floor((now - bossAt) * 10 + 0.5) / 10
+        ns.Store.Append(ns.Recorder.Now(), ns.PullWho.SUB, aggro.guid, aggro.name, 0, nil, aggro.owner, 0, age)
+        list[1] = { t = bossAt, src = aggro.name, owner = aggro.owner }
+    elseif firstAt and now - firstAt <= d.window + d.delay and nFirst <= d.ties then
         local age = floor((now - firstAt) * 10 + 0.5) / 10
         local ts = ns.Recorder.Now()
         for i = 1, nFirst do
@@ -222,6 +247,7 @@ local function Flush(now)
         if pull then ns.PullToast.Show(RecPull.Message(pull)) end
     end
     wipe(touch)
+    bossAt, aggro = nil, nil
 end
 function RecPull.Notify()
     return ns.GetDB().settings.notePull ~= false
@@ -246,6 +272,7 @@ function RecPull.Step(dt)
     local now = GetTime()
     if pending then
         if not firstAt then Tick(now) end
+        if firstAt then Engage(now) end
         if now - pending.at >= ns.pullWho.delay then Flush(now) end
         return
     end
@@ -255,6 +282,7 @@ function RecPull.Step(dt)
     if not dirty and elapsed < ns.pullWho.period then return end
     elapsed, dirty = 0, false
     Tick(now)
+    if firstAt then Engage(now) end
 end
 local flags = CreateFrame("Frame")
 flags:RegisterEvent("UNIT_FLAGS")
@@ -265,4 +293,5 @@ end)
 function RecPull.Forget()
     pending = nil
     wipe(touch)
+    bossAt, aggro = nil, nil
 end

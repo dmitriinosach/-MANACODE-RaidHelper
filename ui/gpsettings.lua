@@ -156,11 +156,24 @@ end
 local function Cols()
     local c = { text = U(26), num = U(NUMW), mode = U(MODEW), short = U(SHORTW), reset = U(RESETW), ctl = U(20),
         thr = U(THRW), unit = U(UNITW) }
-    c.lim = c.thr * 2 + 4 + 4 + c.unit
     local avail = frame and (frame:GetWidth() or 0) - PAD * 2 or 0
     if avail < 100 then avail = 1100 end
-    local rest = c.text + 6 + c.mode + 12 + (c.num + 10) * 3 + c.lim + 10 + c.short + 10 + c.reset
-    c.tw = max(U(150), min(U(TEXTW), avail - rest))
+    local function Rest()
+        return c.text + 6 + c.mode + 12 + (c.num + 10) * 3 + c.thr * 2 + 8 + c.unit + 10 + c.short + 10 + c.reset
+    end
+    local floorW = U(150)
+    local shrink = { { "short", U(96), 1 }, { "reset", U(64), 1 }, { "mode", U(82), 1 }, { "num", U(40), 3 },
+        { "thr", U(32), 2 }, { "unit", U(56), 1 }, { "short", U(80), 1 }, { "mode", U(76), 1 } }
+    for k = 1, #shrink do
+        local over = Rest() + floorW - avail
+        if over <= 0 then break end
+        local name, low, n = shrink[k][1], shrink[k][2], shrink[k][3]
+        c[name] = c[name] - min(math.ceil(over / n), max(0, c[name] - low))
+        if k == 6 then floorW = U(90) end
+    end
+    c.lim = c.thr * 2 + 4 + 4 + c.unit
+    local rest = Rest()
+    c.tw = max(U(90), min(U(TEXTW), avail - rest))
     local x = c.text + c.tw + 6
     c.xMode = x
     x = x + c.mode + 12
@@ -386,31 +399,41 @@ local function Place()
         box:SetPoint("LEFT", label, "RIGHT", 6, 0)
         anchor = box
     end
-    guildText:SetWidth(U(360))
+    local diffW = (diffLabel:GetStringWidth() or 0) + 6 + (U(DIFFW) + 4) * #ns.Penalties.DIFFS - 4
+    local xBtn = PAD + U(370)
+    if w > 0 then xBtn = max(PAD + U(200), min(xBtn, w - PAD - diffW - 24 - U(150))) end
+    local guildW = U(360)
+    if w > 0 then guildW = max(U(200), min(guildW, w - PAD * 2 - U(220) - 10)) end
+    guildText:SetWidth(guildW)
     guildText:ClearAllPoints()
     guildText:SetPoint("LEFT", frame, "TOPLEFT", PAD, -c2)
     publishBtn:SetWidth(U(220))
     publishBtn:SetHeight(ctl2)
     publishBtn:ClearAllPoints()
-    publishBtn:SetPoint("TOPLEFT", PAD + U(370), -U(38))
-    banner:SetWidth(U(360))
+    publishBtn:SetPoint("TOPLEFT", PAD + guildW + 10, -U(38))
+    banner:SetWidth(xBtn - PAD - 10)
     banner:ClearAllPoints()
     banner:SetPoint("LEFT", frame, "TOPLEFT", PAD, -c3)
     resetAllBtn:SetWidth(U(150))
     resetAllBtn:SetHeight(ctl2)
     resetAllBtn:ClearAllPoints()
-    resetAllBtn:SetPoint("TOPLEFT", PAD + U(370), -U(66))
-    diffLabel:ClearAllPoints()
-    diffLabel:SetPoint("LEFT", resetAllBtn, "RIGHT", 24, 0)
-    local anchor = diffLabel
-    for _, d in ipairs(ns.Penalties.DIFFS) do
-        local b = diffBtns[d]
+    resetAllBtn:SetPoint("TOPLEFT", xBtn, -U(66))
+    local diffs = ns.Penalties.DIFFS
+    local anchor
+    for k = #diffs, 1, -1 do
+        local b = diffBtns[diffs[k]]
         b:SetWidth(U(DIFFW))
         b:SetHeight(ctl2)
         b:ClearAllPoints()
-        b:SetPoint("LEFT", anchor, "RIGHT", anchor == diffLabel and 6 or 4, 0)
+        if anchor then
+            b:SetPoint("RIGHT", anchor, "LEFT", -4, 0)
+        else
+            b:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -U(66))
+        end
         anchor = b
     end
+    diffLabel:ClearAllPoints()
+    diffLabel:SetPoint("RIGHT", anchor, "LEFT", -6, 0)
     listBox:ClearAllPoints()
     listBox:SetPoint("TOPLEFT", PAD, -head)
     listBox:SetPoint("BOTTOMRIGHT", -PAD, U(30))

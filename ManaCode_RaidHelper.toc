@@ -1,10 +1,10 @@
 ## Interface: 30300
 ## Title: |cff3399ff[MANACODE]|r Raid Helper
-## Notes: Raid review from the combat log and raid gathering by template.
-## Notes-ruRU: Разбор рейда по боевому логу и сбор состава по шаблону
+## Notes: Raid review from the combat log.
+## Notes-ruRU: Разбор рейда по боевому логу
 ## Author: Manacode
-## Version: 1.13.1
-## X-Date: 2026-11-11
+## Version: 1.14.0
+## X-Date: 2026-11-13
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
 ## SavedVariablesPerCharacter: ManaCodeRaidHelperChar
@@ -398,14 +398,4 @@ lead\core\bober.lua
 lead\core\buffs.lua
 lead\core\readybuffs.lua
 lead\ui\kit.lua
-lead\ui\window.lua
-lead\ui\pult.lua
-lead\ui\pultmarks.lua
-lead\ui\spam.lua
-lead\ui\raidinfo.lua
 lead\ui\readybuffs.lua
-lead\ui\raid.lua
-lead\ui\tpl.lua
-lead\ui\prefs.lua
-lead\ui\side.lua
-lead\ui\dot.lua

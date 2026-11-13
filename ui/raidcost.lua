@@ -10,20 +10,26 @@ local HEADH = 18
 local NAMEW = 230
 local AHW = 90
 local EDITW = 70
+local DATEW = 48
 local COL_AH = ICON + 6 + NAMEW + 10
 local COL_EDIT = COL_AH + AHW + 10
 local COL_DATE = COL_EDIT + EDITW + 12
+local sec = { heads = {} }
 local function Fit()
     local m = ns.Kit.Grow()
     local g, k = m.g, m.k
     ROWH, INFOH, HEADH = 20 + g, 18 + g, 18 + g
     ICON = 16 + floor(g / 2)
     NAMEW, AHW, EDITW = floor(230 * k + 0.5), floor(90 * k + 0.5), floor(70 * k + 0.5)
+    local w = sec.body and sec.body:GetWidth() or 0
+    if w > 0 then
+        local over = ICON + 6 + NAMEW + 10 + AHW + 10 + EDITW + 12 + floor(DATEW * k + 0.5) - w
+        if over > 0 then NAMEW = max(80, NAMEW - over) end
+    end
     COL_AH = ICON + 6 + NAMEW + 10
     COL_EDIT = COL_AH + AHW + 10
     COL_DATE = COL_EDIT + EDITW + 12
 end
-local sec = { heads = {} }
 local function GoldText(copper)
     if not copper then return ns.T("cost.none") end
     return ns.RaidCost.Gold(copper)

@@ -13,7 +13,8 @@ ns.bossPhases = ns.bossPhases or {}
 ns.bossPhases[HALION] = {
     steps = {
         { key = "p1", label = "ph.p1" },
-        { key = "p2", label = "ph.rs.twilight", on = { { "SPELL_DAMAGE", 75483, 75484, 75485, 75486 } } },
+        { key = "p2", label = "ph.rs.twilight", on = { { "SPELL_DAMAGE", 75483, 75484, 75485, 75486 },
+                                                       { "FW_STACK", 74807 } } },
         { key = "p3", label = "ph.rs.both", on = {
             { "SPELL_CAST_START", 75063 },
             { "SPELL_AURA_APPLIED", 74826, 74827, 74828, 74829, 74830, 74831, 74832, 74833, 74834, 74835, 74836 },

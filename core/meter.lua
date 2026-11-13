@@ -41,6 +41,9 @@ local owners = {}
 local ownersN = 0
 local U = ns.Units
 local RAID_UNITS, RAID_PETS, PARTY_UNITS, PARTY_PETS = U.raid, U.raidPet, U.party, U.partyPet
+local only
+local encOf = {}
+local encN = 0
 local fighting = false
 local fightAt, fightDur = 0, 0
 local fightDmg, fightHeal = 0, 0
@@ -207,12 +210,28 @@ local function FightStart()
     fighting = true
     fightAt = GetTime()
     fightDmg, fightHeal = 0, 0
+    only, encN = nil, 0
+    wipe(encOf)
     ClearCurve()
     if split then
         wipe(who)
         wipe(heals)
         ScanPets()
     end
+end
+local function EncOf(guid)
+    if not guid then return false end
+    local enc = encOf[guid]
+    if enc ~= nil then return enc end
+    local key = ns.NpcKey(guid)
+    enc = key and ns.bosses and ns.bosses[key] or false
+    if encN >= OWNERS_MAX then
+        wipe(encOf)
+        encN = 0
+    end
+    encOf[guid], encN = enc, encN + 1
+    if enc and not only and ns.Totals.BossOnly(enc) then only = enc end
+    return enc
 end
 local function Credit(srcGUID, srcName, srcFlags, n, into)
     local name = band(srcFlags, TYPE_PLAYER) ~= 0 and srcName or owners[srcGUID]
@@ -233,7 +252,7 @@ local function StepCurve()
     curveStep = curveStep * 2
 end
 frame:SetScript("OnEvent", ns.Prof.Wrap("hot.log", function(_, event, _, sub, srcGUID, srcName, srcFlags, dstGUID, _,
-                                                         dstFlags, a1, _, _, a4, a5)
+                                                         dstFlags, a1, a2, _, a4, a5)
     if event == "UNIT_PET" then
         ScanPets()
         return
@@ -267,11 +286,17 @@ frame:SetScript("OnEvent", ns.Prof.Wrap("hot.log", function(_, event, _, sub, sr
             local key = ns.NpcKey(srcGUID)
             if key and Apart()[key] then return end
         end
-        n = Amount(kind == SWING_DMG and a1 or a4)
+        local over = Amount(kind == SWING_DMG and a2 or a5)
+        n = Amount(kind == SWING_DMG and a1 or a4) - (over > 0 and over or 0)
         if n <= 0 then return end
+        if not fighting then FightStart() end
+        local enc = EncOf(dstGUID)
+        if only and enc ~= only then
+            silence = 0
+            return
+        end
         dmg[slot] = dmg[slot] + n
         dmgSum = dmgSum + n
-        if not fighting then FightStart() end
         fightDmg = fightDmg + n
         if split then Credit(srcGUID, srcName, srcFlags, n, who) end
     end

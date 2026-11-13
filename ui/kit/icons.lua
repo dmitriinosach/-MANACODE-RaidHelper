@@ -62,7 +62,7 @@ Kit.NOTE_TEX = "Interface\\Icons\\INV_Misc_Note_01"
 Kit.DICE_TEX = "Interface\\Icons\\INV_Misc_Dice_01"
 Kit.DOT_TEX = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 Kit.QMARK = "Interface\\Icons\\INV_Misc_QuestionMark"
-Kit.GEAR_TEX = "Interface\\WorldMap\\Gear_64Grey"
+Kit.GEAR_TEX = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\gear.tga"
 local Icon = {}
 Kit.Icon = Icon
 function Icon.Spell(tex, spell)

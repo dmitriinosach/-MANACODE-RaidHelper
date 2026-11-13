@@ -453,6 +453,7 @@ local function EncRow()
     r.ok:SetPoint("RIGHT", OKX, 0)
     r.play = ns.ReplayLink.Mini(r, PLAYSZ)
     r.play:SetPoint("RIGHT", r.ok, "LEFT", OKSZ - OKX - DOTX, 0)
+    r.play.pick = Open
     DelButton(r):SetPoint("RIGHT", r.play, "LEFT", 0, 0)
     r.ub = Kit.Unbuff(r, UBSZ)
     r.ub:SetPoint("RIGHT", r.del, "LEFT", -UBGAP, 0)
@@ -481,6 +482,7 @@ local function WipeRow()
     r.name:SetPoint("LEFT", ENCNAME, 0)
     r.play = ns.ReplayLink.Mini(r, PLAYSZ)
     r.play:SetPoint("RIGHT", -2, 0)
+    r.play.pick = Open
     DelButton(r):SetPoint("RIGHT", r.play, "LEFT", 0, 0)
     r.onClick = OnWipe
     r:RegisterForClicks("LeftButtonUp", "RightButtonUp")

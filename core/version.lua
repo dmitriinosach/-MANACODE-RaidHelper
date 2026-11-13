@@ -34,6 +34,46 @@ local onNew = {}
 local loginAt = nil
 local started = false
 local inGuild = false
+local GROUP = { RAID = true, PARTY = true }
+local groupChan = nil
+local heard = {}
+local savedN = nil
+local present = {}
+local presentN = 0
+local answeredAt = nil
+local askedAt = nil
+local function GroupChan()
+    if (GetNumRaidMembers() or 0) > 0 then return "RAID" end
+    if (GetNumPartyMembers() or 0) > 0 then return "PARTY" end
+    return nil
+end
+local function Saved()
+    local db = ns.GetDB and ns.GetDB()
+    if type(db) ~= "table" then return nil end
+    if type(db.verSeen) ~= "table" then db.verSeen = {} end
+    return db.verSeen
+end
+local function Remember(name, v)
+    local s = Saved()
+    if not s then return end
+    if not savedN then
+        savedN = 0
+        for _ in pairs(s) do savedN = savedN + 1 end
+    end
+    if not s[name] then
+        if savedN >= MAX_KNOWN then
+            local old, oldT
+            for n, e in pairs(s) do
+                local t = type(e) == "table" and e.t or 0
+                if not oldT or t < oldT or (t == oldT and n < old) then old, oldT = n, t end
+            end
+            s[old] = nil
+            savedN = savedN - 1
+        end
+        savedN = savedN + 1
+    end
+    s[name] = { v = v, t = time() }
+end
 function Version.Parse(text)
     if type(text) ~= "string" or #text > MAX_LEN then return nil end
     local a, b, c, rest = match(text, "^(%d%d?%d?%d?)%.(%d%d?%d?%d?)%.(%d%d?%d?%d?)(.*)$")
@@ -80,7 +120,73 @@ end
 function Version.Of(name)
     if type(name) ~= "string" then return nil end
     if name == UnitName("player") then return Version.Mine() end
-    return known[name]
+    if known[name] then return known[name] end
+    local s = Saved()
+    local e = s and s[name]
+    if type(e) == "table" and Version.Parse(e.v) then return e.v, e.t end
+    return nil
+end
+function Version.Has(name)
+    if type(name) ~= "string" then return false end
+    if name == UnitName("player") or known[name] or present[name] then return true end
+    local s = Saved()
+    return s ~= nil and type(s[name]) == "table"
+end
+function Version.Heard(name)
+    if type(name) ~= "string" or present[name] or known[name] then return end
+    if presentN >= MAX_KNOWN then return end
+    present[name] = true
+    presentN = presentN + 1
+    local s = Saved()
+    if s and type(s[name]) ~= "table" then Remember(name, nil) end
+    for i = 1, #listeners do listeners[i]() end
+end
+function Version.Ask()
+    local chan = GroupChan()
+    if not chan then return false, "group" end
+    local now = GetTime()
+    if askedAt and now - askedAt < REPLY_FRESH then return false, "soon" end
+    askedAt = now
+    ns.Comm.Send(PREFIX, "Q", chan)
+    if ns.GuildSync and ns.GuildSync.Ask then ns.GuildSync.Ask() end
+    return true
+end
+function Version.AskedAt()
+    return askedAt
+end
+function Version.Census()
+    local names = {}
+    local n = GetNumRaidMembers() or 0
+    if n > 0 then
+        for i = 1, n do
+            local name = GetRaidRosterInfo(i)
+            if name then names[#names + 1] = name end
+        end
+    else
+        names[1] = UnitName("player")
+        for i = 1, GetNumPartyMembers() or 0 do
+            local name = UnitName("party" .. i)
+            if name then names[#names + 1] = name end
+        end
+    end
+    local out, by = { total = #names, vers = {}, has = 0, none = {} }, {}
+    for i = 1, #names do
+        local v = Version.Of(names[i])
+        if v then
+            if not by[v] then
+                by[v] = { v = v, n = 0 }
+                out.vers[#out.vers + 1] = by[v]
+            end
+            by[v].n = by[v].n + 1
+        elseif Version.Has(names[i]) then
+            out.has = out.has + 1
+        else
+            out.none[#out.none + 1] = names[i]
+        end
+    end
+    table.sort(out.vers, function(a, b) return Version.Compare(a.v, b.v) == 1 end)
+    table.sort(out.none)
+    return out
 end
 function Version.Newest()
     if not newest then return nil, nil end
@@ -99,7 +205,8 @@ function Version.StatusLine()
     return format(ns.T("ver.status"), mine, seen)
 end
 local function ChanOpen(chan)
-    return chan == CHAN and IsInGuild() and true or false
+    if chan == CHAN then return IsInGuild() and true or false end
+    return GROUP[chan] == true and GroupChan() == chan
 end
 local timer = CreateFrame("Frame")
 timer:Hide()
@@ -144,6 +251,8 @@ timer:SetScript("OnUpdate", ns.Prof.Wrap("bg.version", function(self, dt)
     if loginAt and now >= loginAt then
         loginAt = nil
         if IsInGuild() then Schedule(CHAN, 0) end
+        groupChan = GroupChan()
+        if groupChan then Schedule(groupChan, 0) end
     end
     if not Flush(now) and not loginAt then self:Hide() end
 end))
@@ -181,7 +290,8 @@ function Version.RxCount()
     return rxN
 end
 function Version.OnMessage(body, sender, chan)
-    if chan ~= CHAN then return end
+    if chan ~= CHAN and not GROUP[chan] then return end
+    if sender == UnitName("player") then return end
     local now = GetTime()
     if now - (rxAt[sender] or -1e9) < RX_GAP then return end
     if not rxAt[sender] then
@@ -189,6 +299,14 @@ function Version.OnMessage(body, sender, chan)
         rxN = rxN + 1
     end
     rxAt[sender] = now
+    if body == "Q" then
+        if chan == groupChan and now - (answeredAt or -1e9) >= REPLY_FRESH then
+            answeredAt = now
+            due[chan] = { at = now + REPLY_LO + random() * (REPLY_HI - REPLY_LO), reply = false }
+            timer:Show()
+        end
+        return
+    end
     local v = match(body, "^V:(.+)$")
     if not v or not Version.Parse(v) then return end
     if not known[sender] then
@@ -197,7 +315,18 @@ function Version.OnMessage(body, sender, chan)
     end
     local was = known[sender]
     known[sender] = v
+    Remember(sender, v)
     Note(v, sender)
+    if chan ~= CHAN then
+        if chan == groupChan and not heard[sender] then
+            heard[sender] = true
+            if now - (sentAt[chan] or -1e9) >= REPLY_FRESH then
+                Schedule(chan, REPLY_LO + random() * (REPLY_HI - REPLY_LO))
+            end
+        end
+        if was ~= v then Changed() end
+        return
+    end
     local mine = Version.Mine()
     local cmp = mine and Version.Compare(v, mine)
     local d = due[chan]
@@ -214,9 +343,18 @@ local function Joined()
     inGuild = member
     if grew and started and not loginAt then Schedule(CHAN, ROSTER_DELAY) end
 end
+local function Grouped()
+    local chan = GroupChan()
+    if chan == groupChan then return end
+    groupChan = chan
+    heard = {}
+    if chan and started and not loginAt then Schedule(chan, ROSTER_DELAY) end
+end
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("PLAYER_GUILD_UPDATE")
+events:RegisterEvent("RAID_ROSTER_UPDATE")
+events:RegisterEvent("PARTY_MEMBERS_CHANGED")
 events:SetScript("OnEvent", ns.Prof.Wrap("bg.version", function(self, event)
     if event == "PLAYER_ENTERING_WORLD" then
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
@@ -226,6 +364,6 @@ events:SetScript("OnEvent", ns.Prof.Wrap("bg.version", function(self, event)
         timer:Show()
         return
     end
-    Joined()
+    if event == "PLAYER_GUILD_UPDATE" then Joined() else Grouped() end
 end))
 ns.Comm.On(PREFIX, Version.OnMessage)

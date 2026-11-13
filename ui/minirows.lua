@@ -27,15 +27,17 @@ local function ByValue(list)
         return a.who < b.who
     end)
 end
-local function RateRows(out, list, sec, total)
+local function RateRows(out, list, sec, total, act)
     ByValue(list)
     local top = list[1] and list[1].v or 1
     for i = 1, #list do
         local e = list[i]
+        local rate = ns.Rate(e.v / sec)
+        local more = act and ns.Rate((e.all or e.v) / act) or nil
         out[#out + 1] = { kind = "row", lead = tostring(i), left = e.who, class = e.class,
-            val = format("%s  %s", Short(e.v), Short(e.v / sec)),
+            val = format("%s  %s", Short(e.v), rate), more = more and more ~= rate and format("(%s)", more) or nil,
             pct = format("%d%%", floor(e.v * 100 / max(1, total) + 0.5)),
-            fill = e.v / max(1, top), who = e.who, tip = e.p and ns.BadgeTips.Player or nil, a = e.p, b = e.s }
+            fill = e.v / max(1, top), who = e.who, tip = e.tip, a = e.p, b = e.s }
     end
     if #list == 0 then Note(out, ns.T("sum.k.none")) end
 end
@@ -54,17 +56,107 @@ function Rows.Live(out, classOf, heal)
 end
 function Rows.Dps(out, s, heal)
     local sec = max(1, ns.Totals.Time(s))
+    local act = max(1, ns.Totals.Active(s))
     local list, total = {}, 0
     for i = 1, #s.players do
         local p = s.players[i]
-        local v = (heal and p.heal or p.goodDmg or p.dmg) or 0
+        local v = heal and (p.heal or 0) or ns.Totals.Good(p)
         if v > 0 then
-            list[#list + 1] = { who = p.name, v = v, class = p.class or ClassOf(p.name, s), p = p, s = s }
+            list[#list + 1] = { who = p.name, v = v, all = heal and p.heal or p.dmg, class = p.class or ClassOf(p.name, s),
+                p = p, s = s, tip = p.raid and ns.BadgeTips.RaidPlayer or ns.BadgeTips.Player }
             total = total + v
         end
     end
-    RateRows(out, list, sec, total)
+    RateRows(out, list, sec, total, act)
     return total / sec
+end
+function Rows.Raid(fights, peek)
+    local sum = { raid = true, dur = 0, combat = 0, players = {}, byName = {}, n = 0, miss = 0, parts = {} }
+    for i = 1, #fights do
+        local f = fights[i]
+        local s = peek(f)
+        if s then
+            sum.n = sum.n + 1
+            sum.dur = sum.dur + ns.Totals.Time(s)
+            sum.combat = sum.combat + ns.Totals.Active(s)
+            sum.parts[#sum.parts + 1] = { fight = f, s = s }
+            for k = 1, #s.players do
+                local p = s.players[k]
+                local m = sum.byName[p.name]
+                if not m then
+                    m = { raid = true, name = p.name, class = p.class or ClassOf(p.name, s), dmg = 0, goodDmg = 0, heal = 0,
+                          deaths = 0, tries = 0 }
+                    sum.byName[p.name] = m
+                    sum.players[#sum.players + 1] = m
+                end
+                m.dmg = m.dmg + (p.dmg or 0)
+                m.goodDmg = m.goodDmg + ns.Totals.Good(p)
+                m.heal = m.heal + (p.heal or 0)
+                m.deaths = m.deaths + (p.deaths or 0)
+                m.tries = m.tries + 1
+            end
+        else
+            sum.miss = sum.miss + 1
+        end
+    end
+    tsort(sum.parts, function(a, b)
+        if a.fight.from ~= b.fight.from then return a.fight.from > b.fight.from end
+        return tostring(a.fight.boss) < tostring(b.fight.boss)
+    end)
+    return sum
+end
+local GRADE_TONE = { red = "text.bad", yellow = "text.warn", green = "text.good" }
+local function DeathList(s)
+    local list = {}
+    for i = 1, #s.players do
+        local p = s.players[i]
+        for k = 1, #(p.deathInfo or {}) do list[#list + 1] = { p = p, d = p.deathInfo[k] } end
+    end
+    tsort(list, function(a, b)
+        if a.d.t ~= b.d.t then return a.d.t < b.d.t end
+        return a.p.name < b.p.name
+    end)
+    return list
+end
+local function DeathRows(out, f, s, list)
+    local tail = 0
+    for i = 1, #list do
+        local p, d = list[i].p, list[i].d
+        local k = d.killer
+        local what = ns.T("sum.tt.nokiller")
+        if k then what = k.spell == "#melee" and ns.T("tl.swing") or tostring(k.spell) end
+        if d.tail then tail = tail + 1 end
+        local tone = d.tail and "text.note" or GRADE_TONE[d.grade or ""]
+        out[#out + 1] = { kind = "row", lead = ns.Clock(max(0, d.t - f.from)), left = p.name,
+            class = p.class or ClassOf(p.name, s), val = what, valTone = tone,
+            pct = k and (k.amount or 0) > 0 and Short(k.amount) or "", pctTone = tone,
+            who = p.name, at = d.t, fight = f, tip = ns.BadgeTips.DeathLog, a = p, b = d, c = f }
+    end
+    return tail
+end
+local function DeathSub(n, tail)
+    if tail > 0 then return format(ns.T("mini.deaths.tail"), n - tail, tail) end
+    return tostring(n)
+end
+function Rows.Deaths(out, f, s)
+    local list = DeathList(s)
+    local tail = DeathRows(out, f, s, list)
+    if #list == 0 then Note(out, ns.T("mini.nodeaths"), "text.good") end
+    return DeathSub(#list, tail)
+end
+function Rows.RaidDeaths(out, sum, title)
+    local n, tail = 0, 0
+    for i = 1, #sum.parts do
+        local f, s = sum.parts[i].fight, sum.parts[i].s
+        local list = DeathList(s)
+        if #list > 0 then
+            out[#out + 1] = { kind = "head", left = title(f), val = tostring(#list), fight = f }
+            n = n + #list
+            tail = tail + DeathRows(out, f, s, list)
+        end
+    end
+    if n == 0 then Note(out, ns.T("mini.nodeaths"), "text.good") end
+    return DeathSub(n, tail)
 end
 local function Columns(b, view)
     local keep = {}

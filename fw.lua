@@ -1,4 +1,6 @@
 local ADDON, ns = ...
+ManaCodeRaidHelper = ns
+ns.ADDON = ADDON
 ns.L = {}
 ns.LEN = {}
 ns.LES = {}
@@ -120,6 +122,10 @@ function ns.RowClick(self, button)
     elseif self.onClick then
         self.onClick(self)
     end
+end
+function ns.Rate(n)
+    if n >= 1e3 then return ns.Dec(string.format("%.2f", n / 1e3)) .. ns.T("num.k") end
+    return tostring(math.floor(n + 0.5))
 end
 function ns.Short(n, mDigits, kWhole, mWhole)
     if n >= 1e6 then
@@ -515,7 +521,12 @@ jobFrame:SetScript("OnUpdate", Prof.Wrap("hot.bg", function(self)
     if not queue[1] and not dirty then self:Hide() end
 end))
 local readyCallbacks = {}
+local readyDone = false
 function ns.OnReady(fn)
+    if readyDone then
+        fn()
+        return
+    end
     readyCallbacks[#readyCallbacks + 1] = fn
 end
 function ns.T(key)
@@ -760,6 +771,7 @@ loader:SetScript("OnEvent", function(self, _, name)
     prevAddon = type(db.fmt) == "table" and db.fmt.addon or nil
     if rec and not recLock then db.fmt = { rec = rec, addon = AddonVersion() } end
     InstallWidgetFallback()
+    readyDone = true
     for i = 1, #readyCallbacks do
         readyCallbacks[i]()
     end

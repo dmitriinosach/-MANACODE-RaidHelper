@@ -1,6 +1,7 @@
 local _, ns = ...
 local Kit = ns.Kit
 local max = math.max
+local min = math.min
 local ceil = math.ceil
 local floor = math.floor
 local tsort = table.sort
@@ -72,6 +73,11 @@ local function Sizes()
 end
 local function Wide(w)
     return floor(w * Kit.FontScale(SMALL, true) + 0.5)
+end
+local function Clip(r, x, w)
+    local rw = r:GetWidth() or 0
+    if rw <= x then return w end
+    return min(w, rw - x)
 end
 local function Next()
     counter = counter + 1
@@ -282,10 +288,13 @@ local function BuildButtons(r, it)
     end
     r.segs = segs
     r.PlaceSegs = function()
-        local x = LABEL_W
+        local x, sum = LABEL_W, -SEG_GAP
+        for i = 1, #segs do sum = sum + max(SEG_MIN, segs[i].text:GetStringWidth() + BTN_PAD) + SEG_GAP end
+        local k = Clip(r, LABEL_W, sum) / sum
         for i = 1, #segs do
             local b = segs[i]
-            b:SetWidth(max(SEG_MIN, b.text:GetStringWidth() + BTN_PAD))
+            local bw = max(SEG_MIN, b.text:GetStringWidth() + BTN_PAD)
+            b:SetWidth(k < 1 and floor(bw * k) or bw)
             b:ClearAllPoints()
             b:SetPoint("LEFT", r, "TOPLEFT", x, -ROW / 2)
             x = x + b:GetWidth() + SEG_GAP
@@ -325,7 +334,7 @@ local function BuildChoice(r, it)
         PlaceLabel(r, label)
         if r.PlaceSegs then r.PlaceSegs() end
         if sel then
-            sel:SetWidth(it.width and Wide(it.width) or CHOICE_W)
+            sel:SetWidth(Clip(r, LABEL_W, it.width and Wide(it.width) or CHOICE_W))
             sel:ClearAllPoints()
             sel:SetPoint("LEFT", r, "TOPLEFT", LABEL_W, -ROW / 2)
         end
@@ -374,7 +383,7 @@ local function BuildField(r, it)
     local e = Kit.Edit(r, false)
     r.Place = function()
         PlaceLabel(r, label)
-        e:SetWidth(it.width and Wide(it.width) or FIELD_W)
+        e:SetWidth(Clip(r, LABEL_W, it.width and Wide(it.width) or FIELD_W))
         e:ClearAllPoints()
         e:SetPoint("LEFT", r, "TOPLEFT", LABEL_W, -ROW / 2)
     end
@@ -407,12 +416,13 @@ local function Armed(b)
 end
 local function BuildButton(r, it)
     local label = it.text and it.label and Label(r, "text.primary") or nil
-    local b = Kit.Button(r, nil, it.danger and "danger" or nil)
+    local b = Kit.Button(r, nil, it.danger and "danger" or it.quiet and "quiet" or nil)
     r.Place = function()
         if label then PlaceLabel(r, label) end
         b:ClearAllPoints()
         b:SetPoint("LEFT", r, "TOPLEFT", label and LABEL_W or 0, -ROW / 2)
-        b:SetWidth(max(it.width and Wide(it.width) or BTN_MIN, b.text:GetStringWidth() + BTN_PAD))
+        b:SetWidth(Clip(r, label and LABEL_W or 0,
+            max(it.width and Wide(it.width) or BTN_MIN, b.text:GetStringWidth() + BTN_PAD)))
     end
     b.onClick = function()
         if it.confirm and not Armed(b) then
@@ -429,7 +439,8 @@ local function BuildButton(r, it)
         if label then label:SetText(Text(it.label)) end
         if b.armedAt and not Armed(b) then b.armedAt = nil end
         b:SetText(Text(Armed(b) and it.confirm or (it.text or it.label)))
-        b:SetWidth(max(it.width and Wide(it.width) or BTN_MIN, b.text:GetStringWidth() + BTN_PAD))
+        b:SetWidth(Clip(r, label and LABEL_W or 0,
+            max(it.width and Wide(it.width) or BTN_MIN, b.text:GetStringWidth() + BTN_PAD)))
         Tip(b, it, false)
         if Enabled(it) then b:Enable() else b:Disable() end
     end
@@ -457,7 +468,7 @@ local function BuildKey(r, it)
     local b = Kit.Button(r)
     b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     local function Fit()
-        b:SetWidth(max(KEY_W, b.text:GetStringWidth() + BTN_PAD))
+        b:SetWidth(Clip(r, LABEL_W, max(KEY_W, b.text:GetStringWidth() + BTN_PAD)))
     end
     local field = ns.SysOpts.KeyField(b, { command = it.command, T = ns.T, wait = "set.keys.wait", none = "set.keys.none",
         paint = function(_, text, waiting)

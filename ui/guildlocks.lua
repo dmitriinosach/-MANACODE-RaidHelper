@@ -72,9 +72,10 @@ local listTop, listW = 0, 0
 local function Dims(w)
     local k = max(1, Kit.FontScale("GameFontHighlightSmall", true))
     local B = BASE
-    local fixed = B.NAME_X + B.NAME_W + B.ON_W + B.GS_W + B.SPEC_W + B.ALTS_W + 3 * (B.ROLE_SZ + B.ROLE_GAP) + 12
-        + B.STATE_W + B.INV_W
-    local kc = max(1, min(k, w / fixed))
+    local cols = B.NAME_X + B.NAME_W + B.ON_W + B.GS_W + B.SPEC_W + B.ALTS_W + B.STATE_W + B.INV_W
+    local icons = #ROLES * (ceil(B.ROLE_SZ * k) + B.ROLE_GAP) + ceil(B.RI_SZ * k) + 6 + 30
+    local kc = min(k, (w - icons) / cols)
+    if kc < 1 then kc = max(0.5, (w - icons - 8) / cols) end
     CAP_H, CTRL_H, SLOT_H = ceil(B.CAP_H * k), ceil(B.CTRL_H * k), ceil(B.SLOT_H * k)
     MAIN_H, ALT_H, NOTE_H, ROW_GAP = ceil(B.MAIN_H * k), ceil(B.ALT_H * k), ceil(B.NOTE_H * k), ceil(B.ROW_GAP * k)
     LINE_H = ceil(14 * k)

@@ -89,8 +89,14 @@ function V.Build(v, marks)
         b:Hide()
         sw[w] = b
     end
-    sw[1]:SetPoint("TOPLEFT", v, "TOPLEFT", COUNT_PAD, -COUNT_PAD)
     sw[2]:SetPoint("LEFT", sw[1], "RIGHT", SW_GAP, 0)
+    V.Below(st.below)
+end
+function V.Below(dy)
+    st.below = dy or 0
+    if not sw[1] then return end
+    sw[1]:ClearAllPoints()
+    sw[1]:SetPoint("TOPLEFT", view, "TOPLEFT", COUNT_PAD, -(COUNT_PAD + st.below))
 end
 Kit.OnFont(function()
     for w = 1, #sw do sw[w]:SetHeight(SwHeight()) end
@@ -228,19 +234,11 @@ function V.Sample(scene, t, figs)
     end
     st.split = split
     local b = scene.bossState
-    if scene.layers and scene.layers.boss2 then
-        b.realm = 1
-        b.ghost = split and not show[1] and mode == "mine"
-        if split and not (Core.In(R.boss[1], t) and (show[1] or b.ghost)) then b.vis = false end
-        if figs[n + 1] then Figs.Dusk(figs[n + 1], false) end
-    else
-        local phys, twi = true, false
-        if split then phys, twi = Core.In(R.boss[1], t), Core.In(R.boss[2], t) end
-        if not phys and not twi then phys = true end
-        b.realm, b.ghost = (twi and not phys) and 2 or 1, false
-        if not ((phys and show[1]) or (twi and show[2])) then b.vis = false end
-        if figs[n + 1] then Figs.Dusk(figs[n + 1], mode == "both" and twi and not phys) end
-    end
+    local own = R and R.body or 1
+    b.realm = own
+    b.ghost = split and not show[own] and mode == "mine"
+    if split and not (Core.In(R.boss[own], t) and (show[own] or b.ghost)) then b.vis = false end
+    if figs[n + 1] then Figs.Dusk(figs[n + 1], split and mode == "both" and own == 2) end
     local veil = view ~= nil and show[2] and not show[1]
     if veil ~= st.veilOn then
         st.veilOn = veil
@@ -365,7 +363,7 @@ function V.Place(scene, cam, t)
 end
 function V.Probe()
     local shown = { beams = 0, orbs = 0, flashes = st.used, pools = st.usedP, booms = st.usedB,
-                    show = { st.show[1], st.show[2] }, sw = {}, veil = st.veilOn, mode = st.mode }
+                    show = { st.show[1], st.show[2] }, sw = {}, veil = st.veilOn, mode = st.mode, below = st.below or 0 }
     for w = 1, #sw do
         shown.sw[w] = { shown = sw[w]:IsShown(), active = sw[w].active == true, text = st.swText[w], tip = st.swTip[w],
                         btn = sw[w] }

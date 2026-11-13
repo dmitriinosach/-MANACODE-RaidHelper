@@ -1,6 +1,7 @@
 local _, ns = ...
 local format = string.format
 local floor = math.floor
+local ceil = math.ceil
 local max = math.max
 local min = math.min
 local Kit = ns.Kit
@@ -287,26 +288,34 @@ local function Columns(md, width)
     w.n = max(Need("text", ns.T("rep.col.n")), Need("edit", SUM_SAMPLE))
     order[#order + 1] = "n"
     local least = Kit.FontGrow(WHO_MIN)
+    local gap, cols = COL_GAP, 0
     local function Rest()
         local used = COL_EDGE * 2
+        cols = 0
         for i = 1, #order do
             local key = order[i]
-            if not hide[key] then used = used + (w[key] or 0) + COL_GAP end
+            if not hide[key] then
+                used = used + (w[key] or 0) + gap
+                cols = cols + 1
+            end
         end
-        return width - used + COL_GAP
+        return width - used + gap
     end
     if Rest() < least then hide.role = true end
     if Rest() < least then hide.was = true end
-    w.who = max(min(least, Kit.FontGrow(WHO_LEAST)), Rest())
+    local floorW = min(least, Kit.FontGrow(WHO_LEAST))
+    local rest = Rest()
+    if rest < floorW then gap = max(2, COL_GAP - ceil((floorW - rest) / max(1, cols - 1))) end
+    w.who = max(floorW, Rest())
     local x, at = COL_EDGE, {}
     for i = 1, #order do
         local key = order[i]
         if not hide[key] then
             at[key] = x
-            x = x + w[key] + COL_GAP
+            x = x + w[key] + gap
         end
     end
-    lay.x, lay.w, lay.hide = at, w, hide
+    lay.x, lay.w, lay.hide, lay.gap = at, w, hide, gap
 end
 local function At(r, key, region, w)
     if lay.hide[key] then
@@ -480,7 +489,7 @@ local function FillPlayer(r, md, row)
         SetEdit(r.to, to or "")
         r.to:ClearAllPoints()
         r.to:SetPoint("LEFT", r, "LEFT", from, 0)
-        r.to:SetWidth(lay.x.n - COL_GAP - from)
+        r.to:SetWidth(lay.x.n - (lay.gap or COL_GAP) - from)
         HidePer(r)
         r.top:Hide()
     else

@@ -66,6 +66,7 @@ Kit.themes.dark = {
         join = 4,
         rim = 5,
         x = 10,
+        shade = 3 / 16,
         fill = { tex = WHITE8, color = { 0.012, 0.015, 0.02, 1 } },
         fillHover = { tex = WHITE8, color = { 0.09, 0.10, 0.12, 1 } },
         fillOn = { tex = WHITE8, coord = { 0, 1, 0, 1 }, color = { 0.03, 0.04, 0.05, 1 } },
@@ -659,7 +660,8 @@ Kit.themes.dark = {
 }
 local DLG_PAPER = "Interface\\DialogFrame\\UI-DialogBox-Background"
 local DLG_BORDER = "Interface\\DialogFrame\\UI-DialogBox-Border"
-local WEAVE = "Interface\\AddOns\\" .. ADDON .. "\\lead\\art\\weave_hatch.tga"
+local SCROLL_EDGE = "Interface\\AddOns\\" .. ADDON .. "\\art\\kit\\frame"
+local WEAVE = "Interface\\AddOns\\" .. ADDON .. "\\art\\kit\\weave_hatch.tga"
 local EDGE = { 1, 0.86, 0.42 }
 local WOOD = { 0.255, 0.205, 0.135 }
 local LIGHT = { 0.93, 0.89, 0.80 }
@@ -671,9 +673,9 @@ Kit.themes.scroll = {
     labelKey = "set.theme.scroll",
     window = {
         backdrop = {
-            bgFile = DLG_PAPER, edgeFile = DLG_BORDER,
+            bgFile = DLG_PAPER, edgeFile = SCROLL_EDGE,
             tile = true, tileSize = 32, edgeSize = 32,
-            insets = { left = 7, right = 8, top = 8, bottom = 7 },
+            insets = { left = 8, right = 8, top = 8, bottom = 8 },
         },
         bg = { 1, 1, 1, 1 },
         border = { 1, 1, 1, 1 },
@@ -689,6 +691,7 @@ Kit.themes.scroll = {
         join = 12,
         rim = 13,
         x = 16,
+        shade = 4 / 32,
         fill = { tex = WHITE8, color = { 0.05, 0.035, 0.02, 1 } },
         fillHover = { tex = WHITE8, color = { 0.13, 0.09, 0.05, 1 } },
         fillOn = { tex = WHITE8, coord = { 0, 1, 0, 1 }, color = { 0.07, 0.055, 0.035, 1 } },
@@ -978,7 +981,7 @@ local LOOKS = {
     flat = {
         window = { bgFile = WHITE8, edgeFile = TIP_EDGE, tile = true, tileSize = 16, edgeSize = 16, insets = INSET4 },
         pad = 0, inset = 4,
-        tab = { h = 24, seat = 3, join = 4, rim = 5, x = 10 },
+        tab = { h = 24, seat = 3, join = 4, rim = 5, x = 10, shade = 3 / 16 },
     },
     blizzard = {
         window = {
@@ -986,7 +989,7 @@ local LOOKS = {
             insets = { left = 7, right = 8, top = 8, bottom = 7 },
         },
         pad = 8, inset = 8, frame = true,
-        tab = { h = 28, seat = 6, join = 12, rim = 13, x = 16 },
+        tab = { h = 28, seat = 6, join = 12, rim = 13, x = 16, shade = 5 / 32 },
         edge = DLG_BORDER,
     },
 }
@@ -1025,6 +1028,7 @@ local function themeOf(key, b)
         },
         tab = {
             h = look.tab.h, seat = look.tab.seat, join = look.tab.join, rim = look.tab.rim, x = look.tab.x,
+            shade = look.tab.shade,
             fill = { tex = WHITE8, color = rgba(b.field, 1) },
             fillHover = { tex = WHITE8, color = mix(b.field, b.panel, 0.7, 1) },
             fillOn = { tex = WHITE8, coord = { 0, 1, 0, 1 }, color = rgba(b.background, 1) },

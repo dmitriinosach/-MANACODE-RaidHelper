@@ -22,7 +22,6 @@ local BTNH = 20
 local BTNPAD = 24
 local BTNMIN = 60
 local CHATH = 16
-local CHATPAD = 14
 local BTNGAP = 4
 local BAR_A = 0.38
 local WHITE8 = "Interface\\Buttons\\WHITE8X8"
@@ -81,9 +80,6 @@ local function FailMetrics()
     local side = GPTITLE + n + 10
     return { line = max(GPLINE, math.ceil(n * 1.15) + 8), preset = preset, hover = hover, btns = btns,
              head = max(GPHEAD, btns + BTNH + 6), side = side, sideHead = side + BTNH + 10 }
-end
-local function Good(x)
-    return x.goodDmg or x.dmg
 end
 local function AllLine(dmg, sec)
     local key = ns.dpsAll and ns.dpsAll[fight and fight.boss]
@@ -356,10 +352,10 @@ local function PersonalModel(p, s)
     local value, sub
     local sec = ns.Totals.Time(s)
     if p.role == "heal" then
-        value = format(ns.T("sum.hps"), Rate(p.heal / sec))
+        value = format(ns.T("sum.hps"), Rate(ns.Totals.Hps(p, s)))
         sub = ""
     else
-        value = format(ns.T("sum.dps"), Rate(Good(p) / sec))
+        value = format(ns.T("sum.dps"), Rate(ns.Totals.Dps(p, s)))
         sub = AllLine(p.dmg, sec)
     end
     local m = {
@@ -519,8 +515,7 @@ local function RateButtons(f, heal)
     if not set then
         set = { all = Badges.Expand(f, heal and OpenHps or OpenDps) }
         if ns.ProofView and ns.ChatReport then
-            set.chat = ns.ProofView.ReportButton(f, heal and HpsReport or DpsReport, heal)
-            set.chat.tip = ns.T(heal and "report.tip.heal" or "report.tip")
+            set.chat = ns.ProofView.ReportButton(f, heal and HpsReport or DpsReport, heal, CHATH)
         end
         rateBtns[key] = set
     end
@@ -529,8 +524,6 @@ local function RateButtons(f, heal)
     local b = set.chat
     if b then
         b:SetParent(f)
-        b:SetHeight(CHATH)
-        b:SetWidth(floor(b.text:GetStringWidth() + 0.5) + CHATPAD)
         b:ClearAllPoints()
         b:SetPoint("TOPRIGHT", f, "TOPRIGHT", -x, -BTNGAP)
         b:SetFrameLevel(f:GetFrameLevel() + 2)
@@ -552,7 +545,7 @@ local function DrawStats(s, w)
           ns.Kit.C[fight.killed and "sem.win" or "sem.wipe"] },
     }
     if Shows("#t.dps") then
-        cells[#cells + 1] = { "sum.s.dps", Rate(Good(s) / sec), AllLine(s.dmg, sec), ns.Kit.C["sem.stat.dps"] }
+        cells[#cells + 1] = { "sum.s.dps", Rate(ns.Totals.Dps(s, s)), AllLine(s.dmg, sec), ns.Kit.C["sem.stat.dps"] }
     else
         HideRate("dps")
     end
@@ -583,7 +576,7 @@ local function DrawStats(s, w)
             m.whole = m.lines ~= nil
         end
         if c[1] == "sum.s.dps" or c[1] == "sum.s.hps" then
-            m.lines = Tips.Combat(s, m.title, m.value, c[1] == "sum.s.dps" and s.dmg or s.heal)
+            m.lines = Tips.Combat(s, m.title, m.value, c[1] == "sum.s.dps" and s.dmg or s.heal, c[1] ~= "sum.s.dps")
         end
         if c[1] == "sum.s.dps" and ns.ExpectView then ns.ExpectView.Total(fight, s, m) end
         if c[1] == "sum.s.dps" or c[1] == "sum.s.hps" then

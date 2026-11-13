@@ -147,6 +147,7 @@ local function MiniLeave(self)
 end
 local function MiniClick(self)
     ns.Tip.Hide()
+    if self.pick then self.pick(self.fight) end
     RL.Open(self.fight, nil)
 end
 function RL.Bare(f)

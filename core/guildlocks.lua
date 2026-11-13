@@ -5,7 +5,7 @@ local max = math.max
 local tsort = table.sort
 local tonumber = tonumber
 local type = type
-local VERSION = 1
+local VERSION = 2
 local WEEK = 7 * 86400
 local DAY = 86400
 local KILL_AGE = 600
@@ -89,7 +89,7 @@ local function EndsOf(id, at, locks)
     return GuildLocks.NextReset(at)
 end
 local function Mark(st, raid, boss, at, names, locks)
-    local key = tostring(raid.id)
+    local key = tostring(raid.id) .. (raid.heroic and "h" or "n")
     local e = st.ids[key]
     if not e then
         local ends = EndsOf(raid.id, at, locks)
@@ -201,8 +201,9 @@ function GuildLocks.SavesOf(name)
     local now = time()
     local out, seen = {}, {}
     local function Add(s)
-        if s and s.ends > now and not seen[s.id .. ":" .. s.key] then
-            seen[s.id .. ":" .. s.key] = true
+        local k = s and (s.id .. ":" .. s.key .. ":" .. s.size .. (s.heroic and "h" or "n"))
+        if s and s.ends > now and not seen[k] then
+            seen[k] = true
             out[#out + 1] = s
         end
     end

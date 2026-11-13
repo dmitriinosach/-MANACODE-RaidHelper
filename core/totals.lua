@@ -115,3 +115,30 @@ end
 function Totals.Active(s)
     return s.combat or s.dur
 end
+function Totals.BossOnly(enc)
+    return enc ~= nil and ns.dpsModel ~= nil and ns.dpsModel[enc] == "boss"
+end
+function Totals.Good(x)
+    return x.goodDmg or x.dmg or 0
+end
+function Totals.Dps(x, s)
+    return Totals.Good(x) / max(1, Totals.Time(s))
+end
+function Totals.Hps(x, s)
+    return (x.heal or 0) / max(1, Totals.Time(s))
+end
+function Totals.Skada(x, s, heal)
+    return ((heal and x.heal or x.dmg) or 0) / max(1, Totals.Active(s))
+end
+function Totals.Waste(s)
+    local b = s.useful
+    local cut = b and b.cutBy
+    if not cut then return end
+    b.cutBy = nil
+    if b.normal then return end
+    for i = 1, #s.players do
+        local p = s.players[i]
+        local waste = (cut[p.name] or 0) - (b.by[p.name] or 0)
+        if waste > 0 then p.goodDmg = max(0, p.goodDmg - waste) end
+    end
+end

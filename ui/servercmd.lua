@@ -1,5 +1,6 @@
 local ADDON, ns = ...
 local floor = math.floor
+local min = math.min
 local format = string.format
 local gsub = string.gsub
 local sub = string.sub
@@ -14,6 +15,7 @@ local LABEL_W = 150
 local CMD_X = 158
 local CMD_W = 260
 local DEL_X = 426
+local ROW_W = 446
 local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\"
 local T = ns.T
 local Kit = ns.Kit
@@ -202,8 +204,10 @@ local function Rows()
 end
 if ns.Shell and ns.Shell.Actions then ns.Shell.Actions(Rows, 110) end
 local SMALL = "GameFontHighlightSmall"
-local function K(n)
-    return floor(n * Kit.FontScale(SMALL, true) + 0.5)
+local function K(n, r)
+    local k, rw = Kit.FontScale(SMALL, true), r:GetWidth() or 0
+    if rw > 0 then k = min(k, rw / ROW_W) end
+    return floor(n * k + 0.5)
 end
 local function Column(r, obj, x, w)
     local list = r.cols
@@ -214,8 +218,8 @@ local function Column(r, obj, x, w)
             for i = 1, #list do
                 local c = list[i]
                 c.obj:ClearAllPoints()
-                c.obj:SetPoint("LEFT", r, "LEFT", K(c.x), 0)
-                c.obj:SetWidth(K(c.w))
+                c.obj:SetPoint("LEFT", r, "LEFT", K(c.x, r), 0)
+                c.obj:SetWidth(K(c.w, r))
             end
         end
     end
@@ -270,7 +274,7 @@ local function RefreshRow(r, it)
     if not r.label:HasFocus() then r.label:SetValue(Cmd.Label(n)) end
     if not r.cmd:HasFocus() then r.cmd:SetValue(Cmd.Command(n)) end
     r.del:ClearAllPoints()
-    r.del:SetPoint("LEFT", r, "LEFT", K(DEL_X), 0)
+    r.del:SetPoint("LEFT", r, "LEFT", K(DEL_X, r), 0)
 end
 if S and S.Section then
     local items = {

@@ -772,6 +772,10 @@ function Shell.Register(key, def)
     entries[key] = e
     order[#order + 1] = e
     if frame then LayoutTabs() end
+    if ns.Panel and ns.Panel.Dirty then ns.Panel.Dirty() end
+end
+function Shell.Has(key)
+    return entries[key] ~= nil
 end
 function Shell.Open(key)
     if not frame then Build() end

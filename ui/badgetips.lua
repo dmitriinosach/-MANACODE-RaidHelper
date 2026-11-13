@@ -65,13 +65,10 @@ function Tips.Mechanic(b)
     end
     return { label = label, icon = icon, tip = lines, link = #spells == 1 and ("spell:" .. id) or nil }
 end
-function Tips.Rate(n)
-    if n >= 1e3 then return ns.Dec(format("%.2f", n / 1e3)) .. ns.T("num.k") end
-    return tostring(floor(n + 0.5))
-end
+Tips.Rate = ns.Rate
 local Clock = ns.Clock
-local function Rate(n, dur)
-    return format(T("sum.tt.rate"), Short(n / max(1, dur)))
+local function Rate(n, dur, heal)
+    return format(T(heal and "sum.tt.rate.heal" or "sum.tt.rate"), ns.Rate(n / max(1, dur)))
 end
 local function Inline(id)
     local icon = id and ns.Effects and ns.Effects.IconById(id)
@@ -245,7 +242,7 @@ local function Abilities(out, own, pets, total, rest)
     local more = max(0, #list - ABIL_TOP) + (rest and rest.n or 0)
     if more > 0 then Put(out, "sub", format(T("sum.ab.more"), more), nil, nil, "dim") end
 end
-function Tips.Combat(s, title, value, amount)
+function Tips.Combat(s, title, value, amount, heal)
     local out = {}
     Head(out, title, value)
     Put(out, "row", T("sum.tt.dur"), Clock(s.dur))
@@ -253,13 +250,13 @@ function Tips.Combat(s, title, value, amount)
     if s.dur - act >= 1 then
         Put(out, "sub", T("sum.tt.combat"), Clock(act))
         Put(out, "sub", T("sum.tt.idle"), Clock(s.dur - act))
-        if amount then Put(out, "sub", T("sum.tt.noidle"), Rate(amount, act)) end
+        if amount then Put(out, "sub", T("sum.tt.noidle"), Rate(amount, act, heal)) end
     end
     return out
 end
-local function NoIdle(out, n, s)
+local function NoIdle(out, n, s, heal)
     local act = ns.Totals.Active(s)
-    if s.dur - act >= 1 then Put(out, "sub", T("sum.tt.noidle"), Rate(n, act), nil, "dim") end
+    if s.dur - act >= 1 then Put(out, "sub", T("sum.tt.noidle"), Rate(n, act, heal), nil, "dim") end
 end
 local function Effective(out, p, s)
     if not p.eff then return end
@@ -283,10 +280,11 @@ function Tips.Player(p, s)
     end
     Effective(out, p, s)
     if p.role == "heal" then
-        Put(out, "row", T("sum.tt.heal"), Rate(p.heal, sec), Short(p.heal))
-        NoIdle(out, p.heal, s)
+        Put(out, "row", T("sum.tt.heal"), Rate(p.heal, sec, true), Short(p.heal))
+        NoIdle(out, p.heal, s, true)
         Abilities(out, p.healBy, nil, p.heal, p.abRest)
     else
+        if p.goodDmg then Put(out, "row", T("sum.tt.good"), Rate(p.goodDmg, sec), Short(p.goodDmg)) end
         Put(out, "row", T("sum.tt.dmg"), Rate(p.dmg, sec), Short(p.dmg))
         Put(out, "sub", T("sum.tt.boss"), Rate(p.bossDmg, sec), Short(p.bossDmg))
         NoIdle(out, p.dmg, s)
@@ -294,7 +292,7 @@ function Tips.Player(p, s)
             Put(out, "sub", format(T("sum.tt.ride"), p.rideName or "?"), Short(p.ride), nil, "dim")
         end
         Abilities(out, p.dmgBy, p.petBy, p.dmg, p.abRest)
-        if p.role == "tank" and p.heal > 0 then Put(out, "row", T("sum.tt.heal"), Rate(p.heal, sec), Short(p.heal)) end
+        if p.role == "tank" and p.heal > 0 then Put(out, "row", T("sum.tt.heal"), Rate(p.heal, sec, true), Short(p.heal)) end
     end
     out[#out + 1] = { kind = "foot", key = "lmb", left = T("sum.tt.foot") }
     out[#out + 1] = { kind = "foot", key = "rmb", left = T("sum.tt.foot.r") }
@@ -699,6 +697,44 @@ function Tips.Death(p, fight)
             mcN = mcN + 1
             Victim(out, p.deathInfo[k], fight.from)
         end
+    end
+    return out
+end
+function Tips.DeathLog(p, d, fight)
+    local out = {}
+    Head(out, p.name, format(T("sum.dl.at"), Clock(max(0, d.t - fight.from))), p.class)
+    Put(out, "row", Tips.Verdict(d), nil, nil, d.tail and "dim" or GRADE_TONE[d.grade or ""])
+    local recent = d.recent or {}
+    for k = max(1, #recent - TIMES + 1), #recent do
+        local e = recent[k]
+        local what = e.spell == "#melee" and T("tl.swing") or tostring(e.spell)
+        if e.src then what = format(T("sum.tt.killedby"), what, e.src) end
+        local amount = e.amount and Short(e.amount) or nil
+        if amount and (e.over or 0) > 0 then amount = format(T("sum.dl.over"), amount, Short(e.over)) end
+        Put(out, "sub", format(T("sum.dl.ago"), Dec(max(0, d.t - e.t), 1)), amount, what, k == #recent and d.killer and "bad" or nil)
+    end
+    if p.role == "tank" then Guards(out, p, d, fight.from) end
+    if ns.ReplayLink then
+        ns.ReplayLink.Tag(out, fight, d.t)
+    else
+        out[#out + 1] = { kind = "foot", key = "lmb", left = T("sum.tt.foot") }
+    end
+    out[#out + 1] = { kind = "foot", key = "rmb", left = T("sum.tt.foot.r") }
+    return out
+end
+function Tips.RaidPlayer(p, s)
+    local out = {}
+    local sec = ns.Totals.Time(s)
+    Head(out, p.name, format(T("sum.tt.ofs"), tostring(p.tries), tostring(s.n)), p.class)
+    if p.deaths > 0 then Put(out, "row", T("sum.tt.deaths"), tostring(p.deaths), nil, "bad") end
+    if p.dmg > 0 then
+        Put(out, "row", T("sum.tt.good"), Rate(p.goodDmg, sec), Short(p.goodDmg))
+        Put(out, "row", T("sum.tt.dmg"), Rate(p.dmg, sec), Short(p.dmg))
+        NoIdle(out, p.dmg, s)
+    end
+    if p.heal > 0 then
+        Put(out, "row", T("sum.tt.heal"), Rate(p.heal, sec, true), Short(p.heal))
+        if p.dmg <= 0 then NoIdle(out, p.heal, s, true) end
     end
     return out
 end

@@ -1322,6 +1322,15 @@ local function Tanks(c)
         if n / total >= TANK_SHARE then c.L.tanks[c.tracks[k].name] = true end
     end
 end
+local function RoleTanks(c, fight)
+    local s = ns.Summary and ns.Summary.Peek(fight)
+    if not (s and s.byName) then return c.L.tanks end
+    local out = {}
+    for name, p in pairs(s.byName) do
+        if p.role == "tank" then out[name] = true end
+    end
+    return out
+end
 function Layers.Build(scene)
     local p0 = debugprofilestop()
     local fight = scene.fight
@@ -1467,6 +1476,12 @@ function Layers.Build(scene)
     if oz then OZ.Done(oz, c.L, scene, PosAt, c.ppy) end
     FinishBossHp(c, segs, fight.to, np and np.stats.guid, rr)
     Carry(scene, c)
+    if rr then RR.Body(rr, c.L, np and np.stats.guid) end
+    if rr and not c.boss2 then
+        c.boss2 = RR.Proxy(rr, c.L, c.tracks, RoleTanks(c, fight), c.L.hitbox * c.ppy,
+            scene.bossName or ns.EncName(fight.boss))
+        if c.boss2 then Steady({ boss = c.boss2.tr, ppy = scene.ppy }) end
+    end
     if rr and c.boss2 then RR.Second(rr, c.L, c.boss2) end
     if ar then AR.Done(ar, c.L, scene) end
     PlaceCones(scene, c)

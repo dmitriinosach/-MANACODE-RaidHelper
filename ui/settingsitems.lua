@@ -114,6 +114,26 @@ S.Section("panel", "panel", {
           set = function(on) ns.Panel.SetCompact(on) end },
     },
 })
+local CENSUS_WAIT = 8
+local CENSUS_NAMES = 10
+local function CensusText()
+    local V = ns.Version
+    local at = V.AskedAt()
+    if at and GetTime() - at < CENSUS_WAIT then return T("ver.census.wait") end
+    local c = V.Census()
+    local parts = {}
+    for i = 1, #c.vers do parts[#parts + 1] = format(T("ver.census.ver"), c.vers[i].v, c.vers[i].n) end
+    if c.has > 0 then parts[#parts + 1] = format(T("ver.census.has"), c.has) end
+    local with = c.total - #c.none
+    local text = format(T("ver.census"), with, c.total, concat(parts, ", "))
+    if #c.none > 0 then
+        local names = {}
+        for i = 1, math.min(#c.none, CENSUS_NAMES) do names[i] = c.none[i] end
+        local more = #c.none > CENSUS_NAMES and format(T("ver.census.more"), #c.none - CENSUS_NAMES) or ""
+        text = text .. "\n" .. format(T("ver.census.none"), concat(names, ", ") .. more)
+    end
+    return text
+end
 local function RecState()
     local lock = ns.RecLock()
     if lock then return T("rec.lock." .. lock) end
@@ -438,6 +458,15 @@ S.Section("svc", "version", {
     items = {
         { kind = "check", key = "note", label = "set.svc.vernote", tip = "set.svc.vernote.tip", default = true,
           get = function() return Opt().verNote ~= false end, set = function(on) Opt().verNote = on and true or false end },
+        { kind = "button", key = "ask", text = "set.svc.ask", tip = "set.svc.ask.tip", quiet = true,
+          shown = function() return ns.Version ~= nil end,
+          enabled = function() return (GetNumRaidMembers() or 0) > 0 or (GetNumPartyMembers() or 0) > 0 end,
+          run = function()
+              ns.Version.Ask()
+              S.Refresh()
+          end },
+        { kind = "text", key = "census", tick = true, token = "text.secondary",
+          shown = function() return ns.Version ~= nil and ns.Version.AskedAt() ~= nil end, text = CensusText },
     },
 })
 ns.Shell.Command("adv", function()

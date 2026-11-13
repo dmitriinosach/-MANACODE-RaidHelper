@@ -1,4 +1,5 @@
 local ADDON, root = ...
+root = ManaCodeRaidHelper or root
 root.Lead = root.Lead or {}
 local ns = root.Lead
 local P = {}
@@ -58,10 +59,12 @@ function P.TemplateNeeds(tpl)
 end
 local function needs()
     local g = ns.Session.State()
-    if type(g.spamNeeds) ~= "table" then
-        g.spamNeeds = P.TemplateNeeds(ns.Session.Template())
-    end
-    return g.spamNeeds
+    g.spamNeeds = nil
+    if type(g.spamOwn) == "table" then return g.spamOwn end
+    return P.TemplateNeeds(ns.Session.Template())
+end
+function P.NeedsAuto()
+    return type(ns.Session.State().spamOwn) ~= "table"
 end
 function P.Needs()
     local src, out = needs(), {}
@@ -77,19 +80,20 @@ function P.NeedTotal()
     return n
 end
 function P.SetNeed(role, n)
-    local t = needs()
     n = math.floor(tonumber(n) or 0)
     if n < 0 then n = 0 end
     if n > MAX_NEED then n = MAX_NEED end
-    if t[role] == n then return end
-    t[role] = n
+    if P.Need(role) == n then return end
+    local g = ns.Session.State()
+    if type(g.spamOwn) ~= "table" then g.spamOwn = P.TemplateNeeds(ns.Session.Template()) end
+    g.spamOwn[role] = n
     ns.Session.Changed()
 end
 function P.AddNeed(role, delta)
     P.SetNeed(role, P.Need(role) + delta)
 end
 function P.NeedsFromTemplate()
-    ns.Session.State().spamNeeds = P.TemplateNeeds(ns.Session.Template())
+    ns.Session.State().spamOwn = nil
     ns.Session.Changed()
 end
 local function texts()
@@ -355,6 +359,9 @@ end
 function P.Limit()
     return MAX_CHARS
 end
+local function pack(...)
+    return { ... }, select("#", ...)
+end
 function P.Channels()
     local out = {}
     for _, s in ipairs(SPECIAL) do
@@ -362,14 +369,18 @@ function P.Channels()
             out[#out + 1] = { key = s.key, label = ns.T(s.label) }
         end
     end
-    local list = { GetChannelList() }
-    for i = 1, #list, 2 do
+    local list, n = pack(GetChannelList())
+    for i = 1, n - 1 do
         local id, name = list[i], list[i + 1]
-        if id and name then
-            out[#out + 1] = { key = "#" .. name, label = id .. ". " .. name, name = name }
+        if type(id) == "number" and id > 0 and type(name) == "string" and name ~= "" then
+            out[#out + 1] = { key = "#" .. P.ChanBase(name), label = id .. ". " .. name, name = name, id = id }
         end
     end
     return out
+end
+function P.ChanBase(name)
+    local base = name:match("^(.-)%s*[:%-]%s")
+    return (base and base ~= "") and base or name
 end
 local function chanCfg(key)
     local db = ns.Store.DB()
@@ -435,9 +446,8 @@ local function say(msg, chat, target)
     end
 end
 local function send(c, msg)
-    if c.name then
-        local id = GetChannelName(c.name)
-        if id and id > 0 then say(msg, "CHANNEL", id) end
+    if c.id then
+        say(msg, "CHANNEL", c.id)
     else
         say(msg, c.key)
     end

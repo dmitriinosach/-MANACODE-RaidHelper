@@ -1,4 +1,5 @@
 local ADDON, root = ...
+root = ManaCodeRaidHelper or root
 root.Lead = root.Lead or {}
 local ns = root.Lead
 local K = {}

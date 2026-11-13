@@ -570,7 +570,6 @@ function Hide.Head(host)
     b:SetPoint("RIGHT", host, "TOPRIGHT", -HEAD_PAD, HEAD_Y)
     b.icon:SetWidth(ICON)
     b.icon:SetHeight(ICON)
-    Kit.Tint(b.icon, "text.title")
     b.tipTitle = T("sum.hide.btn")
     b.tip = T("sum.hide.btn.tip")
     b.onClick = GearClick

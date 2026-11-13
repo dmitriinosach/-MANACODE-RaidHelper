@@ -29,6 +29,7 @@ ns.pullWho = {
     window = 10,
     gap = 0.25,
     ties = 4,
+    aim = 1,
     toast = 4,
 }
 ns.pullSniff = {
