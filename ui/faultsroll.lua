@@ -136,8 +136,8 @@ local function Head(side, cols, prefix)
         fs:SetText(ns.T(prefix .. cols[i][1]))
         Kit.Text(fs, "text.secondary")
     end
-    side.empty = Kit.Str(side, "GameFontDisableSmall")
-    Kit.Text(side.empty, "text.off")
+    side.empty = Kit.Str(side, "GameFontHighlightSmall")
+    Kit.Text(side.empty, "text.note")
     side.empty:SetJustifyH("LEFT")
 end
 local function Wheel(side, d)
@@ -286,7 +286,7 @@ local function Texts(id)
                 local raid, alt = R.Here()
                 sums = raid and R.Sums(raid, alt) or {}
             end
-            local pen = R.PenOf(who, n, sums)
+            local pen = R.PenOf(who, n, sums, id)
             if pen > 0 then
                 text = format(ns.T("roll.rr.row"), Kit.Hex("text.bad") .. View.Minus(pen) .. "|r", n - pen)
                 shown = shown + 1

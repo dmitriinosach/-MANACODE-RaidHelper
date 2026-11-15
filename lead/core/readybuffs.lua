@@ -6,6 +6,7 @@ local R = {}
 ns.ReadyBuffs = R
 local AURAS = 40
 local EVERY = 2
+local RESCAN = 5
 local HOLD = 300
 local GIVERS = 3
 local CHAT_MAX = 240
@@ -262,7 +263,7 @@ ns.Listen(f, "READY_CHECK_FINISHED")
 ns.Listen(f, "PLAYER_REGEN_DISABLED")
 ns.Listen(f, "UNIT_AURA")
 local acc, shown = 0, false
-local dirty = false
+local dirty, rescanAt = false, 0
 f:SetScript("OnEvent", function(_, ev, unit)
     if ev == "UNIT_AURA" then
         if result and not checking and type(unit) == "string"
@@ -288,8 +289,9 @@ f:SetScript("OnUpdate", function(_, dt)
         R.Scan()
         return
     end
-    if dirty and R.Active() then
+    if dirty and R.Active() and GetTime() >= rescanAt then
         dirty = false
+        rescanAt = GetTime() + RESCAN
         local at = result.at
         if R.Scan() and result then result.at = at end
     end

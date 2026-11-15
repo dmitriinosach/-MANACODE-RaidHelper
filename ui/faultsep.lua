@@ -630,8 +630,8 @@ function View.Build(parent, btn)
     box.headN = Kit.Str(box.head, "GameFontHighlightSmall")
     box.headN:SetJustifyH("RIGHT")
     box.headN:SetWordWrap(false)
-    box.empty = Kit.Str(box, "GameFontDisableSmall")
-    Kit.Text(box.empty, "text.off")
+    box.empty = Kit.Str(box, "GameFontHighlightSmall")
+    Kit.Text(box.empty, "text.note")
     box.empty:SetJustifyH("LEFT")
     box.empty:SetJustifyV("TOP")
     list = Kit.List(function() return Row(Wheel) end, Fill, { step = 3 })
@@ -703,8 +703,9 @@ function View.Undo(i)
     if not rec or rec.undone then return end
     Kit.Confirm(format(ns.T("rep.undo.ask"), rec.title or "", #rec.list, Num(rec.total)), ns.T("rep.undo"), function()
         if ns.RaidEP.Done()[i] ~= rec then return end
-        local ok, why = ns.RaidEP.Undo(i)
+        local ok, why, failed = ns.RaidEP.Undo(i)
         if not ok then ns.Print(format(ns.T("rep.auto.cant"), ns.T(why or "led.err.none"))) end
+        if failed then ns.Print(format(ns.T("rep.undo.failed"), table.concat(failed, ", "))) end
     end)
 end
 function View.ModeMenu(anchor)

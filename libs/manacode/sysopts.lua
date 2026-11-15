@@ -247,8 +247,16 @@ function SysOpts.Register(def)
     local panel = def.items and SysOpts.Panel(def) or nil
     return panel, run
 end
+local keyFields = setmetatable({}, { __mode = "k" })
+local keyWaiting
+local keyCombat
 function SysOpts.KeyField(button, opts)
     local field = { waiting = false }
+    if not keyCombat then
+        keyCombat = CreateFrame("Frame")
+        keyCombat:RegisterEvent("PLAYER_REGEN_DISABLED")
+        keyCombat:SetScript("OnEvent", function() if keyWaiting then keyWaiting:Cancel() end end)
+    end
     local cmd = opts.command
     function field:Keys()
         if not GetBindingKey then return {} end
@@ -274,10 +282,12 @@ function SysOpts.KeyField(button, opts)
     end
     local function Stop()
         field.waiting = false
+        if keyWaiting == field then keyWaiting = nil end
         button:EnableKeyboard(false)
     end
     local function Save()
         if SaveBindings and GetCurrentBindingSet then SaveBindings(GetCurrentBindingSet()) end
+        for f in pairs(keyFields) do f:Refresh() end
         if opts.onChange then opts.onChange() end
     end
     local function Unbind()
@@ -304,6 +314,8 @@ function SysOpts.KeyField(button, opts)
             field:Cancel()
             return
         end
+        if keyWaiting and keyWaiting ~= field then keyWaiting:Cancel() end
+        keyWaiting = field
         field.waiting = true
         button:EnableKeyboard(true)
         Paint()
@@ -326,6 +338,7 @@ function SysOpts.KeyField(button, opts)
         button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         button:SetScript("OnClick", function(_, mouse) field:Click(mouse) end)
     end
+    keyFields[field] = true
     Paint()
     return field
 end

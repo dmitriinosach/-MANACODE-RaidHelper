@@ -4,50 +4,52 @@ local floor = math.floor
 local max = math.max
 local min = math.min
 local Kit = ns.Kit
-local W, H = 280, 240
-local MIN_W, MIN_H = 180, 120
-local MAX_W, MAX_H = 560, 600
-local PAD = 8
-local TITLEH = 20
-local ROWH = 18
-local GAP = 3
-local WIDE_W = 400
-local FRESH = 180
-local FOOT = 8
-local GRIP = 14
-local LEADW = 30
-local PCTW = 32
-local VIEWPAD = 12
-local PICK_ICON = 10
-local PICK_MAX = 10
-local BAR_A = 0.38
-local TICK = 1
-local RETRY = 3
-local WHITE8 = "Interface\\Buttons\\WHITE8X8"
-local VIEWS = { "faults", "dps", "hps", "deaths", "targets", "rolls" }
-local KNOWN = { faults = true, dps = true, hps = true, deaths = true, targets = true, rolls = true }
-local RATE = { dps = true, hps = true }
-local VIEW_ICON = { faults = "gp", dps = "dps", hps = "hps", deaths = "death", targets = "target", rolls = "dice" }
-local RAID = "raid"
-local MORE_W = 260
-local NAME_MIN = 64
-local CHAT_SIZE = 18
-local TAB = 24
-local TABGAP = 4
-local CORNER = 18
-local CORNERGAP = 3
-local TOP0 = PAD + TAB + GAP
-local NAMEGAP = 6
-local CHAINGAP = 4
-local TITLE_MIN = 60
-local PENS_PART = 0.5
+local K = {}
+K.W, K.H = 280, 240
+K.MIN_W, K.MIN_H = 180, 120
+K.MAX_W, K.MAX_H = 560, 600
+K.PAD = 8
+K.TITLEH = 20
+K.ROWH = 18
+K.GAP = 3
+K.WIDE_W = 400
+K.FRESH = 180
+K.FOOT = 8
+K.GRIP = 14
+K.LEADW = 30
+K.PCTW = 32
+K.VIEWPAD = 12
+K.PICK_ICON = 10
+K.PICK_MAX = 10
+K.BAR_A = 0.38
+K.TICK = 1
+K.SIZE_DRAW = 0.1
+K.RETRY = 3
+K.WHITE8 = "Interface\\Buttons\\WHITE8X8"
+K.VIEWS = { "faults", "dps", "hps", "deaths", "targets", "rolls" }
+K.KNOWN = { faults = true, dps = true, hps = true, deaths = true, targets = true, rolls = true }
+K.RATE = { dps = true, hps = true }
+K.VIEW_ICON = { faults = "gp", dps = "dps", hps = "hps", deaths = "death", targets = "target", rolls = "dice" }
+K.RAID = "raid"
+K.MORE_W = 260
+K.NAME_MIN = 64
+K.CHAT_SIZE = 18
+K.TAB = 24
+K.TABGAP = 4
+K.CORNER = 18
+K.CORNERGAP = 3
+K.TOP0 = K.PAD + K.TAB + K.GAP
+K.NAMEGAP = 6
+K.CHAINGAP = 4
+K.TITLE_MIN = 60
+K.PENS_PART = 0.5
 local Mini = {}
 ns.ShellMini = Mini
 local frame, titleText, subText, head, restore, close, grip, chat, give, pickBtn, clearBtn, prevBtn, nextBtn
 local bar
-local titleh, rowh, leadw, pctw = TITLEH, ROWH, LEADW, PCTW
+local titleh, rowh, leadw, pctw = K.TITLEH, K.ROWH, K.LEADW, K.PCTW
 local headY
-local rowTop = TOP0 + TITLEH + GAP
+local rowTop = K.TOP0 + K.TITLEH + K.GAP
 local seatTop
 local chainMask
 local older, newer
@@ -70,6 +72,8 @@ local tries = 0
 local pickKey
 local pickRef
 local raidShown, raidSum
+local raidMemo = {}
+local sizing, sizedAt = false, 0
 local fullSeen
 local seenTop
 local wasCombat = false
@@ -85,7 +89,7 @@ local function Saved()
 end
 local function View()
     local v = Saved().view
-    if not KNOWN[v or ""] then v = "dps" end
+    if not K.KNOWN[v or ""] then v = "dps" end
     return v
 end
 local function Num(v)
@@ -130,9 +134,9 @@ local function Slots()
     if not frame then return 1 end
     if Faults() then
         local sl = ft and ft.L or ns.GPList.MINI
-        return max(1, floor((frame:GetHeight() - rowTop - FOOT - sl.headh) / sl.rowh))
+        return max(1, floor((frame:GetHeight() - rowTop - K.FOOT - sl.headh) / sl.rowh))
     end
-    return max(1, floor((frame:GetHeight() - rowTop - FOOT) / rowh))
+    return max(1, floor((frame:GetHeight() - rowTop - K.FOOT) / rowh))
 end
 local function Count()
     if Faults() then return #ns.FaultTable.Rows(model, ft and ft.filter or "all") end
@@ -178,7 +182,7 @@ local function RowClick(self, button)
     local f = e.fight or fight
     local whole = raidSum ~= nil
     if button == "RightButton" then
-        local one = e.at ~= nil or (RATE[View()] and not whole)
+        local one = e.at ~= nil or (K.RATE[View()] and not whole)
         if not live and f and e.who and one and ns.GPList then ns.GPList.ManualMenu(f, e.who) end
         return
     end
@@ -202,8 +206,8 @@ local function SeatRow(r, k)
     r:SetHeight(rowh)
     local y = -(rowTop + (k - 1) * rowh)
     r:ClearAllPoints()
-    r:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
-    r:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, y)
+    r:SetPoint("TOPLEFT", frame, "TOPLEFT", K.PAD, y)
+    r:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -K.PAD, y)
     r.lead:SetWidth(leadw)
     r.pct:SetWidth(pctw)
     r.laid = nil
@@ -221,10 +225,10 @@ local function NewRow(k)
     r:SetScript("OnDragStart", function() frame:StartMoving() end)
     r:SetScript("OnDragStop", function() Mini.SavePlace() end)
     r.bar = r:CreateTexture(nil, "BORDER")
-    r.bar:SetTexture(WHITE8)
+    r.bar:SetTexture(K.WHITE8)
     r.bar:SetPoint("TOPLEFT", r, "TOPLEFT", 0, -1)
     r.bar:SetPoint("BOTTOMLEFT", r, "BOTTOMLEFT", 0, 1)
-    r.bar:SetAlpha(BAR_A)
+    r.bar:SetAlpha(K.BAR_A)
     r.lead = Kit.Str(r, "GameFontHighlightSmall")
     r.lead:SetPoint("LEFT", r, "LEFT", 2, 0)
     r.lead:SetJustifyH("LEFT")
@@ -270,7 +274,7 @@ local function Round(parent, file, size)
     return b
 end
 local function RowChat(r)
-    local b = Kit.ChatButton(r, CHAT_SIZE)
+    local b = Kit.ChatButton(r, K.CHAT_SIZE)
     b:SetPoint("RIGHT", r, "RIGHT", -2, 0)
     b.onClick = function(self)
         local c = r.e and r.e.chat
@@ -307,12 +311,12 @@ local function PaintRow(r, e)
     end
     local wide = frame:GetWidth()
     local val = e.val or ""
-    if e.more and wide >= MORE_W then val = val .. " " .. e.more end
+    if e.more and wide >= K.MORE_W then val = val .. " " .. e.more end
     Put(r.val, val)
     local vw = 0
     if e.at then
-        if r.valW ~= 0 then r.val:SetWidth(0) end
-        local room = wide - PAD * 2 - leadw - pctw - 8 - NAME_MIN
+        if r.valW ~= 0 then r.val:SetWidth(0) r.valW = 0 end
+        local room = wide - K.PAD * 2 - leadw - pctw - 8 - K.NAME_MIN
         if r.val:GetStringWidth() > room then vw = max(40, floor(room)) end
     end
     if r.valW ~= vw then
@@ -324,7 +328,7 @@ local function PaintRow(r, e)
     Kit.Text(r.pct, e.pctTone or "text.note")
     if e.chat then
         local b = r.chat or RowChat(r)
-        Kit.PlateSize(b, min(rowh - 2, CHAT_SIZE))
+        Kit.PlateSize(b, min(rowh - 2, K.CHAT_SIZE))
         b:Show()
     elseif r.chat then
         r.chat:Hide()
@@ -332,7 +336,7 @@ local function PaintRow(r, e)
     local fill = e.fill or 0
     if fill > 0 then
         r.bar:SetVertexColor(ns.GPList.ClassRGB(e.class))
-        r.bar:SetWidth(max(1, (frame:GetWidth() - PAD * 2) * min(1, fill)))
+        r.bar:SetWidth(max(1, (frame:GetWidth() - K.PAD * 2) * min(1, fill)))
         r.bar:Show()
     else
         r.bar:Hide()
@@ -342,7 +346,7 @@ end
 pool = Kit.List(NewRow, PaintRow, { clear = function(r) r.e = nil end })
 rows = pool.rows
 local function DrawFaults()
-    local wide = frame:GetWidth() >= WIDE_W
+    local wide = frame:GetWidth() >= K.WIDE_W
     local key = wide and "wide" or "mini"
     local t = fts[key]
     if not t then
@@ -354,8 +358,8 @@ local function DrawFaults()
     if ft and ft ~= t then ft:Hide() end
     ft = t
     ft:ClearAllPoints()
-    ft:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -rowTop)
-    ft:Draw(fight, model, frame:GetWidth() - PAD * 2, pool.offset, Slots())
+    ft:SetPoint("TOPLEFT", frame, "TOPLEFT", K.PAD, -rowTop)
+    ft:Draw(fight, model, frame:GetWidth() - K.PAD * 2, pool.offset, Slots())
     ft:Show()
 end
 local function PickLabel(f)
@@ -376,7 +380,7 @@ local function Neighbors()
     navFight, navPick, navList, navN, navLive = fight, pickKey, fights, n, live
     local was1, was2 = older, newer
     older, newer = nil, nil
-    if pickKey == RAID then
+    if pickKey == K.RAID then
         prevBtn.tip, nextBtn.tip = nil, ns.T("mini.current")
         return
     end
@@ -414,7 +418,7 @@ local function Chain()
         if it:IsShown() then
             it:ClearAllPoints()
             if prev then
-                it:SetPoint("RIGHT", prev, "LEFT", it == prevBtn and 0 or -CHAINGAP, 0)
+                it:SetPoint("RIGHT", prev, "LEFT", it == prevBtn and 0 or -K.CHAINGAP, 0)
             else
                 it:SetPoint("RIGHT", head, "RIGHT", 0, 0)
             end
@@ -428,7 +432,7 @@ local function Chain()
         titleText:SetPoint("LEFT", head, "LEFT", 2, 0)
     end
     if prev then
-        titleText:SetPoint("RIGHT", prev, "LEFT", -NAMEGAP, 0)
+        titleText:SetPoint("RIGHT", prev, "LEFT", -K.NAMEGAP, 0)
     else
         titleText:SetPoint("RIGHT", head, "RIGHT", -2, 0)
     end
@@ -441,14 +445,14 @@ local function PaintHead()
         if ns.RollPen.Count() > 0 then clearBtn:Enable() else clearBtn:Disable() end
     end
     Shown(clearBtn, rolls)
-    Shown(chat, RATE[view] or rolls)
-    Shown(subText, (RATE[view] or view == "deaths") and (subText.miniText or "") ~= "")
+    Shown(chat, K.RATE[view] or rolls)
+    Shown(subText, (K.RATE[view] or view == "deaths") and (subText.miniText or "") ~= "")
     Shown(pickBtn, not rolls)
     Shown(prevBtn, not rolls)
     Shown(nextBtn, not rolls)
     if on then
         give.text:SetText(ns.GPList.AllText(model))
-        give:SetWidth(floor(give.text:GetStringWidth() + VIEWPAD + 0.5))
+        give:SetWidth(floor(give.text:GetStringWidth() + K.VIEWPAD + 0.5))
         give.tip = format(ns.T("gpmini.all.tip"), ns.GPList.SumText(model.by), model.ready)
             .. ((model.raid or 0) > 0 and format(ns.T("sum.gp.title.roll"), model.raid) or "")
     end
@@ -464,10 +468,10 @@ local function PlaceHead(y)
     if y ~= headY then
         headY = y
         head:ClearAllPoints()
-        head:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y)
-        head:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -y)
+        head:SetPoint("TOPLEFT", frame, "TOPLEFT", K.PAD, -y)
+        head:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -K.PAD, -y)
     end
-    rowTop = y + titleh + GAP
+    rowTop = y + titleh + K.GAP
     if seatTop ~= rowTop then
         seatTop = rowTop
         for k = 1, #rows do SeatRow(rows[k], k) end
@@ -476,7 +480,7 @@ end
 local function PlaceRolls()
     if not rollPens then rollPens = ns.Badges.Detail(frame, nil, true) end
     local h = frame:GetHeight()
-    local room = min(floor((h - TOP0 - FOOT) * PENS_PART), h - TOP0 - FOOT - titleh - GAP * 2 - rowh * 2)
+    local room = min(floor((h - K.TOP0 - K.FOOT) * K.PENS_PART), h - K.TOP0 - K.FOOT - titleh - K.GAP * 2 - rowh * 2)
     local offset = rollPens.offset or 0
     local raid, alt = ns.RollPen.Here()
     if rollPens.raid ~= raid or rollPens.alt ~= alt then offset = 0 end
@@ -485,11 +489,11 @@ local function PlaceRolls()
     rollPens:SetModel(ns.FaultsRoll.SummaryModel(raid, alt))
     rollPens.offset = offset
     rollPens:ClearAllPoints()
-    rollPens:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -TOP0)
-    local used = rollPens:Layout(frame:GetWidth() - PAD * 2)
+    rollPens:SetPoint("TOPLEFT", frame, "TOPLEFT", K.PAD, -K.TOP0)
+    local used = rollPens:Layout(frame:GetWidth() - K.PAD * 2)
     rollPens:Redraw()
     rollPens:Show()
-    return TOP0 + used + GAP
+    return K.TOP0 + used + K.GAP
 end
 function Mini.Draw()
     if not frame then return end
@@ -497,7 +501,7 @@ function Mini.Draw()
         PlaceHead(PlaceRolls())
     else
         if rollPens then rollPens:Hide() end
-        PlaceHead(TOP0)
+        PlaceHead(K.TOP0)
     end
     PaintHead()
     local n = Slots()
@@ -575,7 +579,7 @@ local function Ask(f)
     if s then return s, false end
     if not Calm() or S.Busy(f) then return nil, true end
     if asked == f then
-        if tries >= RETRY or (S.Failed and S.Failed(f)) then return nil, false end
+        if tries >= K.RETRY or (S.Failed and S.Failed(f)) then return nil, false end
         tries = tries + 1
     else
         asked, tries = f, 0
@@ -586,7 +590,7 @@ local function Ask(f)
 end
 local function Chosen(fights)
     Adopt(fights)
-    if pickKey == RAID then return (pickRef and Find(fights, pickRef)) or fights[1] end
+    if pickKey == K.RAID then return (pickRef and Find(fights, pickRef)) or fights[1] end
     if pickKey then
         local f = Find(fights, pickKey)
         if f then return f end
@@ -604,7 +608,7 @@ end
 local function FightRows(f, s)
     local view = View()
     local sub
-    if RATE[view] then
+    if K.RATE[view] then
         sub = ns.Rate(ns.MiniRows.Dps(list, s, view == "hps"))
     elseif view == "deaths" then
         sub = ns.MiniRows.Deaths(list, f, s)
@@ -616,16 +620,25 @@ local function FightRows(f, s)
     end
     Title(FightTitle(f), sub)
 end
+local function PeekPass(f)
+    return ns.Summary.Peek(f, true)
+end
 local function RaidRows(ref)
     local spot = ns.FightTree and ns.FightTree.Spot(ref)
     local raid = spot and spot.raid
     if not raid then return false end
     local R = ns.MiniRows
-    local sum = R.Raid(ns.FightTree.RaidFights(raid), ns.Summary.Peek)
+    local fights, gen = ns.FightTree.RaidFights(raid), ns.Summary.Gen()
+    local m = raidMemo
+    local sum = m.raid == raid and m.gen == gen and m.n == #fights and m.last == fights[#fights] and m.sum
+    if not sum then
+        sum = R.Raid(fights, PeekPass)
+        m.raid, m.gen, m.n, m.last, m.sum = raid, gen, #fights, fights[#fights], sum
+    end
     raidShown, raidSum = raid, sum
     local view = View()
     local sub
-    if RATE[view] then
+    if K.RATE[view] then
         sub = ns.Rate(R.Dps(list, sum, view == "hps"))
     elseif view == "deaths" then
         sub = R.RaidDeaths(list, sum, FightTitle)
@@ -652,13 +665,14 @@ local function RollRows()
 end
 local function WantLive()
     local M = ns.Meter
-    return RATE[View()] and pickKey == nil and M ~= nil and M.Fighting() or false
+    return K.RATE[View()] and pickKey == nil and M ~= nil and M.Fighting() or false
 end
 function Mini.Rebuild()
     if not frame then return end
     dirty = false
     wipe(list)
     model, raidSum = nil, nil
+    if pickKey ~= K.RAID then wipe(raidMemo) end
     if View() == "rolls" then
         live = false
         RollRows()
@@ -679,7 +693,7 @@ function Mini.Rebuild()
         dirty = true
     end
     fight = f
-    local rate = RATE[View()]
+    local rate = K.RATE[View()]
     if not f then
         local key = scanning and "tl.scanning" or (wait and "sum.busy" or "gpmini.nofight")
         Title(ns.T(key))
@@ -689,7 +703,7 @@ function Mini.Rebuild()
         Mini.Draw()
         return
     end
-    if pickKey == RAID then
+    if pickKey == K.RAID then
         if RaidRows(f) then
             Mini.Draw()
             return
@@ -713,8 +727,8 @@ local function SetOn(b, on)
     Kit.RoundTint(b, on or b.hovered)
 end
 local function PaintTabs(key)
-    for i = 1, #VIEWS do SetOn(viewBtns[VIEWS[i]], VIEWS[i] == key) end
-    if RATE[key] or key == "rolls" then
+    for i = 1, #K.VIEWS do SetOn(viewBtns[K.VIEWS[i]], K.VIEWS[i] == key) end
+    if K.RATE[key] or key == "rolls" then
         chat.tip = ns.T(key == "rolls" and "roll.report.tip" or (key == "hps" and "report.tip.heal" or "report.tip"))
     end
 end
@@ -727,7 +741,7 @@ local function SetView(key, auto)
     Mini.Rebuild()
 end
 function Mini.SetView(key)
-    if frame and frame:IsShown() and KNOWN[key] then SetView(key, key == View()) end
+    if frame and frame:IsShown() and K.KNOWN[key] then SetView(key, key == View()) end
 end
 function Mini.View()
     return View()
@@ -744,7 +758,7 @@ local function Watch()
         phase = phase + 1
         if combat then
             pickKey = nil
-            if not RATE[View()] then SetView("dps", true) end
+            if not K.RATE[View()] then SetView("dps", true) end
             dirty = true
         end
     end
@@ -752,7 +766,7 @@ local function Watch()
     local top = E and E.Ready() and E.Fights()[1]
     if not top then return end
     local k = TopStamp(top)
-    if seenTop == nil then seenTop = (time() - (top.to or 0) > FRESH) and k or false end
+    if seenTop == nil then seenTop = (time() - (top.to or 0) > K.FRESH) and k or false end
     if combat or k == seenTop then return end
     if not (GetNumRaidMembers() > 0 and ns.Raid.IsLead()) then
         seenTop = k
@@ -780,7 +794,7 @@ local function Rolled()
 end
 local function Tick(self, elapsed)
     acc = acc + elapsed
-    if acc < TICK then return end
+    if acc < K.TICK then return end
     acc = 0
     Watch()
     local M = ns.Meter
@@ -798,7 +812,7 @@ local function Choose(f)
     Mini.Rebuild()
 end
 local function ChooseRaid(ref)
-    pickKey, pickRef = RAID, ref and Key(ref) or nil
+    pickKey, pickRef = K.RAID, ref and Key(ref) or nil
     manualPhase = phase
     pool.offset, asked = 0, nil
     Mini.Rebuild()
@@ -829,7 +843,7 @@ local function PickMenu(self)
     local items = { { text = ns.T("mini.pick"), isTitle = true } }
     items[2] = { text = ns.T("mini.current"), checked = pickKey == nil, func = function() Choose(nil) end }
     if raid then
-        items[3] = { text = ns.T("mini.raid"), checked = pickKey == RAID, func = function() ChooseRaid(ref) end }
+        items[3] = { text = ns.T("mini.raid"), checked = pickKey == K.RAID, func = function() ChooseRaid(ref) end }
     end
     local n = 0
     for i = 1, #fights do
@@ -837,7 +851,7 @@ local function PickMenu(self)
         local sp = raid and ns.FightTree.Spot(f)
         if not raid or (sp and sp.raid == raid) then
             n = n + 1
-            if n > PICK_MAX then break end
+            if n > K.PICK_MAX then break end
             items[#items + 1] = { text = PickLabel(f), checked = pickKey == Key(f), func = function() Choose(f) end }
         end
     end
@@ -889,54 +903,54 @@ local function RowButton(kind)
     return b
 end
 local function Dims()
-    titleh, rowh = Kit.FontGrow(TITLEH), Kit.FontGrow(ROWH)
-    leadw, pctw = Kit.FontGrow(LEADW), Kit.FontGrow(PCTW)
+    titleh, rowh = Kit.FontGrow(K.TITLEH), Kit.FontGrow(K.ROWH)
+    leadw, pctw = Kit.FontGrow(K.LEADW), Kit.FontGrow(K.PCTW)
     headY, seatTop, chainMask = nil, nil, nil
 end
 local function Size(b, w)
-    b:SetWidth(w or floor(b.text:GetStringWidth() + VIEWPAD + 0.5))
+    b:SetWidth(w or floor(b.text:GetStringWidth() + K.VIEWPAD + 0.5))
     b:SetHeight(titleh)
 end
 local function Seat()
-    for i = 1, #VIEWS do
-        local b = viewBtns[VIEWS[i]]
+    for i = 1, #K.VIEWS do
+        local b = viewBtns[K.VIEWS[i]]
         b:ClearAllPoints()
-        b:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + (i - 1) * (TAB + TABGAP), -PAD)
+        b:SetPoint("TOPLEFT", frame, "TOPLEFT", K.PAD + (i - 1) * (K.TAB + K.TABGAP), -K.PAD)
     end
-    local cy = -(PAD + (TAB - CORNER) / 2)
+    local cy = -(K.PAD + (K.TAB - K.CORNER) / 2)
     close:ClearAllPoints()
-    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, cy)
+    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -K.PAD, cy)
     restore:ClearAllPoints()
-    restore:SetPoint("RIGHT", close, "LEFT", -CORNERGAP, 0)
+    restore:SetPoint("RIGHT", close, "LEFT", -K.CORNERGAP, 0)
     bar:ClearAllPoints()
-    bar:SetPoint("TOPLEFT", viewBtns[VIEWS[#VIEWS]], "TOPRIGHT", 0, 0)
-    bar:SetPoint("BOTTOMRIGHT", restore, "BOTTOMLEFT", 0, -(TAB - CORNER) / 2)
+    bar:SetPoint("TOPLEFT", viewBtns[K.VIEWS[#K.VIEWS]], "TOPRIGHT", 0, 0)
+    bar:SetPoint("BOTTOMRIGHT", restore, "BOTTOMLEFT", 0, -(K.TAB - K.CORNER) / 2)
     head:SetHeight(titleh)
     Size(give)
     Size(clearBtn)
     Size(prevBtn, titleh)
     Size(nextBtn, titleh)
-    local cs = min(titleh, Kit.FontGrow(CHAT_SIZE))
+    local cs = min(titleh, Kit.FontGrow(K.CHAT_SIZE))
     Kit.PlateSize(chat, cs)
-    local ps = Kit.FontGrow(PICK_ICON)
+    local ps = Kit.FontGrow(K.PICK_ICON)
     pickBtn.icon:SetWidth(ps)
     pickBtn.icon:SetHeight(ps)
     pickBtn:SetWidth(ps + 6)
     pickBtn:SetHeight(ps + 6)
-    local topW = PAD * 2 + #VIEWS * TAB + (#VIEWS - 1) * TABGAP + NAMEGAP + CORNER * 2 + CORNERGAP
-    local rowW = PAD * 2 + pickBtn:GetWidth() + TITLE_MIN + NAMEGAP + prevBtn:GetWidth() * 2
-        + max(give:GetWidth(), clearBtn:GetWidth() + chat:GetWidth()) + CHAINGAP * 2
-    local minW = min(MAX_W, max(MIN_W, topW, rowW))
-    local minH = min(MAX_H, max(MIN_H, TOP0 + titleh + GAP + FOOT + rowh * 4 + 14))
+    local topW = K.PAD * 2 + #K.VIEWS * K.TAB + (#K.VIEWS - 1) * K.TABGAP + K.NAMEGAP + K.CORNER * 2 + K.CORNERGAP
+    local rowW = K.PAD * 2 + pickBtn:GetWidth() + K.TITLE_MIN + K.NAMEGAP + prevBtn:GetWidth() * 2
+        + max(give:GetWidth(), clearBtn:GetWidth() + chat:GetWidth()) + K.CHAINGAP * 2
+    local minW = min(K.MAX_W, max(K.MIN_W, topW, rowW))
+    local minH = min(K.MAX_H, max(K.MIN_H, K.TOP0 + titleh + K.GAP + K.FOOT + rowh * 4 + 14))
     frame:SetMinResize(minW, minH)
     if frame:GetWidth() < minW then frame:SetWidth(minW) end
     if frame:GetHeight() < minH then frame:SetHeight(minH) end
 end
 local function BuildTabs()
-    for i = 1, #VIEWS do
-        local key = VIEWS[i]
+    for i = 1, #K.VIEWS do
+        local key = K.VIEWS[i]
         local label = "mini.view." .. key
-        local b = Round(frame, VIEW_ICON[key], TAB)
+        local b = Round(frame, K.VIEW_ICON[key], K.TAB)
         b.tipTitle = ns.T(label)
         b.tip = ns.T(label .. ".tip")
         b.onClick = function() SetView(key) end
@@ -944,12 +958,12 @@ local function BuildTabs()
     end
 end
 local function BuildWin()
-    close = Round(frame, "close", CORNER)
+    close = Round(frame, "close", K.CORNER)
     close.tipTitle = ns.T("kit.win.close")
     close.onClick = function()
         if ns.Shell then ns.Shell.Hide() else frame:Hide() end
     end
-    restore = Round(frame, "expand", CORNER)
+    restore = Round(frame, "expand", K.CORNER)
     restore.tipTitle = ns.T("kit.strip.restore")
     restore.tip = ns.T("mini.restore.tip")
     restore.onClick = function() if ns.Shell then ns.Shell.Open() end end
@@ -981,7 +995,7 @@ local function BuildHead()
         if raidSum then OpenRaid() else OpenFull(not live and fight or nil) end
     end)
     local level = head:GetFrameLevel() + 2
-    chat = Kit.ChatButton(frame, CHAT_SIZE)
+    chat = Kit.ChatButton(frame, K.CHAT_SIZE)
     chat:SetFrameLevel(level)
     chat.tip = ns.T("report.tip")
     chat.onClick = function(self)
@@ -992,7 +1006,7 @@ local function BuildHead()
             ns.ProofView.ReportMenu(self, ReportLines, heal and "report.menu.heal" or nil, nil, heal and "report.none.heal" or nil)
         end
     end
-    pickBtn = Kit.IconButton(frame, nil, PICK_ICON)
+    pickBtn = Kit.IconButton(frame, nil, K.PICK_ICON)
     Kit.Arrow(pickBtn.icon, false)
     pickBtn:SetPoint("LEFT", head, "LEFT", 0, 0)
     pickBtn:SetFrameLevel(level)
@@ -1028,34 +1042,49 @@ local function BuildHead()
     titleText:SetWordWrap(false)
 end
 local function BuildGrip()
-    grip = Kit.Grip(frame, GRIP)
+    grip = Kit.Grip(frame, K.GRIP)
     grip:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2, 2)
     grip:SetFrameLevel(frame:GetFrameLevel() + 5)
     grip.tipTitle = ns.T("iso.tip.grip")
     grip.onDown = function(_, button)
-        if button == "LeftButton" then frame:StartSizing("BOTTOMRIGHT") end
+        if button == "LeftButton" then
+            sizing = true
+            frame:StartSizing("BOTTOMRIGHT")
+        end
     end
-    grip.onUp = function() Mini.SavePlace() end
+    grip.onUp = function()
+        local was = sizing
+        sizing = false
+        Mini.SavePlace()
+        if was then Mini.Draw() end
+    end
 end
 local function Build()
     local p = Saved()
     frame = CreateFrame("Frame", "HTP_FailWatchShellMini", UIParent)
-    frame:SetWidth(min(MAX_W, max(MIN_W, Num(p.w) or W)))
-    frame:SetHeight(min(MAX_H, max(MIN_H, Num(p.h) or H)))
+    frame:SetWidth(min(K.MAX_W, max(K.MIN_W, Num(p.w) or K.W)))
+    frame:SetHeight(min(K.MAX_H, max(K.MIN_H, Num(p.h) or K.H)))
     frame:SetFrameStrata("HIGH")
     frame:SetToplevel(true)
     frame:SetClampedToScreen(true)
     frame:SetMovable(true)
     frame:SetResizable(true)
-    frame:SetMinResize(MIN_W, MIN_H)
-    frame:SetMaxResize(MAX_W, MAX_H)
+    frame:SetMinResize(K.MIN_W, K.MIN_H)
+    frame:SetMaxResize(K.MAX_W, K.MAX_H)
     frame:EnableMouse(true)
     frame:EnableMouseWheel(true)
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", function(self) self:StartMoving() end)
     frame:SetScript("OnDragStop", function() Mini.SavePlace() end)
     frame:SetScript("OnMouseWheel", Wheel)
-    frame:SetScript("OnSizeChanged", function() Mini.Draw() end)
+    frame:SetScript("OnSizeChanged", function()
+        if sizing then
+            local now = GetTime()
+            if now - sizedAt < K.SIZE_DRAW then return end
+            sizedAt = now
+        end
+        Mini.Draw()
+    end)
     frame:SetScript("OnShow", function()
         if ns.Meter then
             ns.Meter.Want("mini", true)

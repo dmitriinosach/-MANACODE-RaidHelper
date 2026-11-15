@@ -1,4 +1,7 @@
 local _, ns = ...
+local function SoftGrade(grade)
+    return grade == "yellow" or grade == "green"
+end
 local format = string.format
 local floor = math.floor
 local ceil = math.ceil
@@ -125,7 +128,7 @@ local function MainClick(self)
     local list, d = ListOf(r), r.data
     if not (d and list.fight) then return end
     local item = d.item
-    if d.ev.grade == "yellow" and not d.ev.bumped then
+    if SoftGrade(d.ev.grade) and not d.ev.bumped then
         ns.GPList.Charge(list.fight, item.name, d.ev)
     else
         ns.GPList.Issue(list.fight, { { name = item.name, sys = item.sys, events = { d.ev } } })
@@ -341,7 +344,7 @@ local function Proof(r, c, L, ask)
 end
 local function MarkModel(ev)
     return { icon = ns.GPList.Icon(ev.hit.icon), count = "1",
-        verdict = ev.grade == "yellow" and "yellow" or "red" }
+        verdict = (ev.grade == "yellow" or ev.grade == "green") and ev.grade or "red" }
 end
 local function Who(r, d, c, L)
     local x = c.left
@@ -407,7 +410,7 @@ local function FillFault(r, d, fight, c)
     if done then
         local tip = done.n and format(ns.T("ft.tip.done"), done.n, ns.Ledger.Unit(done.s)) or ns.T("led.menu.old")
         Done(r, c, L, done.n, tip, ns.Ledger.CanUndo(ev.key))
-    elseif ev.grade == "yellow" and not ev.bumped then
+    elseif SoftGrade(ev.grade) and not ev.bumped then
         local n = ns.Penalties.Amount(ev.hit.rule, item.sys) or 0
         if n > 0 then Main(r, c, L, "quiet", Amount(item, list.model, L, n), format(ns.T("ft.tip.charge"), n, unit)) end
     elseif ev.n > 0 then

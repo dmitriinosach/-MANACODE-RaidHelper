@@ -18,6 +18,7 @@ if TL then
         order = 10,
         build = function(page) TL.Attach(page) end,
         OnShow = function() TL.Opened() end,
+        OnHide = function() if TL.Closed then TL.Closed() end end,
         OnSize = function() TL.Layout() end,
         OnTheme = function() TL.Layout() end,
     })
@@ -121,12 +122,12 @@ if ns.TestSet then
 end
 if ns.ReadOnly then return end
 Shell.Register("gpcfg", {
-    label = "shell.tab.rules",
+    label = "shell.tab.gp",
     order = 110,
     right = true,
     icon = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\gp.tga",
     lit = "gp",
     go = function()
-        if FP then FP.Open("rules") else Shell.Open("gp") end
+        if FP then FP.Open() else Shell.Open("gp") end
     end,
 })

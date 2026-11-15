@@ -464,6 +464,20 @@ local function Merge(L, r, order)
     L.nf = n
 end
 local kept = setmetatable({}, { __mode = "k" })
+local KEEP = 2
+local keptOrder = {}
+local function Put(fight, f)
+    kept[fight] = f
+    if keptOrder[1] == fight then return end
+    for i = 2, #keptOrder do
+        if keptOrder[i] == fight then
+            table.remove(keptOrder, i)
+            break
+        end
+    end
+    table.insert(keptOrder, 1, fight)
+    while #keptOrder > KEEP do kept[table.remove(keptOrder)] = nil end
+end
 function FC.Pack(L)
     return { lang = ns.lang, n = L.nf or 0, t = L.fdT, icon = L.fdIcon, text = L.fdText, tip = L.fdTip, imp = L.fdImp,
              kind = L.fdKind, who = L.fdWho, all = L.fdAll or {}, by = L.fdLane or {}, action = L.fdAction }
@@ -474,13 +488,26 @@ function FC.Peek(fight)
     local s = ns.Summary and ns.Summary.Peek(fight)
     f = s and s.feed
     if f and f.lang == ns.lang then
-        kept[fight] = f
+        Put(fight, f)
         return f
     end
     return nil
 end
 function FC.Keep(fight, f)
-    kept[fight] = f
+    Put(fight, f)
+end
+function FC.Reset(keep)
+    for f in pairs(kept) do
+        if not (keep and keep[f]) then kept[f] = nil end
+    end
+    for i = #keptOrder, 1, -1 do
+        if not kept[keptOrder[i]] then table.remove(keptOrder, i) end
+    end
+end
+function FC.Held()
+    local n = 0
+    for _ in pairs(kept) do n = n + 1 end
+    return n
 end
 function FC.Reuse(L, f, res)
     local rows = {}

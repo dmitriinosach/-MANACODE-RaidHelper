@@ -10,7 +10,10 @@ local ICON = "Interface\\Icons\\INV_Misc_PocketWatch_01"
 local state
 local seenList, seenN = nil, -1
 local want, dirty, watching = false, true, false
-local function Noop() end
+local asked = false
+local function Scanned()
+    asked = false
+end
 local function Hm(sec)
     sec = max(0, floor(sec))
     return format("%d:%02d", floor(sec / 3600), floor(sec % 3600 / 60))
@@ -84,8 +87,9 @@ local function Sync()
     if want then
         if E.Ready() then
             want = false
-        elseif not UnitAffectingCombat("player") then
-            E.Scan(Noop)
+        elseif not asked and not UnitAffectingCombat("player") then
+            asked = true
+            E.Scan(Scanned)
         end
     end
     local list = E.Fights()
@@ -102,7 +106,7 @@ local function Active()
     return state ~= nil and time() - state.lastEnd < EVENING_GAP
 end
 local function Invalidated()
-    dirty = true
+    dirty, asked = true, false
     if watching then want = true end
 end
 if ns.Encounters and ns.Encounters.Invalidate then hooksecurefunc(ns.Encounters, "Invalidate", Invalidated) end

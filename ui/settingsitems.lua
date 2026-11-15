@@ -187,10 +187,7 @@ S.Section("rec", "store", {
           set = function(v) ns.Store.SetLimit(v) end },
         { kind = "check", key = "char", label = "set.rec.char", tip = "set.rec.char.tip",
           get = function() return Opt().recChar == true end,
-          set = function(on)
-              Opt().recChar = on or nil
-              Kit.Confirm(T("set.rec.char.ask"), T("set.rec.char.yes"), ReloadUI)
-          end },
+          set = function(on) Opt().recChar = on or nil end },
         { kind = "button", key = "clear", label = "set.rec.clear", confirm = "set.rec.clear.ask",
           tip = "set.rec.clear.tip", danger = true, order = 100,
           run = function()

@@ -252,13 +252,19 @@ function M.Status()
     if M.Active() then return ns.T("marksStatusMine") end
     if M.InRaid() and not M.CanMark() then return ns.T("marksStatusRights") end
 end
+local function waitsAlive(e)
+    for _, c in ipairs(e.list) do
+        if c.state == "dead" then return true end
+    end
+    return false
+end
 local function keep()
     last = M.Plan()
     pending = false
     local want = prefs().on and M.InRaid() and M.CanMark() and M.HasPlan(last)
     ns.Keeper.Update(want)
     if not M.Active() then
-        if want then pending = true end
+        if want and ns.Keeper.Waiting() then pending = true end
         return false
     end
     local now = GetTime()
@@ -270,7 +276,7 @@ local function keep()
             hold(i, e.owner)
         elseif e.owner then
             if place(i, e, now) then moved = true end
-        elseif e.list[1] then
+        elseif e.list[1] and waitsAlive(e) then
             pending = true
         end
     end

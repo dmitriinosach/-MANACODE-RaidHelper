@@ -274,8 +274,10 @@ local function Entries(p, s)
     end
     local spared = ns.Penalties and ns.Penalties.Spared(s, fight, p) or {}
     for k = 1, #spared do
-        list[#list + 1] = { icon = Icon(ns.Penalties.ICONS.mindps), count = Rate(spared[k].amount), verdict = "green",
-            lines = Tips.Spared(spared[k]) }
+        local sp = spared[k]
+        local dmg = sp.rule.kind == "mindmg"
+        list[#list + 1] = { icon = Icon(ns.Penalties.ICONS[sp.rule.kind]), count = dmg and ns.Short(sp.amount) or Rate(sp.amount),
+            verdict = "green", lines = Tips.Spared(sp) }
     end
     local fired = {}
     for _, hit in ipairs(pens[p.name] or {}) do
@@ -1050,6 +1052,11 @@ function View.Attach(frame)
     host:Hide()
     if ns.SumSide then ns.SumSide.Watch("fight", host, function() Render() end) end
 end
+local function Arrived(s, f)
+    if fight ~= f then return end
+    summary = s
+    Render()
+end
 function View.Show(f)
     if not host then return end
     fight = f
@@ -1058,13 +1065,7 @@ function View.Show(f)
     summary = ns.Summary.Peek(f)
     host:Show()
     Render()
-    if not summary then
-        ns.Summary.Of(f, function(s)
-            if fight ~= f then return end
-            summary = s
-            Render()
-        end)
-    end
+    if not summary then ns.Summary.Of(f, Arrived) end
 end
 function View.Hide()
     if host then host:Hide() end

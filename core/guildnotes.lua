@@ -195,7 +195,10 @@ local members = {}
 local byLower = {}
 local links = {}
 local altsOf = {}
-local dirty = true
+local stale = true
+local force = true
+local count = 0
+local builds = 0
 local loaded = false
 local askedAt = -1e9
 local function FindName(lower)
@@ -244,7 +247,7 @@ end
 local function BuildLinks()
     local cands = {}
     for name, m in pairs(members) do
-        Offer(cands, name, "qdkp", QdkpMain(name))
+        Offer(cands, name, "qdkp", m.qd)
         Offer(cands, name, "officer", m.off.main)
         Offer(cands, name, "note", m.pub.main)
         local list = m.off.alts or m.pub.alts
@@ -269,22 +272,45 @@ local function BuildLinks()
         end
     end
 end
-function GuildNotes.Refresh()
-    if not dirty then return end
-    dirty = false
-    local n = GetNumGuildMembers and GetNumGuildMembers(true) or 0
-    local fresh, lowers = {}, {}
+local function Same(n)
+    local seen = 0
     for i = 1, n do
         local name, _, rankIndex, level, _, _, note, officer, online, _, cls = GetGuildRosterInfo(i)
         if type(name) == "string" and name ~= "" then
+            local m = members[name]
+            if not m or m.note ~= (note or "") or m.officer ~= (officer or "") or m.qd ~= QdkpMain(name) then
+                return false
+            end
+            seen = seen + 1
+            m.online = online and true or false
+            m.level = tonumber(level) or 0
+            m.rank = tonumber(rankIndex) or 99
+            m.class = cls
+        end
+    end
+    return seen == count
+end
+function GuildNotes.Refresh()
+    if not stale then return end
+    stale = false
+    local n = GetNumGuildMembers and GetNumGuildMembers(true) or 0
+    if n > 0 then loaded = true end
+    if not force and n > 0 and Same(n) then return end
+    force = false
+    local fresh, lowers, c = {}, {}, 0
+    for i = 1, n do
+        local name, _, rankIndex, level, _, _, note, officer, online, _, cls = GetGuildRosterInfo(i)
+        if type(name) == "string" and name ~= "" then
+            if not fresh[name] then c = c + 1 end
             fresh[name] = { name = name, class = cls, level = tonumber(level) or 0, rank = tonumber(rankIndex) or 99,
                 online = online and true or false, note = note or "", officer = officer or "" }
             lowers[Lower(name)] = name
         end
     end
-    if n > 0 then loaded = true end
-    members, byLower = fresh, lowers
+    members, byLower, count = fresh, lowers, c
+    builds = builds + 1
     for name, m in pairs(members) do
+        m.qd = QdkpMain(name)
         m.off = GuildNotes.Parse(m.officer, m.class, FindName, name)
         m.pub = GuildNotes.Parse(m.note, m.class, FindName, name)
         Pick(m, "role")
@@ -322,12 +348,16 @@ function GuildNotes.AltsOf(main)
     GuildNotes.Refresh()
     return altsOf[main] or {}
 end
+function GuildNotes.Builds()
+    return builds
+end
 function GuildNotes.Invalidate()
-    dirty = true
+    stale, force = true, true
 end
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("GUILD_ROSTER_UPDATE")
 frame:RegisterEvent("PLAYER_GUILD_UPDATE")
-frame:SetScript("OnEvent", ns.Prof.Wrap("bg.guildnotes", function()
-    dirty = true
+frame:SetScript("OnEvent", ns.Prof.Wrap("bg.guildnotes", function(_, ev)
+    stale = true
+    if ev == "PLAYER_GUILD_UPDATE" then force = true end
 end))

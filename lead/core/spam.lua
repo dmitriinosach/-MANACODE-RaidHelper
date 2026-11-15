@@ -9,6 +9,8 @@ local MIN_EVERY = 15
 local DEF_EVERY = 60
 local STAGGER = 2
 local HOUR = 3600
+local TICK = 0.25
+local RECHECK = 5
 local LOOT = { "none", "roll", "rollBoe", "rollBoeShards", "sr1", "sr2", "sr3", "sr4", "epgp", "epAuc", "noSoft" }
 P.LOOT = LOOT
 local SPECIAL = {
@@ -26,10 +28,12 @@ local sentLog = {}
 local rotAt = 0
 local lastFits = true
 local onRun = {}
+local due, stale = 0, true
 function P.OnRun(fn)
     onRun[#onRun + 1] = fn
 end
 local function ran()
+    stale = true
     for _, fn in ipairs(onRun) do fn(running) end
     ns.Session.Changed()
 end
@@ -397,6 +401,7 @@ function P.ChanEvery(key) return chanCfg(key).every end
 function P.SetChanOn(key, on)
     chanCfg(key).on = on and true or false
     nextAt[key] = (running and on) and GetTime() or nil
+    stale = true
     ns.Session.Changed()
 end
 function P.SetChanEvery(key, sec)
@@ -563,21 +568,26 @@ function P.Ago(key)
 end
 local ticker = ns.NewFrame("Frame")
 local acc = 0
+ns.Session.OnChange(function() stale = true end)
 ticker:SetScript("OnUpdate", function(self, dt)
     if not running then return end
     acc = acc + dt
-    if acc < 0.25 then return end
+    if acc < TICK then return end
     acc = 0
+    local now = GetTime()
+    if not stale and now < due then return end
+    stale = false
     if P.OpenTotal() == 0 or stopFull() then
         P.Stop()
         return
     end
-    local now = GetTime()
     local msg, fits
+    local soon = now + RECHECK
     for _, c in ipairs(activeChannels()) do
         local t = nextAt[c.key]
         if not t then
-            nextAt[c.key] = now
+            t = now
+            nextAt[c.key] = t
         elseif now >= t then
             if msg == nil or P.Rotate() then
                 local _
@@ -585,7 +595,10 @@ ticker:SetScript("OnUpdate", function(self, dt)
                 lastFits = fits
             end
             if fits then deliver(c, msg, now) end
-            nextAt[c.key] = now + P.EveryOf(c.key)
+            t = now + P.EveryOf(c.key)
+            nextAt[c.key] = t
         end
+        if t < soon then soon = t end
     end
+    due = soon
 end)

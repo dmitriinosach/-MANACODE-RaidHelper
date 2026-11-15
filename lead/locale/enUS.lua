@@ -271,7 +271,7 @@ ns.locales.enUS = {
     slotGrpTitle  = "Raid group",
     slotGrpAuto   = "Auto: %d",
     slotGrpShort  = "g%d",
-    tipSlotGrp    = "Group where the empty slot shows on the Raid tab and where Sort by template moves the player. Auto: tanks 1, healers 5 (2 in 10-man), the rest fill free groups in order.",
+    tipSlotGrp    = "Raid group of the slot. Auto: tanks 1, healers 5 (2 in 10-man), the rest fill free groups in order.",
     bbPick        = "%s, %s",
     bbBoss_lichking = "Lich King",
     bbBoss_putricide = "Professor",
@@ -656,4 +656,7 @@ ns.locales.enUS = {
     tplEditing     = "Editing",
     btnTplUse      = "Use for gathering",
     tipTplUsed     = "This template is already used for gathering.",
+    tipTplUse      = "Template slots go to the Raid tab; Needs counters and {raid} follow it.",
+    tipTplCopy     = "Your own template with the same slots and spammer texts.",
+    tipReadyPult   = "Ready check for the whole raid. While it runs, raid buffs are polled automatically.",
 }

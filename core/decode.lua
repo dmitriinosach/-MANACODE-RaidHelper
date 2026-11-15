@@ -21,6 +21,18 @@ local K = ns.RecCodec.KIND
 local P, Q, N, F, S, X = K.P, K.Q, K.N, K.F, K.S, K.X
 local LAYOUTS = ns.RecCodec.LAYOUTS
 local tables = setmetatable({}, { __mode = "k" })
+local KEEP_SEGS = 3
+local order = {}
+local function Touch(seg)
+    for i = 2, #order do
+        if order[i] == seg then
+            table.remove(order, i)
+            break
+        end
+    end
+    table.insert(order, 1, seg)
+    while #order > KEEP_SEGS do tables[table.remove(order)] = nil end
+end
 local function List(v)
     if type(v) == "table" then return v end
     local out = {}
@@ -39,7 +51,10 @@ local function Memo(a, b, c, fill)
 end
 function Decode.Tables(seg)
     local T = tables[seg]
-    if T then return T end
+    if T then
+        if order[1] ~= seg then Touch(seg) end
+        return T
+    end
     local actors, spells, strs = List(seg.actors), List(seg.spells), List(seg.strs)
     T = { AG = {}, AN = {}, AF = {}, PI = {}, PN = {}, PS = {}, STR = {}, strs = strs, actors = actors }
     local AG, AN, AF = T.AG, T.AN, T.AF
@@ -71,6 +86,7 @@ function Decode.Tables(seg)
         return v
     end })
     tables[seg] = T
+    Touch(seg)
     return T
 end
 local function Generic(T, s)
@@ -83,6 +99,15 @@ local function Generic(T, s)
 end
 local ret = {}
 local tail = {}
+local TAIL_PAT = {}
+for _, layout in pairs(LAYOUTS) do
+    local k = 0
+    for i = 1, #layout do
+        if layout[i] ~= X then k = k + 1 end
+    end
+    TAIL_PAT[layout] = "^" .. string.rep(",?([^,;]*)", k)
+end
+local fld = {}
 local function TailInto(T, s, pos, gen, subtype, out, n, limit)
     local ch = byte(s, pos)
     local layout = gen == "" and subtype and LAYOUTS[subtype] or nil
@@ -96,6 +121,8 @@ local function TailInto(T, s, pos, gen, subtype, out, n, limit)
         end
         return n
     end
+    fld[1], fld[2], fld[3], fld[4], fld[5], fld[6], fld[7], fld[8], fld[9], fld[10] = match(s, TAIL_PAT[layout], pos)
+    local fi = 0
     for li = 1, #layout do
         if n >= limit then break end
         local kind = layout[li]
@@ -103,11 +130,8 @@ local function TailInto(T, s, pos, gen, subtype, out, n, limit)
             n = n + 1
             out[n] = nil
         else
-            local field = ""
-            if ch == B_COMMA then
-                field, pos = match(s, FIELD, pos + 1)
-                ch = byte(s, pos)
-            end
+            fi = fi + 1
+            local field = fld[fi]
             if kind == P or kind == Q then
                 out[n + 1] = T.PI[field] or nil
                 out[n + 2] = T.PN[field] or nil
@@ -180,7 +204,24 @@ function Decode.Forget()
 end
 function Decode.Drop(seg)
     tables[seg] = nil
+    for i = #order, 1, -1 do
+        if order[i] == seg then table.remove(order, i) end
+    end
     Decode.Forget()
+end
+function Decode.Reset(keep)
+    for seg in pairs(tables) do
+        if not (keep and keep[seg]) then tables[seg] = nil end
+    end
+    for i = #order, 1, -1 do
+        if not tables[order[i]] then table.remove(order, i) end
+    end
+    Decode.Forget()
+end
+function Decode.Held()
+    local n = 0
+    for _ in pairs(tables) do n = n + 1 end
+    return n
 end
 function Decode.Chunk(seg, s, maxTail)
     local T = Decode.Tables(seg)
@@ -254,13 +295,6 @@ local function Line(w)
         w.s, w.pos = chunk, 1
     end
 end
-local function Next(w)
-    local s, at, ci, abs = Line(w)
-    if not s then return nil, 0, 0, 0 end
-    local d = tonumber(match(s, "^(-?%d*)", at)) or 0
-    if abs then w.ms = d else w.ms = w.ms + d end
-    return s, at, ci, w.ms
-end
 function Decode.Span(seg, from, to)
     local chunks = seg.chunks
     local stopMs = to and (to - seg.t0) * 1000 + SEEK_SLACK or nil
@@ -302,9 +336,13 @@ function Decode.Scan(seg)
     local t0 = seg.t0
     return function()
         while true do
-            local s, at, _, ms = Next(w)
+            local s, at, _, abs = Line(w)
             if not s then return nil end
-            local _, gen, subId, src, dst, pos = match(s, HEAD, at)
+            local d, gen, subId, src, dst, pos = match(s, HEAD, at)
+            if not subId then d = match(s, "^(-?%d*)", at) end
+            d = tonumber(d) or 0
+            local ms = abs and d or w.ms + d
+            w.ms = ms
             if subId then
                 return s, pos, gen, t0 + ms / 1000, STR[subId] or nil, AG[src] or nil, AN[src] or nil, AF[src],
                     AG[dst] or nil, AN[dst] or nil, AF[dst]
@@ -321,10 +359,14 @@ function Decode.Heads(seg, from, to)
     local toMs = to and (to - t0) * 1000 + 1 or nil
     return function()
         while true do
-            local s, at, ci, ms = Next(w)
+            local s, at, ci, abs = Line(w)
             if not s then return nil end
+            local d, _, subId, src, dst = match(s, HEAD, at)
+            if not subId then d = match(s, "^(-?%d*)", at) end
+            d = tonumber(d) or 0
+            local ms = abs and d or w.ms + d
+            w.ms = ms
             if (not fromMs or ms >= fromMs) and (not toMs or ms <= toMs) then
-                local _, _, subId, src, dst = match(s, HEAD, at)
                 if subId then
                     curSeg, curS, curAt, curMs = seg, s, at, ms
                     return s, at, ci, t0 + ms / 1000, STR[subId] or nil, AN[src] or nil, AN[dst] or nil,

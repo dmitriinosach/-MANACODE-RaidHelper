@@ -415,6 +415,15 @@ function Penalties.Spared(s, fight, p)
             if bosses or spec then
                 out[#out + 1] = { rule = r, amount = dps, need = need, bosses = bosses or {}, spec = spec, class = p.class }
             end
+        elseif r.kind == "mindmg" and Applies(r, fight) and ns.OozeFair then
+            local fair, stat = ns.OozeFair.Of(s, p.name)
+            local melee = ns.IsMelee(p) == true
+            local need = Penalties.Threshold(r, melee and 1 or 2)
+            local sum = 0
+            for k = 1, #(r.targets or {}) do sum = sum + (p.targetDmg[ns.NpcKeyOf(r.targets[k])] or 0) end
+            if fair and need and sum < need and ns.OozeFair.Verdict(fair, need) == "no" then
+                out[#out + 1] = { rule = r, amount = sum, need = need, melee = melee, fair = fair, oz = stat.oz }
+            end
         end
     end
     return out
@@ -534,11 +543,18 @@ function Penalties.CureText(list)
     if #names > 0 then return format(ns.T("sum.shed.could"), concat(names, ", ")) end
     return known and ns.T("sum.shed.none") or nil
 end
+function Penalties.Soft(grade)
+    return grade == "yellow" or grade == "green"
+end
 function Penalties.Grade(hit)
+    local green = #hit.events > 0
     for k = 1, #hit.events do
-        if hit.events[k].grade ~= "yellow" then return "red" end
+        local g = hit.events[k].grade
+        if not Penalties.Soft(g) then return "red" end
+        if g ~= "green" then green = false end
     end
-    return #hit.events > 0 and "yellow" or "red"
+    if #hit.events == 0 then return "red" end
+    return green and "green" or "yellow"
 end
 local function BadgeEvents(s, p, rule, out, from)
     for i = 1, #(s.badges or {}) do
@@ -648,7 +664,13 @@ local function Detect(rule, p, s, fight)
             for i = 1, #(rule.targets or {}) do sum = sum + (p.targetDmg[ns.NpcKeyOf(rule.targets[i])] or 0) end
             local melee = ns.IsMelee(p) == true
             local need = Penalties.Threshold(rule, melee and 1 or 2)
-            if need and sum < need then out[1] = { t = nil, amount = sum, need = need, melee = melee } end
+            local fair, stat
+            if need and sum < need and ns.OozeFair then fair, stat = ns.OozeFair.Of(s, p.name) end
+            local v = fair and ns.OozeFair.Verdict(fair, need)
+            if need and sum < need then
+                out[1] = { t = nil, amount = sum, need = need, melee = melee, fair = fair, oz = stat and stat.oz,
+                           grade = v == "no" and "green" or (v == "edge" and "yellow" or nil) }
+            end
         end
     elseif kind == "mindps" then
         if p.role == "dps" and Applies(rule, fight) then
@@ -733,7 +755,10 @@ local function Manual(fight)
 end
 local function OnceOf(found)
     for k = 1, #found do
-        if found[k].grade ~= "yellow" then return found[k] end
+        if not Penalties.Soft(found[k].grade) then return found[k] end
+    end
+    for k = 1, #found do
+        if found[k].grade == "yellow" then return found[k] end
     end
     return found[1]
 end
@@ -764,7 +789,7 @@ local function Compute(s, fight, sys)
                 local events, nr, ny, paid = {}, 0, 0, 0
                 for k = 1, #found do
                     local f = found[k]
-                    local yellow = f.grade == "yellow"
+                    local yellow = Penalties.Soft(f.grade)
                     if yellow then ny = ny + 1 else nr = nr + 1 end
                     local key = table.concat({ fk, p.name, rule.key, yellow and ("y" .. ny) or nr }, "|")
                     local bumped = bump[key] == true and (yellow or wipe ~= nil)

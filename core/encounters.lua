@@ -850,23 +850,32 @@ function Encounters.PosWindow(fight, idx, from, to)
     InferNpcs(out, swings, count, fight, ns.maps and ns.maps[fight.boss])
     return out
 end
-local posReq = nil
-function Encounters.CancelPositions()
-    posReq = nil
-    ns.Jobs.Cancel(POS_KEY)
+local posReq = {}
+local function PosKey(who)
+    who = who or "map"
+    POS_KEY[who] = POS_KEY[who] or {}
+    return POS_KEY[who], who
 end
-function Encounters.Positions(fight, onDone)
+function Encounters.CancelPositions(who)
+    local key
+    key, who = PosKey(who)
+    posReq[who] = nil
+    ns.Jobs.Cancel(key)
+end
+function Encounters.Positions(fight, onDone, who)
+    local key
+    key, who = PosKey(who)
     local req = {}
-    posReq = req
-    ns.Jobs.Cancel(POS_KEY)
+    posReq[who] = req
+    ns.Jobs.Cancel(key)
     ns.Index.Get(fight, function(idx)
-        if posReq ~= req then return end
+        if posReq[who] ~= req then return end
         if not idx then
             onDone(nil, nil)
             return
         end
-        ns.Jobs.Run(POS_KEY, function() return BuildPositions(fight, idx) end, function(frames, rooms)
-            if posReq == req then onDone(frames, rooms) end
+        ns.Jobs.Run(key, function() return BuildPositions(fight, idx) end, function(frames, rooms)
+            if posReq[who] == req then onDone(frames, rooms) end
         end, "map.data", true)
     end, true)
 end

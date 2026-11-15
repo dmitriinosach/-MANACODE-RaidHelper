@@ -41,6 +41,8 @@ ns.Summary = Summary
 local cache = {}
 local order = {}
 local running = setmetatable({}, { __mode = "k" })
+local waiters = setmetatable({}, { __mode = "k" })
+local gen = 0
 local function Touch(fight)
     for i = 1, #order do
         if order[i] == fight then
@@ -58,14 +60,18 @@ local function Keep(fight, s)
     Touch(fight)
     return s
 end
-function Summary.Peek(fight)
+function Summary.Peek(fight, pass)
     local s = cache[fight]
     if s then return s end
     s = ns.Digest and ns.Digest.Load(fight)
     if not s then return nil end
-    if s.phases and ns.Phases then ns.Phases.Keep(fight, s.phases) end
     if ns.Achievements then s.ach = s.ach or {} end
+    if pass then return s end
+    if s.phases and ns.Phases then ns.Phases.Keep(fight, s.phases) end
     return Keep(fight, s)
+end
+function Summary.Gen()
+    return gen
 end
 local function ByCount(a, b)
     if a.n ~= b.n then return a.n > b.n end
@@ -623,6 +629,10 @@ local function Build(fight)
                 or sub == "UNIT_DIED") then
                 ns.Putri.Feed(pu, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, a1, a2, a4, a5, who)
             end
+            if pu and pu.fair then
+                ns.OozeFair.Feed(pu.fair, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, a1, a4, who,
+                    srcKey, dstKey)
+            end
             if sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_AURA_APPLIED" then
                 ns.RaidPart.Mine(byName, fight, ts, sub, rwho, srcName, srcFlags, a1, dstName, dstFlags, a2)
             end
@@ -1050,6 +1060,7 @@ local function Build(fight)
     if rs then ns.RuneSwap.Finish(rs) end
     if bn then ns.BloodNova.Finish(bn) end
     if ns.Away then ns.Away.Run(s, fight) end
+    if pu and pu.fair then ns.OozeFair.Finish(pu.fair, s) end
     if zb then s.zoneBuff = ns.ZoneBuff.Finish(zb) end
     if et then ns.EffTime.Finish(et, s) end
     s.rp = ns.RaidPart.Close(rp, s.players)
@@ -1077,6 +1088,7 @@ function Summary.Now(fight)
     ns.Jobs.Progress(FINISH_STEPS - 1, FINISH_STEPS)
     ns.Jobs.Yield()
     if ns.Digest then ns.Digest.Save(fight, s) end
+    gen = gen + 1
     return Keep(fight, s)
 end
 function Summary.Busy(fight)
@@ -1091,19 +1103,37 @@ function Summary.Of(fight, onDone)
     local have = Summary.Peek(fight)
     if have then
         Touch(fight)
-        onDone(have)
+        onDone(have, fight)
         return
     end
     for other, key in pairs(running) do
         if other ~= fight then ns.Jobs.Cancel(key) end
     end
-    ns.Jobs.Run(JobKey(fight), function()
+    local key = JobKey(fight)
+    local list = ns.Jobs.Busy(key) and waiters[fight]
+    local fresh = not list
+    if fresh then
+        list = {}
+        waiters[fight] = list
+    end
+    local seen = false
+    for i = 1, #list do
+        if list[i] == onDone then
+            seen = true
+            break
+        end
+    end
+    if not seen then list[#list + 1] = onDone end
+    ns.Jobs.Run(key, function()
         return Summary.Now(fight)
-    end, function(s)
-        if s then onDone(s) end
-    end, "sum.frame", true)
+    end, fresh and function(s)
+        if waiters[fight] == list then waiters[fight] = nil end
+        if not s then return end
+        for i = 1, #list do list[i](s, fight) end
+    end or nil, "sum.frame", true)
 end
 function Summary.Reset()
+    gen = gen + 1
     for k in pairs(cache) do cache[k] = nil end
     for i = #order, 1, -1 do order[i] = nil end
 end

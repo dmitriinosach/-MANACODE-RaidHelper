@@ -5,76 +5,77 @@ local min = math.min
 local sqrt = math.sqrt
 local huge = math.huge
 local format = string.format
-local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\replay\\"
-local CONE = ART .. "cone"
-local RIM = ART .. "rim"
-local SHARP = {
-    rim = { ART .. "rim512", 80 }, ring256 = { ART .. "ring512", 160 }, ring128 = { ART .. "ring512", 96 },
-    disc256 = { ART .. "disc512", 160 }, disc128 = { ART .. "disc512", 96 },
+local Q = {}
+Q.ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\replay\\"
+Q.CONE = Q.ART .. "cone"
+Q.RIM = Q.ART .. "rim"
+Q.SHARP = {
+    rim = { Q.ART .. "rim512", 80 }, ring256 = { Q.ART .. "ring512", 160 }, ring128 = { Q.ART .. "ring512", 96 },
+    disc256 = { Q.ART .. "disc512", 160 }, disc128 = { Q.ART .. "disc512", 96 },
 }
-local RING = ART .. "ring256"
-local LINE = ART .. "line"
-local ICICLE = ART .. "icicle"
-local STREAK = ART .. "streak"
-local BEAM = ART .. "beam"
-local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
-local POOL_DRAW = 48
-local AIM_DRAW = 2
-local WAVE_DRAW = 6
-local CONE_DRAW = 8
-local BLAST_DRAW = 16
-local ADD_DRAW = 48
-local LINE_DRAW = 12
-local AGGRO_W = 5
-local AGGRO_HL = 14
-local AGGRO_HW = 13
-local AGGRO_GAP = 8
-local AGGRO_SIDE = 4
-local AGGRO_RING = 0.8
-local THR_DRAW = 6
-local THR_WARN = 80
-local THR_HOT = 90
-local HIT_DRAW = 32
-local HIT_SHOW = 6
-local HIT_YD = 3
-local BLAST_SHOW = 1
-local FADE = 1
-local ADD_HOLD = math.huge
-local BADGE = 15
-local BADGE_ICON = 10
-local ROW = BADGE + 1
-local BADGE_PAD = (BADGE - BADGE_ICON) / 2
-local BADGES = 3
-local FX_SHOW = 7
-local FX_POOL = 12
-local FX_MAX = 32
-local KEY_B = 1024
-local LIFT_PX = 14
-local LINE_W = 3
-local PACT_GAP = 1
-local MAX_PX = 4000
-local SPIKE_W = 10
-local SPIKE_UP = 12
-local COUNT_DRAW = 8
-local CHASE_DRAW = 12
-local CHASE_YD = 1.6
-local RING_DRAW = 12
+Q.RING = Q.ART .. "ring256"
+Q.LINE = Q.ART .. "line"
+Q.ICICLE = Q.ART .. "icicle"
+Q.STREAK = Q.ART .. "streak"
+Q.BEAM = Q.ART .. "beam"
+Q.CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+Q.POOL_DRAW = 48
+Q.AIM_DRAW = 2
+Q.WAVE_DRAW = 6
+Q.CONE_DRAW = 8
+Q.BLAST_DRAW = 16
+Q.ADD_DRAW = 48
+Q.LINE_DRAW = 12
+Q.AGGRO_W = 5
+Q.AGGRO_HL = 14
+Q.AGGRO_HW = 13
+Q.AGGRO_GAP = 8
+Q.AGGRO_SIDE = 4
+Q.AGGRO_RING = 0.8
+Q.THR_DRAW = 6
+Q.THR_WARN = 80
+Q.THR_HOT = 90
+Q.HIT_DRAW = 32
+Q.HIT_SHOW = 6
+Q.HIT_YD = 3
+Q.BLAST_SHOW = 1
+Q.FADE = 1
+Q.ADD_HOLD = math.huge
+Q.BADGE = 15
+Q.BADGE_ICON = 10
+Q.ROW = Q.BADGE + 1
+Q.BADGE_PAD = (Q.BADGE - Q.BADGE_ICON) / 2
+Q.BADGES = 3
+Q.FX_SHOW = 7
+Q.FX_POOL = 12
+Q.FX_MAX = 32
+Q.KEY_B = 1024
+Q.LIFT_PX = 14
+Q.LINE_W = 3
+Q.PACT_GAP = 1
+Q.MAX_PX = 4000
+Q.SPIKE_W = 10
+Q.SPIKE_UP = 12
+Q.COUNT_DRAW = 8
+Q.CHASE_DRAW = 12
+Q.CHASE_YD = 1.6
+Q.RING_DRAW = 12
 local ceil = math.ceil
-local BOMB_TOP = 30
-local BOMB_H = 20
-local BOMB_ICON = 16
-local BOMB_EDGE = 3
-local BOMB_PAD = 6
-local SPIN_TEX = "Creature\\VOIDWALKER\\TORNADO2C"
-local VORTEX_DRAW = 4
-local VORTEX_SPIN = 1.6
-local VORTEX_SWIRL = 1.1
-local VORTEX_WAVE = 0.5
-local DROP_DRAW = 4
-local DROP_UP, DROP_SIDE = 34, 20
-local ICICLE_LEN, ICICLE_W = 5, 1.3
-local TRAIL_LEN = 12
-local BOOM_W, BOOM_H, BOOM_SHOW = 7, 26, 1.2
+Q.BOMB_TOP = 30
+Q.BOMB_H = 20
+Q.BOMB_ICON = 16
+Q.BOMB_EDGE = 3
+Q.BOMB_PAD = 6
+Q.SPIN_TEX = "Creature\\VOIDWALKER\\TORNADO2C"
+Q.VORTEX_DRAW = 4
+Q.VORTEX_SPIN = 1.6
+Q.VORTEX_SWIRL = 1.1
+Q.VORTEX_WAVE = 0.5
+Q.DROP_DRAW = 4
+Q.DROP_UP, Q.DROP_SIDE = 34, 20
+Q.ICICLE_LEN, Q.ICICLE_W = 5, 1.3
+Q.TRAIL_LEN = 12
+Q.BOOM_W, Q.BOOM_H, Q.BOOM_SHOW = 7, 26, 1.2
 local V = {}
 ns.ReplayLayersView = V
 local Kit = ns.Kit
@@ -114,7 +115,7 @@ local stats = { aggro = 0, thr = 0, badges = 0, pools = 0, aims = 0, cones = 0, 
                 chaseLines = 0, waves = 0, edge = 0, waveR = 0, collects = 0, addRings = 0, fx = 0, vortex = 0,
                 vortexWave = 0, drops = 0, booms = 0 }
 V.stats = stats
-local mode = { bright = 1, lift = nil, liftK = nil, fx = FX_SHOW, extra = nil, aggro = 1, swap = 0 }
+local mode = { bright = 1, lift = nil, liftK = nil, fx = Q.FX_SHOW, extra = nil, aggro = 1, swap = 0 }
 local extraIds = {}
 local fxIcons = {}
 local exSeen = {}
@@ -214,7 +215,7 @@ local function PutRect(tex, l, t, r, b, u0, v0, u1, v1)
     return true
 end
 local function PutEllipse(tex, sx, sy, rw, rh)
-    if rw * 2 > MAX_PX then return false end
+    if rw * 2 > Q.MAX_PX then return false end
     V.Sharp(tex, rw)
     return PutRect(tex, sx - rw, sy - rh, sx + rw, sy + rh, 0, 0, 1, 1)
 end
@@ -226,63 +227,63 @@ local Tex = RD.Tex
 function V.Build(v, m, focusLayer)
     view, marks = v, m
     Cc.Build(marks)
-    for i = 1, POOL_DRAW do pools[i] = Tex(marks, RIM, "BACKGROUND") end
-    for i = 1, AIM_DRAW do aimRings[i] = Tex(marks, RING, "BORDER") end
-    for i = 1, RING_DRAW do addRings[i] = Tex(marks, RIM, "BACKGROUND") end
-    for i = 1, WAVE_DRAW do winter.waves[i] = Tex(marks, RING, "BORDER") end
-    winter.edge = Tex(marks, RING, "BORDER")
-    for i = 1, DROP_DRAW do
-        drop.aim[i] = Tex(marks, LINE, "BORDER", "sem.rep.icicleAim")
-        drop.trail[i] = Tex(marks, STREAK, "OVERLAY", "sem.rep.icicleTrail")
-        drop.ice[i] = Tex(marks, ICICLE, "OVERLAY", "sem.rep.icicle")
-        drop.beam[i] = Tex(marks, BEAM, "OVERLAY", "sem.rep.icicleBoom")
+    for i = 1, Q.POOL_DRAW do pools[i] = Tex(marks, Q.RIM, "BACKGROUND") end
+    for i = 1, Q.AIM_DRAW do aimRings[i] = Tex(marks, Q.RING, "BORDER") end
+    for i = 1, Q.RING_DRAW do addRings[i] = Tex(marks, Q.RIM, "BACKGROUND") end
+    for i = 1, Q.WAVE_DRAW do winter.waves[i] = Tex(marks, Q.RING, "BORDER") end
+    winter.edge = Tex(marks, Q.RING, "BORDER")
+    for i = 1, Q.DROP_DRAW do
+        drop.aim[i] = Tex(marks, Q.LINE, "BORDER", "sem.rep.icicleAim")
+        drop.trail[i] = Tex(marks, Q.STREAK, "OVERLAY", "sem.rep.icicleTrail")
+        drop.ice[i] = Tex(marks, Q.ICICLE, "OVERLAY", "sem.rep.icicle")
+        drop.beam[i] = Tex(marks, Q.BEAM, "OVERLAY", "sem.rep.icicleBoom")
     end
-    for i = 1, VORTEX_DRAW do
-        vortex.fill[i] = Tex(marks, RIM, "BACKGROUND")
-        vortex.swirl[i] = Tex(marks, SPIN_TEX, "BORDER")
-        vortex.edge[i] = Tex(marks, RING, "BORDER")
-        vortex.wave[i] = Tex(marks, RING, "BORDER")
+    for i = 1, Q.VORTEX_DRAW do
+        vortex.fill[i] = Tex(marks, Q.RIM, "BACKGROUND")
+        vortex.swirl[i] = Tex(marks, Q.SPIN_TEX, "BORDER")
+        vortex.edge[i] = Tex(marks, Q.RING, "BORDER")
+        vortex.wave[i] = Tex(marks, Q.RING, "BORDER")
     end
-    for i = 1, HIT_DRAW do hits[i] = Tex(marks, CIRCLE, "BORDER", "sem.rep.hit") end
-    for i = 1, LINE_DRAW do lines[i] = Tex(marks, LINE, "BORDER", "sem.rep.pact") end
-    aggro = Tex(marks, LINE, "BORDER", "sem.rep.aggro")
-    aggroHead = Tex(marks, CONE, "BORDER", "sem.rep.aggro")
-    aggroRing = Tex(marks, RING, "BORDER", "sem.rep.aggro")
-    for i = 1, THR_DRAW do thrRings[i] = Tex(marks, RING, "BORDER") end
-    for i = 1, CONE_DRAW do cones[i] = Tex(marks, CONE, "ARTWORK", "sem.rep.cone") end
-    for i = 1, BLAST_DRAW do blasts[i] = Tex(marks, RIM, "ARTWORK", "sem.rep.blast") end
-    for i = 1, CHASE_DRAW do
-        chaseRings[i] = Tex(marks, RIM, "BORDER", "sem.rep.chase")
-        chaseLines[i] = Tex(marks, LINE, "BORDER", "sem.rep.chase")
+    for i = 1, Q.HIT_DRAW do hits[i] = Tex(marks, Q.CIRCLE, "BORDER", "sem.rep.hit") end
+    for i = 1, Q.LINE_DRAW do lines[i] = Tex(marks, Q.LINE, "BORDER", "sem.rep.pact") end
+    aggro = Tex(marks, Q.LINE, "BORDER", "sem.rep.aggro")
+    aggroHead = Tex(marks, Q.CONE, "BORDER", "sem.rep.aggro")
+    aggroRing = Tex(marks, Q.RING, "BORDER", "sem.rep.aggro")
+    for i = 1, Q.THR_DRAW do thrRings[i] = Tex(marks, Q.RING, "BORDER") end
+    for i = 1, Q.CONE_DRAW do cones[i] = Tex(marks, Q.CONE, "ARTWORK", "sem.rep.cone") end
+    for i = 1, Q.BLAST_DRAW do blasts[i] = Tex(marks, Q.RIM, "ARTWORK", "sem.rep.blast") end
+    for i = 1, Q.CHASE_DRAW do
+        chaseRings[i] = Tex(marks, Q.RIM, "BORDER", "sem.rep.chase")
+        chaseLines[i] = Tex(marks, Q.LINE, "BORDER", "sem.rep.chase")
     end
-    for i = 1, COUNT_DRAW do
+    for i = 1, Q.COUNT_DRAW do
         local fs = marks:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
         Kit.Text(fs, "sem.rep.count")
         fs:Hide()
         counts[i] = fs
     end
-    hitbox = Tex(marks, RIM, "BACKGROUND", "sem.rep.hitbox")
+    hitbox = Tex(marks, Q.RIM, "BACKGROUND", "sem.rep.hitbox")
     bomb = Kit.PlainFrame(v, 8)
-    bomb:SetHeight(BOMB_H)
-    bomb:SetPoint("TOP", v, "TOP", 0, -BOMB_TOP)
+    bomb:SetHeight(Q.BOMB_H)
+    bomb:SetPoint("TOP", v, "TOP", 0, -Q.BOMB_TOP)
     local bg = bomb:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(bomb)
     Kit.Paint(bg, "sem.rep.plate")
     local edge = bomb:CreateTexture(nil, "BORDER")
     edge:SetPoint("TOPLEFT", bomb, "TOPLEFT", 0, 0)
     edge:SetPoint("BOTTOMLEFT", bomb, "BOTTOMLEFT", 0, 0)
-    edge:SetWidth(BOMB_EDGE)
+    edge:SetWidth(Q.BOMB_EDGE)
     Kit.Paint(edge, "sem.rep.bomb")
     bomb.icon = bomb:CreateTexture(nil, "ARTWORK")
-    bomb.icon:SetWidth(BOMB_ICON)
-    bomb.icon:SetHeight(BOMB_ICON)
-    bomb.icon:SetPoint("LEFT", bomb, "LEFT", BOMB_EDGE + BOMB_PAD, 0)
+    bomb.icon:SetWidth(Q.BOMB_ICON)
+    bomb.icon:SetHeight(Q.BOMB_ICON)
+    bomb.icon:SetPoint("LEFT", bomb, "LEFT", Q.BOMB_EDGE + Q.BOMB_PAD, 0)
     bomb.text = bomb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    bomb.text:SetPoint("LEFT", bomb.icon, "RIGHT", BOMB_PAD / 2, 0)
+    bomb.text:SetPoint("LEFT", bomb.icon, "RIGHT", Q.BOMB_PAD / 2, 0)
     Kit.Text(bomb.text, "text.bad")
     bomb:Hide()
     focusLayer = focusLayer or m
-    for i = 1, FX_POOL do fxRow.tex[i] = V.Badge(focusLayer) end
+    for i = 1, Q.FX_POOL do fxRow.tex[i] = V.Badge(focusLayer) end
     fxRow.more = focusLayer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     fxRow.more:Hide()
 end
@@ -291,11 +292,11 @@ function V.Sharp(tex, rw)
     if key == nil then
         local p = tex.GetTexture and tex:GetTexture()
         key = type(p) == "string" and strlower(p):gsub("%.%a+$", ""):match("([%w_]+)$") or false
-        if key and not SHARP[key] then key = false end
+        if key and not Q.SHARP[key] then key = false end
         tex.sharpKey, tex.sharpSmall = key, p
     end
     if not key then return end
-    local big = SHARP[key]
+    local big = Q.SHARP[key]
     local want = rw > big[2] and big[1] or tex.sharpSmall
     if tex.sharpP ~= want then
         tex:SetTexture(want)
@@ -304,11 +305,11 @@ function V.Sharp(tex, rw)
 end
 local function BadgeRow(fig)
     local bd = {}
-    for i = 1, BADGES do bd[i] = V.Badge(fig) end
-    bd[2]:SetPoint("RIGHT", bd[1], "LEFT", -(ROW - BADGE_ICON), 0)
-    bd[3]:SetPoint("LEFT", bd[1], "RIGHT", ROW - BADGE_ICON, 0)
+    for i = 1, Q.BADGES do bd[i] = V.Badge(fig) end
+    bd[2]:SetPoint("RIGHT", bd[1], "LEFT", -(Q.ROW - Q.BADGE_ICON), 0)
+    bd[3]:SetPoint("LEFT", bd[1], "RIGHT", Q.ROW - Q.BADGE_ICON, 0)
     local more = fig:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    more:SetPoint("LEFT", bd[3], "RIGHT", BADGE_PAD + 1, 0)
+    more:SetPoint("LEFT", bd[3], "RIGHT", Q.BADGE_PAD + 1, 0)
     more:Hide()
     return bd, more
 end
@@ -319,7 +320,7 @@ function V.AddDebuff(fig, id, c1, c2, c3, n)
     local bd = fig.adb
     if n == 0 then
         if bd and fig.adbN ~= 0 then
-            for i = 1, BADGES do V.BadgeShow(bd[i], false) end
+            for i = 1, Q.BADGES do V.BadgeShow(bd[i], false) end
             fig.adbMore:Hide()
             fig.adbN, fig.adbA, fig.adbB, fig.adbC = 0, nil, nil, nil
         end
@@ -334,17 +335,17 @@ function V.AddDebuff(fig, id, c1, c2, c3, n)
     if fig.adbAt ~= at then
         fig.adbAt = at
         bd[1]:ClearAllPoints()
-        bd[1]:SetPoint("BOTTOM", at, "TOP", 0, BADGE_PAD + 1)
+        bd[1]:SetPoint("BOTTOM", at, "TOP", 0, Q.BADGE_PAD + 1)
     end
     if fig.adbN == n and fig.adbA == a and fig.adbB == b and fig.adbC == c then return end
     fig.adbN, fig.adbA, fig.adbB, fig.adbC = n, a, b, c
-    for i = 1, BADGES do
+    for i = 1, Q.BADGES do
         local id = i == 1 and a or (i == 2 and b or c)
         if id then Kit.Icon.Spell(bd[i], id) end
         V.BadgeShow(bd[i], id and true or false)
     end
-    if n > BADGES then
-        fig.adbMore:SetText("+" .. (n - BADGES))
+    if n > Q.BADGES then
+        fig.adbMore:SetText("+" .. (n - Q.BADGES))
         fig.adbMore:Show()
     else
         fig.adbMore:Hide()
@@ -355,21 +356,21 @@ function V.BadgesUp(fig)
 end
 function V.Badge(fig)
     local tex = fig:CreateTexture(nil, "ARTWORK")
-    tex:SetWidth(BADGE_ICON)
-    tex:SetHeight(BADGE_ICON)
+    tex:SetWidth(Q.BADGE_ICON)
+    tex:SetHeight(Q.BADGE_ICON)
     tex:Hide()
     local disc = fig:CreateTexture(nil, "BORDER")
-    disc:SetTexture(CIRCLE)
+    disc:SetTexture(Q.CIRCLE)
     Kit.Tint(disc, "sem.rep.castBg")
-    disc:SetWidth(BADGE)
-    disc:SetHeight(BADGE)
+    disc:SetWidth(Q.BADGE)
+    disc:SetHeight(Q.BADGE)
     disc:SetPoint("CENTER", tex, "CENTER", 0, 0)
     disc:Hide()
     local ring = fig:CreateTexture(nil, "OVERLAY")
-    ring:SetTexture(RING)
+    ring:SetTexture(Q.RING)
     Kit.Tint(ring, "sem.rep.badgeRim")
-    ring:SetWidth(BADGE)
-    ring:SetHeight(BADGE)
+    ring:SetWidth(Q.BADGE)
+    ring:SetHeight(Q.BADGE)
     ring:SetPoint("CENTER", tex, "CENTER", 0, 0)
     ring:Hide()
     tex.disc, tex.ring = disc, ring
@@ -395,17 +396,17 @@ function V.Attach(fig)
     fig.bdBase:SetPoint("BOTTOM", fig.icon, "TOP", 0, 0)
     fig.bd, fig.more = BadgeRow(fig)
     fig.adb, fig.adbMore = BadgeRow(fig)
-    fig.bd[1]:SetPoint("BOTTOM", fig.bdBase, "TOP", 0, BADGE_PAD + 1)
+    fig.bd[1]:SetPoint("BOTTOM", fig.bdBase, "TOP", 0, Q.BADGE_PAD + 1)
     fig.rowsLow, fig.rowsUp = false, 0
     fig.spike = fig:CreateTexture(nil, "OVERLAY")
-    fig.spike:SetTexture(CONE)
+    fig.spike:SetTexture(Q.CONE)
     fig.spike:SetTexCoord(0, 0, 1, 0, 0, 1, 1, 1)
     fig.spike:SetVertexColor(Kit.Color("sem.rep.bone"))
-    fig.spike:SetPoint("BOTTOMLEFT", fig, "CENTER", -SPIKE_W / 2, 0)
-    fig.spike:SetPoint("TOPRIGHT", fig.icon, "TOP", SPIKE_W / 2, SPIKE_UP)
+    fig.spike:SetPoint("BOTTOMLEFT", fig, "CENTER", -Q.SPIKE_W / 2, 0)
+    fig.spike:SetPoint("TOPRIGHT", fig.icon, "TOP", Q.SPIKE_W / 2, Q.SPIKE_UP)
     fig.spike:Hide()
     fig.halo = fig:CreateTexture(nil, "BORDER")
-    fig.halo:SetTexture(RIM)
+    fig.halo:SetTexture(Q.RIM)
     fig.halo:SetVertexColor(Kit.Color("sem.rep.victim"))
     fig.halo:SetPoint("TOPLEFT", fig, "TOPLEFT", -4, 4)
     fig.halo:SetPoint("BOTTOMRIGHT", fig, "BOTTOMRIGHT", 4, -4)
@@ -417,7 +418,7 @@ function V.Role(fig)
     fig.bKey, fig.lift, fig.mcOn, fig.grow, fig.look = nil, nil, nil, nil, nil
     fig.dbI1, fig.dbI2, fig.dbI3, fig.dbN = false, false, false, 0
     V.AddDebuff(fig, false)
-    for i = 1, BADGES do V.BadgeShow(fig.bd[i], false) end
+    for i = 1, Q.BADGES do V.BadgeShow(fig.bd[i], false) end
     fig.more:Hide()
     if fxRow.owner == fig then fxRow.key = nil end
     fig.spike:Hide()
@@ -447,13 +448,13 @@ function V.Use(scene)
     for i = 1, #addRings do addRings[i]:Hide() end
     for i = 1, #winter.waves do winter.waves[i]:Hide() end
     winter.edge:Hide()
-    for i = 1, DROP_DRAW do
+    for i = 1, Q.DROP_DRAW do
         drop.aim[i]:Hide()
         drop.trail[i]:Hide()
         drop.ice[i]:Hide()
         drop.beam[i]:Hide()
     end
-    for i = 1, VORTEX_DRAW do
+    for i = 1, Q.VORTEX_DRAW do
         vortex.fill[i]:Hide()
         vortex.swirl[i]:Hide()
         vortex.edge[i]:Hide()
@@ -465,15 +466,15 @@ function V.Use(scene)
     for k in pairs(used) do used[k] = 0 end
     for k in pairs(stats) do stats[k] = 0 end
     stats.countTop = nil
-    memo.L = nil
-    for i = 1, FX_POOL do V.BadgeShow(fxRow.tex[i], false) end
+    memo.L, memo.scene = nil, nil
+    for i = 1, Q.FX_POOL do V.BadgeShow(fxRow.tex[i], false) end
     fxRow.more:Hide()
     fxRow.owner, fxRow.key, fxRow.off = nil, nil, nil
     V.scene = scene
 end
 local function Fade(a, from, to, t)
     local left = to - t
-    if left < FADE then a = a * max(0, left / FADE) end
+    if left < Q.FADE then a = a * max(0, left / Q.FADE) end
     local born = t - from
     if born < 0.3 then a = a * max(0.3, born / 0.3) end
     return a
@@ -502,7 +503,7 @@ local function PlacePools(scene, cam, t)
     local act = ActivePools(L, t)
     for r = 1, #act do
         local j = act[r]
-        if n >= POOL_DRAW then break end
+        if n >= Q.POOL_DRAW then break end
         local def = L.plDef[j]
         if L.plFrom[j] <= t and L.plTo[j] > t and not (def.smoke or def.cloud) then
             local x, y = L.plX[j], L.plY[j]
@@ -519,7 +520,7 @@ local function PlacePools(scene, cam, t)
                         local solid = def.fade and L.plSolid and L.plSolid[j]
                         if solid and t > solid then a = a * (L.plTo[j] - t) / (L.plTo[j] - solid) end
                         tex:SetVertexColor(r, g, b, Fade(a, L.plFrom[j], L.plTo[j], t))
-                        if def.boom and nc < COUNT_DRAW then
+                        if def.boom and nc < Q.COUNT_DRAW then
                             nc = nc + 1
                             Count(counts[nc], sx, sy, max(0, ceil(def.boom - t)))
                         end
@@ -538,7 +539,7 @@ local function PlaceAims(scene, cam, t)
     local A, K = L.plAimT, L.plAimK
     local n = 0
     for j = 1, A and L.np or 0 do
-        if n >= AIM_DRAW then break end
+        if n >= Q.AIM_DRAW then break end
         local from = A[j]
         local s = from and from <= t and L.plFrom[j] > t and scene.states[K[j]]
         if s and s.vis then
@@ -550,7 +551,7 @@ local function PlaceAims(scene, cam, t)
                 n = n + 1
                 local r, g, b, a = Kit.Color(def.ring or def.tone)
                 a = Bright(a)
-                tex:SetVertexColor(r, g, b, Fade(a, from, L.plFrom[j] + FADE, t))
+                tex:SetVertexColor(r, g, b, Fade(a, from, L.plFrom[j] + Q.FADE, t))
             end
         end
     end
@@ -562,22 +563,22 @@ local function PlaceChase(scene, cam, t)
     local C = scene.layers.chase
     local nl, nr = 0, 0
     for i = 1, C and C.n or 0 do
-        if nr >= CHASE_DRAW then break end
+        if nr >= Q.CHASE_DRAW then break end
         local s = C.from[i] <= t and C.to[i] > t and scene.states[C.k[i]]
         if s and s.vis then
             local tx, ty, kt = Replay.Project(cam, s.x, s.y)
             if kt > 0 then
-                local rw = CHASE_YD * scene.ppy * cam.zoom * kt
+                local rw = Q.CHASE_YD * scene.ppy * cam.zoom * kt
                 if PutEllipse(chaseRings[nr + 1], tx, ty, rw, max(1, rw * min(1, cam.tilt * kt))) then nr = nr + 1 end
                 local add = C.add[i]
                 local ax, ay = -1, -1
-                if add and add.from <= t and add.to > t then ax, ay = Replay.PosHold(add, t, ADD_HOLD) end
+                if add and add.from <= t and add.to > t then ax, ay = Replay.PosHold(add, t, Q.ADD_HOLD) end
                 if ax >= 0 then
                     local sx, sy, ka = Replay.Project(cam, ax, ay)
                     local dx, dy = tx - sx, ty - sy
                     local d = sqrt(dx * dx + dy * dy)
                     if ka > 0 and d >= 2 then
-                        local nx, ny = -dy / d * LINE_W * 2, dx / d * LINE_W * 2
+                        local nx, ny = -dy / d * Q.LINE_W * 2, dx / d * Q.LINE_W * 2
                         if PutAffine(chaseLines[nl + 1], sx - nx / 2, sy - ny / 2, dx, dy, nx, ny) then nl = nl + 1 end
                     end
                 end
@@ -596,12 +597,12 @@ local function PlaceRings(scene, cam, t)
     local n = 0
     local idx = RingAdds(scene.layers, defs)
     for r = 1, #idx do
-        if n >= RING_DRAW then break end
+        if n >= Q.RING_DRAW then break end
         local a = list[idx[r]]
         local def = a.npc and defs[a.npc]
         local to = a.to or huge
         if def and a.from <= t and to > t and not (RV and RV.HideAdd(scene, a)) then
-            local x, y = Replay.PosHold(a, t, ADD_HOLD)
+            local x, y = Replay.PosHold(a, t, Q.ADD_HOLD)
             local sx, sy, k = 0, 0, 0
             if x >= 0 then sx, sy, k = Replay.Project(cam, x, y) end
             if k > 0 then
@@ -626,11 +627,11 @@ local function PlaceBlasts(scene, cam, t)
     local zoom = cam.zoom
     local c = Cursor(L, t)
     local lo = c.blast
-    while lo <= L.nb and L.bT[lo] + BLAST_SHOW <= t do lo = lo + 1 end
+    while lo <= L.nb and L.bT[lo] + Q.BLAST_SHOW <= t do lo = lo + 1 end
     c.blast = lo
     for j = lo, L.nb do
-        if n >= BLAST_DRAW or L.bT[j] > t then break end
-        if L.bT[j] + BLAST_SHOW > t then
+        if n >= Q.BLAST_DRAW or L.bT[j] > t then break end
+        if L.bT[j] + Q.BLAST_SHOW > t then
             local sx, sy, k = Replay.Project(cam, L.bX[j], L.bY[j])
             if k > 0 then
                 local rw = L.bR[j] * zoom * k
@@ -638,7 +639,7 @@ local function PlaceBlasts(scene, cam, t)
                 if PutEllipse(tex, sx, sy, rw, max(1, rw * min(1, cam.tilt * k))) then
                     n = n + 1
                     tex:SetVertexColor(Kit.Color(L.bTone[j] or "sem.rep.blast"))
-                    tex:SetAlpha(Bright(0.25 + 0.75 * (1 - (t - L.bT[j]) / BLAST_SHOW)))
+                    tex:SetAlpha(Bright(0.25 + 0.75 * (1 - (t - L.bT[j]) / Q.BLAST_SHOW)))
                 end
             end
         end
@@ -655,7 +656,7 @@ local function PlaceCones(scene, cam, t)
     while lo <= L.nc and L.cnTo[lo] <= t do lo = lo + 1 end
     c.cone = lo
     for j = lo, L.nc do
-        if n >= CONE_DRAW or L.cnT[j] > t then break end
+        if n >= Q.CONE_DRAW or L.cnT[j] > t then break end
         if L.cnTo[j] > t and L.cnX[j] >= 0 then
             local ox, oy = L.cnX[j], L.cnY[j]
             local len = L.cnLen[j]
@@ -687,7 +688,7 @@ function V.Adds(scene, t, out)
     local RV = ns.ReplayRealmView
     local n = 0
     for i = 1, #list do
-        if n >= ADD_DRAW then break end
+        if n >= Q.ADD_DRAW then break end
         local a = list[i]
         if a.from <= t and a.to > t and not a.look and not (RV and RV.HideAdd(scene, a))
             and not (a.cK and Layers.CarryAt(a, t)) then
@@ -696,7 +697,7 @@ function V.Adds(scene, t, out)
                 x, y = Replay.PosAtTime(scene.tracks[a.chaseK], t)
                 chase = true
             else
-                x, y = Replay.PosHold(a, t, ADD_HOLD)
+                x, y = Replay.PosHold(a, t, Q.ADD_HOLD)
             end
             if x >= 0 then
                 n = n + 1
@@ -729,9 +730,9 @@ local function Rows(fig)
     if fig.rowsLow ~= low then
         fig.rowsLow = low
         b[1]:ClearAllPoints()
-        b[1]:SetPoint("BOTTOM", fig.bdBase, "TOP", 0, (low and ROW or 0) + BADGE_PAD + 1)
+        b[1]:SetPoint("BOTTOM", fig.bdBase, "TOP", 0, (low and Q.ROW or 0) + Q.BADGE_PAD + 1)
     end
-    fig.rowsUp = (up and ROW or 0) + (low and ROW or 0)
+    fig.rowsUp = (up and Q.ROW or 0) + (low and Q.ROW or 0)
 end
 function V.Carry(scene, t, figs)
     local L = scene.layers
@@ -753,14 +754,14 @@ end
 local function PlaceHits(scene, cam, t)
     local L = scene.layers
     local n = 0
-    local w0 = 2 * HIT_YD * scene.ppy * cam.zoom
-    local lo = t - HIT_SHOW
+    local w0 = 2 * Q.HIT_YD * scene.ppy * cam.zoom
+    local lo = t - Q.HIT_SHOW
     local c = Cursor(L, t)
     local first = c.hit
     while first <= L.nh and L.hiT[first] < lo do first = first + 1 end
     c.hit = first
     for i = first, L.nh do
-        if n >= HIT_DRAW or L.hiT[i] > t then break end
+        if n >= Q.HIT_DRAW or L.hiT[i] > t then break end
         if L.hiT[i] >= lo then
             local sx, sy, k = Replay.Project(cam, L.hiX[i], L.hiY[i])
             if k > 0 then
@@ -768,7 +769,7 @@ local function PlaceHits(scene, cam, t)
                 local w = w0 * k
                 if PutEllipse(tex, sx, sy, w / 2, max(1, w * min(1, cam.tilt * k) / 2)) then
                     n = n + 1
-                    tex:SetAlpha(0.2 + 0.6 * (1 - (t - L.hiT[i]) / HIT_SHOW))
+                    tex:SetAlpha(0.2 + 0.6 * (1 - (t - L.hiT[i]) / Q.HIT_SHOW))
                 end
             end
         end
@@ -815,7 +816,7 @@ local function PlaceBomb(L, t)
     bomb.key = key
     bomb.str = format(ns.T("rep.bomb"), GetSpellInfo(def.icon) or "", ns.Dec(format("%.1f", key / 10)))
     bomb.text:SetText(bomb.str)
-    bomb:SetWidth(BOMB_EDGE + BOMB_PAD * 2 + BOMB_ICON + BOMB_PAD / 2 + (bomb.text:GetStringWidth() or 0))
+    bomb:SetWidth(Q.BOMB_EDGE + Q.BOMB_PAD * 2 + Q.BOMB_ICON + Q.BOMB_PAD / 2 + (bomb.text:GetStringWidth() or 0))
     bomb:Show()
 end
 function V.BombText()
@@ -866,7 +867,7 @@ local function Collect(L, n, t, fk)
         if def and to < nx then nx = to end
         if def and def.focus then
             local icon = BadgeIcon(def.icon)
-            if nfx < FX_MAX and not fxSeen[icon] then
+            if nfx < Q.FX_MAX and not fxSeen[icon] then
                 fxSeen[icon] = true
                 nfx = nfx + 1
                 fxList[nfx] = s
@@ -910,9 +911,9 @@ local function Collect(L, n, t, fk)
             if vt < nx then nx = vt end
             break
         end
-        if vt + BLAST_SHOW > t then
+        if vt + Q.BLAST_SHOW > t then
             flagHalo[L.vK[i]] = true
-            if vt + BLAST_SHOW < nx then nx = vt + BLAST_SHOW end
+            if vt + Q.BLAST_SHOW < nx then nx = vt + Q.BLAST_SHOW end
         end
     end
     return np, nx, nfx
@@ -933,7 +934,7 @@ local function DecorateFx(fig, nfx, k)
     for icon in pairs(exSeen) do exSeen[icon] = nil end
     local hidden = 0
     if fig and k and k > 0 then
-        for i = 1, BADGES do
+        for i = 1, Q.BADGES do
             local s = i == 1 and top1[k] or (i == 2 and top2[k] or top3[k])
             if s >= 0 then
                 n = n + 1
@@ -941,7 +942,7 @@ local function DecorateFx(fig, nfx, k)
                 exSeen[BadgeIcon(fxIcons[n])] = true
             end
         end
-        hidden = max(0, topN[k] - BADGES)
+        hidden = max(0, topN[k] - Q.BADGES)
     end
     for i = 1, nfx do
         local icon = Layers.State(fxList[i]).icon
@@ -970,12 +971,12 @@ local function DecorateFx(fig, nfx, k)
     fxRow.off = fig ~= nil and fig.shown == false
     local shown = fxRow.off and 0 or min(nfx, cap)
     fxRow.shown = shown
-    local w = shown * ROW - 1
-    for i = 1, FX_POOL do
+    local w = shown * Q.ROW - 1
+    for i = 1, Q.FX_POOL do
         local tex = fxRow.tex[i]
         if i <= shown then
             tex:ClearAllPoints()
-            tex:SetPoint("BOTTOM", fig.bd[1], "BOTTOM", -w / 2 + BADGE / 2 + (i - 1) * ROW, 0)
+            tex:SetPoint("BOTTOM", fig.bd[1], "BOTTOM", -w / 2 + Q.BADGE / 2 + (i - 1) * Q.ROW, 0)
             Kit.Icon.Spell(tex, fxIcons[i])
             V.BadgeShow(tex, true)
         else
@@ -985,7 +986,7 @@ local function DecorateFx(fig, nfx, k)
     local rest = max(0, nfx - cap) + hidden
     if shown > 0 and rest > 0 then
         fxRow.more:ClearAllPoints()
-        fxRow.more:SetPoint("LEFT", fxRow.tex[shown], "RIGHT", BADGE_PAD + 1, 0)
+        fxRow.more:SetPoint("LEFT", fxRow.tex[shown], "RIGHT", Q.BADGE_PAD + 1, 0)
         fxRow.more:SetText("+" .. rest)
         fxRow.more:Show()
     else
@@ -994,25 +995,25 @@ local function DecorateFx(fig, nfx, k)
 end
 local function Decorate(fig, k)
     local mine = k == memo.fk
-    local key = (top1[k] + 2) + (top2[k] + 2) * KEY_B + (top3[k] + 2) * KEY_B * KEY_B
-        + (topN[k] + (flagSpike[k] and KEY_B or 0)) * KEY_B * KEY_B * KEY_B
+    local key = (top1[k] + 2) + (top2[k] + 2) * Q.KEY_B + (top3[k] + 2) * Q.KEY_B * Q.KEY_B
+        + (topN[k] + (flagSpike[k] and Q.KEY_B or 0)) * Q.KEY_B * Q.KEY_B * Q.KEY_B
     if mine then key = -1 - (flagSpike[k] and 1 or 0) end
     if fig.bKey ~= key then
         fig.bKey = key
-        for i = 1, BADGES do
+        for i = 1, Q.BADGES do
             local s = i == 1 and top1[k] or (i == 2 and top2[k] or top3[k])
             if s >= 0 and not mine then Kit.Icon.Spell(fig.bd[i], Layers.State(s).icon) end
             V.BadgeShow(fig.bd[i], s >= 0 and not mine)
         end
-        if topN[k] > BADGES and not mine then
-            fig.more:SetText("+" .. (topN[k] - BADGES))
+        if topN[k] > Q.BADGES and not mine then
+            fig.more:SetText("+" .. (topN[k] - Q.BADGES))
             fig.more:Show()
         else
             fig.more:Hide()
         end
         if flagSpike[k] then fig.spike:Show() else fig.spike:Hide() end
     end
-    for i = 1, BADGES do
+    for i = 1, Q.BADGES do
         local s = low[i][k]
         fig["dbI" .. i] = s >= 0 and Layers.State(s).icon or false
     end
@@ -1024,7 +1025,7 @@ local function Decorate(fig, k)
     local cc = ccAt[k]
     local ccDef = cc >= 0 and Layers.State(memo.L.stS[cc]) or nil
     local ccKind = ccDef and (ccDef.ccLook or ccDef.hard and "ring") or nil
-    local lift = (flagLift[k] or ccKind == "cyclone") and LIFT_PX or nil
+    local lift = (flagLift[k] or ccKind == "cyclone") and Q.LIFT_PX or nil
     if fig.lift ~= lift then
         fig.lift = lift
         fig.sQ = nil
@@ -1033,20 +1034,20 @@ local function Decorate(fig, k)
     fig.look = flagLook[k] or nil
     if flagHalo[k] then fig.halo:Show() else fig.halo:Hide() end
     Cc.Set(fig, memo.scene, ccKind, ccKind and memo.L.stSrc[cc] or nil, ccKind and memo.L.stFrom[cc] or nil)
-    if topN[k] > 0 then stats.badges = stats.badges + min(BADGES, topN[k]) end
-    if low.n[k] > 0 then stats.badges = stats.badges + min(BADGES, low.n[k]) end
+    if topN[k] > 0 then stats.badges = stats.badges + min(Q.BADGES, topN[k]) end
+    if low.n[k] > 0 then stats.badges = stats.badges + min(Q.BADGES, low.n[k]) end
 end
 local function PlacePacts(figs, np)
     local n = 0
     for i = 1, np do
         for j = i + 1, np do
-            if n < LINE_DRAW and math.abs(pactFrom[i] - pactFrom[j]) <= PACT_GAP then
+            if n < Q.LINE_DRAW and math.abs(pactFrom[i] - pactFrom[j]) <= Q.PACT_GAP then
                 local a, b = figs[pactK[i]], figs[pactK[j]]
                 if a.shown and b.shown then
                     local dx, dy = b.sx - a.sx, b.sy - a.sy
                     local d = sqrt(dx * dx + dy * dy)
                     if d >= 2 then
-                        local nx, ny = -dy / d * LINE_W * 2, dx / d * LINE_W * 2
+                        local nx, ny = -dy / d * Q.LINE_W * 2, dx / d * Q.LINE_W * 2
                         if PutAffine(lines[n + 1], a.sx - nx / 2, a.sy - ny / 2, dx, dy, nx, ny) then n = n + 1 end
                     end
                 end
@@ -1057,7 +1058,7 @@ local function PlacePacts(figs, np)
     used.line = n
 end
 local function RingUnder(tex, fig, grow)
-    local rw = (fig.w or 0) * AGGRO_RING * (grow or 1)
+    local rw = (fig.w or 0) * Q.AGGRO_RING * (grow or 1)
     return rw >= 2 and PutEllipse(tex, fig.sx, fig.sy, rw, max(1, rw * (fig.flat or 1)))
 end
 local function ThreatRow(scene, t)
@@ -1090,7 +1091,7 @@ local function PlaceAggro(scene, t, figs)
         if hk > 0 and swapAt.hk > 0 then swapAt.t = t end
         swapAt.hk = hk
     end
-    local aw, ahw = AGGRO_W * mode.aggro, AGGRO_HW * mode.aggro
+    local aw, ahw = Q.AGGRO_W * mode.aggro, Q.AGGRO_HW * mode.aggro
     local grow = 1
     if mode.swap > 0 and t - swapAt.t < mode.swap then grow = 1 + 0.8 * (1 - (t - swapAt.t) / mode.swap) end
     stats.swap = grow > 1 and 1 or 0
@@ -1098,12 +1099,12 @@ local function PlaceAggro(scene, t, figs)
     if fig and fig.shown and bf and bf.shown then
         local dx, dy = fig.sx - bf.sx, fig.sy - bf.sy
         local d = sqrt(dx * dx + dy * dy)
-        if d > AGGRO_GAP * 2 + AGGRO_HL then
+        if d > Q.AGGRO_GAP * 2 + Q.AGGRO_HL then
             local ux, uy = dx / d, dy / d
-            local ox, oy = -uy * AGGRO_SIDE, ux * AGGRO_SIDE
-            local tx, ty = fig.sx - ux * AGGRO_GAP + ox, fig.sy - uy * AGGRO_GAP + oy
-            local hx, hy = tx - ux * AGGRO_HL, ty - uy * AGGRO_HL
-            local sx, sy = bf.sx + ux * AGGRO_GAP + ox, bf.sy + uy * AGGRO_GAP + oy
+            local ox, oy = -uy * Q.AGGRO_SIDE, ux * Q.AGGRO_SIDE
+            local tx, ty = fig.sx - ux * Q.AGGRO_GAP + ox, fig.sy - uy * Q.AGGRO_GAP + oy
+            local hx, hy = tx - ux * Q.AGGRO_HL, ty - uy * Q.AGGRO_HL
+            local sx, sy = bf.sx + ux * Q.AGGRO_GAP + ox, bf.sy + uy * Q.AGGRO_GAP + oy
             local nx, ny = -uy * aw, ux * aw
             local wx, wy = -uy * ahw, ux * ahw
             drawn = PutAffine(aggro, sx - nx / 2, sy - ny / 2, hx - sx, hy - sy, nx, ny)
@@ -1128,15 +1129,15 @@ local function PlaceAggro(scene, t, figs)
         local byK = Replay.ByK(scene)
         for i = 1, #top do
             local e = top[i]
-            local k = e.scaled >= THR_WARN and e.name ~= r.who and byK[e.name]
+            local k = e.scaled >= Q.THR_WARN and e.name ~= r.who and byK[e.name]
             local f = k and k ~= hk and figs[k]
-            if f and f.shown and n < THR_DRAW and RingUnder(thrRings[n + 1], f) then
+            if f and f.shown and n < Q.THR_DRAW and RingUnder(thrRings[n + 1], f) then
                 n = n + 1
-                thrRings[n]:SetVertexColor(Kit.Color(e.scaled >= THR_HOT and "sem.rep.thrHot" or "sem.rep.thrWarn"))
+                thrRings[n]:SetVertexColor(Kit.Color(e.scaled >= Q.THR_HOT and "sem.rep.thrHot" or "sem.rep.thrWarn"))
             end
         end
     end
-    for i = n + 1, THR_DRAW do thrRings[i]:Hide() end
+    for i = n + 1, Q.THR_DRAW do thrRings[i]:Hide() end
     stats.thr = n
 end
 local function PlaceWinter(scene, cam, t)
@@ -1184,25 +1185,25 @@ local function PlaceDrops(scene, cam, t)
     local n, nb = 0, 0
     for i = 1, list and #list or 0 do
         local d = list[i]
-        if nb < DROP_DRAW and t >= d.t and t < d.t + BOOM_SHOW then
+        if nb < Q.DROP_DRAW and t >= d.t and t < d.t + Q.BOOM_SHOW then
             local gx, gy, k = Replay.Project(cam, d.x, d.y)
             local tex = drop.beam[nb + 1]
             local yd = scene.ppy * cam.zoom * k
-            local w, h = BOOM_W * yd, BOOM_H * yd * min(1, cam.tilt * k + 0.3)
-            local q = (t - d.t) / BOOM_SHOW
+            local w, h = Q.BOOM_W * yd, Q.BOOM_H * yd * min(1, cam.tilt * k + 0.3)
+            local q = (t - d.t) / Q.BOOM_SHOW
             local half = w * (1 + 0.4 * q) / 2
-            if k > 0 and w < MAX_PX and h < MAX_PX and PutRect(tex, gx - half, gy - h, gx + half, gy, 0, 0, 1, 1) then
+            if k > 0 and w < Q.MAX_PX and h < Q.MAX_PX and PutRect(tex, gx - half, gy - h, gx + half, gy, 0, 0, 1, 1) then
                 nb = nb + 1
                 local r, g, b, a = Kit.Color("sem.rep.icicleBoom")
                 tex:SetVertexColor(r, g, b, a * (1 - q))
             end
         end
-        if n < DROP_DRAW and lead > 0 and t >= d.t - lead and t < d.t then
+        if n < Q.DROP_DRAW and lead > 0 and t >= d.t - lead and t < d.t then
             local gx, gy, k = Replay.Project(cam, d.x, d.y)
             if k > 0 then
                 n = n + 1
                 local yd = scene.ppy * cam.zoom * k
-                local sx, sy = gx + DROP_SIDE * yd, gy - DROP_UP * yd
+                local sx, sy = gx + Q.DROP_SIDE * yd, gy - Q.DROP_UP * yd
                 local q = (t - (d.t - lead)) / lead
                 q = q * q
                 local px, py = sx + (gx - sx) * q, sy + (gy - sy) * q
@@ -1212,20 +1213,20 @@ local function PlaceDrops(scene, cam, t)
                 local nx, ny = -fy, fx
                 local ax, ay = gx - px, gy - py
                 local rest = sqrt(ax * ax + ay * ay)
-                local w = max(1, LINE_W * 0.5)
+                local w = max(1, Q.LINE_W * 0.5)
                 if rest >= 2 then
                     PutAffine(drop.aim[n], px - nx * w / 2, py - ny * w / 2, ax, ay, nx * w, ny * w)
                 else
                     drop.aim[n]:Hide()
                 end
-                local tl = min(TRAIL_LEN * yd, len * q)
-                local tw = ICICLE_W * yd * 1.1
+                local tl = min(Q.TRAIL_LEN * yd, len * q)
+                local tw = Q.ICICLE_W * yd * 1.1
                 if tl >= 2 then
                     PutAffine(drop.trail[n], px - nx * tw / 2, py - ny * tw / 2, -fx * tl, -fy * tl, nx * tw, ny * tw)
                 else
                     drop.trail[n]:Hide()
                 end
-                local il, iw = ICICLE_LEN * yd, ICICLE_W * yd
+                local il, iw = Q.ICICLE_LEN * yd, Q.ICICLE_W * yd
                 PutAffine(drop.ice[n], px - nx * iw / 2, py - ny * iw / 2, -fx * il, -fy * il, nx * iw, ny * iw)
             end
         end
@@ -1247,10 +1248,10 @@ local function PlaceVortex(scene, cam, t)
     for i = 1, zones and #zones or 0 do
         local z = zones[i]
         local def = z.def
-        if n < VORTEX_DRAW and def.spin and z.from <= t and z.to > t then
+        if n < Q.VORTEX_DRAW and def.spin and z.from <= t and z.to > t then
             local sx, sy, k = Replay.Project(cam, z.x, z.y)
             local rw = def.r * scene.ppy * cam.zoom * k
-            if k > 0 and rw * 2 <= MAX_PX then
+            if k > 0 and rw * 2 <= Q.MAX_PX then
                 n = n + 1
                 local tilt = min(1, cam.tilt * k)
                 local on, arm = t - z.from, def.arm or 0
@@ -1263,17 +1264,17 @@ local function PlaceVortex(scene, cam, t)
                 r, g, b, a = Kit.Color("sem.rep.vortexEdge")
                 if PutEllipse(tex, sx, sy, rw, max(1, rw * tilt)) then tex:SetVertexColor(r, g, b, a * lit * fade) end
                 local grow = arm > 0 and min(1, on / arm) or 1
-                local s = rw * (0.35 + 0.65 * grow) * VORTEX_SWIRL
-                local ang = t * VORTEX_SPIN + i
+                local s = rw * (0.35 + 0.65 * grow) * Q.VORTEX_SWIRL
+                local ang = t * Q.VORTEX_SPIN + i
                 local c, sn = math.cos(ang) * s, math.sin(ang) * s
                 tex = vortex.swirl[n]
                 if PutAffine(tex, sx - c + sn, sy - (sn + c) * tilt, 2 * c, 2 * sn * tilt, -2 * sn, 2 * c * tilt) then
                     r, g, b, a = Kit.Color("sem.rep.vortexSwirl")
                     tex:SetVertexColor(r, g, b, a * (0.5 + 0.5 * lit) * fade)
                 end
-                local ph = def.pulse and on >= arm and (on - arm) % def.pulse or VORTEX_WAVE
-                if ph < VORTEX_WAVE then
-                    local q = ph / VORTEX_WAVE
+                local ph = def.pulse and on >= arm and (on - arm) % def.pulse or Q.VORTEX_WAVE
+                if ph < Q.VORTEX_WAVE then
+                    local q = ph / Q.VORTEX_WAVE
                     local wr = rw * (0.25 + 0.75 * q)
                     tex = vortex.wave[nw + 1]
                     if PutEllipse(tex, sx, sy, wr, max(1, wr * tilt)) then
@@ -1362,7 +1363,7 @@ function V.SetMode(m)
     m = m or {}
     mode.bright = m.bright or 1
     mode.lift, mode.liftK = m.lift, m.liftK
-    mode.fx = math.min(FX_POOL, m.fx or FX_SHOW)
+    mode.fx = math.min(Q.FX_POOL, m.fx or Q.FX_SHOW)
     mode.extra = m.extra
     mode.aggro = m.aggro or 1
     mode.swap = m.swap or 0

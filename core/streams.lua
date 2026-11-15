@@ -169,41 +169,64 @@ function Streams.Frames(segs, out, from, to)
     end
     tsort(marks, function(a, b) return a.t < b.t end)
     local state, seen, hpNow, maxNow = {}, {}, {}, {}
+    local moved, dirty, nd = {}, {}, 0
     local lastFloor, lastLive = nil, nil
     local mk = 0
     local total = #list
+    local snap = nil
     for fi = 1, total do
         ns.Jobs.Step(16)
         ns.Jobs.Progress(fi, total)
         local ts = list[fi]
+        local changed = snap == nil
+        nd = 0
         for name, tr in pairs(hps) do
             local i = tr.i
-            while tr.t[i] and tr.t[i] <= ts do
-                hpNow[name], maxNow[name] = tr.a[i], tr.b[i]
-                local pt = state[name]
-                if pt then state[name] = { x = pt.x, y = pt.y, hp = tr.a[i], max = tr.b[i], stale = pt.stale } end
-                i = i + 1
+            local T = tr.t
+            if T[i] and T[i] <= ts then
+                repeat i = i + 1 until not (T[i] and T[i] <= ts)
+                hpNow[name], maxNow[name] = tr.a[i - 1], tr.b[i - 1]
+                tr.i = i
+                nd = nd + 1
+                dirty[nd] = name
             end
-            tr.i = i
         end
         for name, tr in pairs(pos) do
             local i = tr.i
             while tr.t[i] and tr.t[i] <= ts do
                 PutPos(state, seen, name, hpNow[name] or 0, maxNow[name], tr.a[i] / MAP_UNITS, tr.b[i] / MAP_UNITS, tr.t[i])
+                moved[name] = fi
+                changed = true
                 i = i + 1
             end
             tr.i = i
         end
+        for d = 1, nd do
+            local name = dirty[d]
+            local pt = state[name]
+            if pt and moved[name] ~= fi then
+                if pt.stale then
+                    state[name] = { x = pt.x, y = pt.y, hp = hpNow[name], max = maxNow[name], stale = true }
+                else
+                    state[name] = { x = pt.x, y = pt.y, hp = hpNow[name], max = maxNow[name] }
+                end
+                changed = true
+            end
+        end
         mk = MapAt(marks, ts, mk)
         local mark = marks[mk]
-        local snap, live = {}, 0
+        local live = 0
         for name, pt in pairs(state) do
             if pt.stale and ts - (seen[name] or ts) > POS_HOLD then
                 pt = { x = 0, y = 0, hp = pt.hp, max = pt.max }
                 state[name] = pt
+                changed = true
             end
             if not pt.stale and (pt.x > 0 or pt.y > 0) then live = live + 1 end
-            snap[name] = pt
+        end
+        if changed then
+            snap = {}
+            for name, pt in pairs(state) do snap[name] = pt end
         end
         local level = mark and mark.level or 0
         local lost = nil

@@ -148,7 +148,7 @@ local function diffItem(n)
 end
 local function openMarks()
     ns.Marks.SetOpen(true)
-    if root.Shell and root.Shell.Open then root.Shell.Open("raid") end
+    if root.Shell and root.Shell.Has("raid") then root.Shell.Open("raid") end
 end
 local markItems
 local function marksRow()

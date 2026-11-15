@@ -539,7 +539,7 @@ local function HitTexts(fight, name, p, s, hit, out, view)
     end
     local gp, done = Sum(hit.events)
     local head = Head(name, rule, gp, done)
-    if gp == 0 and ns.Penalties and ns.Penalties.Grade(hit) == "yellow" then
+    if gp == 0 and ns.Penalties and ns.Penalties.Grade(hit) ~= "red" then
         head = format(T(RollKey("proof.head.maybe")), TAG, Plain(name), Plain(ns.Penalties.Reason(rule)))
     end
     out[#out + 1] = Compose(head, Chain(fight, hit, p, s))

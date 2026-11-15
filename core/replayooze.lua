@@ -112,12 +112,13 @@ local function Near(list, t, lo)
 end
 local function Lead(add, d, r, e, x, y, Pos)
     local arr = e - min(d.lag or 0, (e - r.a) / 2)
-    local t = r.a + STEP
+    local t, pt = r.a + STEP, r.a
     while t < arr do
         local tx, ty = Pos(r.n, t)
         if tx then
-            local k = (t - r.a) / (arr - r.a)
-            ns.Replay.Push(add, t, x + (tx - x) * k, y + (ty - y) * k, 1, 0)
+            local k = (t - pt) / (arr - pt)
+            x, y, pt = x + (tx - x) * k, y + (ty - y) * k, t
+            ns.Replay.Push(add, t, x, y, 1, 0)
         end
         t = t + STEP
     end
@@ -188,33 +189,60 @@ local function Calm(scene, byName, s, e, fx, fy)
     end
     return n
 end
+local PAIRS = {}
+local function Pairs(F)
+    if PAIRS[F] then return PAIRS[F] end
+    local out = {}
+    for q = 1, #F.pipes do
+        local a, da, b, db = nil, huge, nil, huge
+        for p = 1, #F.spots do
+            local d = (F.spots[p][1] - F.pipes[q][1]) ^ 2 + (F.spots[p][2] - F.pipes[q][2]) ^ 2
+            if d < da then a, da, b, db = p, d, a, da
+            elseif d < db then b, db = p, d end
+        end
+        out[q] = { a, b }
+    end
+    PAIRS[F] = out
+    return out
+end
 local function Lit(F, px, py, r2, tx, ty, i0, i1, fx, fy, nf)
-    local lit, cov, calm = {}, {}, {}
+    local lit, cov, calm, used = {}, {}, {}, {}
+    local pairs2 = Pairs(F)
+    local function In(x, y, pr)
+        for k = 1, 2 do
+            local p = pr[k]
+            if (x - px[p]) ^ 2 + (y - py[p]) ^ 2 <= r2 then return true end
+        end
+        return false
+    end
     while true do
         local best, gain = nil, 0
-        for p = 1, #px do
-            if not lit[p] then
+        for q = 1, #pairs2 do
+            local pr = pairs2[q]
+            if not used[q] then
                 local g = 0
                 for i = i0, i1 do
-                    if not cov[i] and (tx[i] - px[p]) ^ 2 + (ty[i] - py[p]) ^ 2 <= r2 then g = g + 1 end
+                    if not cov[i] and In(tx[i], ty[i], pr) then g = g + 1 end
                 end
                 if g > 0 then
                     local f = 0
-                    for q = 1, nf do
-                        if not calm[q] and (fx[q] - px[p]) ^ 2 + (fy[q] - py[p]) ^ 2 <= r2 then f = f + 1 end
+                    for k = 1, nf do
+                        if not calm[k] and In(fx[k], fy[k], pr) then f = f + 1 end
                     end
                     local v = g - F.lam * f
-                    if v > gain then best, gain = p, v end
+                    if v > gain then best, gain = q, v end
                 end
             end
         end
         if not best then return lit end
-        lit[best] = true
+        used[best] = true
+        local pr = pairs2[best]
+        lit[pr[1]], lit[pr[2]] = true, true
         for i = i0, i1 do
-            if (tx[i] - px[best]) ^ 2 + (ty[i] - py[best]) ^ 2 <= r2 then cov[i] = true end
+            if In(tx[i], ty[i], pr) then cov[i] = true end
         end
-        for q = 1, nf do
-            if (fx[q] - px[best]) ^ 2 + (fy[q] - py[best]) ^ 2 <= r2 then calm[q] = true end
+        for k = 1, nf do
+            if In(fx[k], fy[k], pr) then calm[k] = true end
         end
     end
 end

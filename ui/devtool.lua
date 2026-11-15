@@ -151,6 +151,19 @@ local function KitPaint()
     end
     Out({ Kit.DevPainted() and format(T("dev.kit.out.on"), n) or T("dev.kit.out.off") })
 end
+local function RawLabel()
+    return format(T("dev.chk.raw"), T(ns.GetDB().settings.keepRaw and "dev.dummy.on" or "dev.dummy.off"))
+end
+local function KeepRaw()
+    local on = not ns.GetDB().settings.keepRaw
+    if ns.Store then ns.Store.SetKeepRaw(on) else ns.GetDB().settings.keepRaw = on or nil end
+    local b = View.btn.raw
+    if b then
+        b:SetText(RawLabel())
+        b.tipTitle = RawLabel()
+    end
+    Out({ T(on and "dev.raw.out.on" or "dev.raw.out.off") })
+end
 local function OnBtn(self)
     self.run(self.arg)
 end
@@ -194,7 +207,7 @@ local CHECKS = {
     { "cpulast", CpuLast }, { "spec", Spec }, { "lag", Lag },
     { "cpulive", function() if ns.CpuLiveView then ns.CpuLiveView.Toggle() end end },
     { "ver", function() if ns.VerToast then ns.VerToast.Demo() end end },
-    { "kit", KitPaint },
+    { "kit", KitPaint }, { "raw", KeepRaw },
     { "epkill", function() Out(ns.RaidEP.DevKill(), true) end },
     { "epmember", function() Out(ns.RaidEP.DevMember(), true) end },
     { "epgroup", function() Out(ns.RaidEP.DevGroup(), true) end },
@@ -220,7 +233,7 @@ local function BuildParts()
     for i = 1, #CHECKS do
         local key = CHECKS[i][1]
         local text = key == "spec" and SpecLabel() or key == "lag" and LagLabel() or key == "kit" and KitLabel()
-            or T("dev.chk." .. key)
+            or key == "raw" and RawLabel() or T("dev.chk." .. key)
         local b = Btn(frame, text, T("dev.chk." .. key .. ".tip"), CHECKS[i][2])
         parts.checks[i] = b
         View.btn[key] = b

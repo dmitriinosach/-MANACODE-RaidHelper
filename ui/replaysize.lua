@@ -270,7 +270,7 @@ local function BuildHead(frame, onClose, onStep)
     mx.onClick = function() Size.Toggle() end
     local close = Kit.TabPart(bar, "close")
     close.tipTitle = ns.T("kit.win.close")
-    close.tip = ns.T("kit.win.close.tip")
+    close.tipFoot = { { kind = "foot", key = "Esc", left = ns.T("kit.win.close.tip") } }
     close.onClick = function() onClose() end
     st.winParts = { fold, mx, close }
     if ns.Web then
@@ -385,7 +385,9 @@ function Size.Fold()
     if not st.strip then BuildStrip() end
     local _, playing = Iso.Now()
     local x, y = Kit.TopLeftOf(f)
+    st.folding = true
     f:Hide()
+    st.folding = false
     Iso.SetPlaying(playing)
     st.strip.label:SetText(ns.ReplayBar.Title(Iso.Scene().fight, true))
     st.shownSec, st.shownPlay = nil, nil
@@ -396,6 +398,9 @@ function Size.Unfold()
     DropStrip()
     local Iso = ns.ReplayIso
     if Iso.Shown() then st.frame:Show() else Iso.Show() end
+end
+function Size.Folding()
+    return st.folding == true
 end
 function Size.IsFolded()
     return st.strip ~= nil and st.strip:IsShown() and true or false

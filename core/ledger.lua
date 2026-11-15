@@ -7,6 +7,7 @@ local min = math.min
 local tremove = table.remove
 local MAX_REASON = 200
 local MAX_LOG = 2000
+local PRUNE_GAP = 60
 local EP_MEMO = 30
 local HOT = { "slack", "death", "wipe" }
 local HOT_SUM = { slack = 200, death = 400, wipe = 800 }
@@ -397,3 +398,79 @@ function Ledger.Sums(rows)
     end
     return out
 end
+local function FromOf(key)
+    return type(key) == "string" and tonumber(key:match("^[^|]*|(%d+)")) or nil
+end
+local function AliveTest(db)
+    local spans, memo = {}, {}
+    local function Add(s)
+        local t0 = type(s) == "table" and tonumber(s.t0)
+        if t0 then spans[#spans + 1] = { t0 - PRUNE_GAP, (tonumber(s.t1) or t0) + PRUNE_GAP } end
+    end
+    local segs = type(db.segments) == "table" and db.segments or {}
+    for i = 1, #segs do Add(segs[i]) end
+    Add(db.live)
+    return function(key)
+        local from = FromOf(key)
+        if not from then return true end
+        local hit = memo[from]
+        if hit == nil then
+            hit = false
+            for i = 1, #spans do
+                if from >= spans[i][1] and from <= spans[i][2] then
+                    hit = true
+                    break
+                end
+            end
+            memo[from] = hit
+        end
+        return hit
+    end
+end
+function Ledger.Prune()
+    local db = ns.GetDB()
+    if type(db) ~= "table" or (ns.RecLock and ns.RecLock()) then return 0, 0, 0 end
+    local alive = AliveTest(db)
+    local nd, nm, nb = 0, 0, 0
+    local fl = type(db.faults) == "table" and db.faults or nil
+    if fl and type(fl.done) == "table" then
+        local logged = {}
+        local log = type(fl.log) == "table" and fl.log or {}
+        for i = 1, #log do
+            local row = log[i]
+            if type(row) == "table" and row.kind ~= "undo" and type(row.keys) == "table" then
+                for k = 1, #row.keys do logged[row.keys[k]] = true end
+            end
+        end
+        for key in pairs(fl.done) do
+            if not logged[key] or not alive(key) then
+                fl.done[key] = nil
+                nd = nd + 1
+            end
+        end
+    end
+    local gp = type(db.gp) == "table" and db.gp or nil
+    if gp and type(gp.manual) == "table" then
+        for fk in pairs(gp.manual) do
+            if not alive(fk) then
+                gp.manual[fk] = nil
+                nm = nm + 1
+            end
+        end
+    end
+    if gp and type(gp.bump) == "table" then
+        for key in pairs(gp.bump) do
+            if not alive(key) then
+                gp.bump[key] = nil
+                nb = nb + 1
+            end
+        end
+    end
+    return nd, nm, nb
+end
+local pruner = CreateFrame("Frame")
+pruner:RegisterEvent("PLAYER_ENTERING_WORLD")
+pruner:SetScript("OnEvent", function(self)
+    self:UnregisterEvent("PLAYER_ENTERING_WORLD")
+    Ledger.Prune()
+end)

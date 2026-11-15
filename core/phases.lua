@@ -5,6 +5,20 @@ local Phases = {}
 ns.Phases = Phases
 local indexes = setmetatable({}, { __mode = "k" })
 local cache = setmetatable({}, { __mode = "k" })
+local KEEP = 2
+local order = {}
+local function Put(fight, res)
+    cache[fight] = res
+    if order[1] == fight then return end
+    for i = 2, #order do
+        if order[i] == fight then
+            table.remove(order, i)
+            break
+        end
+    end
+    table.insert(order, 1, fight)
+    while #order > KEEP do cache[table.remove(order)] = nil end
+end
 local function Hook(idx, trig, hook)
     hook.sub = trig[1]
     idx.subs[hook.sub] = true
@@ -139,7 +153,7 @@ function Phases.Done(fight, tr)
         local times, ends = tr.res.waves[kind], tr.res.ends[kind]
         if w.stop and #ends < #times then ends[#times] = tr.to - tr.from end
     end
-    cache[fight] = tr.res
+    Put(fight, tr.res)
     return tr.res
 end
 function Phases.Marks(fight, res)
@@ -164,5 +178,18 @@ function Phases.Get(fight)
     return s and s.phases or nil
 end
 function Phases.Keep(fight, res)
-    cache[fight] = res
+    Put(fight, res)
+end
+function Phases.Reset(keep)
+    for f in pairs(cache) do
+        if not (keep and keep[f]) then cache[f] = nil end
+    end
+    for i = #order, 1, -1 do
+        if not cache[order[i]] then table.remove(order, i) end
+    end
+end
+function Phases.Held()
+    local n = 0
+    for _ in pairs(cache) do n = n + 1 end
+    return n
 end

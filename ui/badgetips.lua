@@ -386,7 +386,7 @@ end
 function Tips.Cons(list)
     local out = {}
     local e = list[1]
-    local name = e.id and GetItemInfo and GetItemInfo(e.id) or e.item
+    local name = ns.ConsumableName(e.id, e.spell, e.item)
     Head(out, name or "?", format("x%d", #list))
     for k = 1, min(TIMES, #list) do
         Put(out, "sub", Signed(list[k].t))
@@ -948,9 +948,119 @@ function Tips.TombBody(out, st, k, many)
             a.h < 0.1 and "bad" or "warn")
     end
 end
+local OOZE_ONLY = { g = "sum.tt.oz.only.g", r = "sum.tt.oz.only.r" }
+local OOZE_CUTS = { "v", "s", "o", "n", "d", "w" }
+local OOZE_WHY = { s = "sum.tt.oz.cut.s", o = "sum.tt.oz.cut.o", n = "sum.tt.oz.cut.n", w = "sum.tt.oz.cut.w" }
+local OOZE_LINE = 52
+local function Chars(s)
+    return #(s:gsub("[\128-\191]", ""))
+end
+local function OozeDead(o, dead)
+    for i = 1, #(dead or {}) do
+        local w = dead[i]
+        if w.a < o.z and (not w.z or w.z > o.a) then
+            if w.z then return format(T("sum.tt.oz.cut.dz"), Clock(w.a), Clock(w.z)) end
+            return format(T("sum.tt.oz.cut.d"), Clock(w.a))
+        end
+    end
+    return format(T("sum.tt.oz.cut.d"), Clock(dead and dead[1] and dead[1].a or 0))
+end
+local function OozeCuts(o, c, dead)
+    local cut = c.cut or {}
+    local parts, sum = {}, 0
+    for i = 1, #OOZE_CUTS do
+        local k = OOZE_CUTS[i]
+        local n = k == "w" and c.with and (c.sec or 0) - c.with or cut[k] or 0
+        if n > 0 then
+            local text
+            if k == "v" then
+                local only = o.k == "g" and "r" or "g"
+                text = T(OOZE_ONLY[only])
+                if c.only == only and c.vfrom then text = format(T("sum.tt.oz.from"), text, Clock(c.vfrom)) end
+                if c.only == only and c.vto then text = format(T("sum.tt.oz.till"), text, Clock(c.vto)) end
+            elseif k == "d" then
+                text = OozeDead(o, dead)
+            else
+                text = T(OOZE_WHY[k])
+            end
+            parts[#parts + 1] = format(T("sum.tt.oz.cut.of"), text, n)
+            sum = sum + n
+        end
+    end
+    return parts, sum
+end
+local function OozeLines(out, key, parts)
+    local line
+    for i = 1, #parts do
+        local try = line and (line .. ", " .. parts[i]) or parts[i]
+        if line and Chars(format(T(key), try)) > OOZE_LINE then
+            Put(out, "sub", format(T(key), line), nil, nil, "dim")
+            line = parts[i]
+        else
+            line = try
+        end
+    end
+    if line then Put(out, "sub", format(T(key), line), nil, nil, "dim") end
+end
+local function OozeRow(out, o, c, dead)
+    local kind = T(o.k == "g" and "sum.tt.oz.g" or "sum.tt.oz.r")
+    local sec = c.sec or 0
+    local why, lost = OozeCuts(o, c, dead)
+    local can = c.with or sec
+    Put(out, "row", format(T("sum.tt.oz.row"), Clock(o.a), kind, can + lost), Short(c.on), sec > 0 and Short(c.can) or "—")
+    if sec > 0 then
+        Put(out, "sub", format(T("sum.tt.oz.sec"), can), format(T("sum.tt.oz.dps"), Short(c.on / sec)),
+            format(T("sum.tt.oz.dps"), Short(c.rate or 0)))
+    end
+    OozeLines(out, "sum.tt.oz.cut", why)
+    if sec > 0 and c.went then
+        local parts = {}
+        for i = 1, #c.went do
+            local w = c.went[i]
+            local n = w.n == "#g" and T("sum.tt.oz.g") or w.n == "#r" and T("sum.tt.oz.r") or w.n
+            parts[i] = n .. " " .. Short(w.v)
+        end
+        OozeLines(out, "sum.tt.oz.went", parts)
+    end
+end
+local function OozeTape(out, fair)
+    local var, tg = fair.var or {}, fair.tg or {}
+    if #var + #tg == 0 then return end
+    Put(out, "sub", T("sum.tt.oz.h.debuff"), T("sum.tt.oz.h.time"), T("sum.tt.oz.h.kind"), "dim")
+    for i = 1, #var do
+        local e = var[i]
+        Put(out, "sub", e.id and Glyph(e.id) .. ns.SpellName(e.id) or T("sum.tt.oz.h.debuff"), format(T("sum.tt.oz.span"), Clock(e.a), Clock(e.z)),
+            T(e.k == "g" and "sum.tt.oz.g" or "sum.tt.oz.r"))
+    end
+    for i = 1, #tg do
+        local e = tg[i]
+        Put(out, "sub", T("sum.tt.oz.tg"), format(T("sum.tt.oz.span"), Clock(e.a), Clock(e.z)),
+            T(e.k == "g" and "sum.tt.oz.g" or "sum.tt.oz.r"))
+    end
+    Put(out, "sep")
+end
+function Tips.OozeFair(out, fair, oz, need)
+    OozeTape(out, fair)
+    Put(out, "sub", T("sum.tt.oz.h.ooze"), T("sum.tt.oz.h.hit"), T("sum.tt.oz.h.can"), "dim")
+    local on = 0
+    for j = 1, #oz do
+        local c = fair.c[j]
+        if c then
+            on = on + c.on
+            OozeRow(out, oz[j], c, fair.dead)
+        end
+    end
+    Put(out, "row", T("sum.tt.oz.total"), Short(on), "~" .. Short(fair.pot), fair.pot < need and "good" or "bad")
+end
 function Tips.Spared(sp)
     local out = {}
     Head(out, ns.Penalties.Reason(sp.rule))
+    if sp.fair then
+        Put(out, "row", T(sp.melee and "sum.tt.needmelee" or "sum.tt.needranged"),
+            ns.Penalties.OfText(sp.rule, sp.melee and 1 or 2, sp.amount, sp.need), nil, "warn")
+        Tips.OozeFair(out, sp.fair, sp.oz or {}, sp.need)
+        return out
+    end
     Put(out, "row", T("sum.tt.needdps"), ns.Penalties.OfText(sp.rule, 1, sp.amount, sp.need))
     Put(out, "row", T("sum.tt.healer"), nil, nil, "good")
     if sp.spec and sp.class then Put(out, "sub", T("sum.tt.healspec"), T("spec." .. sp.class .. "." .. sp.spec)) end
@@ -973,6 +1083,7 @@ function Tips.Hit(fight, hit, reason, row)
         local key = info.melee == nil and "sum.tt.needdps" or (info.melee and "sum.tt.needmelee" or "sum.tt.needranged")
         Put(out, "row", T(key), ns.Penalties.OfText(rule, info.melee == false and 2 or 1, info.amount or 0, info.need),
             nil, "bad")
+        if info.fair then Tips.OozeFair(out, info.fair, info.oz or {}, info.need) end
     elseif info and info.tomb then
         Tips.TombSum(out, info.tomb, info.limit or 0)
         for k = 1, min(3, #hit.events) do

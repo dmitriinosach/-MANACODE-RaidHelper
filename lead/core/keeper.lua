@@ -78,6 +78,9 @@ function K.Mine()
     if not since or GetTime() - since < GRACE then return false end
     return K.Who() == UnitName("player")
 end
+function K.Waiting()
+    return since and GetTime() - since < GRACE and true or false
+end
 function K.Peers()
     local out = {}
     for name in pairs(peers) do out[#out + 1] = name end

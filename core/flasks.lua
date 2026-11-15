@@ -1,7 +1,7 @@
 local _, ns = ...
 local max, min, floor = math.max, math.min, math.floor
 local gmatch, format = string.gmatch, string.format
-local tsort, concat = table.sort, table.concat
+local tsort = table.sort
 local HOUR = 3600
 local ALCH_DUR = 7000
 local EVENING = 8 * HOUR
@@ -206,7 +206,9 @@ function Flasks.Name(id)
     local name = GetItemInfo(id)
     if name then return name end
     local c = ns.consumeItems and ns.consumeItems[id]
-    if c then return c.craft and GetSpellInfo(c.craft) or c.item end
+    local craft = c and c.craft and GetSpellInfo(c.craft)
+    if craft then return craft end
+    if c and c.item and ns.lang == "ruRU" then return c.item end
     local it = Flasks.ById(id)
     local spell = it and GetSpellInfo(it.spell)
     return spell or ("#" .. tostring(id))
@@ -372,17 +374,34 @@ function Flasks.SetAlchemist(name, yes)
     Opt().alch[name] = yes and true or nil
     Notify()
 end
-function Flasks.AlchemistText()
-    local list = {}
-    for name in pairs(Opt().alch) do list[#list + 1] = name end
-    tsort(list)
-    return concat(list, ", ")
+local function Lower(s)
+    local G = ns.GuildNotes
+    return G and G.Lower and G.Lower(s) or s:lower()
 end
-function Flasks.SetAlchemistText(text)
-    local set = {}
-    for name in gmatch(text or "", "[^,;%s]+") do set[name] = true end
-    Opt().alch = set
-    Notify()
+local function Proper(s)
+    local low = Lower(s)
+    local head, tail = low:match("^([\192-\255][\128-\191]*)(.*)$")
+    local D = ns.guildNotes
+    if not head then return low:sub(1, 1):upper() .. low:sub(2) end
+    local i = D and D.lower and D.lower:find(head, 1, true)
+    if i then return D.upper:sub(i, i + #head - 1) .. tail end
+    return low
+end
+function Flasks.Alchemists(query)
+    local q = Lower(query or ""):match("^%s*(.-)%s*$")
+    local list = {}
+    for name in pairs(Opt().alch) do
+        if q == "" or Lower(name):find(q, 1, true) then list[#list + 1] = name end
+    end
+    tsort(list)
+    return list
+end
+function Flasks.AddAlchemist(text)
+    local raw = (text or ""):gsub("[%c|,;%s]", "")
+    if raw == "" then return nil end
+    local name = Proper(raw)
+    Flasks.SetAlchemist(name, true)
+    return name
 end
 local function AuraIndex()
     if byAura then return end

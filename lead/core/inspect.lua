@@ -3,8 +3,6 @@ root = ManaCodeRaidHelper or root
 root.Lead = root.Lead or {}
 local ns = root.Lead
 local I = {}
-local MIN_ITEMS = 15
-local SLOTS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 }
 local PRIORITY = { hand = 3, inspect = 2, whisper = 1 }
 local TABS = {
     DEATHKNIGHT = { "bdk", "fdk", "uh" },
@@ -30,18 +28,6 @@ local function specOfGroup(class, group, keep)
     if key == "cat" and keep == "bear" then key = "bear" end
     return key, best
 end
-local function avgIlvl(unit)
-    local sum, n = 0, 0
-    for _, slot in ipairs(SLOTS) do
-        local link = GetInventoryItemLink(unit, slot)
-        local lvl = link and ns.Compat.ItemLevel(link)
-        if lvl then
-            sum, n = sum + lvl, n + 1
-        end
-    end
-    if n < MIN_ITEMS then return nil end
-    return sum / n
-end
 local function canWrite(src)
     return (PRIORITY[src or ""] or 0) <= PRIORITY.inspect
 end
@@ -50,14 +36,12 @@ local function apply(m)
     local groups = GetNumTalentGroups(true) or 1
     local active = GetActiveTalentGroup(true) or 1
     local main, tree = specOfGroup(m.class, active, p.spec)
+    local other = groups > 1 and specOfGroup(m.class, active == 1 and 2 or 1, p.off) or nil
+    if not (tree or other) then return end
+    p = ns.Session.EditPlayer(m.name)
     p.tree = tree
     if main and canWrite(p.specSrc) then p.spec, p.specSrc = main, "inspect" end
-    if groups > 1 then
-        local other = specOfGroup(m.class, active == 1 and 2 or 1, p.off)
-        if other and other ~= p.spec and canWrite(p.offSrc) then p.off, p.offSrc = other, "inspect" end
-    end
-    p.ilvl = avgIlvl(m.unit) or p.ilvl
-    p.inspectedAt = time()
+    if other and other ~= p.spec and canWrite(p.offSrc) then p.off, p.offSrc = other, "inspect" end
 end
 function I.Running()
     if ns.Test.Active() then return false end

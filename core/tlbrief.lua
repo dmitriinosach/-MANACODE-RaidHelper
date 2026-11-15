@@ -107,7 +107,9 @@ function BD.Faults(fight, who, fn)
         local hit = list[i]
         for k = 1, #hit.events do
             local ev = hit.events[k]
-            out[#out + 1] = { t = ev.t, hit = hit, grade = ev.grade == "yellow" and "yellow" or "red" }
+            if ev.grade ~= "green" then
+                out[#out + 1] = { t = ev.t, hit = hit, grade = ev.grade == "yellow" and "yellow" or "red" }
+            end
         end
     end
     tsort(out, function(a, b)

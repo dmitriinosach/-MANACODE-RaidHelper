@@ -55,6 +55,8 @@ ns.replayFeed = {
     glyphs = {
         death = { mark = 8 },
         wave = { mark = 7 },
+        boss = { mark = 8 },
+        spot = { mark = 7 },
         phase = { heroic = true },
     },
     procs = { [58597] = true },

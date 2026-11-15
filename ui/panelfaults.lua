@@ -1,4 +1,7 @@
 local _, ns = ...
+local function SoftGrade(grade)
+    return grade == "yellow" or grade == "green"
+end
 local format = string.format
 local tsort = table.sort
 local max = math.max
@@ -81,7 +84,7 @@ local function Head()
     return first, more
 end
 local function Tone(x)
-    return x.ev.grade == "yellow" and "warn" or "bad"
+    return SoftGrade(x.ev.grade) and "warn" or "bad"
 end
 local function CanGive(x)
     return ns.Ledger.Get(x.item.sys or ns.Ledger.SysOf(x.item.name)).Can(x.ev.n)
@@ -139,7 +142,7 @@ local function TipLines()
             if shown <= TIP_MAX then
                 lines[#lines + 1] = { kind = "row", class = x.item.class,
                     left = format(ns.T("panel.faults.row"), x.item.name, x.ev.short or "?"),
-                    right = tostring(x.ev.n), tone = x.ev.grade == "yellow" and "warn" or "bad" }
+                    right = tostring(x.ev.n), tone = Tone(x) }
             end
         end
     end

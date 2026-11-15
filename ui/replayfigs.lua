@@ -8,7 +8,6 @@ local sqrt = math.sqrt
 local exp = math.exp
 local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\replay\\"
 local WHITE = "Interface\\Buttons\\WHITE8X8"
-local MARKS = "Interface\\TargetingFrame\\UI-RaidTargetingIcons"
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local SIDE_TEX = ART .. "chip_side"
 local ARC_TEX = ART .. "hparc"
@@ -346,8 +345,7 @@ local function Skin(fig)
     local vol = kind == "vol"
     local lead = fig.role == "tank" or fig.role == "heal"
     if fig.role == "boss" then
-        fig.icon:SetTexture(MARKS)
-        fig.icon:SetTexCoord(0.75, 1, 0.25, 0.5)
+        Kit.Icon.Mark(fig.icon, ns.replayFeed.glyphs.boss.mark)
     elseif fig.isAdd then
         if type(fig.addIcon) == "number" then
             Kit.Icon.Spell(fig.icon, fig.addIcon)

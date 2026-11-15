@@ -1,6 +1,6 @@
 local ADDON, ns = ...
 local format = string.format
-local floor, max, ceil = math.floor, math.max, math.ceil
+local floor, max, min, ceil = math.floor, math.max, math.min, math.ceil
 local concat = table.concat
 local W = 320
 local PAD = 8
@@ -10,6 +10,11 @@ local LINE_GAP = 3
 local ICON = 14
 local LEFT_SHARE = 0.62
 local SAY_MAX = 250
+local ALCH_W = 360
+local ALCH_ROWS = 8
+local ALCH_LINE = 18
+local ALCH_ADD_W = 90
+local ALCH_BAR = 12
 local STATE_MAIN_W = 150
 local STATE_BTN_W = 100
 local GLOW = "Interface\\Buttons\\CheckButtonHilight"
@@ -552,6 +557,122 @@ function View.StateText()
     if not state.row then return "", "" end
     return state.line:GetText() or "", state.bags:GetText() or ""
 end
+local alch = { query = "", shown = {} }
+local function AlchSizes()
+    local ctl = Kit.GrowH(Kit.Space.ctl, "GameFontNormalSmall")
+    return ctl + 4, ctl, Kit.GrowH(ALCH_LINE, "GameFontHighlightSmall"), Kit.Space.row
+end
+function View.AlchHeight(r)
+    local rowH, _, lineH, gap = AlchSizes()
+    local n = #F.Alchemists(alch.query)
+    return rowH + gap + max(1, min(ALCH_ROWS, n)) * lineH
+end
+local function AlchPut(f, x, y, w, h)
+    f:SetWidth(w)
+    f:SetHeight(h)
+    f:ClearAllPoints()
+    f:SetPoint("TOPLEFT", alch.row, "TOPLEFT", x, -y)
+end
+local function AlchFill(r, name, k)
+    local rowH, ctl, lineH, gap = AlchSizes()
+    local w = min(ALCH_W, max(1, alch.row:GetWidth())) - (#alch.shown > ALCH_ROWS and ALCH_BAR or 0)
+    r.who = name
+    AlchPut(r, 0, rowH + gap + (k - 1) * lineH, w, lineH)
+    r.text:SetText(name)
+    r.del:SetWidth(ctl)
+    r.del:SetHeight(min(ctl, lineH))
+end
+local function AlchRow(k)
+    local r = Kit.Row(alch.row, ALCH_W)
+    r.del = Kit.Button(r, nil, "quiet")
+    Kit.Bind(r.del.text, "GameFontNormalSmall")
+    Kit.ExactSize(r.del)
+    r.del:SetText("x")
+    r.del.tipTitle = false
+    r.del.tip = T("flask.set.alch.del.tip")
+    r.del:SetPoint("RIGHT", r, "RIGHT", 0, 0)
+    r.del.onClick = function() if r.who then F.SetAlchemist(r.who, false) end end
+    r.text:ClearAllPoints()
+    r.text:SetPoint("LEFT", r, "LEFT", 4, 0)
+    r.text:SetPoint("RIGHT", r.del, "LEFT", -4, 0)
+    return r
+end
+function View.AlchDraw()
+    local r = alch.row
+    if not r then return end
+    local rowH, ctl, lineH, gap = AlchSizes()
+    local w = min(ALCH_W, max(1, r:GetWidth()))
+    local field = floor((w - ALCH_ADD_W - gap * 3) / 2)
+    AlchPut(alch.find, 0, (rowH - ctl) / 2, field, ctl)
+    AlchPut(alch.name, field + gap * 2, (rowH - ctl) / 2, field, ctl)
+    AlchPut(alch.add, w - ALCH_ADD_W, (rowH - ctl) / 2, ALCH_ADD_W, ctl)
+    if (alch.find:GetText() or "") == "" then alch.findHint:Show() else alch.findHint:Hide() end
+    if (alch.name:GetText() or "") == "" then alch.nameHint:Show() else alch.nameHint:Hide() end
+    alch.shown = F.Alchemists(alch.query)
+    local n = #alch.shown
+    local slots = min(ALCH_ROWS, n)
+    alch.list:Draw(alch.shown, slots)
+    if n > ALCH_ROWS then
+        AlchPut(alch.bar, w - ALCH_BAR + 2, rowH + gap, ALCH_BAR - 2, slots * lineH)
+        alch.bar:SetState(alch.list.offset, slots, n)
+        alch.bar:Show()
+    else
+        alch.bar:Hide()
+    end
+    alch.empty:SetText(T(alch.query == "" and "flask.set.alch.empty" or "flask.kit.find.none"))
+    alch.empty:ClearAllPoints()
+    alch.empty:SetPoint("LEFT", r, "TOPLEFT", 4, -(rowH + gap + lineH / 2))
+    if n == 0 then alch.empty:Show() else alch.empty:Hide() end
+    r:EnableMouseWheel(n > ALCH_ROWS)
+end
+local function AlchRelayout()
+    if S and S.Refresh then S.Refresh() end
+    View.AlchDraw()
+end
+local function AlchAdd()
+    if F.AddAlchemist(alch.name:GetText()) then alch.name:SetValue("") end
+    AlchRelayout()
+end
+local function AlchEdit(parent, global, hint)
+    local e = Kit.Edit(parent, false, global)
+    e:SetFontObject(Kit.FontFor("GameFontHighlightSmall", true))
+    e.tipTitle = false
+    local fs = Label(e, "text.off")
+    fs:SetPoint("LEFT", e, "LEFT", 8, 0)
+    fs:SetText(T(hint))
+    return e, fs
+end
+function View.AlchBuild(r)
+    alch.row = r
+    alch.find, alch.findHint = AlchEdit(r, "ManaCodeRaidHelperAlchFind", "flask.kit.find")
+    alch.find:SetMaxLetters(24)
+    alch.find.onChange = function(text)
+        alch.query = text or ""
+        alch.list.offset = 0
+        AlchRelayout()
+    end
+    alch.name, alch.nameHint = AlchEdit(r, "ManaCodeRaidHelperAlchName", "flask.set.alch.name")
+    alch.name:SetMaxLetters(24)
+    alch.name.tip = T("flask.set.alch.tip")
+    alch.name.onChange = View.AlchDraw
+    alch.name:SetScript("OnEnterPressed", AlchAdd)
+    alch.add = Btn(r, T("flask.set.alch.add"), T("flask.set.alch.tip"), AlchAdd)
+    alch.add.tipTitle = false
+    alch.empty = Label(r, "text.muted")
+    alch.bar = Kit.ScrollBar(r, 100)
+    alch.bar.onScroll = function(offset)
+        alch.list.offset = offset
+        View.AlchDraw()
+    end
+    alch.list = Kit.List(AlchRow, AlchFill, { clear = function(row) row.who = nil end })
+    r:SetScript("OnMouseWheel", function(_, delta)
+        if alch.list:Wheel(delta) then View.AlchDraw() end
+    end)
+    r.Place = View.AlchDraw
+end
+function View.Alch()
+    return alch
+end
 if S and S.Category then
     S.Category("flasks", { label = "set.cat.flasks", sub = "set.cat.flasks.sub", order = 75, group = "other" })
     S.Section("flasks", "state", {
@@ -586,9 +707,8 @@ if S and S.Category then
         label = "flask.set.alch",
         order = 50,
         items = {
-            { kind = "field", key = "list", label = "flask.set.alch.list", tip = "flask.set.alch.tip", width = 220,
-              maxLetters = 240, hint = "flask.set.alch.hint",
-              get = F.AlchemistText, set = F.SetAlchemistText },
+            { kind = "custom", key = "list", height = View.AlchHeight, build = View.AlchBuild,
+              refresh = View.AlchDraw },
         },
     })
 end

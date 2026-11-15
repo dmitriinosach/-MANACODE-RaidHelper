@@ -13,44 +13,45 @@ local GB = ns.GuildBober
 local GN = ns.GuildNotes
 local N = ns.guildNotes
 local D = ns.guildLocks
-local MARGIN = 12
-local CAP_H = 22
-local CTRL_H = 28
-local SLOT_H = 22
-local MAIN_H = 20
-local ALT_H = 18
-local NOTE_H = 18
-local ROW_GAP = 4
-local TEXT_X = 8
-local FOLD = 14
-local NAME_X = 22
-local INDENT = 16
-local NAME_W = 140
-local ON_W = 120
-local GS_W = 56
-local SPEC_W = 110
-local ALTS_W = 0
-local STATE_W = 150
-local INV_W = 96
-local SEL_W = 150
-local CHECK_W = 130
-local ONLINE_GAP = 28
-local ROLECHK_W = 86
-local ROLE_SZ = 14
-local ROLE_GAP = 3
-local RI_SZ = 12
-local RAT_SZ = 18
-local REBUILD_GAP = 5
-local JOB = "guildlocks"
-local SPARE = 120
+local K = {}
+K.MARGIN = 12
+K.CAP_H = 22
+K.CTRL_H = 28
+K.SLOT_H = 22
+K.MAIN_H = 20
+K.ALT_H = 18
+K.NOTE_H = 18
+K.ROW_GAP = 4
+K.TEXT_X = 8
+K.FOLD = 14
+K.NAME_X = 22
+K.INDENT = 16
+K.NAME_W = 140
+K.ON_W = 120
+K.GS_W = 56
+K.SPEC_W = 110
+K.ALTS_W = 0
+K.STATE_W = 150
+K.INV_W = 96
+K.SEL_W = 150
+K.CHECK_W = 130
+K.ONLINE_GAP = 28
+K.ROLECHK_W = 86
+K.ROLE_SZ = 14
+K.ROLE_GAP = 3
+K.RI_SZ = 12
+K.RAT_SZ = 18
+K.REBUILD_GAP = 5
+K.JOB = "guildlocks"
+K.SPARE = 120
 local ROLES = { "tank", "heal", "dd" }
 local HEADS = { "main", "on", "gs", "spec", "roles", "cd", "ri" }
 local RI_TEX = "Interface\\Icons\\INV_Misc_Book_09"
 local RAT_TEX = "Interface\\AddOns\\" .. ADDON .. "\\art\\kit\\rat"
-local BASE = { CAP_H = CAP_H, CTRL_H = CTRL_H, SLOT_H = SLOT_H, MAIN_H = MAIN_H, ALT_H = ALT_H, NOTE_H = NOTE_H,
-    ROW_GAP = ROW_GAP, TEXT_X = TEXT_X, FOLD = FOLD, NAME_X = NAME_X, INDENT = INDENT, NAME_W = NAME_W, ON_W = ON_W, GS_W = GS_W,
-    SPEC_W = SPEC_W, ALTS_W = ALTS_W, STATE_W = STATE_W, INV_W = INV_W, SEL_W = SEL_W, CHECK_W = CHECK_W, ROLECHK_W = ROLECHK_W,
-    ROLE_SZ = ROLE_SZ, ROLE_GAP = ROLE_GAP, RI_SZ = RI_SZ, RAT_SZ = RAT_SZ }
+local BASE = { CAP_H = K.CAP_H, CTRL_H = K.CTRL_H, SLOT_H = K.SLOT_H, MAIN_H = K.MAIN_H, ALT_H = K.ALT_H, NOTE_H = K.NOTE_H,
+    ROW_GAP = K.ROW_GAP, TEXT_X = K.TEXT_X, FOLD = K.FOLD, NAME_X = K.NAME_X, INDENT = K.INDENT, NAME_W = K.NAME_W, ON_W = K.ON_W, GS_W = K.GS_W,
+    SPEC_W = K.SPEC_W, ALTS_W = K.ALTS_W, STATE_W = K.STATE_W, INV_W = K.INV_W, SEL_W = K.SEL_W, CHECK_W = K.CHECK_W, ROLECHK_W = K.ROLECHK_W,
+    ROLE_SZ = K.ROLE_SZ, ROLE_GAP = K.ROLE_GAP, RI_SZ = K.RI_SZ, RAT_SZ = K.RAT_SZ }
 local LINE_H = 14
 local PLUS = "Interface\\Buttons\\UI-PlusButton-Up"
 local MINUS = "Interface\\Buttons\\UI-MinusButton-Up"
@@ -76,35 +77,35 @@ local function Dims(w)
     local icons = #ROLES * (ceil(B.ROLE_SZ * k) + B.ROLE_GAP) + ceil(B.RI_SZ * k) + 6 + 30
     local kc = min(k, (w - icons) / cols)
     if kc < 1 then kc = max(0.5, (w - icons - 8) / cols) end
-    CAP_H, CTRL_H, SLOT_H = ceil(B.CAP_H * k), ceil(B.CTRL_H * k), ceil(B.SLOT_H * k)
-    MAIN_H, ALT_H, NOTE_H, ROW_GAP = ceil(B.MAIN_H * k), ceil(B.ALT_H * k), ceil(B.NOTE_H * k), ceil(B.ROW_GAP * k)
+    K.CAP_H, K.CTRL_H, K.SLOT_H = ceil(B.CAP_H * k), ceil(B.CTRL_H * k), ceil(B.SLOT_H * k)
+    K.MAIN_H, K.ALT_H, K.NOTE_H, K.ROW_GAP = ceil(B.MAIN_H * k), ceil(B.ALT_H * k), ceil(B.NOTE_H * k), ceil(B.ROW_GAP * k)
     LINE_H = ceil(14 * k)
-    TEXT_X, FOLD, INDENT = ceil(B.TEXT_X * kc), ceil(B.FOLD * k), ceil(B.INDENT * kc)
-    NAME_X, NAME_W, ON_W, GS_W = ceil(B.NAME_X * kc), ceil(B.NAME_W * kc), ceil(B.ON_W * kc), ceil(B.GS_W * kc)
-    SPEC_W, ALTS_W, STATE_W, INV_W = ceil(B.SPEC_W * kc), ceil(B.ALTS_W * kc), ceil(B.STATE_W * kc), ceil(B.INV_W * kc)
-    SEL_W, CHECK_W, ROLECHK_W = ceil(B.SEL_W * kc), ceil(B.CHECK_W * kc), ceil(B.ROLECHK_W * kc)
-    ROLE_SZ, ROLE_GAP, RI_SZ, RAT_SZ = ceil(B.ROLE_SZ * k), B.ROLE_GAP, ceil(B.RI_SZ * k), ceil(B.RAT_SZ * k)
+    K.TEXT_X, K.FOLD, K.INDENT = ceil(B.TEXT_X * kc), ceil(B.FOLD * k), ceil(B.INDENT * kc)
+    K.NAME_X, K.NAME_W, K.ON_W, K.GS_W = ceil(B.NAME_X * kc), ceil(B.NAME_W * kc), ceil(B.ON_W * kc), ceil(B.GS_W * kc)
+    K.SPEC_W, K.ALTS_W, K.STATE_W, K.INV_W = ceil(B.SPEC_W * kc), ceil(B.ALTS_W * kc), ceil(B.STATE_W * kc), ceil(B.INV_W * kc)
+    K.SEL_W, K.CHECK_W, K.ROLECHK_W = ceil(B.SEL_W * kc), ceil(B.CHECK_W * kc), ceil(B.ROLECHK_W * kc)
+    K.ROLE_SZ, K.ROLE_GAP, K.RI_SZ, K.RAT_SZ = ceil(B.ROLE_SZ * k), B.ROLE_GAP, ceil(B.RI_SZ * k), ceil(B.RAT_SZ * k)
 end
 local function Seat(row, kind)
-    row:SetHeight((kind == "main" and MAIN_H) or (kind == "alt" and ALT_H) or (kind == "slot" and SLOT_H) or NOTE_H)
+    row:SetHeight((kind == "main" and K.MAIN_H) or (kind == "alt" and K.ALT_H) or (kind == "slot" and K.SLOT_H) or K.NOTE_H)
     for i = 1, #row.cols do row.cols[i]:SetHeight(LINE_H) end
     if row.info then row.info:SetHeight(LINE_H) end
     if row.roles then
         for i = 1, #ROLES do
-            row.roles[ROLES[i]]:SetWidth(ROLE_SZ)
-            row.roles[ROLES[i]]:SetHeight(ROLE_SZ)
+            row.roles[ROLES[i]]:SetWidth(K.ROLE_SZ)
+            row.roles[ROLES[i]]:SetHeight(K.ROLE_SZ)
         end
-        row.rat:SetWidth(RAT_SZ)
-        row.rat:SetHeight(RAT_SZ)
-        row.ri:SetWidth(RI_SZ + 6)
-        row.ri:SetHeight(RI_SZ + 6)
-        row.ri.icon:SetWidth(RI_SZ)
-        row.ri.icon:SetHeight(RI_SZ)
-        row.invite:SetHeight(max(12, (kind == "main" and MAIN_H or ALT_H) - 2))
+        row.rat:SetWidth(K.RAT_SZ)
+        row.rat:SetHeight(K.RAT_SZ)
+        row.ri:SetWidth(K.RI_SZ + 6)
+        row.ri:SetHeight(K.RI_SZ + 6)
+        row.ri.icon:SetWidth(K.RI_SZ)
+        row.ri.icon:SetHeight(K.RI_SZ)
+        row.invite:SetHeight(max(12, (kind == "main" and K.MAIN_H or K.ALT_H) - 2))
     end
     if row.fold then
-        row.fold:SetWidth(FOLD)
-        row.fold:SetHeight(FOLD)
+        row.fold:SetWidth(K.FOLD)
+        row.fold:SetHeight(K.FOLD)
     end
 end
 local function Make(kind)
@@ -127,7 +128,7 @@ local function Make(kind)
             Kit.Icon.Role(t, ROLES[i])
             row.roles[ROLES[i]] = t
         end
-        local ri = Kit.IconButton(row, RI_TEX, RI_SZ)
+        local ri = Kit.IconButton(row, RI_TEX, K.RI_SZ)
         ri.tipTitle = ns.T("gl.ri")
         ri.tip = ns.T("gl.ri.tip")
         ri.onClick = function(b) if b.char then ns.Bober.Open(b.char) end end
@@ -170,7 +171,7 @@ local function Take(kind, y, w)
     end
     Seat(row, kind)
     row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", content, "TOPLEFT", MARGIN, -y)
+    row:SetPoint("TOPLEFT", content, "TOPLEFT", K.MARGIN, -y)
     row:SetWidth(w)
     row.tipTitle, row.tip, row.tipLines, row.person = false, nil, nil, nil
     row:Show()
@@ -286,8 +287,8 @@ local function Compute()
 end
 local function Rebuild()
     builtAt, dirty = GetTime(), false
-    ns.Jobs.Cancel(JOB)
-    ns.Jobs.Run(JOB, Compute, function(c)
+    ns.Jobs.Cancel(K.JOB)
+    ns.Jobs.Run(K.JOB, Compute, function(c)
         if not c then return end
         cache = c
         if content and content:IsVisible() and rerender then rerender() end
@@ -303,10 +304,10 @@ local function State(c)
     return "", "text.off"
 end
 local function Xs()
-    local roles = NAME_X + NAME_W + ON_W + GS_W + SPEC_W + ALTS_W + 6
-    local state = roles + #ROLES * (ROLE_SZ + ROLE_GAP) + 6
-    local invite = state + STATE_W + 6
-    return roles, state, invite, invite + INV_W + 8
+    local roles = K.NAME_X + K.NAME_W + K.ON_W + K.GS_W + K.SPEC_W + K.ALTS_W + 6
+    local state = roles + #ROLES * (K.ROLE_SZ + K.ROLE_GAP) + 6
+    local invite = state + K.STATE_W + 6
+    return roles, state, invite, invite + K.INV_W + 8
 end
 local function Invite(b, who, online, x)
     if not who or who == UnitName("player") then
@@ -316,7 +317,7 @@ local function Invite(b, who, online, x)
     b.who = who
     b:ClearAllPoints()
     b:SetPoint("LEFT", b:GetParent(), "LEFT", x, 0)
-    b:SetWidth(INV_W)
+    b:SetWidth(K.INV_W)
     b.tipTitle = format(ns.T("gl.invite.tip"), who)
     local why = nil
     if not online then
@@ -391,21 +392,21 @@ local function InfoText(r)
 end
 local function FillChar(row, c, x, w)
     local cols = row.cols
-    Put(cols[1], x, NAME_W - (x - NAME_X), c.name)
+    Put(cols[1], x, K.NAME_W - (x - K.NAME_X), c.name)
     Kit.ClassText(cols[1], c.class)
-    Put(cols[3], NAME_X + NAME_W + ON_W, GS_W, c.gs and tostring(c.gs) or "—",
+    Put(cols[3], K.NAME_X + K.NAME_W + K.ON_W, K.GS_W, c.gs and tostring(c.gs) or "—",
         c.gsOk == false and "text.warn" or "text.secondary")
-    Put(cols[4], NAME_X + NAME_W + ON_W + GS_W, SPEC_W, SpecText(c), "text.secondary")
+    Put(cols[4], K.NAME_X + K.NAME_W + K.ON_W + K.GS_W, K.SPEC_W, SpecText(c), "text.secondary")
     local x0, sx, ivx, rix = Xs()
     local state, token = State(c)
-    Put(cols[5], sx, STATE_W, state, token)
+    Put(cols[5], sx, K.STATE_W, state, token)
     Invite(row.invite, c.saved ~= true and c.name or nil, c.online, ivx)
     row.rat:Hide()
     local roles = c.roles or {}
     for i = 1, #ROLES do
         local t = row.roles[ROLES[i]]
         t:ClearAllPoints()
-        t:SetPoint("LEFT", row, "LEFT", x0 + (i - 1) * (ROLE_SZ + ROLE_GAP), 0)
+        t:SetPoint("LEFT", row, "LEFT", x0 + (i - 1) * (K.ROLE_SZ + K.ROLE_GAP), 0)
         t:SetAlpha(1)
         if roles[ROLES[i]] then t:Show() else t:Hide() end
     end
@@ -414,7 +415,7 @@ local function FillChar(row, c, x, w)
     ri:ClearAllPoints()
     ri:SetPoint("LEFT", row, "LEFT", rix, 0)
     if GB.Rec(c.name) then ri:Show() else ri:Hide() end
-    local ix = rix + RI_SZ + 12
+    local ix = rix + K.RI_SZ + 12
     local r = c.cur
     Put(row.info, ix, max(10, w - ix - 4), r and InfoText(r) or "", r and c.rat and "text.warn" or "text.secondary")
 end
@@ -430,7 +431,7 @@ local function Rat(row, p)
     if not who then return nil end
     local name = row.cols[1]
     row.rat:ClearAllPoints()
-    row.rat:SetPoint("LEFT", row, "LEFT", NAME_X + math.min(NAME_W - RAT_SZ, name:GetStringWidth() + 4), 0)
+    row.rat:SetPoint("LEFT", row, "LEFT", K.NAME_X + math.min(K.NAME_W - K.RAT_SZ, name:GetStringWidth() + 4), 0)
     row.rat:Show()
     return who
 end
@@ -460,10 +461,10 @@ local function DrawMain(p, y, w)
     local main, alts = Split(p)
     local cols = row.cols
     if main then
-        FillChar(row, main, NAME_X, w)
+        FillChar(row, main, K.NAME_X, w)
         row.tipLines = CharLines(main, nil)
     else
-        Put(cols[1], NAME_X, NAME_W, p.name, "text.primary")
+        Put(cols[1], K.NAME_X, K.NAME_W, p.name, "text.primary")
         for i = 3, 5 do cols[i]:SetText("") end
         for i = 1, #ROLES do row.roles[ROLES[i]]:Hide() end
         row.ri:Hide()
@@ -477,7 +478,7 @@ local function DrawMain(p, y, w)
     if best and best ~= main then
         local text, token = State(best)
         if best.saved == false then text = format(ns.T("gl.state.free.alt"), best.name) end
-        Put(cols[5], sx, STATE_W, text, token)
+        Put(cols[5], sx, K.STATE_W, text, token)
     end
     local who = p.online or (main and main.name) or nil
     Invite(row.invite, PersonState(p) ~= 2 and who or nil, p.online ~= nil, ivx)
@@ -489,7 +490,7 @@ local function DrawMain(p, y, w)
     elseif p.online then
         on, token = format(ns.T("gl.on.alt"), p.online), "text.good"
     end
-    Put(cols[2], NAME_X + NAME_W, ON_W, on, token)
+    Put(cols[2], K.NAME_X + K.NAME_W, K.ON_W, on, token)
     cols[6]:SetText("")
     if #alts > 0 then
         row.fold:SetTexture(open[p.name] and MINUS or PLUS)
@@ -504,8 +505,8 @@ local function DrawMain(p, y, w)
 end
 local function DrawAlt(p, c, y, w)
     local r = Take("alt", y, w)
-    FillChar(r, c, NAME_X + INDENT, w)
-    Put(r.cols[2], NAME_X + NAME_W, ON_W, ns.T(c.online and "gl.on" or "gl.off"), c.online and "text.good" or "text.off")
+    FillChar(r, c, K.NAME_X + K.INDENT, w)
+    Put(r.cols[2], K.NAME_X + K.NAME_W, K.ON_W, ns.T(c.online and "gl.on" or "gl.off"), c.online and "text.good" or "text.off")
     r.tipTitle = c.name
     r.tipLines = CharLines(c, p.name)
 end
@@ -519,11 +520,11 @@ local function Place()
     local vh = pane and pane.view:GetHeight() or 0
     if vh <= 0 then vh = GetScreenHeight() end
     local off = pane and pane.offset or 0
-    local top, bottom = off - SPARE, off + vh + SPARE
+    local top, bottom = off - K.SPARE, off + vh + K.SPARE
     local y = listTop
     for i = 1, #lines do
         local e = lines[i]
-        local h = (e.c and ALT_H or MAIN_H) + ROW_GAP
+        local h = (e.c and K.ALT_H or K.MAIN_H) + K.ROW_GAP
         if y > bottom then break end
         if y + h >= top then
             if e.c then DrawAlt(e.p, e.c, y, listW) else DrawMain(e.p, y, listW) end
@@ -535,13 +536,13 @@ local function DrawHead(y, w)
     local row = Take("head", y, w)
     local cols = row.cols
     local x0, sx, _, rix = Xs()
-    local xs = { NAME_X, NAME_X + NAME_W, NAME_X + NAME_W + ON_W, NAME_X + NAME_W + ON_W + GS_W, x0, sx, rix }
-    local ws = { NAME_W, ON_W, GS_W, SPEC_W, sx - x0, STATE_W, max(10, w - rix - 4) }
+    local xs = { K.NAME_X, K.NAME_X + K.NAME_W, K.NAME_X + K.NAME_W + K.ON_W, K.NAME_X + K.NAME_W + K.ON_W + K.GS_W, x0, sx, rix }
+    local ws = { K.NAME_W, K.ON_W, K.GS_W, K.SPEC_W, sx - x0, K.STATE_W, max(10, w - rix - 4) }
     local ri = ns.Bober and ns.Bober.Ready()
     for i = 1, #HEADS do
         Put(cols[i], xs[i], ws[i], (HEADS[i] ~= "ri" or ri) and ns.T("gl.head." .. HEADS[i]) or "")
     end
-    return y + NOTE_H
+    return y + K.NOTE_H
 end
 local function RolesText(s)
     local parts = {}
@@ -557,12 +558,12 @@ local function DrawSlots(y, w)
     local row = Take("slot", y, w)
     local c = cache
     if not c or not c.tpl or not c.slots then
-        Put(row.cols[1], TEXT_X, w - TEXT_X, format(ns.T("gl.slots.notpl"), c and c.raid.size or 0) .. "  —  "
+        Put(row.cols[1], K.TEXT_X, w - K.TEXT_X, format(ns.T("gl.slots.notpl"), c and c.raid.size or 0) .. "  —  "
             .. format(ns.T("gl.known"), c and c.known or 0, c and #c.people or 0), "text.muted")
-        return y + SLOT_H
+        return y + K.SLOT_H
     end
     local s = c.slots
-    Put(row.cols[1], TEXT_X, w - TEXT_X, format(ns.T("gl.slots"), s.filled, s.total, RolesText(s)) .. "  —  "
+    Put(row.cols[1], K.TEXT_X, w - K.TEXT_X, format(ns.T("gl.slots"), s.filled, s.total, RolesText(s)) .. "  —  "
         .. format(ns.T("gl.known"), c.known or 0, #c.people), s.filled >= s.total and "text.good" or "text.primary")
     row.tipTitle = format(ns.T("gl.slots.tipTitle"), GR.Label(c.raid), TplName(c.tpl))
     local lines = { format(ns.T("gl.slots.tip.online"), c.online), format(ns.T("gl.gs"), c.gsMin),
@@ -580,12 +581,12 @@ local function DrawSlots(y, w)
         if not took[i] then lines[#lines + 1] = "  " .. SlotLabel(c.tpl.slots[i]) end
     end
     row.tipLines = lines
-    return y + SLOT_H
+    return y + K.SLOT_H
 end
 local function DrawNote(text, y, w)
     local row = Take("note", y, w)
-    Put(row.cols[1], TEXT_X, max(60, w - TEXT_X - 4), text, "text.muted")
-    return y + NOTE_H
+    Put(row.cols[1], K.TEXT_X, max(60, w - K.TEXT_X - 4), text, "text.muted")
+    return y + K.NOTE_H
 end
 local function Options()
     local list = GR.List()
@@ -605,11 +606,11 @@ function View.Draw(y, w)
     lines = {}
     if not content then return y end
     Dims(w)
-    caption:SetHeight(CAP_H - 4)
+    caption:SetHeight(K.CAP_H - 4)
     caption:ClearAllPoints()
-    caption:SetPoint("TOPLEFT", content, "TOPLEFT", MARGIN, -y)
+    caption:SetPoint("TOPLEFT", content, "TOPLEFT", K.MARGIN, -y)
     caption.rule:SetWidth(max(1, w - caption:GetStringWidth() - 6))
-    y = y + CAP_H
+    y = y + K.CAP_H
     if not (IsInGuild and IsInGuild()) then
         Controls(false)
         return DrawNote(ns.T("gl.noguild"), y, w)
@@ -620,28 +621,28 @@ function View.Draw(y, w)
         return DrawNote(ns.T("gl.loading"), y, w)
     end
     Controls(true)
-    sel:SetWidth(SEL_W)
+    sel:SetWidth(K.SEL_W)
     sel:SetHeight(Kit.FontGrow(20))
     sel:ClearAllPoints()
-    sel:SetPoint("TOPLEFT", content, "TOPLEFT", MARGIN + TEXT_X, -y)
+    sel:SetPoint("TOPLEFT", content, "TOPLEFT", K.MARGIN + K.TEXT_X, -y)
     sel:SetOptions(Options(), GR.Pick())
     check:ClearAllPoints()
-    check:SetPoint("TOPRIGHT", content, "TOPLEFT", MARGIN + w - CHECK_W, -y + 2)
+    check:SetPoint("TOPRIGHT", content, "TOPLEFT", K.MARGIN + w - K.CHECK_W, -y + 2)
     check:SetChecked(GR.OnlineOnly())
     for i = 1, #ROLES do
         local rc = roleChecks[ROLES[i]]
         rc:ClearAllPoints()
-        rc:SetPoint("TOPRIGHT", content, "TOPLEFT", MARGIN + w - CHECK_W - ONLINE_GAP - (#ROLES - i + 1) * ROLECHK_W,
+        rc:SetPoint("TOPRIGHT", content, "TOPLEFT", K.MARGIN + w - K.CHECK_W - K.ONLINE_GAP - (#ROLES - i + 1) * K.ROLECHK_W,
             -y + 2)
         rc:SetChecked(GR.RoleOn(ROLES[i]))
     end
     roleCap:ClearAllPoints()
     roleCap:SetPoint("RIGHT", roleChecks[ROLES[1]], "LEFT", -4, 0)
     sep:ClearAllPoints()
-    sep:SetPoint("CENTER", check, "LEFT", -floor(ONLINE_GAP / 2), 0)
-    sep:SetHeight(max(10, CTRL_H - 10))
-    y = y + CTRL_H
-    if not ns.Jobs.Busy(JOB) and (not cache or (dirty and GetTime() - builtAt >= REBUILD_GAP)) then
+    sep:SetPoint("CENTER", check, "LEFT", -floor(K.ONLINE_GAP / 2), 0)
+    sep:SetHeight(max(10, K.CTRL_H - 10))
+    y = y + K.CTRL_H
+    if not ns.Jobs.Busy(K.JOB) and (not cache or (dirty and GetTime() - builtAt >= K.REBUILD_GAP)) then
         Rebuild()
     elseif dirty then
         Schedule()
@@ -656,12 +657,12 @@ function View.Draw(y, w)
         local p = cache.people[i]
         if (p.online or not only) and RolesPass(p) then
             lines[#lines + 1] = { p = p }
-            y = y + MAIN_H + ROW_GAP
+            y = y + K.MAIN_H + K.ROW_GAP
             if open[p.name] then
                 local _, alts = Split(p)
                 for k = 1, #alts do
                     lines[#lines + 1] = { p = p, c = alts[k] }
-                    y = y + ALT_H + ROW_GAP
+                    y = y + K.ALT_H + K.ROW_GAP
                 end
             end
         end
@@ -720,7 +721,7 @@ function View.Build(parent, redraw, page)
     ticker = CreateFrame("Frame", nil, content)
     ticker:Hide()
     ticker:SetScript("OnUpdate", function(self)
-        if GetTime() - builtAt < REBUILD_GAP then return end
+        if GetTime() - builtAt < K.REBUILD_GAP then return end
         self:Hide()
         if dirty and content:IsVisible() then redraw() end
     end)

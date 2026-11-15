@@ -267,27 +267,40 @@ local function HpBar(c, x0, x1, pct, top, hh)
     edge:SetPoint("TOPLEFT", c.canvas, "TOPLEFT", x0, -(top + hh - barH))
     edge:SetWidth(w)
 end
+local function Level(c, x0, x1, pct, top, hh, mana)
+    if not mana then return HpBar(c, x0, x1, pct, top, hh) end
+    local t = c.GetBar()
+    ns.Kit.Shade(t, "sem.stat.hps", 0.95)
+    t:SetWidth(max(1, x1 - x0))
+    t:SetHeight(MANA_LINE)
+    t:ClearAllPoints()
+    t:SetPoint("TOPLEFT", c.canvas, "TOPLEFT", x0, -(top + hh - pct * hh - MANA_LINE / 2))
+end
 local function DrawLevels(c, list, top, hh, mana)
     if not list then return end
     local right = c.canvas:GetWidth()
+    local rx0, rx1, rp, col = nil, nil, nil, nil
     for i = 1, #list do
         local s = list[i]
         local nextT = list[i + 1] and list[i + 1].t or c.to
         if nextT >= c.from and s.t <= c.to then
             local x0 = c.XOf(max(s.t, c.from))
             local x1 = min(c.XOf(min(nextT, c.to)), right)
-            if mana then
-                local t = c.GetBar()
-                ns.Kit.Shade(t, "sem.stat.hps", 0.95)
-                t:SetWidth(max(1, x1 - x0))
-                t:SetHeight(MANA_LINE)
-                t:ClearAllPoints()
-                t:SetPoint("TOPLEFT", c.canvas, "TOPLEFT", x0, -(top + hh - s.pct * hh - MANA_LINE / 2))
+            if rx0 and floor(x0) == col then
+                if mana or s.pct < rp then rp = s.pct end
+                if x1 > col + 1 then
+                    Level(c, rx0, col + 1, rp, top, hh, mana)
+                    rx0, rx1, rp, col = col + 1, x1, s.pct, col + 1
+                elseif x1 > rx1 then
+                    rx1 = x1
+                end
             else
-                HpBar(c, x0, x1, s.pct, top, hh)
+                if rx0 then Level(c, rx0, rx1, rp, top, hh, mana) end
+                rx0, rx1, rp, col = x0, x1, s.pct, floor(x0)
             end
         end
     end
+    if rx0 then Level(c, rx0, rx1, rp, top, hh, mana) end
 end
 local function DrawLife(c, y, h)
     local top = y + LABELH + 3
@@ -601,10 +614,9 @@ local function DrawHelp(c, items, y, h)
     end
 end
 local function FeedIcon(tex, icon)
-    if icon == "death" then
-        ns.Kit.Icon.Mark(tex, 8)
-    elseif icon == "wave" then
-        ns.Kit.Icon.Mark(tex, 7)
+    local g = type(icon) == "string" and ns.replayFeed.glyphs[icon]
+    if g and g.mark then
+        ns.Kit.Icon.Mark(tex, g.mark)
     elseif icon == "phase" then
         ns.Kit.Icon.Heroic(tex)
     else
@@ -637,6 +649,20 @@ local function ZoomChip(c, y)
     b.tip, b.tip2 = text, ns.T("tb.zoom.tip")
     b.zoomFrom, b.zoomTo = f0, f1
     b.onClick = ZoomClick
+end
+local function FeedText(c, f, i)
+    local text = f.text[i]
+    if f.icon[i] ~= "death" or f.who[i] ~= c.player or not c.data then return text end
+    local at, k = c.fight.from + f.t[i], nil
+    local taken = c.data.taken or {}
+    for j = 1, #taken do
+        local it = taken[j]
+        if it.t <= at + 0.1 and (it.amount or 0) > 0 and (not k or it.t >= k.t) then k = it end
+    end
+    if not k then return text end
+    local out = text .. ", " .. format(ns.T("proof.killer"), k.label or "?")
+    if k.src and k.src ~= c.player then out = out .. format(ns.T("proof.from"), k.src) end
+    return out
 end
 local function DrawFeed(c, y)
     local f = ns.TimelineBriefData.Feed(c.fight, c.redraw)
@@ -671,6 +697,7 @@ local function DrawFeed(c, y)
             local ry = y + (lane - 1) * FEED_ROW
             local nextX = xs[k + 1] or right
             local room = min(FEED_MAXW, nextX - x - FEED_ICON - 8, right - x - FEED_ICON - 6)
+            local text = FeedText(c, f, i)
             local b = c.GetBlock()
             b:SetHeight(FEED_ROW - 2)
             b:ClearAllPoints()
@@ -685,7 +712,7 @@ local function DrawFeed(c, y)
             ns.Kit.Tone(b.label, f.imp[i] and "text.bright" or "text.secondary")
             local w
             if room >= FEED_TEXT_MIN then
-                c.FitText(b.label, f.text[i], room)
+                c.FitText(b.label, text, room)
                 b.label:SetWidth(0)
                 w = min(room, b.label:GetStringWidth() or 0) + FEED_ICON + 6
                 b.label:SetWidth(w - FEED_ICON - 6)
@@ -696,12 +723,26 @@ local function DrawFeed(c, y)
             end
             b:SetWidth(w)
             ends[lane] = x + w
-            b.tip, b.at, b.jumpTo = f.text[i], from + f.t[i], nil
+            b.tip, b.at, b.jumpTo = text, from + f.t[i], nil
             b.spellId = tonumber(f.icon[i])
             b.tip2 = c.Clock(f.t[i])
-            b.tip3 = f.tip[i] ~= f.text[i] and f.tip[i] or nil
+            b.tip3 = f.tip[i] ~= f.text[i] and f.tip[i] ~= text and f.tip[i] or nil
         end
     end
+end
+local function InView(c, list, rows)
+    local out = {}
+    for i = 1, #list do
+        local items = rows and list[i].items or { list[i] }
+        for k = 1, #items do
+            local a = items[k]
+            if (a.to or a.t) >= c.from and a.t <= c.to then
+                out[#out + 1] = list[i]
+                break
+            end
+        end
+    end
+    return out
 end
 local function Tracks(c, stateRows, lanes, help)
     local list = {}
@@ -724,9 +765,9 @@ function B.Draw(c)
     last = { ctx = c }
     local data = c.data
     local BD = ns.TimelineBriefData
-    local stateRows = data and BD.States(data, c.fight) or {}
+    local stateRows = InView(c, data and BD.States(data, c.fight) or {}, true)
     local lanes = data and c.player and BD.Defs(data, c.player) or {}
-    local help = data and c.player and BD.Help(data, c.fight, c.player) or {}
+    local help = InView(c, data and c.player and BD.Help(data, c.fight, c.player) or {}, false)
     local list = Tracks(c, stateRows, lanes, help)
     local total = TOPPAD
     for i = 1, #list do

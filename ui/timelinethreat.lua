@@ -26,6 +26,12 @@ local function Place(tex, x, y, w, h)
     tex:SetWidth(max(1, w))
     tex:SetHeight(max(1, h))
 end
+local function Sample(GetBar, xa, xb, v, token, scale, base, hh)
+    local h = min(v, scale) / scale * hh
+    local bar = GetBar()
+    ns.Kit.Shade(bar, token)
+    Place(bar, xa, base - h, xb - xa, h)
+end
 local function Note(GetBlock, x, y, text)
     local b = GetBlock()
     b.tip, b.tip2, b.spellId, b.jumpTo = nil, nil, nil, nil
@@ -63,6 +69,7 @@ function TT.Draw(bound, folded, fight, who, GetBlock, GetBar, XOf, from, to)
     Place(line, x0, y100, x1 - x0, 1)
     local p = state.p
     local list = p and p.samples or {}
+    local rx0, rx1, rv, rtok, col = nil, nil, nil, nil, nil
     for i = 1, #list do
         local s = list[i]
         local v, token = nil, nil
@@ -73,12 +80,21 @@ function TT.Draw(bound, folded, fight, who, GetBlock, GetBar, XOf, from, to)
         end
         if v and v > 0 and s.to > from and s.from < to then
             local xa, xb = XOf(max(s.from, from)), XOf(min(s.to, to))
-            local h = min(v, scale) / scale * hh
-            local bar = GetBar()
-            ns.Kit.Shade(bar, token)
-            Place(bar, xa, base - h, xb - xa, h)
+            if rx0 and floor(xa) == col then
+                rv, rtok = v, token
+                if xb > col + 1 then
+                    Sample(GetBar, rx0, col + 1, rv, rtok, scale, base, hh)
+                    rx0, rx1, col = col + 1, xb, col + 1
+                elseif xb > rx1 then
+                    rx1 = xb
+                end
+            else
+                if rx0 then Sample(GetBar, rx0, rx1, rv, rtok, scale, base, hh) end
+                rx0, rx1, rv, rtok, col = xa, xb, v, token, floor(xa)
+            end
         end
     end
+    if rx0 then Sample(GetBar, rx0, rx1, rv, rtok, scale, base, hh) end
     local pulls = p and p.pulls or {}
     for i = 1, #pulls do
         local pl = pulls[i]

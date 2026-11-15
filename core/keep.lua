@@ -4,8 +4,6 @@ local sort = table.sort
 local Keep = {}
 ns.Keep = Keep
 local CFG = { "settings", "prices", "recording", "fxUser", "mapPoint", "mapX", "mapY" }
-local REC = { "segments", "live", "total" }
-local held = nil
 local note = nil
 local noteN = 0
 local function CharKey()
@@ -29,61 +27,56 @@ local function Restore(db, cfg)
     end
 end
 local function Merge(db, rec)
-    if type(db.segments) ~= "table" then db.segments = {} end
-    local list = db.segments
-    if type(rec.segments) == "table" then
-        for i = 1, #rec.segments do list[#list + 1] = rec.segments[i] end
+    local mine = type(rec.segments) == "table" and rec.segments or {}
+    if type(db.segments) ~= "table" or #db.segments == 0 then
+        db.segments = mine
+    else
+        local list = db.segments
+        for i = 1, #mine do list[#list + 1] = mine[i] end
+        sort(list, function(a, b)
+            local x, y = tonumber(a.t0) or 0, tonumber(b.t0) or 0
+            if x ~= y then return x < y end
+            return (tonumber(a.t1) or 0) < (tonumber(b.t1) or 0)
+        end)
     end
     if type(rec.live) == "table" and not db.live then db.live = rec.live end
-    sort(list, function(a, b) return (tonumber(a.t0) or 0) < (tonumber(b.t0) or 0) end)
     db.total = (tonumber(db.total) or 0) + (tonumber(rec.total) or 0)
-    if type(db.recChars) == "table" then db.recChars[CharKey()] = nil end
 end
 function Keep.Load(db, lost)
     local ch = Char()
+    ch.lead = nil
     local cfg = type(ch.cfg) == "table" and ch.cfg or nil
     if cfg and (tonumber(cfg.at) or 0) > (tonumber(db.cfgAt) or 0) then
         Restore(db, cfg)
         if lost then note = "keep.cfg" end
     end
     if lost then
-        if type(ManaCodeRaidLeadDB) ~= "table" and type(ch.lead) == "table" then ManaCodeRaidLeadDB = ch.lead end
         local n = type(ch.acct) == "table" and tonumber(ch.acct.segs) or 0
         if n > 0 then note, noteN = "keep.lost", n end
     end
     if db.testSet then return end
     local s = db.settings
-    if type(s) == "table" and s.recChar then
-        held = {}
-        for i = 1, #REC do held[REC[i]] = db[REC[i]] end
-        local rec = ch.rec
-        if type(rec) ~= "table" then
-            local was = type(db.recChars) == "table" and tonumber(db.recChars[CharKey()]) or 0
-            if was > 0 then note, noteN = "keep.lostchar", was end
-            rec, held = held, { segments = {}, total = 0 }
-        end
-        for i = 1, #REC do db[REC[i]] = rec[REC[i]] end
-    elseif type(ch.rec) == "table" then
+    if type(ch.rec) == "table" then
         Merge(db, ch.rec)
+    elseif type(s) == "table" and s.recChar then
+        local was = type(db.recChars) == "table" and tonumber(db.recChars[CharKey()]) or 0
+        if was > 0 then note, noteN = "keep.lostchar", was end
     end
     ch.rec = nil
+    if type(db.recChars) == "table" then db.recChars[CharKey()] = nil end
 end
 function Keep.Logout()
     local db = ManaCodeRaidHelperDB
     if type(db) ~= "table" then return end
     local ch = Char()
     local now = time()
-    if held then
-        local rec = {}
-        for i = 1, #REC do
-            local k = REC[i]
-            rec[k] = db[k]
-            db[k] = held[k]
-        end
-        held = nil
-        ch.rec = rec
+    local s = type(db.settings) == "table" and db.settings or {}
+    if s.recChar and not db.testSet and not (ns.RecLock and ns.RecLock()) then
+        local segs = type(db.segments) == "table" and db.segments or {}
+        ch.rec = { segments = segs, live = db.live, total = db.total }
+        db.segments, db.live, db.total = {}, nil, 0
         if type(db.recChars) ~= "table" then db.recChars = {} end
-        db.recChars[CharKey()] = type(rec.segments) == "table" and #rec.segments or 0
+        db.recChars[CharKey()] = #segs
     end
     local fl = type(db.faults) == "table" and db.faults or {}
     local gp = type(db.gp) == "table" and db.gp or {}
@@ -93,10 +86,7 @@ function Keep.Logout()
         mapPoint = db.mapPoint, mapX = db.mapX, mapY = db.mapY, rules = fl.rules, system = fl.system, proof = gp.proof,
     }
     ch.acct = { segs = type(db.segments) == "table" and #db.segments or 0, at = now }
-    ch.lead = type(ManaCodeRaidLeadDB) == "table" and ManaCodeRaidLeadDB or nil
-end
-function Keep.OnChar()
-    return held ~= nil
+    ch.lead = nil
 end
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")

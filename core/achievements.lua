@@ -15,6 +15,8 @@ ns.Achievements = Ach
 local byBoss = {}
 local byKey = nil
 local raidKeys = setmetatable({}, { __mode = "k" })
+local raidScans = setmetatable({}, { __mode = "k" })
+local raidWant = setmetatable({}, { __mode = "k" })
 local IsBoss = ns.IsBossOf
 local function Same(key, boss)
     key = ns.NpcKeyOf(key)
@@ -556,15 +558,17 @@ function Ach.FightRows(fight, list, got)
     Merge(rows, got)
     return Finish(rows, ns.RaidSize(fight))
 end
-function Ach.ForRaid(raid, onDone, got)
-    local fights = RaidFights(raid)
-    local size = raid.size or (fights[1] and ns.RaidSize(fights[1])) or 25
-    local pending = {}
-    local best, bestFight, order = {}, {}, {}
+local function ScanRaid(raid, fights)
+    local gen, last = ns.Summary.Gen(), fights[#fights]
+    local sc = raidScans[raid]
+    if sc and sc.gen == gen and sc.n == #fights and sc.last == last then return sc end
+    sc = { gen = gen, n = #fights, last = last, best = {}, bestFight = {}, order = {}, pending = {} }
+    raidScans[raid] = sc
+    local best, bestFight, order, pending = sc.best, sc.bestFight, sc.order, sc.pending
     for i = 1, #fights do
         local f = fights[i]
         if #Ach.Defs(f.boss) > 0 then
-            local s = ns.Summary.Peek(f)
+            local s = ns.Summary.Peek(f, true)
             local list = s and s.ach
             if not list then
                 pending[#pending + 1] = f
@@ -584,6 +588,13 @@ function Ach.ForRaid(raid, onDone, got)
             end
         end
     end
+    return sc
+end
+function Ach.ForRaid(raid, onDone, got)
+    local fights = RaidFights(raid)
+    local size = raid.size or (fights[1] and ns.RaidSize(fights[1])) or 25
+    local sc = ScanRaid(raid, fights)
+    local best, bestFight, order, pending = sc.best, sc.bestFight, sc.order, sc.pending
     local rows, zones = {}, {}
     local all = ns.achDefs and ns.achDefs.raid or {}
     for i = 1, #all do
@@ -624,15 +635,22 @@ function Ach.ForRaid(raid, onDone, got)
     if onDone and #pending > 0 then
         local key = raidKeys[raid] or {}
         raidKeys[raid] = key
-        ns.Jobs.Run(key, function()
-            for i = 1, #pending do
-                ns.Jobs.Progress(i - 1, #pending)
-                ns.Summary.Now(pending[i])
-            end
-            return true
-        end, function(ok)
-            if ok then onDone(Ach.ForRaid(raid, nil, got)) end
-        end, "ach.raid")
+        local want = raidWant[raid] or {}
+        raidWant[raid] = want
+        want.onDone, want.got = onDone, got
+        if not ns.Jobs.Busy(key) then
+            ns.Jobs.Run(key, function()
+                for i = 1, #pending do
+                    ns.Jobs.Progress(i - 1, #pending)
+                    ns.Summary.Now(pending[i])
+                end
+                return true
+            end, function(ok)
+                local cb, last = want.onDone, want.got
+                want.onDone, want.got = nil, nil
+                if ok and cb then cb(Ach.ForRaid(raid, nil, last)) end
+            end, "ach.raid")
+        end
     end
     return rows, #pending
 end

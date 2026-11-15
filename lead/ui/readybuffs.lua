@@ -165,6 +165,6 @@ function UI.Check()
         ns.say(ns.T("tipRdyNoGroup"))
         return false
     end
-    if root.Shell and root.Shell.Open then root.Shell.Open("raid") end
+    if root.Shell and root.Shell.Has("raid") then root.Shell.Open("raid") end
     return true
 end

@@ -2,29 +2,32 @@ local _, ns = ...
 local floor = math.floor
 local band = bit.band
 local find = string.find
-local match = string.match
-local gmatch = string.gmatch
-local KILL_GRACE = 2
-local AUTO_WAIT = 10
-local IDLE_CLOSE = 10
-local SPEC_CALM = 5
-local SCRIPT_HOLD = 180
-local SNAP_PERIOD = 0.2
-local POS_PERIOD = 0.25
-local MAP_PERIOD = 1
-local KEY_PERIOD = 5
-local CLOCK_HOLD = 2
-local CLOCK_BACK = 1
-local TICK_PERIOD = 0.5
-local BOSS_PERIOD = 1
-local CAST_POLL = 0.7
-local RING_PERIOD = 1
-local NPC_PERIOD = 3
-local NPC_MAX = 40
-local NPC_STREAMS = 400
-local PULL_MUTE = 30
-local MAX_RAID = 40
-local MAX_PARTY = 4
+local K = {}
+K.KILL_GRACE = 2
+K.AUTO_WAIT = 10
+K.IDLE_CLOSE = 10
+K.SPEC_CALM = 5
+K.SCRIPT_HOLD = 180
+K.SNAP_PERIOD = 0.2
+K.POS_PERIOD = 0.25
+K.MAP_PERIOD = 1
+K.KEY_PERIOD = 5
+K.CLOCK_HOLD = 2
+K.CLOCK_BACK = 1
+K.TICK_PERIOD = 0.5
+K.BOSS_PERIOD = 1
+K.CAST_POLL = 0.7
+K.RING_PERIOD = 1
+K.NPC_PERIOD = 3
+K.NPC_MAX = 40
+K.NPC_STREAMS = 400
+K.PULL_MUTE = 30
+K.PULL_BYTES = 10 * 1048576
+K.PET_AGE = 2 * 86400
+K.PET_MAX = 10000
+K.PET_SLACK = 1000
+K.MAX_RAID = 40
+K.MAX_PARTY = 4
 local F_PLAYER = ns.F.PLAYER
 local F_BY_PLAYER = ns.F.BY_PLAYER
 local F_GROUP = ns.F.GROUP
@@ -32,28 +35,39 @@ local WPN_AURA = ns.RecWpn.AURA
 local SPEC_SWAP = ns.IdSet(ns.specSwap)
 local ACH_EVENTS = ns.RecAch.EVENTS
 local ASKED_MAX = 4096
+local LAST_BOSS = {
+    IcecrownCitadel = ns.ENC.lichking,
+    TheRubySanctum = ns.ENC.halion,
+    TheArgentColiseum = ns.ENC.anubarak,
+}
+local STOP_AT = {}
+for _, enc in pairs(LAST_BOSS) do STOP_AT[enc] = true end
 local Recorder = {}
 ns.Recorder = Recorder
+Recorder.LAST_BOSS = LAST_BOSS
+Recorder.PULL_BYTES = K.PULL_BYTES
+Recorder.PET_AGE = K.PET_AGE
+Recorder.PET_MAX = K.PET_MAX
 local frame = CreateFrame("Frame")
 frame:Hide()
 local U = ns.Units
 local RAID, RAID_PET, RAID_TARGET = U.raid, U.raidPet, U.raidTarget
 local PARTY, PARTY_PET, PARTY_TARGET = U.party, U.partyPet, U.partyTarget
 local TARGET_OF = { target = "targettarget", focus = "focustarget" }
-for i = 1, MAX_RAID do TARGET_OF[RAID_TARGET[i]] = RAID_TARGET[i] .. "target" end
-for i = 1, MAX_PARTY do TARGET_OF[PARTY_TARGET[i]] = PARTY_TARGET[i] .. "target" end
+for i = 1, K.MAX_RAID do TARGET_OF[RAID_TARGET[i]] = RAID_TARGET[i] .. "target" end
+for i = 1, K.MAX_PARTY do TARGET_OF[PARTY_TARGET[i]] = PARTY_TARGET[i] .. "target" end
 local ROSTER_EVENTS = { "RAID_ROSTER_UPDATE", "PARTY_MEMBERS_CHANGED", "UNIT_PET", "UNIT_NAME_UPDATE" }
 local isOn = false
 local inZone = false
 local writeAll = false
 local snapElapsed = 0
 local tickElapsed = 0
-local mapElapsed = MAP_PERIOD
-local keyElapsed = KEY_PERIOD
+local mapElapsed = K.MAP_PERIOD
+local keyElapsed = K.KEY_PERIOD
 local bossElapsed = 0
 local ringElapsed = 0
 local ringMore = false
-local posElapsed = POS_PERIOD
+local posElapsed = K.POS_PERIOD
 local frameHp, framePos = true, true
 local bossTarget, bossTick = {}, {}
 local polledHp, polledMax, polledX, polledY = {}, {}, {}, {}
@@ -92,14 +106,18 @@ local specAt = nil
 local dead = {}
 local bossSeen = {}
 local closed = { why = nil, enc = nil, at = nil, mute = nil }
+local pullEnc = nil
+local bigHold, bigEnc = false, nil
+local petsN = 0
 local paused = false
+local pauseFinal = false
 local pauseWaitIdle = false
 local pauseZone = nil
 local pauseLeft = false
 local ZONE_EVENTS = { "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA" }
 local function Now()
     local t = clockOff and GetTime() + clockOff or time()
-    if t < lastNow and t > lastNow - CLOCK_BACK then t = lastNow end
+    if t < lastNow and t > lastNow - K.CLOCK_BACK then t = lastNow end
     lastNow = t
     return t
 end
@@ -107,7 +125,7 @@ Recorder.Now = Now
 local function Anchor(ts)
     local g = GetTime()
     local off = ts - g
-    if not clockOff or off <= clockOff or g - clockAt > CLOCK_HOLD then
+    if not clockOff or off <= clockOff or g - clockAt > K.CLOCK_HOLD then
         clockOff, clockAt = off, g
     end
 end
@@ -175,11 +193,14 @@ local function CloseSegment(why, enc)
     wipe(vpowMax)
     hadFight = false
     seenIdle = not fighting
+    if why ~= "big" then bigHold, bigEnc = false, nil end
     local live = ns.Store.Live()
     if not live then return end
+    if why == "big" then bigHold, bigEnc = true, pullEnc end
+    pullEnc = nil
     local kill = why == "kill" and live.pull ~= nil
     closed.why, closed.enc, closed.at = why, enc, time()
-    closed.mute = why == "kill" and enc and GetTime() + PULL_MUTE or nil
+    closed.mute = why == "kill" and enc and GetTime() + K.PULL_MUTE or nil
     ns.Raid.Touch(live)
     if ns.CpuMeter then ns.CpuMeter.Close(enc) end
     ns.Store.Close()
@@ -187,6 +208,7 @@ local function CloseSegment(why, enc)
     if kill and ns.AutoRec and ns.AutoRec.Killed then ns.AutoRec.Killed(enc) end
     if kill and ns.RaidEP then ns.RaidEP.Killed(enc) end
     if kill and ns.GearLvl then ns.GearLvl.Arm() end
+    if kill and enc and STOP_AT[enc] then Recorder.Pause(true, true) end
 end
 function Recorder.LastClose()
     return closed.why, closed.enc, closed.at
@@ -262,10 +284,18 @@ function Recorder.SetAll(on)
     ns.GetDB().settings.recAll = on and true or nil
     writeAll = on and true or false
 end
-function Recorder.Pause(waitIdle)
-    if not isOn or paused then return end
+function Recorder.Pause(waitIdle, final)
+    if not isOn then return end
+    if paused then
+        if final and not pauseFinal then
+            pauseFinal = true
+            ns.GetDB().paused = "final"
+        end
+        return
+    end
     paused = true
-    ns.GetDB().paused = true
+    pauseFinal = final == true
+    ns.GetDB().paused = pauseFinal and "final" or true
     Listen(false)
     ns.RecWpn.Forget()
     CloseSegment("pause", nil)
@@ -277,6 +307,7 @@ end
 function Recorder.Resume(why)
     if not paused then return end
     paused = false
+    pauseFinal = false
     ns.GetDB().paused = nil
     fighting, seenIdle, hadFight, calmAt = false, true, false, nil
     ForgetKill()
@@ -293,6 +324,7 @@ function Recorder.Stop()
     db.settings.autoRaid = false
     db.paused = nil
     WatchZone(false)
+    pauseFinal = false
     if paused then
         paused = false
     else
@@ -319,41 +351,57 @@ local function NoteClass(guid, name, flags)
     local _, cls = GetPlayerInfoByGUID(guid)
     if cls then classes[name] = cls end
 end
-local function NoteSummon(srcName, srcFlags, dstGUID, dstName)
-    if not srcName or not dstGUID or not srcFlags then return end
-    if band(srcFlags, F_PLAYER) == 0 or band(srcFlags, F_GROUP) == 0 then return end
-    ns.GetDB().pets[dstGUID] = srcName
-    ns.RecPull.Summon(srcName, dstName)
-end
-local function NotePetsIn(used, pets, actors)
-    if type(actors) == "table" then
-        for i = 1, #actors do
-            local g = match(actors[i], "^([^\31]*)\31")
-            if g and pets[g] then used[g] = true end
-        end
-    elseif type(actors) == "string" then
-        local g = match(actors, "^([^\30\31]*)\31")
-        if g and pets[g] then used[g] = true end
-        for h in gmatch(actors, "\30([^\30\31]*)\31") do
-            if pets[h] then used[h] = true end
-        end
-    end
-end
 function Recorder.PrunePets()
     local db = ns.GetDB()
     local pets = db.pets
-    if type(pets) ~= "table" or not next(pets) or (ns.RecLock and ns.RecLock()) or db.settings.recChar then return end
-    if type(db.recChars) == "table" then
-        for _, n in pairs(db.recChars) do
-            if (tonumber(n) or 0) > 0 then return end
+    if type(pets) ~= "table" or (ns.RecLock and ns.RecLock()) then return end
+    local at = type(db.petsAt) == "table" and db.petsAt or {}
+    db.petsAt = at
+    local now, n = time(), 0
+    for g in pairs(pets) do
+        local t = tonumber(at[g])
+        if not t then
+            t = now
+            at[g] = now
+        end
+        if now - t > K.PET_AGE then
+            pets[g], at[g] = nil, nil
+        else
+            n = n + 1
         end
     end
-    local used = {}
-    for _, seg in ns.Store.Segments() do NotePetsIn(used, pets, seg.actors) end
-    if db.live then NotePetsIn(used, pets, db.live.actors) end
-    for g in pairs(pets) do
-        if not used[g] then pets[g] = nil end
+    for g in pairs(at) do
+        if pets[g] == nil then at[g] = nil end
     end
+    if n > K.PET_MAX then
+        local list = {}
+        for g in pairs(pets) do list[#list + 1] = g end
+        table.sort(list, function(a, b)
+            if at[a] ~= at[b] then return at[a] < at[b] end
+            return a < b
+        end)
+        for i = 1, n - K.PET_MAX do pets[list[i]], at[list[i]] = nil, nil end
+        n = K.PET_MAX
+    end
+    petsN = n
+end
+local function NotePet(guid, owner)
+    local db = ns.GetDB()
+    local pets, at = db.pets, db.petsAt
+    if type(at) ~= "table" then
+        at = {}
+        db.petsAt = at
+    end
+    if pets[guid] == nil then petsN = petsN + 1 end
+    pets[guid] = owner
+    at[guid] = time()
+    if petsN > K.PET_MAX + K.PET_SLACK then Recorder.PrunePets() end
+end
+local function NoteSummon(srcName, srcFlags, dstGUID, dstName)
+    if not srcName or not dstGUID or not srcFlags then return end
+    if band(srcFlags, F_PLAYER) == 0 or band(srcFlags, F_GROUP) == 0 then return end
+    NotePet(dstGUID, srcName)
+    ns.RecPull.Summon(srcName, dstName)
 end
 local healStart
 local function HealStart()
@@ -410,9 +458,9 @@ local function ResetSegmentState()
     wipe(dead)
     wipe(bossSeen)
     ForgetKill()
-    posElapsed = POS_PERIOD
-    keyElapsed = KEY_PERIOD
-    mapElapsed = MAP_PERIOD
+    posElapsed = K.POS_PERIOD
+    keyElapsed = K.KEY_PERIOD
+    mapElapsed = K.MAP_PERIOD
 end
 local function NoteVehicleFight(guid, name, key)
     key = key or ns.NpcKey(guid)
@@ -447,7 +495,7 @@ end
 local function WatchEnd(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, auto)
     local E = ns.Encounters
     if spellId and srcGUID and ns.Deaths.ByScript(E.Of(srcGUID, srcName, auto), spellId) then
-        scriptHold = GetTime() + SCRIPT_HOLD
+        scriptHold = GetTime() + K.SCRIPT_HOLD
     end
     local dstKey = killAt and ns.NpcKey(dstGUID)
     if dstKey and not dead[dstKey] and srcFlags ~= nil
@@ -461,8 +509,8 @@ local function WatchEnd(sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFl
     dead[who] = true
     local now = GetTime()
     killSure = sure or (killAt ~= nil and killSure)
-    killAt = now + KILL_GRACE
-    killEnd = now + AUTO_WAIT
+    killAt = now + K.KILL_GRACE
+    killEnd = now + K.AUTO_WAIT
     killEnc = enc
 end
 local function Spent(guid, name, auto)
@@ -472,6 +520,9 @@ local function Spent(guid, name, auto)
         return false
     end
     return ns.Encounters.Of(guid, name, auto) == closed.enc
+end
+local function Held(guid, name, auto)
+    return bigHold and ns.Encounters.Of(guid, name, auto) == bigEnc
 end
 local function RecordEvent(ts, ...)
     local sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, spellName, _, auraType = ...
@@ -494,8 +545,9 @@ local function RecordEvent(ts, ...)
         seg.skip = (seg.skip or 0) + 1
     end
     if not seg.pull and ns.RecFilter.Pulls(sub, srcFlags, dstGUID, dstName, seg.bosses)
-        and not Spent(dstGUID, dstName, seg.bosses) then
+        and not Spent(dstGUID, dstName, seg.bosses) and not Held(dstGUID, dstName, seg.bosses) then
         local enc = ns.Encounters.Of(dstGUID, dstName, seg.bosses)
+        pullEnc = enc
         ns.Trash.Pull(seg, ts)
         if not ns.RecFilter.BossOn(enc) then
             seg.lite = enc
@@ -530,8 +582,8 @@ local function RecordEvent(ts, ...)
     if dstKey and not seg.pull and (sub == "SPELL_CAST_SUCCESS" or sub == "SPELL_AURA_APPLIED") and ns.bosses[dstKey] then
         ns.RecPull.Touch(srcGUID, srcName, srcFlags, spellName)
     end
-    if sub == "SPELL_CAST_START" and srcKey and ns.bosses[srcKey] and bossElapsed < BOSS_PERIOD - CAST_POLL then
-        bossElapsed = BOSS_PERIOD - CAST_POLL
+    if sub == "SPELL_CAST_START" and srcKey and ns.bosses[srcKey] and bossElapsed < K.BOSS_PERIOD - K.CAST_POLL then
+        bossElapsed = K.BOSS_PERIOD - K.CAST_POLL
     end
     if dstKey and not pollNow[1] and (sub == "SPELL_HEAL" or sub == "SPELL_PERIODIC_HEAL") and HealStart()[dstKey] then
         PollFor(HealStart()[dstKey])
@@ -664,18 +716,20 @@ local function PutSlot(live, k, now, withPos, forceHp, forcePos)
     end
 end
 local function NotePets(nRaid)
-    local pets = ns.GetDB().pets
     local g = UnitGUID("pet")
-    if g then pets[g] = UnitName("player") end
+    local who = g and UnitName("player")
+    if who then NotePet(g, who) end
     if nRaid > 0 then
         for i = 1, nRaid do
             g = UnitGUID(RAID_PET[i])
-            if g then pets[g] = UnitName(RAID[i]) end
+            who = g and UnitName(RAID[i])
+            if who then NotePet(g, who) end
         end
     else
         for i = 1, GetNumPartyMembers() do
             g = UnitGUID(PARTY_PET[i])
-            if g then pets[g] = UnitName(PARTY[i]) end
+            who = g and UnitName(PARTY[i])
+            if who then NotePet(g, who) end
         end
     end
 end
@@ -730,7 +784,7 @@ local function PutNpc(live, S, i, now, bossOnly)
     if not guid or hpMax <= 0 then return false end
     local key = ns.Streams.GuidKey(guid)
     local new = not npcKnown[key]
-    if (bossOnly or (new and npcKnownN >= NPC_STREAMS)) and not S.boss[i] then return false end
+    if (bossOnly or (new and npcKnownN >= K.NPC_STREAMS)) and not S.boss[i] then return false end
     if new then
         npcKnown[key] = true
         npcKnownN = npcKnownN + 1
@@ -744,7 +798,7 @@ local function SampleNpcs()
     local S = ns.UnitScan.Get(true)
     local now, n = Now(), 0
     for i = 1, S.n do
-        if PutNpc(live, S, i, now, n >= NPC_MAX) then n = n + 1 end
+        if PutNpc(live, S, i, now, n >= K.NPC_MAX) then n = n + 1 end
     end
 end
 local function PauseStep()
@@ -752,7 +806,7 @@ local function PauseStep()
         pauseWaitIdle = false
         return
     end
-    if pauseWaitIdle then return end
+    if pauseWaitIdle or pauseFinal then return end
     if BossFighting() then Recorder.Resume("boss") end
 end
 local function PauseZone()
@@ -765,7 +819,7 @@ local function PauseZone()
 end
 local function GroupFighting()
     if UnitAffectingCombat("player") then return true end
-    if specAt and GetTime() - specAt < SPEC_CALM then return true end
+    if specAt and GetTime() - specAt < K.SPEC_CALM then return true end
     local nRaid = GetNumRaidMembers()
     if nRaid > 0 then
         local here = GetRealZoneText()
@@ -798,25 +852,25 @@ local function CheckClose(now)
         end
         if now >= killEnd then ForgetKill() end
     end
-    if hadFight and calmAt and now - calmAt >= IDLE_CLOSE and not (scriptHold and now < scriptHold) then
+    if hadFight and calmAt and now - calmAt >= K.IDLE_CLOSE and not (scriptHold and now < scriptHold) then
         CloseSegment("idle", nil)
         return
     end
-    if dummyAt and now - dummyAt >= IDLE_CLOSE then CloseSegment("idle", nil) end
+    if dummyAt and now - dummyAt >= K.IDLE_CLOSE then CloseSegment("idle", nil) end
 end
 local function Snapshot()
-    local withPos = posElapsed >= POS_PERIOD
+    local withPos = posElapsed >= K.POS_PERIOD
     local refresh = false
     if withPos then
-        posElapsed = posElapsed - POS_PERIOD
-        if posElapsed >= POS_PERIOD then posElapsed = 0 end
-        if mapElapsed >= MAP_PERIOD then
+        posElapsed = posElapsed - K.POS_PERIOD
+        if posElapsed >= K.POS_PERIOD then posElapsed = 0 end
+        if mapElapsed >= K.MAP_PERIOD then
             mapElapsed = 0
             refresh = true
         end
     end
     local moved = ns.RecMap.Read(withPos, refresh)
-    local keyframe = keyElapsed >= KEY_PERIOD
+    local keyframe = keyElapsed >= K.KEY_PERIOD
     if keyframe then
         keyElapsed = 0
     end
@@ -857,14 +911,14 @@ frame:SetScript("OnUpdate", ns.Prof.Wrap("hot.rec", function(_, elapsed)
     bossElapsed = bossElapsed + elapsed
     ringElapsed = ringElapsed + elapsed
     npcElapsed = npcElapsed + elapsed
-    if snapElapsed >= SNAP_PERIOD then
-        snapElapsed = snapElapsed - SNAP_PERIOD
-        if snapElapsed >= SNAP_PERIOD then snapElapsed = 0 end
+    if snapElapsed >= K.SNAP_PERIOD then
+        snapElapsed = snapElapsed - K.SNAP_PERIOD
+        if snapElapsed >= K.SNAP_PERIOD then snapElapsed = 0 end
         if ns.Store.Live() then
             Snapshot()
         end
     end
-    if bossElapsed >= BOSS_PERIOD then
+    if bossElapsed >= K.BOSS_PERIOD then
         bossElapsed = 0
         if paused then
             PauseStep()
@@ -872,15 +926,19 @@ frame:SetScript("OnUpdate", ns.Prof.Wrap("hot.rec", function(_, elapsed)
             NoteBosses()
         end
     end
-    if npcElapsed >= NPC_PERIOD then
+    if npcElapsed >= K.NPC_PERIOD then
         npcElapsed = 0
         if not paused then SampleNpcs() end
     end
-    if tickElapsed >= TICK_PERIOD then
+    if tickElapsed >= K.TICK_PERIOD then
         tickElapsed = 0
-        PollFight(GetTime())
+        local now = GetTime()
+        PollFight(now)
+        if bigHold and calmAt and now - calmAt >= K.IDLE_CLOSE then bigHold, bigEnc = false, nil end
+        local live = ns.Store.Live()
+        if live and live.pull and ns.RecCodec.Size(live) >= Recorder.PULL_BYTES then CloseSegment("big", pullEnc) end
     end
-    if ringElapsed >= RING_PERIOD or ringMore then
+    if ringElapsed >= K.RING_PERIOD or ringMore then
         ringElapsed = 0
         local live = ns.Store.Live()
         ringMore = live ~= nil and not live.pull and ns.Trash.Step(live, Now()) or false
@@ -900,6 +958,6 @@ ns.OnReady(function()
     if db.recording or db.settings.autoRaid then
         db.recording = false
         Recorder.Start()
-        if isOn and db.paused then Recorder.Pause(true) end
+        if isOn and db.paused then Recorder.Pause(true, db.paused == "final") end
     end
 end)

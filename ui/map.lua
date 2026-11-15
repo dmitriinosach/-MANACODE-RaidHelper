@@ -331,9 +331,20 @@ local function LoadFight()
         end
     end)
 end
+function Map.Release()
+    if loadedFight then ns.Encounters.CancelPositions() end
+    loadedFight = nil
+    posFrames, rooms = {}, {}
+    room, lastT, lastWho = nil, nil, nil
+end
 function Map.SetFight(fight)
     wantFight = fight
-    if frame and frame:IsShown() and loadedFight ~= fight then LoadFight() end
+    if loadedFight == fight then return end
+    if frame and frame:IsShown() then
+        LoadFight()
+    elseif loadedFight then
+        Map.Release()
+    end
 end
 local function Build()
     frame = CreateFrame("Frame", nil, host)
@@ -401,10 +412,7 @@ function Apply()
         if loadedFight ~= wantFight then LoadFight() end
     elseif frame then
         frame:Hide()
-        if not on and loadedFight then
-            loadedFight = nil
-            ns.Encounters.CancelPositions()
-        end
+        if not on and loadedFight then Map.Release() end
     end
     if cover then cover(show and docked) end
 end

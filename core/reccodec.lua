@@ -524,25 +524,29 @@ local function Shifted(s, delta)
     local head, rest = match(s, "^(-?%d*)(.*)$")
     return ((tonumber(head) or 0) - delta) .. rest
 end
-local function ShiftFirst(list, delta)
-    if list and list[1] then list[1] = Shifted(list[1], delta) end
+local function ShiftAt(seg, list, i, delta)
+    local s = list and list[i]
+    if not s then return end
+    local out = Shifted(s, delta)
+    seg.bytes = seg.bytes + #out - #s
+    list[i] = out
 end
 function Codec.Rebase(seg, t0)
     local delta = floor((t0 - seg.t0) * 1000 + 0.5)
     if delta == 0 then return end
-    for i = 1, #seg.chunks do seg.chunks[i] = Shifted(seg.chunks[i], delta) end
-    ShiftFirst(seg.buf, delta)
+    for i = 1, #seg.chunks do ShiftAt(seg, seg.chunks, i, delta) end
+    ShiftAt(seg, seg.buf, 1, delta)
     local st = states[seg]
     for _, store in pairs({ seg.hp, seg.pos, seg.mana }) do
         for _, list in pairs(store) do
-            for i = 1, #list do list[i] = Shifted(list[i], delta) end
+            for i = 1, #list do ShiftAt(seg, list, i, delta) end
         end
     end
-    if type(seg.maps) == "table" then ShiftFirst(seg.maps, delta) end
+    if type(seg.maps) == "table" then ShiftAt(seg, seg.maps, 1, delta) end
     if st then
         st.lastMs = st.lastMs - delta
         for _, bufs in ipairs({ st.hpBuf, st.posBuf, st.mpBuf }) do
-            for _, buf in pairs(bufs) do ShiftFirst(buf, delta) end
+            for _, buf in pairs(bufs) do ShiftAt(seg, buf, 1, delta) end
         end
         for _, ms in ipairs({ st.hpMs, st.posMs, st.mpMs }) do
             for name, v in pairs(ms) do ms[name] = v - delta end
@@ -559,31 +563,100 @@ end
 function Codec.Size(seg)
     return (seg.bytes or 0) + Codec.DictBytes(seg)
 end
-local function Pack(...)
-    return { n = select("#", ...), ... }
+local COMPACT_JOB = "reccodec.compact"
+local compactGen = setmetatable({}, { __mode = "k" })
+local function NewCompact(seg)
+    local nx = { t0 = seg.t0, t1 = seg.t1, n = 0, bytes = 0, actors = {}, spells = {}, strs = {}, chunks = {}, buf = {} }
+    State(nx)
+    return { nx = nx, conv = {}, dn = {} }
 end
-function Codec.Compact(seg)
-    local st = states[seg]
-    if not st or not ns.Decode then return false end
-    Codec.Flush(seg)
-    local evs, chunks = {}, seg.chunks
+local function Reput(nx, ts, subtype, ...)
+    if ts == nil then return false end
+    if subtype ~= nil then Codec.Append(nx, ts, subtype, ...) end
+    return true
+end
+local function Convert(seg, c, s, yield)
+    local nx = c.nx
+    local it = ns.Decode.Chunk(seg, s, TAIL_SLOTS)
+    local n0, lines = nx.n, 0
+    while Reput(nx, it()) do
+        lines = lines + 1
+        if yield then ns.Jobs.Step() end
+    end
+    Codec.Flush(nx)
+    local out = nx.chunks[1]
+    nx.chunks[1] = nil
+    c.conv[s] = out or false
+    c.dn[s] = (nx.n - n0) - lines
+end
+local function Swap(seg, c)
+    local chunks, conv, dn = seg.chunks, c.conv, c.dn
+    local out, n, bytes = {}, seg.n, seg.bytes
     for i = 1, #chunks do
         local s = chunks[i]
-        seg.bytes = seg.bytes - #s - 1
-        local it = ns.Decode.Chunk(seg, s, TAIL_SLOTS)
-        while true do
-            local e = Pack(it())
-            if e[1] == nil then break end
-            if e[2] ~= nil then evs[#evs + 1] = e end
+        local to = conv[s]
+        n = n + (dn[s] or 0)
+        bytes = bytes - #s - 1
+        if to then
+            out[#out + 1] = to
+            bytes = bytes + #to + 1
         end
     end
-    ns.Decode.Drop(seg)
     for i = #chunks, 1, -1 do chunks[i] = nil end
-    seg.actors, seg.spells, seg.strs, seg.n = {}, {}, {}, 0
-    NewDicts(st)
-    for i = 1, #evs do
-        local e = evs[i]
-        Codec.Append(seg, unpack(e, 1, e.n))
+    for i = 1, #out do chunks[i] = out[i] end
+    seg.n, seg.bytes = n, bytes
+    local nx = c.nx
+    local st, nst = states[seg], states[nx]
+    seg.actors, seg.spells, seg.strs = nx.actors, nx.spells, nx.strs
+    st.ag, st.ak, st.an, st.af = nst.ag, nst.ak, nst.an, nst.af
+    st.sp, st.sk, st.spn, st.sps, st.si = nst.sp, nst.sk, nst.spn, nst.sps, nst.si
+    st.dict, st.lastMs = nst.dict, 0
+    states[nx] = nil
+    compactGen[seg] = (compactGen[seg] or 0) + 1
+    ns.Decode.Drop(seg)
+end
+local function Finish(seg, c)
+    Codec.Flush(seg)
+    local chunks = seg.chunks
+    for i = 1, #chunks do
+        if c.conv[chunks[i]] == nil then Convert(seg, c, chunks[i], false) end
     end
+    Swap(seg, c)
+end
+function Codec.Compact(seg)
+    if not states[seg] or not ns.Decode then return false end
+    if ns.Jobs then ns.Jobs.Cancel(COMPACT_JOB) end
+    Finish(seg, NewCompact(seg))
     return true
+end
+function Codec.CompactLater(seg, onDone)
+    if not states[seg] or not ns.Decode or not ns.Jobs then return false end
+    if ns.Jobs.Busy(COMPACT_JOB) then return false end
+    local gen = compactGen[seg] or 0
+    local function Gone()
+        return seg.pull ~= nil or not states[seg] or (compactGen[seg] or 0) ~= gen
+            or (ns.Store and ns.Store.Live() ~= seg)
+    end
+    return ns.Jobs.Run(COMPACT_JOB, function()
+        local c = NewCompact(seg)
+        while true do
+            if Gone() then
+                states[c.nx] = nil
+                return false
+            end
+            local chunks = seg.chunks
+            local i = #chunks
+            while i >= 1 and c.conv[chunks[i]] == nil do i = i - 1 end
+            local s = chunks[i + 1]
+            if not s then
+                Finish(seg, c)
+                return true
+            end
+            Convert(seg, c, s, true)
+            ns.Jobs.Yield()
+        end
+    end, onDone and function(ok) if ok then onDone() end end, nil, true)
+end
+function Codec.CompactCancel()
+    if ns.Jobs then ns.Jobs.Cancel(COMPACT_JOB) end
 end

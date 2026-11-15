@@ -8,41 +8,42 @@ local sort = table.sort
 local tremove = table.remove
 local tinsert = table.insert
 local format = string.format
-local ICON = 30
-local ORB = 32
-local GAP = 4
-local TOOLGAP = 8
-local PAD = 8
+local K = {}
+K.ICON = 30
+K.ORB = 32
+K.GAP = 4
+K.TOOLGAP = 8
+K.PAD = 8
 local Kit = ns.Kit
-local SMALL = "GameFontHighlightSmall"
-local ROW_BASE = 16
-local ROW_H = ROW_BASE
-local ROWGAP = 4
-local CTRL = 16
-local CTRL_GAP = 4
-local CTRL_CUT = 2
-local ARROW_PIC = 12
-local LINE_ICON = 14
-local LINE_GAP = 4
-local STRIP_H = 14
-local CORNER = 18
-local CORNER_GAP = 3
-local CORNER_LIFT = 2
-local DOT = 8
-local JOB_H = 3
-local JOB_IN = 2
-local LONG_JOB = 1
-local VIS_PERIOD = 1
-local SCALE_MIN, SCALE_MAX, SCALE_STEP = 0.60, 1.50, 0.05
-local ZOOM_STEP = 0.10
-local SNAP = 12
-local WHEN = { always = true, group = true, raid = true }
-local DEFAULT_LIST = { "count", "graphs" }
-local GLOW = "Interface\\Buttons\\CheckButtonHilight"
-local WHITE8 = "Interface\\Buttons\\WHITE8X8"
-local ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\"
-local ARROWS = { prev = "Interface\\MoneyFrame\\Arrow-Left-Up", next = "Interface\\MoneyFrame\\Arrow-Right-Up" }
-local LINE_TONES = { normal = "text.primary", muted = "text.note", warn = "text.warn", bad = "text.bad", good = "text.good" }
+K.SMALL = "GameFontHighlightSmall"
+K.ROW_BASE = 16
+K.ROW_H = K.ROW_BASE
+K.ROWGAP = 4
+K.CTRL = 16
+K.CTRL_GAP = 4
+K.CTRL_CUT = 2
+K.ARROW_PIC = 12
+K.LINE_ICON = 14
+K.LINE_GAP = 4
+K.STRIP_H = 14
+K.CORNER = 18
+K.CORNER_GAP = 3
+K.CORNER_LIFT = 2
+K.DOT = 8
+K.JOB_H = 3
+K.JOB_IN = 2
+K.LONG_JOB = 1
+K.VIS_PERIOD = 1
+K.SCALE_MIN, K.SCALE_MAX, K.SCALE_STEP = 0.60, 1.50, 0.05
+K.ZOOM_STEP = 0.10
+K.SNAP = 12
+K.WHEN = { always = true, group = true, raid = true }
+K.DEFAULT_LIST = { "count", "graphs" }
+K.GLOW = "Interface\\Buttons\\CheckButtonHilight"
+K.WHITE8 = "Interface\\Buttons\\WHITE8X8"
+K.ART = "Interface\\AddOns\\" .. ADDON .. "\\art\\panel\\"
+K.ARROWS = { prev = "Interface\\MoneyFrame\\Arrow-Left-Up", next = "Interface\\MoneyFrame\\Arrow-Right-Up" }
+K.LINE_TONES = { normal = "text.primary", muted = "text.note", warn = "text.warn", bad = "text.bad", good = "text.good" }
 local EMPTY = {
     noraid = { key = "panel.noraid", tone = "muted" },
     nogroup = { key = "panel.nogroup", tone = "muted" },
@@ -66,8 +67,8 @@ local ICONS = {
     { key = "cd", label = "panel.cd", tip = "panel.tip.cd" },
     { key = "settings", label = "panel.settings", tip = "panel.settings.tip", tool = true },
 }
-local ROW_W = PAD * 2 + #ICONS * ICON + (#ICONS - 2) * GAP + TOOLGAP
-local ROOM_BASE = ROW_W - PAD * 2
+local ROW_W = K.PAD * 2 + #ICONS * K.ICON + (#ICONS - 2) * K.GAP + K.TOOLGAP
+local ROOM_BASE = ROW_W - K.PAD * 2
 local function IconOn(def)
     return not def.page or (ns.Shell ~= nil and ns.Shell.Has(def.key))
 end
@@ -76,23 +77,23 @@ local function RowW()
     for i = 1, #ICONS do
         if IconOn(ICONS[i]) then n = n + 1 end
     end
-    return PAD * 2 + n * ICON + (n - 2) * GAP + TOOLGAP
+    return K.PAD * 2 + n * K.ICON + (n - 2) * K.GAP + K.TOOLGAP
 end
-local OUT = PAD + CTRL_GAP
-local REACH = OUT + CTRL * 3 + CTRL_GAP * 2
+local OUT = K.PAD + K.CTRL_GAP
+local REACH = OUT + K.CTRL * 3 + K.CTRL_GAP * 2
 local Panel = {}
 ns.Panel = Panel
-Panel.ROW_H = ROW_H
+Panel.ROW_H = K.ROW_H
 Panel.ROW_ROOM = ROOM_BASE
 function Panel.RowH()
-    return ROW_H
+    return K.ROW_H
 end
 function Panel.RowRoom()
-    return max(ROOM_BASE, floor(ROOM_BASE * Kit.FontScale(SMALL, true) + 0.5))
+    return max(ROOM_BASE, floor(ROOM_BASE * Kit.FontScale(K.SMALL, true) + 0.5))
 end
 local function Sizes()
-    ROW_H = Kit.GrowH(ROW_BASE, SMALL)
-    Panel.ROW_H = ROW_H
+    K.ROW_H = Kit.GrowH(K.ROW_BASE, K.SMALL)
+    Panel.ROW_H = K.ROW_H
     Panel.ROW_ROOM = Panel.RowRoom()
 end
 Panel.WHENS = { "always", "group", "raid", "never" }
@@ -133,7 +134,7 @@ end
 function Panel.When()
     local s = Saved()
     if s.hidden then return "never" end
-    return WHEN[s.when or ""] and s.when or "always"
+    return K.WHEN[s.when or ""] and s.when or "always"
 end
 function Panel.Compact()
     return Saved().compact and true or false
@@ -148,7 +149,7 @@ local function Wanted()
 end
 function Panel.Scale()
     local v = tonumber(Saved().scale) or 1
-    return min(SCALE_MAX, max(SCALE_MIN, v)), SCALE_MIN, SCALE_MAX, SCALE_STEP
+    return min(K.SCALE_MAX, max(K.SCALE_MIN, v)), K.SCALE_MIN, K.SCALE_MAX, K.SCALE_STEP
 end
 local function ByOrder(a, b)
     local x, y = a.order or 0, b.order or 0
@@ -163,7 +164,7 @@ local function List()
     local s = Saved()
     if type(s.list) ~= "table" then
         s.list = {}
-        for i = 1, #DEFAULT_LIST do s.list[i] = DEFAULT_LIST[i] end
+        for i = 1, #K.DEFAULT_LIST do s.list[i] = K.DEFAULT_LIST[i] end
     end
     if next(widgets) then
         local l = s.list
@@ -204,13 +205,13 @@ end
 local function FitLine(row)
     local lw = row.label:GetStringWidth() or 0
     if lw > row.lw then row.lw = lw end
-    row.need = row.lx + row.lw + LINE_GAP * 2 + row.vw + row.extra
+    row.need = row.lx + row.lw + K.LINE_GAP * 2 + row.vw + row.extra
 end
 function Panel.Line(row, lead, label)
     if type(lead) == "string" then
         local t = row:CreateTexture(nil, "ARTWORK")
-        t:SetWidth(LINE_ICON)
-        t:SetHeight(LINE_ICON)
+        t:SetWidth(K.LINE_ICON)
+        t:SetHeight(K.LINE_ICON)
         t:SetTexture(lead)
         t:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         lead = t
@@ -219,17 +220,17 @@ function Panel.Line(row, lead, label)
     if lead then
         lead:ClearAllPoints()
         lead:SetPoint("LEFT", row, "LEFT", 0, 0)
-        x = (lead:GetWidth() or 0) + LINE_GAP
+        x = (lead:GetWidth() or 0) + K.LINE_GAP
     end
-    local l = Kit.Str(row, SMALL)
+    local l = Kit.Str(row, K.SMALL)
     l:SetJustifyH("LEFT")
     l:SetPoint("LEFT", row, "LEFT", x, 0)
     ns.Kit.Text(l, "text.secondary")
     l:SetText(label or "")
-    local v = Kit.Str(row, SMALL)
+    local v = Kit.Str(row, K.SMALL)
     v:SetJustifyH("RIGHT")
     v:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-    ns.Kit.Text(v, LINE_TONES.normal)
+    ns.Kit.Text(v, K.LINE_TONES.normal)
     row.icon, row.label, row.value = lead, l, v
     row.lx, row.lw, row.vw, row.extra, row.tone, row.shown = x, 0, 0, 0, "normal", nil
     FitLine(row)
@@ -242,10 +243,10 @@ local function IsEmptyWord(text)
     return false
 end
 function Panel.Value(row, text, tone)
-    tone = LINE_TONES[tone or ""] and tone or "normal"
+    tone = K.LINE_TONES[tone or ""] and tone or "normal"
     if tone ~= row.tone then
         row.tone = tone
-        ns.Kit.Text(row.value, LINE_TONES[tone])
+        ns.Kit.Text(row.value, K.LINE_TONES[tone])
     end
     if text == row.shown then return false end
     if tone == "muted" and not IsEmptyWord(text) then
@@ -401,8 +402,8 @@ local function SavePlace(snap)
     local v, y = "BOTTOM", b
     if t + b > H then v, y = "TOP", t - H end
     if snap then
-        if abs(x) < SNAP then x = 0 end
-        if abs(y) < SNAP then y = 0 end
+        if abs(x) < K.SNAP then x = 0 end
+        if abs(y) < K.SNAP then y = 0 end
     end
     local point = v .. h
     frame:ClearAllPoints()
@@ -541,20 +542,20 @@ end
 local RoundIcon = Kit.RoundIcon
 local function MakeIcon(def)
     local b = CreateFrame("Button", nil, frame)
-    b:SetWidth(ICON)
-    b:SetHeight(ICON)
+    b:SetWidth(K.ICON)
+    b:SetHeight(K.ICON)
     b.def = def
     RoundIcon(b, def.pic or def.key)
     b.glow = b:CreateTexture(nil, "OVERLAY")
     b.glow:SetAllPoints()
-    b.glow:SetTexture(GLOW)
+    b.glow:SetTexture(K.GLOW)
     b.glow:SetBlendMode("ADD")
     b.glow:Hide()
     b.busyDot = b:CreateTexture(nil, "OVERLAY")
-    b.busyDot:SetWidth(DOT)
-    b.busyDot:SetHeight(DOT)
+    b.busyDot:SetWidth(K.DOT)
+    b.busyDot:SetHeight(K.DOT)
     b.busyDot:SetPoint("TOPRIGHT", 1, 1)
-    b.busyDot:SetTexture(ART .. "dot.tga")
+    b.busyDot:SetTexture(K.ART .. "dot.tga")
     ns.Kit.Tint(b.busyDot, "sem.rec")
     b.busyDot:Hide()
     if def.key == "log" then
@@ -573,7 +574,7 @@ local function Bars(b, list)
     for i = 1, #list do
         local g = list[i]
         local t = b:CreateTexture(nil, "ARTWORK")
-        t:SetTexture(WHITE8)
+        t:SetTexture(K.WHITE8)
         t:SetWidth(g.w)
         t:SetHeight(g.h)
         t:SetPoint("CENTER", b, "CENTER", g.x, g.y)
@@ -581,7 +582,7 @@ local function Bars(b, list)
     end
 end
 local function CutPlate(b, inset, layer)
-    local cut = CTRL_CUT + inset
+    local cut = K.CTRL_CUT + inset
     local mid = b:CreateTexture(nil, layer)
     mid:SetPoint("TOPLEFT", b, "TOPLEFT", cut, -inset)
     mid:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -cut, inset)
@@ -693,12 +694,12 @@ local function Ctrl(parent, kind, w, h, strip)
         b.rim = CutPlate(b, 0, "BACKGROUND")
         b.plates = CutPlate(b, 1, "BORDER")
     end
-    if ARROWS[kind] then
+    if K.ARROWS[kind] then
         b.pic = b:CreateTexture(nil, "ARTWORK")
-        b.pic:SetWidth(ARROW_PIC)
-        b.pic:SetHeight(ARROW_PIC)
+        b.pic:SetWidth(K.ARROW_PIC)
+        b.pic:SetHeight(K.ARROW_PIC)
         b.pic:SetPoint("CENTER", 0, 0)
-        b.pic:SetTexture(ARROWS[kind])
+        b.pic:SetTexture(K.ARROWS[kind])
         b.pic:SetDesaturated(true)
     end
     Bars(b, GLYPHS[kind] or GLYPHS.add)
@@ -708,8 +709,8 @@ local function Ctrl(parent, kind, w, h, strip)
 end
 local function MakeCorner(kind, file)
     local b = CreateFrame("Button", nil, frame)
-    b:SetWidth(CORNER)
-    b:SetHeight(CORNER)
+    b:SetWidth(K.CORNER)
+    b:SetHeight(K.CORNER)
     b.kind = kind
     b.bars = {}
     RoundIcon(b, file)
@@ -720,10 +721,10 @@ local function Row(i)
     local r = rows[i]
     if r then return r end
     r = CreateFrame("Frame", nil, frame)
-    r:SetHeight(ROW_H)
-    r.prev = Ctrl(r, "prev", CTRL, ROW_H)
-    r.next = Ctrl(r, "next", CTRL, ROW_H)
-    r.del = Ctrl(r, "del", CTRL, ROW_H)
+    r:SetHeight(K.ROW_H)
+    r.prev = Ctrl(r, "prev", K.CTRL, K.ROW_H)
+    r.next = Ctrl(r, "next", K.CTRL, K.ROW_H)
+    r.del = Ctrl(r, "del", K.CTRL, K.ROW_H)
     r.prev.row, r.next.row, r.del.row = r, r, r
     rows[i] = r
     return r
@@ -735,7 +736,7 @@ local function Slot(b, on, slot)
     Vis(b, on)
     if not on then return end
     b:ClearAllPoints()
-    local off = OUT + slot * (CTRL + CTRL_GAP)
+    local off = OUT + slot * (K.CTRL + K.CTRL_GAP)
     if ctrlSide == "LEFT" then
         b:SetPoint("RIGHT", b.row, "LEFT", -off, 0)
     else
@@ -779,7 +780,7 @@ local function CtrlsShown()
 end
 Kit.Tip.SetAvoid(CtrlsShown)
 function Panel.Tip(owner, lines)
-    local span = REACH - PAD
+    local span = REACH - K.PAD
     if ctrlSide == "LEFT" then
         local l, o = frame:GetLeft(), owner:GetLeft()
         ns.Tip.Show(owner, lines, nil, nil, (l and o) and (o - l + span) or span)
@@ -805,7 +806,7 @@ local function View(d)
     local v = views[d.key]
     if v then return v end
     v = CreateFrame("Frame", nil, frame)
-    v:SetHeight(ROW_H)
+    v:SetHeight(K.ROW_H)
     v:SetWidth(1)
     v.def = d
     if d.Tip or d.Click then
@@ -838,16 +839,16 @@ local function LayTop(compact)
         if has and not b.def.tool then at = at + 1 end
         Vis(b, on)
         if on then
-            local size = compact and ORB or ICON
+            local size = compact and K.ORB or K.ICON
             b:SetWidth(size)
             b:SetHeight(size)
             b:ClearAllPoints()
             if compact then
                 b:SetPoint("TOPLEFT", 0, 0)
             elseif b.def.tool then
-                b:SetPoint("TOPRIGHT", -PAD, -PAD)
+                b:SetPoint("TOPRIGHT", -K.PAD, -K.PAD)
             else
-                b:SetPoint("TOPLEFT", PAD + (at - 1) * (ICON + GAP), -PAD)
+                b:SetPoint("TOPLEFT", K.PAD + (at - 1) * (K.ICON + K.GAP), -K.PAD)
             end
         end
     end
@@ -896,34 +897,34 @@ end
 local function LayRows(n, w, y)
     for i = 1, n do
         local r = rows[i]
-        y = y + ROWGAP
+        y = y + K.ROWGAP
         r:ClearAllPoints()
-        r:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y)
-        r:SetWidth(w - PAD * 2)
+        r:SetPoint("TOPLEFT", frame, "TOPLEFT", K.PAD, -y)
+        r:SetWidth(w - K.PAD * 2)
         r:Show()
         local v = views[r.key]
         v:ClearAllPoints()
         v:SetPoint("LEFT", r, "LEFT", 0, 0)
-        if v.need then v:SetWidth(w - PAD * 2) end
+        if v.need then v:SetWidth(w - K.PAD * 2) end
         v:Show()
         ShowCtrls(r, r == hoverRow)
-        y = y + ROW_H
+        y = y + K.ROW_H
     end
     HideRows(n + 1)
     if Spare() then
-        y = y + ROWGAP
+        y = y + K.ROWGAP
         strip:ClearAllPoints()
-        strip:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -y)
-        strip:SetWidth(w - PAD * 2)
+        strip:SetPoint("TOPLEFT", frame, "TOPLEFT", K.PAD, -y)
+        strip:SetWidth(w - K.PAD * 2)
         strip:Show()
-        y = y + STRIP_H
+        y = y + K.STRIP_H
     else
         strip:Hide()
     end
     return y
 end
 local function DressLock()
-    lockGlyph.icon:SetTexture(ART .. (Panel.IsLocked() and "lock" or "unlock") .. ".tga")
+    lockGlyph.icon:SetTexture(K.ART .. (Panel.IsLocked() and "lock" or "unlock") .. ".tga")
     PaintGlyph(lockGlyph)
 end
 local function ShowCorners()
@@ -945,17 +946,17 @@ function Relayout()
         strip:Hide()
         panelHot = false
         ShowCorners()
-        frame:SetWidth(ORB)
-        frame:SetHeight(ORB)
+        frame:SetWidth(K.ORB)
+        frame:SetHeight(K.ORB)
         dirty = false
         return
     end
     local n, cw = FillRows()
-    local w = max(RowW(), PAD * 2 + cw)
-    local y = LayRows(n, w, PAD + ICON)
+    local w = max(RowW(), K.PAD * 2 + cw)
+    local y = LayRows(n, w, K.PAD + K.ICON)
     ShowCorners()
     frame:SetWidth(w)
-    frame:SetHeight(y + PAD)
+    frame:SetHeight(y + K.PAD)
     dirty = false
 end
 local function VisChanged()
@@ -973,7 +974,7 @@ end
 local function StepHover()
     if compactNow then return end
     if not panelHot then ctrlSide = SideOf() end
-    local over = OverSide(frame, CORNER + CORNER_LIFT, REACH - PAD)
+    local over = OverSide(frame, K.CORNER + K.CORNER_LIFT, REACH - K.PAD)
     if over ~= panelHot then
         panelHot = over
         ShowCorners()
@@ -1027,7 +1028,7 @@ local function OnUpdate(self, elapsed)
     StepAlerts()
     StepHover()
     visAcc = visAcc + elapsed
-    if visAcc >= VIS_PERIOD then
+    if visAcc >= K.VIS_PERIOD then
         visAcc = 0
         if not compactNow and VisChanged() then dirty = true end
         local key = (ctx.group and "g" or "") .. (ctx.raid and "r" or "")
@@ -1057,8 +1058,8 @@ end
 local function ShowProgress()
     if not job then return end
     local _, frac, _, _, age = ns.Jobs.State()
-    if frac and age >= LONG_JOB then
-        jobFill:SetWidth(max(1, ((logBtn:GetWidth() or ICON) - JOB_IN * 2) * frac))
+    if frac and age >= K.LONG_JOB then
+        jobFill:SetWidth(max(1, ((logBtn:GetWidth() or K.ICON) - K.JOB_IN * 2) * frac))
         job:Show()
     elseif job:IsShown() then
         job:Hide()
@@ -1067,9 +1068,9 @@ local function ShowProgress()
 end
 local function BuildMarks()
     job = CreateFrame("Frame", nil, logBtn)
-    job:SetPoint("BOTTOMLEFT", JOB_IN, JOB_IN)
-    job:SetPoint("BOTTOMRIGHT", -JOB_IN, JOB_IN)
-    job:SetHeight(JOB_H)
+    job:SetPoint("BOTTOMLEFT", K.JOB_IN, K.JOB_IN)
+    job:SetPoint("BOTTOMRIGHT", -K.JOB_IN, K.JOB_IN)
+    job:SetHeight(K.JOB_H)
     local bg = job:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     ns.Kit.Paint(bg, "progress.ring")
@@ -1082,13 +1083,13 @@ local function BuildMarks()
 end
 local function BuildCorners()
     compactGlyph = MakeCorner("compact", "compact")
-    compactGlyph:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -PAD, CORNER_LIFT)
+    compactGlyph:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -K.PAD, K.CORNER_LIFT)
     lockGlyph = MakeCorner("lock", "unlock")
-    lockGlyph:SetPoint("RIGHT", compactGlyph, "LEFT", -CORNER_GAP, 0)
+    lockGlyph:SetPoint("RIGHT", compactGlyph, "LEFT", -K.CORNER_GAP, 0)
     moreGlyph = MakeCorner("more", "more")
-    moreGlyph:SetPoint("RIGHT", lockGlyph, "LEFT", -CORNER_GAP, 0)
+    moreGlyph:SetPoint("RIGHT", lockGlyph, "LEFT", -K.CORNER_GAP, 0)
     lessGlyph = MakeCorner("less", "less")
-    lessGlyph:SetPoint("RIGHT", moreGlyph, "LEFT", -CORNER_GAP, 0)
+    lessGlyph:SetPoint("RIGHT", moreGlyph, "LEFT", -K.CORNER_GAP, 0)
     local level = (frame:GetFrameLevel() or 0) + 5
     for _, b in ipairs({ lessGlyph, moreGlyph, lockGlyph, compactGlyph }) do
         b:SetFrameLevel(level)
@@ -1100,7 +1101,7 @@ local function BuildTop()
     for i = 1, #ICONS do buttons[i] = MakeIcon(ICONS[i]) end
     logBtn = buttons[1]
     BuildMarks()
-    strip = Ctrl(frame, "add", 1, STRIP_H, true)
+    strip = Ctrl(frame, "add", 1, K.STRIP_H, true)
     strip:Hide()
     BuildCorners()
 end
@@ -1147,7 +1148,7 @@ function Panel.SetWhen(key)
     local s = Saved()
     if key == "never" then
         s.hidden = true
-    elseif WHEN[key or ""] then
+    elseif K.WHEN[key or ""] then
         s.hidden = nil
         s.when = key ~= "always" and key or nil
     end
@@ -1163,7 +1164,7 @@ function Panel.Toggle()
     Apply()
 end
 function Panel.SetScale(v)
-    v = min(SCALE_MAX, max(SCALE_MIN, floor((tonumber(v) or 1) * 100 + 0.5) / 100))
+    v = min(K.SCALE_MAX, max(K.SCALE_MIN, floor((tonumber(v) or 1) * 100 + 0.5) / 100))
     Saved().scale = v ~= 1 and v or nil
     if not frame then return end
     local old = frame:GetScale() or 1
@@ -1178,7 +1179,7 @@ function Panel.SetScale(v)
     end
 end
 function Panel.Zoom(dir)
-    Panel.SetScale((Panel.Scale()) + dir * ZOOM_STEP)
+    Panel.SetScale((Panel.Scale()) + dir * K.ZOOM_STEP)
     if ns.Settings then ns.Settings.Refresh() end
 end
 local function Shift(d)
@@ -1193,7 +1194,7 @@ function Panel.SetCompact(on)
     Saved().compact = on or nil
     HideMenu()
     if frame then
-        if was ~= on then Shift(on and PAD or -PAD) end
+        if was ~= on then Shift(on and K.PAD or -K.PAD) end
         Relayout()
         if was ~= on then SavePlace() end
     end
@@ -1218,13 +1219,13 @@ Kit.OnFont(function()
     Sizes()
     for i = 1, #rows do
         local r = rows[i]
-        r:SetHeight(ROW_H)
-        r.prev:SetHeight(ROW_H)
-        r.next:SetHeight(ROW_H)
-        r.del:SetHeight(ROW_H)
+        r:SetHeight(K.ROW_H)
+        r.prev:SetHeight(K.ROW_H)
+        r.next:SetHeight(K.ROW_H)
+        r.del:SetHeight(K.ROW_H)
     end
     for _, v in pairs(views) do
-        v:SetHeight(ROW_H)
+        v:SetHeight(K.ROW_H)
         if v.value then Panel.Refit(v) end
         v.w = v.need or v:GetWidth()
     end

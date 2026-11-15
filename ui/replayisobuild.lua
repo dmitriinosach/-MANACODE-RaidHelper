@@ -78,6 +78,7 @@ local SetFocus
 local SetHeal
 local UpdateSceneBtn
 local StepFight
+local shared
 local m = { feedW = FEED_W, k = 1, line = 18 }
 local function Metrics()
     local k = max(1, Kit.FontScale("GameFontHighlightSmall", true), Kit.FontScale("GameFontNormalSmall", true))
@@ -533,6 +534,7 @@ local function Build()
         run.playing = false
         run.drag = nil
         run.scrubbing = false
+        if not frame:IsShown() and not Size.Folding() then shared.Release() end
     end)
 end
 local function Restyle()
@@ -546,6 +548,7 @@ end
 Kit.OnTheme(Restyle)
 Kit.OnFont(Restyle)
 function IsoBuild.Bind(s)
+    shared = s
     ui, run, cam, Iso, Tick = s.ui, s.run, s.cam, s.Iso, s.Tick
     SetFocus, SetHeal, UpdateSceneBtn, StepFight = s.SetFocus, s.SetHeal, s.UpdateSceneBtn, s.StepFight
 end

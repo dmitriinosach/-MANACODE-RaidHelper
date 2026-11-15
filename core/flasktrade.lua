@@ -157,11 +157,11 @@ end
 local function Rearm()
     local list = Arm()
     if list then
-        cur.armed = list
+        cur.armed, cur.gone = list, nil
     elseif cur.armed then
         After(0, function()
             if cur.open and not cur.done and not Arm() then
-                cur.armed = nil
+                cur.armed, cur.gone = nil, cur.armed
                 Changed()
             end
         end)
@@ -397,7 +397,10 @@ local function Plan(force)
         if not cur.items then Start(plan, force) end
     else
         cur.status = plan.why
-        Whisper(plan)
+        if cur.told ~= plan.why then
+            cur.told = plan.why
+            Whisper(plan)
+        end
     end
     Changed()
 end
@@ -455,8 +458,24 @@ local function OnShow()
     Changed()
     After(DELAY, Ripe)
 end
+local function Gone(list)
+    for i = 1, #list do
+        if Stock(list[i].id) < list[i].stock then return true end
+    end
+    return false
+end
 local function Complete(s)
     local list = s.armed
+    if not list and s.gone and not s.done and s.partner then
+        local was = s.gone
+        After(STOCK_WAIT, function()
+            if not s.done and not s.armed and Gone(was) then
+                s.armed = was
+                Complete(s)
+            end
+        end, true)
+        return
+    end
     if s.done or not list or not s.partner then return end
     s.done = true
     local now = time()
@@ -467,20 +486,17 @@ local function Complete(s)
     if blocked then blocked, fails = false, BLOCK_AFTER - 1 end
     Changed()
 end
-local function Gone(list)
-    for i = 1, #list do
-        if Stock(list[i].id) < list[i].stock then return true end
-    end
-    return false
-end
 local function OnClosed()
     if not cur.open then return end
     cur.open = false
     R.AlchCancel()
-    if cur.armed and not cur.done then
-        local list, sess = cur.armed, cur
+    if (cur.armed or cur.gone) and not cur.done then
+        local list, sess = cur.armed or cur.gone, cur
         After(STOCK_WAIT, function()
-            if not sess.done and not sess.cancelled and Gone(list) then Complete(sess) end
+            if not sess.done and not sess.cancelled and Gone(list) then
+                sess.armed = list
+                Complete(sess)
+            end
         end, true)
     end
     Changed()

@@ -155,8 +155,8 @@ local function BuildGive()
         if current and model then ns.GPList.IssueKeys(current, model, give.list.sel) end
     end)
     give.giveSel:SetPoint("LEFT", give.marked, "RIGHT", 10, 0)
-    give.busy = Kit.Str(give, "GameFontDisableSmall")
-    ns.Kit.Text(give.busy, "text.off")
+    give.busy = Kit.Str(give, "GameFontHighlightSmall")
+    ns.Kit.Text(give.busy, "text.note")
 end
 local function LogRow(parent)
     local r = CreateFrame("Frame", nil, parent)
@@ -264,8 +264,8 @@ local function BuildLog()
         ns.Kit.Text(fs, "text.secondary")
     end
     log.list = Kit.List(function() return LogRow(log) end, FillLog, { step = 3 })
-    log.empty = Kit.Str(log, "GameFontDisableSmall")
-    ns.Kit.Text(log.empty, "text.off")
+    log.empty = Kit.Str(log, "GameFontHighlightSmall")
+    ns.Kit.Text(log.empty, "text.note")
     log.empty:SetText(ns.T("fp.log.empty"))
 end
 local function RaidLabel(key)

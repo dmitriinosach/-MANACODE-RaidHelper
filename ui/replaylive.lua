@@ -77,6 +77,7 @@ local triDraw = {}
 local Pr = { n = 0, row = {} }
 local PROP_CELL = 8
 local head, tail = {}, {}
+local prevUsed = {}
 local Th = { on = false, l = 0, t = 0, w = 0, h = 0, u0 = 0, v0 = 0, u1 = 0, v1 = 0, depth = 0, path = "", level = 0 }
 local throneImp
 local spireImp
@@ -921,7 +922,7 @@ local function DrawCols(cam, ox, oy, zp, k, hw, hh)
 end
 function Live.Place(cam, room, ppy)
     if room ~= st.room or not st.data then return false end
-    local prevUsed = { st.used[1], st.used[2], st.used[3], st.used[4] }
+    prevUsed[1], prevUsed[2], prevUsed[3], prevUsed[4] = st.used[1], st.used[2], st.used[3], st.used[4]
     prevUsed[POOL_BACK] = st.used[POOL_BACK]
     st.used[1], st.used[2], st.used[3], st.used[4], st.used[POOL_BACK] = 0, 0, 0, 0, 0
     st.calls, st.pieces, st.hidden, st.dropped, st.colPeak = 0, 0, 0, 0, 0

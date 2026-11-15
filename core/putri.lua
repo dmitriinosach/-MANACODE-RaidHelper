@@ -26,6 +26,7 @@ function Putri.Begin(s, fight, pets)
             if kind == "oozes" then
                 st.oz = b
                 b.abom, b.eps = {}, {}
+                st.fair = ns.OozeFair and ns.OozeFair.Begin(s, fight, b)
                 for k, spell in pairs(b.def.auras or {}) do
                     st.aura[ns.SpellKey(spell)] = k
                     st.spells[ns.SpellKey(spell)] = true

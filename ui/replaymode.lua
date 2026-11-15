@@ -61,7 +61,7 @@ local function Feed()
     local L = scene and scene.layers
     local def = st.def
     if not (st.active and def.feed and L) then
-        st.feedKey = nil
+        st.feedKey, st.feedL = nil, nil
         F.SetSource(nil)
         return
     end

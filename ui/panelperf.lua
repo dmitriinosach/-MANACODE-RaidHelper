@@ -4,7 +4,7 @@ local floor = math.floor
 local sort = table.sort
 local Panel = ns.Panel
 local TOP = 8
-local MEM_EVERY = 5
+local MEM_EVERY = 15
 local ICON = "Interface\\Icons\\Trade_Engineering"
 local FPS_WARN, FPS_BAD = 20, 10
 local MEM_WARN, MEM_BAD = 400, 800
@@ -124,7 +124,7 @@ Panel.Widget({
     end,
     Update = function(row, now)
         local fps = NetFps()
-        if not memAt or now - memAt >= MEM_EVERY then
+        if not memAt or (now - memAt >= MEM_EVERY and not UnitAffectingCombat("player")) then
             memAt = now
             memTotal = SampleMem()
         end

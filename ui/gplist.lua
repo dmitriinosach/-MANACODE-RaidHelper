@@ -1,4 +1,7 @@
 local _, ns = ...
+local function SoftGrade(grade)
+    return grade == "yellow" or grade == "green"
+end
 local format = string.format
 local floor = math.floor
 local tsort = table.sort
@@ -36,8 +39,8 @@ end
 function GPList.Pending(events)
     return ns.Ledger.Pending(events)
 end
-function GPList.Confirm(text, yes, onYes)
-    ns.Kit.Confirm(text, yes, onYes)
+function GPList.Confirm(text, yes, onYes, onNo)
+    ns.Kit.Confirm(text, yes, onYes, onNo)
 end
 function GPList.CanGP(n, sys)
     local ok, why = ns.Ledger.Get(sys or ns.Ledger.Key()).Can(n)
@@ -57,8 +60,11 @@ function GPList.SumText(by)
     if not parts[1] then return SumOf(0, ns.Ledger.Key()) end
     return concat(parts, ns.T("gp.sep"))
 end
-function GPList.Issue(fight, batch)
-    if ns.ReadOnly or not fight or not batch then return end
+function GPList.Issue(fight, batch, onNo)
+    if ns.ReadOnly or not fight or not batch then
+        if onNo then onNo() end
+        return
+    end
     local total, names, order = {}, {}, {}
     for k = 1, #batch do
         local n = GPList.Pending(batch[k].events)
@@ -76,12 +82,15 @@ function GPList.Issue(fight, batch)
             asks[#asks + 1] = format(ns.T(ns.Ledger.Get(s).ask), total[s], names[s])
         end
     end
-    if not asks[1] then return end
+    if not asks[1] then
+        if onNo then onNo() end
+        return
+    end
     GPList.Confirm(concat(asks, "\n"), ns.T("sum.gp.yes"), function()
         local res = ns.Ledger.Issue(fight, batch)
         if res.why then ns.Print(ns.T(res.why)) end
         if #res.failed > 0 then ns.Print(format(ns.T("gp.notgiven"), concat(res.failed, ", "))) end
-    end)
+    end, onNo)
 end
 function GPList.IssueKeys(fight, model, keys)
     local batch = {}
@@ -122,7 +131,11 @@ function GPList.Charge(fight, name, ev)
     if n <= 0 then return end
     ns.Penalties.Bump(ev.key)
     GPList.Changed()
-    GPList.Issue(fight, { { name = name, sys = sys, events = { { key = ev.key, n = n, short = ev.short } } } })
+    GPList.Issue(fight, { { name = name, sys = sys, events = { { key = ev.key, n = n, short = ev.short } } } }, function()
+        if ns.Ledger.Done(ev.key) then return end
+        ns.Penalties.Unbump(ev.key)
+        GPList.Changed()
+    end)
 end
 function GPList.Undo(key)
     local rec = ns.Ledger.Done(key)
@@ -217,7 +230,7 @@ local function EventItems(menu, fight, hit, name)
                 func = function() GPList.Issue(fight, { { name = name, sys = sys, events = { ev } } }) end,
             }
         end
-        if ev.grade == "yellow" and not done then
+        if SoftGrade(ev.grade) and not done then
             menu[#menu + 1] = {
                 text = ev.bumped and format(ns.T("sum.gp.uncharge"), when)
                     or format(ns.T("sum.gp.charge"), when, ns.Penalties.Amount(rule, sys) or 0, unit),
@@ -287,7 +300,7 @@ function GPList.Note(item)
     for i = 1, #list do
         local text = ns.Penalties.ShedText(list[i].hangs)
         parts[#parts + 1] = #list > 1 and (ns.Penalties.Reason(list[i].hit.rule) .. ": " .. text) or text
-        if ns.Penalties.Grade(list[i].hit) ~= "yellow" then yellow = false end
+        if ns.Penalties.Grade(list[i].hit) == "red" then yellow = false end
     end
     return concat(parts, "; "), yellow
 end

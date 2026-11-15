@@ -231,11 +231,17 @@ function View.Step()
     if not st.bars then return end
     local Iso = ns.ReplayIso
     local scene = Iso.Scene()
-    if scene ~= st.scene or (scene and scene.layers and scene.layers.bars) ~= st.data then
-        st.scene = scene
-        Use(scene and scene.layers and scene.layers.bars or nil)
-    end
     local t, playing, speed = Iso.Now()
+    local data = scene and scene.layers and scene.layers.bars or nil
+    if scene ~= st.scene or data ~= st.data then
+        st.scene = scene
+        st.lastT = nil
+        Use(data)
+    elseif not playing and t == st.lastT and speed == st.lastSpeed and st.bars:GetWidth() == st.w
+        and st.bars:GetHeight() == st.h and (not st.view or (st.view:GetWidth() or 0) == st.viewW) then
+        return
+    end
+    st.lastT, st.lastSpeed = t, speed
     ns.ReplaySound.Step(scene and scene.layers, t, playing, speed)
     if not st.data then return end
     local w, h = st.bars:GetWidth(), st.bars:GetHeight()
@@ -243,6 +249,10 @@ function View.Step()
     if st.view and (st.view:GetWidth() or 0) ~= st.viewW then PlaceAlerts() end
     DrawBars(t)
     DrawAlerts(t, tonumber(speed) or 1)
+end
+function View.Drop()
+    st.scene, st.lastT = nil, nil
+    if st.bars then Use(nil) else st.data = nil end
 end
 local function Root(f)
     while f and f:GetParent() and f:GetParent() ~= UIParent do f = f:GetParent() end
@@ -257,6 +267,7 @@ function View.Attach()
     local root = Root(bars)
     if root then root:HookScript("OnUpdate", ns.Prof.Wrap("ui.iso", View.Step)) end
 end
+Kit.OnTheme(function() st.lastT = nil end)
 function View.Probe()
     return { rows = st.rows, lines = st.lines, shown = st.shown, active = st.active,
              data = st.data, rowH = st.rowH, barW = st.barW, list = st.list, cap = st.cap,

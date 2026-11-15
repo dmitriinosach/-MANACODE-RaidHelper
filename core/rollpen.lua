@@ -64,11 +64,13 @@ function Roll.Sums(raid, alt)
     end
     return out
 end
-function Roll.PenOf(who, n, sums)
+function Roll.PenOf(who, n, sums, rr)
+    rr = tonumber(rr)
     for i = 1, #throws do
         local t = throws[i]
-        if t.who == who and t.n == n then return t.pen end
+        if t.who == who and t.n == n and (not rr or not t.rr or t.rr == rr) then return t.pen end
     end
+    if rr and rr ~= tonumber(_G.rr_rollID) then return 0 end
     if not sums then
         local raid, alt = Roll.Here()
         sums = raid and Roll.Sums(raid, alt) or {}
@@ -80,7 +82,7 @@ function Roll.OnSystem(msg)
     if not who then return end
     local raid, alt = Roll.Here()
     local pen = raid and Roll.Sums(raid, alt)[who] or 0
-    tinsert(throws, 1, { who = who, n = n, lo = lo, hi = hi, t = time(), pen = pen, net = n - pen })
+    tinsert(throws, 1, { who = who, n = n, lo = lo, hi = hi, t = time(), pen = pen, net = n - pen, rr = tonumber(_G.rr_rollID) })
     throws[KEEP + 1] = nil
     Notify()
 end

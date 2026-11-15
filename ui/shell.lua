@@ -664,7 +664,7 @@ local function BuildStrip()
     MaxLook()
     close = Kit.TabPart(winGroup, "close")
     close.tipTitle = ns.T("kit.win.close")
-    close.tip = ns.T("kit.win.close.tip")
+    close.tipFoot = { { kind = "foot", key = "Esc", left = ns.T("kit.win.close.tip") } }
     close.onClick = function() frame:Hide() end
     winGroup.parts = { fold, maxBtn, close }
     if ns.Web then

@@ -271,7 +271,7 @@ ns.locales.esES = {
     slotGrpTitle = "Grupo de banda",
     slotGrpAuto = "Auto: %d",
     slotGrpShort = "g%d",
-    tipSlotGrp = "Grupo donde se ve la plaza vacía en la pestaña Banda y adonde Ordenar por plantilla mueve al jugador. Auto: tanques 1, sanadores 5 (2 en 10 jugadores), el resto ocupa los grupos libres por orden.",
+    tipSlotGrp = "Grupo de la plaza en la banda. Auto: tanques 1, sanadores 5 (2 en 10 jugadores), el resto ocupa los grupos libres por orden.",
     bbPick = "%s, %s",
     bbBoss_lichking = "Rey Exánime",
     bbBoss_putricide = "Profesor",
@@ -656,4 +656,7 @@ ns.locales.esES = {
     tplEditing = "Editando",
     btnTplUse = "Usar para reclutar",
     tipTplUsed = "Esta plantilla ya se usa para reclutar.",
+    tipTplUse = "Los huecos van a la pestaña Banda; los contadores y {raid} siguen esta plantilla.",
+    tipTplCopy = "Plantilla propia con los mismos huecos y textos del spam.",
+    tipReadyPult = "Comprobación de listos para toda la banda. Mientras dura, las mejoras se sondean solas.",
 }

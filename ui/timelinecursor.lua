@@ -13,6 +13,7 @@ local cursorLine, cursorLabel, cursorBg, hpDot, rowGlow
 local clockOn
 local readouts = {}
 local hov = {}
+local text, seen = {}, {}
 function TC.LastBefore(items, t)
     local found = nil
     for i = 1, items and #items or 0 do
@@ -66,27 +67,34 @@ local function ShowReadouts(c, t)
     end
     if ns.TimelineBrief and ns.TimelineBrief.On() then return ns.TimelineBrief.Readouts(t, readouts, hpDot) end
     local bounds = c.Bounds()
+    if not bounds then
+        for i = 1, #readouts do readouts[i]:Hide() end
+        return
+    end
     local overlay = c.overlay
     local x = c.XOf(t)
     local flip = (c.canvas:GetWidth() - x) < READOUTW * ns.Kit.Grow().k
-    local text = {}
+    for i = 1, #readouts do text[i] = nil end
+    for k in pairs(seen) do seen[k] = nil end
     local b = LastBefore(data.boss, t)
     text[1] = b and b.label or nil
     local cast = LastBefore(data.casts, t)
     text[2] = cast and (ns.TimelineCast and ns.TimelineCast.Readout(cast) or cast.label) or nil
-    local active, all, seen = 0, 0, {}
+    local active, all = 0, 0
     local auraRows = c.auraRows
     for slot = 1, #auraRows do
         local list = auraRows[slot].items
         for j = 1, (list and #list or 0) do
             local a = list[j]
-            if a.t <= t and (a.to or a.t) >= t then active = active + 1 break end
+            if a.t > t then break end
+            if (a.to or a.t) >= t then active = active + 1 break end
         end
     end
     for i = 1, data.auras and #data.auras or 0 do
         local a = data.auras[i]
+        if a.t > t then break end
         local id = a.id or a.label
-        if a.t <= t and (a.to or a.t) >= t and not seen[id] then
+        if (a.to or a.t) >= t and not seen[id] then
             seen[id] = true
             all = all + 1
         end

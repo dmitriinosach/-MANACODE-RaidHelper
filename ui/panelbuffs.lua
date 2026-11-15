@@ -133,7 +133,7 @@ Panel.Widget({
         if button ~= "LeftButton" then return end
         if CanCheck() then
             ns.Lead.ReadyUI.Check()
-        elseif ns.Shell then
+        elseif ns.Shell and ns.Shell.Has("raid") then
             ns.Shell.Open("raid")
         end
     end,

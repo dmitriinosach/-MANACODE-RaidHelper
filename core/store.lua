@@ -5,16 +5,20 @@ local type = type
 local tostring = tostring
 local tonumber = tonumber
 local abs = math.abs
+local format = string.format
 local MB = 1048576
 local WEEK = 7 * 86400
 local MB_MIN, MB_MAX, MB_DEF, MB_WARN = 20, 200, 100, 100
+local RAW_KEEP = 7 * 86400
+local RAID_MB = 30
 local ROTATE_TICK = 2
 local APPLY_DELAY = 5
-local ASK_AGAIN = 30
+local STRIP_KEY = "store.strip"
 local DAY_FMT = "%Y-%m-%d"
 local Store = {}
 ns.Store = Store
 local rot = { want = false, acc = 0, entered = false, measured = false }
+local tried = setmetatable({}, { __mode = "k" })
 local rotFrame = CreateFrame("Frame")
 rotFrame:Hide()
 function Store.Open(ts)
@@ -183,23 +187,13 @@ local function SameGroup(a, b)
     if ra and (ra.name ~= rb.name or ra.size ~= rb.size) then return false end
     return date(DAY_FMT, floor(a.t0)) == date(DAY_FMT, floor(b.t0))
 end
-local function LiveLocks(now)
-    local out = {}
-    local locks = ns.Raid and ns.Raid.Locks and ns.Raid.Locks() or {}
-    for i = 1, #locks do
-        if locks[i].to > now then out[locks[i].id] = true end
-    end
-    return out
-end
 local function Guard()
     local db = ns.GetDB()
     local anchor = db.live or db.segments[#db.segments]
     local cur = ns.Raid and ns.Raid.Current() or nil
     local now = time()
-    local locked = LiveLocks(now)
     return function(seg)
         if not anchor or seg == anchor or SameGroup(seg, anchor) then return true end
-        if seg.raid and seg.raid.id and locked[seg.raid.id] then return true end
         return SameRaid(seg.raid, cur, abs(now - (seg.t1 or seg.t0)))
     end
 end
@@ -338,39 +332,168 @@ local function Apply(drop)
     for k = 1, #drop do
         if DropGroup(drop[k]) then raids = raids + 1 end
     end
-    if raids == 0 then return end
+    if raids == 0 then return 0 end
     if ns.Settings and ns.Settings.RefreshRecord then ns.Settings.RefreshRecord() end
+    return raids
 end
 local function Noop() end
 local function Idle()
     local _, _, _, queued = ns.Jobs.State()
     return queued == 0
 end
-local function LocksReady()
-    if not ns.Raid or not ns.Raid.LocksKnown or ns.Raid.LocksKnown() then return true end
-    local now = GetTime()
-    if not rot.asked or now - rot.asked >= ASK_AGAIN then
-        rot.asked = now
-        if RequestRaidInfo then RequestRaidInfo() end
-    end
-    return false
-end
 local function Stop()
     rot.want = false
     rotFrame:Hide()
 end
+function Store.KeepRaw()
+    return ns.GetDB().settings.keepRaw == true
+end
+function Store.SetKeepRaw(on)
+    ns.GetDB().settings.keepRaw = on and true or nil
+    if not on then Store.Rotate() end
+end
+local function Raids()
+    local db = ns.GetDB()
+    local segs = db.segments
+    local guard = Guard()
+    local byKey, out = {}, {}
+    for i = 1, #segs do
+        local s = segs[i]
+        local key = GroupKey(s)
+        local r = byKey[key]
+        if not r then
+            r = { ids = {}, last = 0, bytes = 0, raw = false, kept = false }
+            byKey[key] = r
+            out[#out + 1] = r
+        end
+        r.ids[#r.ids + 1] = i
+        local t = s.t1 or s.t0 or 0
+        if t > r.last then r.last = t end
+        r.bytes = r.bytes + (s.bytes or 0) + TotalsBytes(s)
+        if not s.bare and not tried[s] then r.raw = true end
+        if guard(s) then r.kept = true end
+    end
+    local live = db.live
+    local r = live and byKey[GroupKey(live)]
+    if r then r.bytes = r.bytes + (live.bytes or 0) end
+    return out
+end
+local function Old(r, keep, now)
+    return not keep and not r.kept and now - r.last > RAW_KEEP
+end
+local function StripWanted()
+    if not rot.entered then return false end
+    local keep, now = Store.KeepRaw(), time()
+    local list = Raids()
+    for k = 1, #list do
+        local r = list[k]
+        if r.raw and (Old(r, keep, now) or r.bytes > RAID_MB * MB) then return true end
+    end
+    return false
+end
+local function StripPlan()
+    local segs = ns.GetDB().segments
+    local keep, now = Store.KeepRaw(), time()
+    local fights = ns.Encounters.Fights()
+    local wipes, kills = {}, {}
+    for k = 1, #fights do
+        local f = fights[k]
+        local fs = FightSegs(f)
+        for j = 1, #fs do
+            if f.killed then kills[fs[j]] = true else wipes[fs[j]] = true end
+        end
+    end
+    local out = {}
+    local list = Raids()
+    for k = 1, #list do
+        local r = list[k]
+        if r.raw then
+            local old, bytes = Old(r, keep, now), r.bytes
+            for n = 1, #r.ids do
+                local i = r.ids[n]
+                local s = segs[i]
+                if not s.bare and not tried[s] then
+                    if old then
+                        out[#out + 1] = s
+                    elseif bytes > RAID_MB * MB and wipes[i] and not kills[i] then
+                        out[#out + 1] = s
+                        bytes = bytes - (s.bytes or 0)
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+local function Stripped()
+    if ns.Settings and ns.Settings.RefreshRecord then ns.Settings.RefreshRecord() end
+end
+local function StripNeed(plan)
+    local set = {}
+    for k = 1, #plan do
+        local i = IndexOf(plan[k])
+        if i then set[i] = plan[k] end
+    end
+    local need = {}
+    local fights = ns.Encounters.Fights()
+    for k = 1, #fights do
+        local fs = FightSegs(fights[k])
+        for j = 1, #fs do
+            if set[fs[j]] then
+                need[#need + 1] = fights[k]
+                break
+            end
+        end
+    end
+    return set, need
+end
+local function StripRun(plan)
+    for k = 1, #plan do tried[plan[k]] = true end
+    ns.Jobs.Run(STRIP_KEY, function()
+        if not ns.Encounters.Ready() then
+            for k = 1, #plan do tried[plan[k]] = nil end
+            return true
+        end
+        local set, need = StripNeed(plan)
+        local bad = {}
+        for k = 1, #need do
+            local f = need[k]
+            ns.Jobs.Title(format(ns.T("job.totals"), k, #need, ns.EncName(f.boss)))
+            if not ns.Digest.Has(f) then ns.Summary.Now(f) end
+            if not ns.Digest.Has(f) then
+                local fs = FightSegs(f)
+                for j = 1, #fs do bad[fs[j]] = true end
+            end
+            ns.Jobs.Yield()
+        end
+        for k = 1, #plan do
+            local s = plan[k]
+            local i = IndexOf(s)
+            if i and set[i] and not bad[i] and not s.bare then
+                ns.Digest.Trash(i, s)
+                Store.Strip(s)
+            end
+            ns.Jobs.Step()
+        end
+        return true
+    end, Stripped, "bg.store")
+end
 local function RotateStep()
     if rot.after and GetTime() < rot.after then return end
-    if not LocksReady() or not Idle() then return end
+    if not Idle() then return end
     if not ns.Encounters.Ready() then
         ns.Encounters.Scan(Noop)
         return
     end
     local drop = Plan(Store.Limit())
-    if #drop == 0 then return Stop() end
+    local strip = #drop == 0 and StripPlan() or {}
+    if #drop == 0 and #strip == 0 then return Stop() end
     if ns.Shell and ns.Shell.IsOpen and ns.Shell.IsOpen("log") then return end
-    Stop()
-    Apply(drop)
+    if #drop > 0 then
+        if Apply(drop) == 0 then Stop() end
+        return
+    end
+    StripRun(strip)
 end
 rotFrame:SetScript("OnUpdate", ns.Prof.Wrap("bg.store", function(self, elapsed)
     rot.acc = rot.acc + elapsed
@@ -379,7 +502,7 @@ rotFrame:SetScript("OnUpdate", ns.Prof.Wrap("bg.store", function(self, elapsed)
     RotateStep()
 end))
 function Store.Rotate()
-    if (ns.RecLock and ns.RecLock()) or not Store.OverLimit() then return false end
+    if (ns.RecLock and ns.RecLock()) or not (Store.OverLimit() or StripWanted()) then return false end
     rot.want, rot.acc = true, ROTATE_TICK
     rotFrame:Show()
     return true

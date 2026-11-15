@@ -1,11 +1,38 @@
 local _, ns = ...
 local NEAR = 4 * 3600
 local LOOK = 16
+local KEEP = 2
 local ROLE = { tank = "t", heal = "h", dps = "d" }
 local Expect = {}
 ns.Expect = Expect
 local cache = setmetatable({}, { __mode = "k" })
 local busy = setmetatable({}, { __mode = "k" })
+local order = {}
+local stamps = setmetatable({}, { __mode = "k" })
+local lastStamp = 0
+local function Stamp(s)
+    local id = stamps[s]
+    if not id then
+        lastStamp = lastStamp + 1
+        id = lastStamp
+        stamps[s] = id
+    end
+    return id
+end
+local function Put(fight, entry)
+    cache[fight] = entry
+    if order[1] == fight then return end
+    for i = 2, #order do
+        if order[i] == fight then
+            table.remove(order, i)
+            break
+        end
+    end
+    table.insert(order, 1, fight)
+    while #order > KEEP do
+        cache[table.remove(order)] = nil
+    end
+end
 function Expect.RaidOf(fight)
     if fight.raid then return fight.raid end
     local segs = ns.GetDB().segments or {}
@@ -74,12 +101,13 @@ end
 function Expect.Of(fight, s, onDone)
     local B = ns.Bober
     if not fight or not s or not B or not B.Ready() then return nil end
+    local sid = Stamp(s)
     local hit = cache[fight]
-    if hit and hit.s == s then return hit.res end
+    if hit and hit.sid == sid then return hit.res end
     if busy[fight] then return nil end
     local mode, boss = Expect.ModeOf(fight)
     if not mode then
-        cache[fight] = { s = s }
+        Put(fight, { sid = sid })
         return nil
     end
     local key = {}
@@ -89,7 +117,7 @@ function Expect.Of(fight, s, onDone)
         return Build(fight, s, mode, boss)
     end, function(res)
         busy[fight] = nil
-        cache[fight] = { s = s, res = res }
+        Put(fight, { sid = sid, res = res })
         if res and res.pending then
             B.WhenIndexed(function()
                 cache[fight] = nil
@@ -100,6 +128,16 @@ function Expect.Of(fight, s, onDone)
     end)
     return nil
 end
-function Expect.Reset()
-    for k in pairs(cache) do cache[k] = nil end
+function Expect.Reset(keep)
+    for k in pairs(cache) do
+        if not (keep and keep[k]) then cache[k] = nil end
+    end
+    for i = #order, 1, -1 do
+        if not cache[order[i]] then table.remove(order, i) end
+    end
+end
+function Expect.Held()
+    local n = 0
+    for _ in pairs(cache) do n = n + 1 end
+    return n
 end

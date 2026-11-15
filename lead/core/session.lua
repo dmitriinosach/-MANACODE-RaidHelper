@@ -222,32 +222,42 @@ function S.Member(name)
     S.Roster()
     return rosterIndex[name]
 end
+local EMPTY = setmetatable({}, { __newindex = function() error("Session.Player is read-only", 2) end })
 function S.Player(name)
+    return name and ns.Store.DB().players[name] or EMPTY
+end
+function S.EditPlayer(name)
     local db = ns.Store.DB()
     local p = db.players[name]
     if not p then
-        p = {}
+        p = { seen = time() }
         db.players[name] = p
     end
     return p
 end
+local function known(name)
+    return ns.Store.DB().players[name]
+end
 function S.SetSpec(name, key, src)
-    local p = S.Player(name)
-    p.spec, p.specSrc = key, key and src or nil
+    local p = key and S.EditPlayer(name) or known(name)
+    if p then p.spec, p.specSrc = key, key and src or nil end
     S.AutoPlace(name)
     S.Changed()
 end
 function S.SetOff(name, key, src)
-    local p = S.Player(name)
-    p.off, p.offSrc = key, key and src or nil
+    local p = key and S.EditPlayer(name) or known(name)
+    if p then p.off, p.offSrc = key, key and src or nil end
     S.Changed()
 end
 function S.SetNote(name, text)
-    S.Player(name).note = (text and text ~= "") and text or nil
+    local v = (text and text ~= "") and text or nil
+    local p = v and S.EditPlayer(name) or known(name)
+    if p then p.note = v end
     S.Changed()
 end
 function S.AddOffRoll(name, delta, line)
-    local p = S.Player(name)
+    local p = delta > 0 and S.EditPlayer(name) or known(name)
+    if not p then return end
     p.offRolls = math.max(0, (p.offRolls or 0) + delta)
     if delta > 0 and line then
         p.note = p.note and (p.note .. "; " .. line) or line
@@ -279,7 +289,10 @@ local function put(i, name)
                 only = k
             end
         end
-        if only then p.spec, p.specSrc = only, "hand" end
+        if only then
+            p = S.EditPlayer(name)
+            p.spec, p.specSrc = only, "hand"
+        end
     end
 end
 function S.Assign(i, name)
@@ -447,6 +460,14 @@ function S.NeedTotal()
     for _, v in pairs(need) do n = n + v end
     return n
 end
+function S.MarkSeen()
+    if ns.Test.Active() or ns.Compat.GroupSize() == 0 then return end
+    local players, now = ns.Store.DB().players, time()
+    for _, m in ipairs(S.Roster()) do
+        local p = players[m.name]
+        if p then p.seen = now end
+    end
+end
 local f = ns.NewFrame("Frame")
 ns.Listen(f, "RAID_ROSTER_UPDATE")
 ns.Listen(f, "PARTY_MEMBERS_CHANGED")
@@ -461,6 +482,7 @@ f:SetScript("OnEvent", function(self, event)
     end
     S.Invalidate()
     if event == "PARTY_MEMBERS_CHANGED" then S.TryConvert() end
+    if event == "RAID_ROSTER_UPDATE" then S.MarkSeen() end
     S.Prune()
     S.AutoAll()
     S.Changed()

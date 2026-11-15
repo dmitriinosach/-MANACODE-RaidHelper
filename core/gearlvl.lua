@@ -3,6 +3,7 @@ local concat = table.concat
 local tonumber = tonumber
 local min = math.min
 local SUB = "FW_GEAR"
+local TIP = "ManaCodeRaidHelperGearTip"
 local SEP = ","
 local PART = ":"
 local SLOTS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 }
@@ -20,18 +21,43 @@ Gear.SUB = SUB
 local seen = {}
 local miss = {}
 local since = 0
+local info = {}
+local asked = {}
+local tip
+local function Query(id)
+    if not id or asked[id] then return end
+    asked[id] = true
+    tip = tip or CreateFrame("GameTooltip", TIP, nil, "GameTooltipTemplate")
+    tip:SetOwner(UIParent, "ANCHOR_NONE")
+    tip:SetHyperlink("item:" .. id .. ":0:0:0:0:0:0:0")
+    tip:Hide()
+end
+local function Info(item)
+    local id = tonumber(item) or tonumber(tostring(item):match("item:(%d+)"))
+    local got = id and info[id]
+    if got then return got[1], got[2] end
+    local _, _, _, ilvl, _, _, _, _, loc = GetItemInfo(item)
+    ilvl = tonumber(ilvl)
+    if not ilvl then
+        Query(id)
+        return nil
+    end
+    if id then info[id] = { ilvl, loc } end
+    return ilvl, loc
+end
 function Gear.Scan(unit)
     local out = {}
-    local any, twoHand = false, false
+    local any, twoHand, uncached = false, false, false
     for i = 1, #SLOTS do
         local slot = SLOTS[i]
         local link = GetInventoryItemLink(unit, slot)
         local item = link or (GetInventoryItemID and GetInventoryItemID(unit, slot)) or nil
         local lvl = 0
-        if item then
-            local _, _, _, ilvl, _, _, _, _, loc = GetItemInfo(item)
-            ilvl = tonumber(ilvl)
-            if not ilvl then return nil, true end
+        local ilvl, loc
+        if item then ilvl, loc = Info(item) end
+        if item and not ilvl then
+            uncached, lvl = true, nil
+        elseif item then
             any = true
             lvl = ilvl
             if loc == TWO_HAND then twoHand = true end
@@ -41,9 +67,12 @@ function Gear.Scan(unit)
             end
         elseif slot == OFF_HAND and twoHand then
             lvl = nil
+        elseif GetInventoryItemTexture and GetInventoryItemTexture(unit, slot) then
+            uncached, lvl = true, nil
         end
         if lvl and (not out.min or lvl < out.min) then out.min, out.slot = lvl, slot end
     end
+    if uncached then return nil, true end
     if not any or not out.min then return nil end
     return out
 end
@@ -65,6 +94,7 @@ end
 function Gear.Arm()
     since = GetTime()
     for name in pairs(miss) do miss[name] = nil end
+    for id in pairs(asked) do asked[id] = nil end
     local S = ns.Specs
     if S and S.frame and not InCombatLockdown() then S.frame:Show() end
 end

@@ -1039,9 +1039,13 @@ function Replay.Strips(cam, room, out)
     end
     return used
 end
+local loadReq
 function Replay.Load(fight, onDone)
     ns.Jobs.Cancel(JOB_KEY)
+    local req = {}
+    loadReq = req
     ns.Encounters.Positions(fight, function(frames)
+        if loadReq ~= req then return end
         if not frames or #frames == 0 then
             onDone(nil)
             return
@@ -1054,8 +1058,10 @@ function Replay.Load(fight, onDone)
             scene.lkNoPatch = ns.ReplayPlatform.NoPatch(scene, frames)
             return scene
         end, onDone, "iso.data", true)
-    end)
+    end, "replay")
 end
 function Replay.Cancel()
+    loadReq = nil
+    ns.Encounters.CancelPositions("replay")
     ns.Jobs.Cancel(JOB_KEY)
 end

@@ -110,12 +110,12 @@ function W.Drop(name)
 end
 local function learn(name, spec, off)
     local p = ns.Session.Player(name)
-    if spec and (PRIORITY[p.specSrc or ""] or 0) <= PRIORITY.whisper then
-        p.spec, p.specSrc = spec, "whisper"
-    end
-    if off and (PRIORITY[p.offSrc or ""] or 0) <= PRIORITY.whisper then
-        p.off, p.offSrc = off, "whisper"
-    end
+    spec = spec and (PRIORITY[p.specSrc or ""] or 0) <= PRIORITY.whisper and spec or nil
+    off = off and (PRIORITY[p.offSrc or ""] or 0) <= PRIORITY.whisper and off or nil
+    if not (spec or off) then return end
+    p = ns.Session.EditPlayer(name)
+    if spec then p.spec, p.specSrc = spec, "whisper" end
+    if off then p.off, p.offSrc = off, "whisper" end
 end
 function W.Clean(text)
     text = tostring(text or "")

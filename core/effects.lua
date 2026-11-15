@@ -229,7 +229,8 @@ function Effects.MergeVariants()
             else
                 local best = ids[1]
                 for i = 2, #ids do
-                    if (reg[ids[i]].n or 0) > (reg[best].n or 0) then best = ids[i] end
+                    local n, nb = reg[ids[i]].n or 0, reg[best].n or 0
+                    if n > nb or (n == nb and ids[i] < best) then best = ids[i] end
                 end
                 for i = 1, #ids do
                     if ids[i] ~= best then

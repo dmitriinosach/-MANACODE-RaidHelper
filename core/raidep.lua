@@ -841,13 +841,25 @@ function EP.Undo(i)
     local e = Epgp()
     local reason = format(ns.T("led.undo"), rec.reason or "")
     if #reason > REASON_MAX then reason = reason:sub(1, REASON_MAX) end
-    local said = {}
+    local said, left, failed, total = {}, {}, {}, 0
     for k = 1, #rec.list do
-        if Known(e, rec.list[k].name) and pcall(e.IncEPBy, e, rec.list[k].name, reason, -rec.list[k].n, true) then
-            said[#said + 1] = { name = rec.list[k].name, n = -rec.list[k].n, reason = reason }
+        local b = rec.list[k]
+        if Known(e, b.name) and pcall(e.IncEPBy, e, b.name, reason, -b.n, true) then
+            said[#said + 1] = { name = b.name, n = -b.n, reason = reason }
+        else
+            left[#left + 1] = b
+            failed[#failed + 1] = b.name
+            total = total + (b.n or 0)
         end
     end
     AnnounceMass(e, said)
+    if failed[1] then
+        if said[1] then
+            rec.list, rec.total = left, total
+            Changed()
+        end
+        return true, nil, failed
+    end
     rec.undone = time()
     Changed()
     return true

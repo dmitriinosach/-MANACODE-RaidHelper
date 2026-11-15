@@ -406,12 +406,7 @@ local function SelectedFight()
     end
     return best, true
 end
-local function LoadFight(fight)
-    run.fight = fight
-    run.scene, run.base, run.pin, run.fadeA = nil, nil, nil, 0
-    ui.fade:Hide()
-    UpdateSceneBtn()
-    run.loading = true
+local function DropViews()
     for k = 1, #figs do HideFigure(figs[k]) end
     for k = 1, #afigs do HideFigure(afigs[k]) end
     run.orderN = nil
@@ -433,6 +428,27 @@ local function LoadFight(fight)
     ns.ReplayFeed.Use(nil)
     if ns.ReplayModeView then ns.ReplayModeView.Use(nil) end
     Bar.Use(nil)
+end
+local function Release()
+    if not (run.fight or run.base or run.loading) then return end
+    Replay.Cancel()
+    run.loading, run.fight = false, nil
+    run.scene, run.base, run.pin, run.fadeA = nil, nil, nil, 0
+    if not ui.frame then return end
+    ui.fade:Hide()
+    DropViews()
+    ns.ReplayNoPatchView.Use(nil)
+    if ns.ReplayBarsView then ns.ReplayBarsView.Drop() end
+    UpdateSceneBtn()
+end
+shared.Release = Release
+local function LoadFight(fight)
+    run.fight = fight
+    run.scene, run.base, run.pin, run.fadeA = nil, nil, nil, 0
+    ui.fade:Hide()
+    UpdateSceneBtn()
+    run.loading = true
+    DropViews()
     ns.ReplaySize.SetTitle(Bar.Head(fight))
     UpdateFightNav()
     ui.hint:SetText(ns.T("iso.loading"))
@@ -493,11 +509,12 @@ function Iso.Wake()
 end
 function Iso.Hide()
     if ui.frame then ui.frame:Hide() end
-    Replay.Cancel()
-    if not run.scene then
-        run.loading = false
-        run.fight = nil
-    end
+    Release()
+end
+function Iso.Release()
+    if ui.frame and (ui.frame:IsShown() or ns.ReplaySize.IsFolded()) then return false end
+    Release()
+    return true
 end
 function Iso.Focus(name)
     SetFocus(name)
@@ -561,7 +578,7 @@ function Iso.Layout()
              scene = run.scene and (run.scene == run.base and "base" or "alt") or nil, pin = run.pin, fade = run.fadeA,
              camR = cam.r, camCx = cam.cx, camCy = cam.cy, cam = cam, gap = run.gapKind or nil,
              title = ui.title:GetText(), titleFs = ui.title, prevBtn = ui.prevBtn, nextBtn = ui.nextBtn, focusX = ui.focusX,
-             focusText = ui.focus, navW = IsoBuild.NAV_W, fight = run.fight, side = ui.side, view = ui.view,
+             focusText = ui.focus, navW = IsoBuild.NAV_W, fight = run.fight, loading = run.loading, side = ui.side, view = ui.view,
              box = IsoBuild.Box(), page = ui.page, rule = ui.rule, navGroup = ui.navGroup }
 end
 if ns.MapView and ns.MapView.SetFight then

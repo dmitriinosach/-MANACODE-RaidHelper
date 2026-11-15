@@ -4,7 +4,6 @@ local max = math.max
 local min = math.min
 local ROOM_PATH = "Interface\\AddOns\\" .. ADDON .. "\\art\\rooms\\"
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
-local MARKS = "Interface\\TargetingFrame\\UI-RaidTargetingIcons"
 local ICON = 18
 local SHADOW = 22
 local LIFT = 9
@@ -20,7 +19,7 @@ local HUGE = 1e9
 local STALE_ALPHA = 0.35
 local ADD_K = 0.85
 local COL_PAD = 10
-local DEATH_TC = { 0.5, 0.25, 0.5, 0.5, 0.75, 0.25, 0.75, 0.5 }
+local DEATH_TC = { 0, 0, 0, 1, 1, 0, 1, 1 }
 local IsoFigs = {}
 ns.ReplayIsoFigs = IsoFigs
 local Replay = ns.Replay
@@ -364,8 +363,7 @@ local function BuildPools()
     Soul.Build(view, ui.top)
     for i = 1, DEATH_POOL do
         local tex = ui.marks:CreateTexture(nil, "ARTWORK")
-        tex:SetTexture(MARKS)
-        tex:SetTexCoord(0.5, 0.75, 0.25, 0.5)
+        Kit.Icon.Mark(tex, ns.replayFeed.glyphs.spot.mark)
         tex:Hide()
         deathTex[i] = tex
     end

@@ -156,8 +156,13 @@ Panel.Widget({
         FeedEq(row, on and (ns.Recorder.Counts()) or 0, dt, on)
         DrawEq(row)
         if on then
-            Panel.Value(row, format(ns.T("panel.rec.rate." .. state), ns.Num(PerSec(row))))
+            local v = PerSec(row)
+            if v ~= row.recV or state ~= row.recState then
+                row.recV, row.recState = v, state
+                Panel.Value(row, format(ns.T("panel.rec.rate." .. state), ns.Num(v)))
+            end
         else
+            row.recState = nil
             Panel.Empty(row, state)
         end
     end,
@@ -204,11 +209,18 @@ local function Number(b, text, a)
         b.text:SetAlpha(a)
     end
 end
+local function Rate(b, v, a)
+    if v ~= b.v or b.vText == nil then
+        b.v = v
+        b.vText = v and Short(v) or ns.T("panel.none")
+    end
+    Number(b, b.vText, a)
+end
 local function DrawWindow(b, live, fighting, rate)
     local n = b.n
     if live then
         PaintBars(b.bars, n, Peak(n), 1)
-        Number(b, Short(rate), 1)
+        Rate(b, rate, 1)
         if fighting then
             for i = 1, n do b.snap[i] = vals[i] end
             b.snapV = rate
@@ -217,7 +229,7 @@ local function DrawWindow(b, live, fighting, rate)
     end
     for i = 1, n do vals[i] = b.snapV and b.snap[i] or 0 end
     PaintBars(b.bars, n, Peak(n), DIM)
-    Number(b, b.snapV and Short(b.snapV) or ns.T("panel.none"), DIM)
+    Rate(b, b.snapV, DIM)
 end
 local function HadFight(M)
     return M ~= nil and (M.Fighting() or M.FightTime() > 0)
@@ -365,7 +377,7 @@ end
 local function OpenCheck()
     if CanCheck() then
         ns.Lead.ReadyUI.Check()
-    elseif ns.Shell then
+    elseif ns.Shell and ns.Shell.Has("raid") then
         ns.Shell.Open("raid")
     end
 end

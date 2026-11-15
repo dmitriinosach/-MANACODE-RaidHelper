@@ -373,7 +373,14 @@ function Jobs.Run(key, fn, onDone, prof, urgent)
     failed[key] = nil
     local job = jobByKey[key]
     if job then
-        if onDone then job.done[#job.done + 1] = onDone end
+        local done = job.done
+        for i = 1, #done do
+            if done[i] == onDone then
+                onDone = nil
+                break
+            end
+        end
+        if onDone then done[#done + 1] = onDone end
         if urgent and queue[1] ~= job then
             Drop(job)
             jobByKey[key] = job

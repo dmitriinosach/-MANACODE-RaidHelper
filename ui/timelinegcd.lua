@@ -37,6 +37,10 @@ local function PlanOf(data, who)
     widthPps, widthMin = nil, nil
     return plan
 end
+function TG.Release()
+    plan, planCasts, planCuts, planWho = nil, nil, nil, nil
+    widthPps, widthMin = nil, nil
+end
 function TG.CutWhy(it)
     if it.cut == "kick" then return format(ns.T("tl.cast.cut.kick"), it.by or "?") end
     if it.cut == "cut" then

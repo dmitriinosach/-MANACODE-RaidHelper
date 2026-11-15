@@ -434,6 +434,25 @@ end
 local models = setmetatable({}, { __mode = "k" })
 local keys = setmetatable({}, { __mode = "k" })
 local PLAYER_KEY = {}
+local KEEP = 2
+local order = {}
+local function Drop(fight)
+    models[fight] = nil
+    local k = keys[fight]
+    if k then ns.Jobs.Cancel(k) end
+    keys[fight] = nil
+end
+local function Touch(fight)
+    if order[1] == fight then return end
+    for i = 2, #order do
+        if order[i] == fight then
+            table.remove(order, i)
+            break
+        end
+    end
+    table.insert(order, 1, fight)
+    while #order > KEEP do Drop(table.remove(order)) end
+end
 local function KeyOf(fight)
     local k = keys[fight]
     if not k then
@@ -503,6 +522,7 @@ end
 function Threat.Load(fight, onDone)
     local ready = models[fight]
     if ready then
+        Touch(fight)
         onDone(ready)
         return
     end
@@ -516,7 +536,10 @@ function Threat.Load(fight, onDone)
             return
         end
         ns.Jobs.Run(KeyOf(fight), function() return Build(fight, idx) end, function(model)
-            if model then models[fight] = model end
+            if model then
+                Touch(fight)
+                models[fight] = model
+            end
             onDone(model)
         end, "thr.data", true)
     end, true)
@@ -556,6 +579,16 @@ function Threat.Player(fight, who, onDone)
         end, true)
     end)
 end
-function Threat.Reset()
-    wipe(models)
+function Threat.Reset(keep)
+    for i = #order, 1, -1 do
+        if not (keep and keep[order[i]]) then Drop(table.remove(order, i)) end
+    end
+    for f in pairs(models) do
+        if not (keep and keep[f]) then models[f] = nil end
+    end
+end
+function Threat.Held()
+    local n = 0
+    for _ in pairs(models) do n = n + 1 end
+    return n
 end

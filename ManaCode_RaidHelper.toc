@@ -3,7 +3,7 @@
 ## Notes: Raid review from the combat log.
 ## Notes-ruRU: Разбор рейда по боевому логу
 ## Author: Manacode
-## Version: 1.14.1
+## Version: 1.15.0
 ## X-Date: 2026-11-15
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
@@ -172,6 +172,7 @@ core\tombpull.lua
 core\tombbreak.lua
 core\parry.lua
 core\putri.lua
+core\oozefair.lua
 core\valkyr.lua
 core\targets.lua
 core\cures.lua

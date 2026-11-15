@@ -1,4 +1,7 @@
 local _, ns = ...
+local function SoftGrade(grade)
+    return grade == "yellow" or grade == "green"
+end
 local floor = math.floor
 local max = math.max
 local min = math.min
@@ -7,7 +10,7 @@ local SESSION_GAP = 3600
 local QUIET_OUT = 3600
 local QUIET_LONG = 12 * 3600
 local TRASH = "#trash"
-local KEEP = 2
+local KEEP = 1
 local RaidSum = {}
 ns.RaidSummary = RaidSum
 RaidSum.TRASH = TRASH
@@ -404,7 +407,7 @@ local function Build(raid)
     local have = {}
     for k = 1, #fights do
         local f = fights[k]
-        local s = ns.Summary.Peek(f)
+        local s = ns.Summary.Peek(f, true)
         if s then
             have[k] = s
             ns.Jobs.Band(step / total, (step + 1) / total)
@@ -525,7 +528,7 @@ function RaidSum.GP(res)
                 for x = 1, #evs do
                     local gp = evs[x].n or 0
                     fl.n = fl.n + 1
-                    if evs[x].grade ~= "yellow" then fl.red = fl.red + 1 end
+                    if not SoftGrade(evs[x].grade) then fl.red = fl.red + 1 end
                     fl.gp = fl.gp + gp
                     fl.by[name] = (fl.by[name] or 0) + 1
                     row.offer = row.offer + gp

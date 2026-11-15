@@ -132,6 +132,17 @@ local function DrawRuler()
         k = k + 1
     end
 end
+local function Span(xa, xb, who, mid, alpha)
+    local bar = Bar()
+    local cls = fight.players[who] ~= nil and ClassOf(who) or nil
+    if cls then
+        local r, g, b = ns.Kit.ClassColor(cls)
+        bar:SetTexture(r, g, b, alpha)
+    else
+        ns.Kit.Shade(bar, "sem.threat.other")
+    end
+    Place(bar, xa, mid - BARH / 2, xb - xa, BARH)
+end
 local function DrawRow(m, y)
     local x0, x1 = XOf(from), XOf(to)
     local mid = y + ROWH / 2
@@ -152,21 +163,26 @@ local function DrawRow(m, y)
     end
     local _, _, _, alpha = ns.Kit.Color("sem.threat.span")
     local spans = m.spans
+    local rx0, rx1, rwho, col = nil, nil, nil, nil
     for i = 1, #spans do
         local sp = spans[i]
         if sp.to > from and sp.from < to then
             local xa, xb = max(x0, XOf(sp.from)), min(x1, XOf(sp.to))
-            local bar = Bar()
-            local cls = fight.players[sp.who] ~= nil and ClassOf(sp.who) or nil
-            if cls then
-                local r, g, b = ns.Kit.ClassColor(cls)
-                bar:SetTexture(r, g, b, alpha)
+            if rx0 and floor(xa) == col then
+                rwho = sp.who
+                if xb > col + 1 then
+                    Span(rx0, col + 1, rwho, mid, alpha)
+                    rx0, rx1, col = col + 1, xb, col + 1
+                elseif xb > rx1 then
+                    rx1 = xb
+                end
             else
-                ns.Kit.Shade(bar, "sem.threat.other")
+                if rx0 then Span(rx0, rx1, rwho, mid, alpha) end
+                rx0, rx1, rwho, col = xa, xb, sp.who, floor(xa)
             end
-            Place(bar, xa, mid - BARH / 2, xb - xa, BARH)
         end
     end
+    if rx0 then Span(rx0, rx1, rwho, mid, alpha) end
     for i = 1, #m.pulls do
         local p = m.pulls[i]
         if p.t >= from and p.t <= to then

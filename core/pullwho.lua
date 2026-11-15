@@ -75,11 +75,14 @@ function PullWho.Finish(pw, s, owners, pets)
     local g = pw.guid
     if g then hit.owner = owners[g] or pets[g] end
     if not pw.firsts[1] then return end
-    local touch = {}
+    local touch, from = {}, {}
     for name, tc in pairs(pw.touch) do
         local person = name
         if tc.pet then person = tc.guid and (owners[tc.guid] or pets[tc.guid]) end
-        if person then touch[person] = tc end
+        local was = person and touch[person]
+        if person and (not was or tc.t > was.t or (tc.t == was.t and name < from[person])) then
+            touch[person], from[person] = tc, name
+        end
     end
     s.pull = PullWho.Decide(hit, pw.firsts, touch)
 end

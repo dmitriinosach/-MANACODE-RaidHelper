@@ -5,29 +5,30 @@ local max = math.max
 local min = math.min
 local floor = math.floor
 local Kit = ns.Kit
-local ROW = 18
-local PAD = 8
-local HEAD = 20
-local SEARCHH = 22
-local SEARCHPAD = 4
-local COLH = 16
-local GAP = 8
-local SUBHEAD = 16
-local BARW = 8
-local MARKX = 2
-local MARKW = 10
-local ICONX = 14
-local ICONSZ = 14
-local TEXTX = 32
-local COUNTW = 36
-local NW = 30
-local SHAREW = 34
-local TEXTGAP = 4
-local GROUPW = 108
-local HIDDENSHARE = 0.32
-local LISTMAX = 40
-local HIDDENMAX = 24
-local NBSP = "\194\160"
+local K = {}
+K.ROW = 18
+K.PAD = 8
+K.HEAD = 20
+K.SEARCHH = 22
+K.SEARCHPAD = 4
+K.COLH = 16
+K.GAP = 8
+K.SUBHEAD = 16
+K.BARW = 8
+K.MARKX = 2
+K.MARKW = 10
+K.ICONX = 14
+K.ICONSZ = 14
+K.TEXTX = 32
+K.COUNTW = 36
+K.NW = 30
+K.SHAREW = 34
+K.TEXTGAP = 4
+K.GROUPW = 108
+K.HIDDENSHARE = 0.32
+K.LISTMAX = 40
+K.HIDDENMAX = 24
+K.NBSP = "\194\160"
 local TONE = {
     name = "fx.name",
     nameOff = "fx.nameOff",
@@ -85,7 +86,7 @@ local function Num(value)
     local text = format("%d", value)
     local done
     repeat
-        text, done = gsub(text, "^(%d+)(%d%d%d)", "%1" .. NBSP .. "%2")
+        text, done = gsub(text, "^(%d+)(%d%d%d)", "%1" .. K.NBSP .. "%2")
     until done == 0
     return text
 end
@@ -248,13 +249,13 @@ local function Measure()
     if key == fitKey then return false end
     fitKey = key
     local g, k = m.g, m.k
-    ROW, HEAD, SEARCHH, COLH, SUBHEAD = 18 + g, 20 + g, 22 + g, 16 + g, 16 + g
-    MARKW = floor(10 * k + 0.5)
-    ICONX = MARKX + MARKW + 2
-    ICONSZ = 14 + g
-    TEXTX = ICONX + ICONSZ + 4
-    COUNTW, NW, SHAREW = floor(36 * k + 0.5), floor(30 * k + 0.5), floor(34 * k + 0.5)
-    GROUPW = floor(108 * k + 0.5)
+    K.ROW, K.HEAD, K.SEARCHH, K.COLH, K.SUBHEAD = 18 + g, 20 + g, 22 + g, 16 + g, 16 + g
+    K.MARKW = floor(10 * k + 0.5)
+    K.ICONX = K.MARKX + K.MARKW + 2
+    K.ICONSZ = 14 + g
+    K.TEXTX = K.ICONX + K.ICONSZ + 4
+    K.COUNTW, K.NW, K.SHAREW = floor(36 * k + 0.5), floor(30 * k + 0.5), floor(34 * k + 0.5)
+    K.GROUPW = floor(108 * k + 0.5)
     return true
 end
 local function Column(parent, fs, right, width)
@@ -267,26 +268,26 @@ end
 local function RowGeom(row, index, width)
     row:SetWidth(width)
     row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", 0, -((index - 1) * ROW))
-    row:SetHeight(ROW)
-    row.mark:SetWidth(MARKW)
+    row:SetPoint("TOPLEFT", 0, -((index - 1) * K.ROW))
+    row:SetHeight(K.ROW)
+    row.mark:SetWidth(K.MARKW)
     row.icon:ClearAllPoints()
-    row.icon:SetPoint("LEFT", ICONX, 0)
-    row.icon:SetWidth(ICONSZ)
-    row.icon:SetHeight(ICONSZ)
-    Column(row, row.count, BARW + SHAREW + NW, COUNTW)
-    Column(row, row.n, BARW + SHAREW, NW)
-    Column(row, row.share, BARW, SHAREW)
+    row.icon:SetPoint("LEFT", K.ICONX, 0)
+    row.icon:SetWidth(K.ICONSZ)
+    row.icon:SetHeight(K.ICONSZ)
+    Column(row, row.count, K.BARW + K.SHAREW + K.NW, K.COUNTW)
+    Column(row, row.n, K.BARW + K.SHAREW, K.NW)
+    Column(row, row.share, K.BARW, K.SHAREW)
     row.text:ClearAllPoints()
-    row.text:SetPoint("LEFT", TEXTX, 0)
-    row.text:SetWidth(width - TEXTX - COUNTW - NW - SHAREW - BARW - TEXTGAP)
-    row.text:SetHeight(ROW)
+    row.text:SetPoint("LEFT", K.TEXTX, 0)
+    row.text:SetWidth(width - K.TEXTX - K.COUNTW - K.NW - K.SHAREW - K.BARW - K.TEXTGAP)
+    row.text:SetHeight(K.ROW)
 end
 local function AttachRow(parent, index, width)
     local row = ns.MakeRowButton(parent, width)
     Kit.Bind(row.text, "GameFontHighlightSmall")
     row.mark = Kit.Str(row, "GameFontHighlightSmall")
-    row.mark:SetPoint("LEFT", MARKX, 0)
+    row.mark:SetPoint("LEFT", K.MARKX, 0)
     row.mark:SetJustifyH("CENTER")
     row.icon = row:CreateTexture(nil, "ARTWORK")
     row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -301,14 +302,14 @@ end
 local function PlaceCol(key, left, width)
     local b = cols[key]
     b:SetWidth(width)
-    b:SetHeight(COLH)
+    b:SetHeight(K.COLH)
     b:ClearAllPoints()
     b:SetPoint("TOPLEFT", left, 0)
 end
 local function AttachCol(parent, key, left, width)
     local b = ns.Kit.Row(parent, width)
     Kit.Bind(b.text, "GameFontHighlightSmall")
-    b:SetHeight(COLH)
+    b:SetHeight(K.COLH)
     b:SetPoint("TOPLEFT", left, 0)
     b.text:SetText(ns.T(COL_KEY[key]))
     b.text:ClearAllPoints()
@@ -331,25 +332,25 @@ local function AttachCol(parent, key, left, width)
 end
 local function Geom(width)
     curWidth = width
-    local inner = width - PAD * 2
+    local inner = width - K.PAD * 2
     frame:SetWidth(width)
-    groupBtn:SetWidth(GROUPW)
-    groupBtn:SetHeight(HEAD - 4)
+    groupBtn:SetWidth(K.GROUPW)
+    groupBtn:SetHeight(K.HEAD - 4)
     search:ClearAllPoints()
-    search:SetPoint("TOPLEFT", PAD, -HEAD)
+    search:SetPoint("TOPLEFT", K.PAD, -K.HEAD)
     search:SetWidth(inner)
-    search:SetHeight(SEARCHH - SEARCHPAD)
+    search:SetHeight(K.SEARCHH - K.SEARCHPAD)
     colBox:ClearAllPoints()
-    colBox:SetPoint("TOPLEFT", PAD, -(HEAD + SEARCHH))
+    colBox:SetPoint("TOPLEFT", K.PAD, -(K.HEAD + K.SEARCHH))
     colBox:SetWidth(inner)
-    colBox:SetHeight(COLH)
-    local right = inner - BARW
-    PlaceCol("share", right - SHAREW, SHAREW)
-    PlaceCol("n", right - SHAREW - NW, NW)
-    PlaceCol("count", right - SHAREW - NW - COUNTW, COUNTW)
-    PlaceCol("name", TEXTX - 2, right - SHAREW - NW - COUNTW - TEXTX + 2)
+    colBox:SetHeight(K.COLH)
+    local right = inner - K.BARW
+    PlaceCol("share", right - K.SHAREW, K.SHAREW)
+    PlaceCol("n", right - K.SHAREW - K.NW, K.NW)
+    PlaceCol("count", right - K.SHAREW - K.NW - K.COUNTW, K.COUNTW)
+    PlaceCol("name", K.TEXTX - 2, right - K.SHAREW - K.NW - K.COUNTW - K.TEXTX + 2)
     listBox:ClearAllPoints()
-    listBox:SetPoint("TOPLEFT", PAD, -(HEAD + SEARCHH + COLH))
+    listBox:SetPoint("TOPLEFT", K.PAD, -(K.HEAD + K.SEARCHH + K.COLH))
     listBox:SetWidth(inner)
     hiddenBox:SetWidth(inner)
     for i = 1, #listRows do RowGeom(listRows[i], i, inner) end
@@ -357,7 +358,7 @@ local function Geom(width)
 end
 function Panel.Attach(parent, width)
     if frame then return frame end
-    local inner = width - PAD * 2
+    local inner = width - K.PAD * 2
     Measure()
     frame = CreateFrame("Frame", nil, parent)
     frame:SetWidth(width)
@@ -365,11 +366,11 @@ function Panel.Attach(parent, width)
     bg:SetAllPoints()
     ns.Kit.Paint(bg, "surface.panel")
     listHead = Kit.Str(frame, "GameFontNormalSmall")
-    listHead:SetPoint("TOPLEFT", PAD, -4)
-    groupBtn = ns.Kit.Row(frame, GROUPW)
+    listHead:SetPoint("TOPLEFT", K.PAD, -4)
+    groupBtn = ns.Kit.Row(frame, K.GROUPW)
     Kit.Bind(groupBtn.text, "GameFontHighlightSmall")
-    groupBtn:SetHeight(HEAD - 4)
-    groupBtn:SetPoint("TOPRIGHT", -PAD, -2)
+    groupBtn:SetHeight(K.HEAD - 4)
+    groupBtn:SetPoint("TOPRIGHT", -K.PAD, -2)
     groupBtn.text:ClearAllPoints()
     groupBtn.text:SetPoint("RIGHT", -2, 0)
     groupBtn.text:SetJustifyH("RIGHT")
@@ -382,9 +383,9 @@ function Panel.Attach(parent, width)
         Panel.Refresh()
     end
     search = ns.Kit.Edit(frame, false, "HTP_FailWatchFxSearch")
-    search:SetPoint("TOPLEFT", PAD, -HEAD)
+    search:SetPoint("TOPLEFT", K.PAD, -K.HEAD)
     search:SetWidth(inner)
-    search:SetHeight(SEARCHH - SEARCHPAD)
+    search:SetHeight(K.SEARCHH - K.SEARCHPAD)
     search:SetMaxLetters(40)
     search:SetFontObject(Kit.FontFor("GameFontHighlightSmall", true))
     searchHint = Kit.Str(search, "GameFontDisableSmall")
@@ -406,16 +407,16 @@ function Panel.Attach(parent, width)
     search.tipTitle, search.tip = ns.T("fx.search.hint"), ns.T("fx.search.tip")
     search.tipTone, search.tipAnchor = "text.secondary", "ANCHOR_LEFT"
     colBox = CreateFrame("Frame", nil, frame)
-    colBox:SetPoint("TOPLEFT", PAD, -(HEAD + SEARCHH))
+    colBox:SetPoint("TOPLEFT", K.PAD, -(K.HEAD + K.SEARCHH))
     colBox:SetWidth(inner)
-    colBox:SetHeight(COLH)
-    local right = inner - BARW
-    AttachCol(colBox, "share", right - SHAREW, SHAREW)
-    AttachCol(colBox, "n", right - SHAREW - NW, NW)
-    AttachCol(colBox, "count", right - SHAREW - NW - COUNTW, COUNTW)
-    AttachCol(colBox, "name", TEXTX - 2, right - SHAREW - NW - COUNTW - TEXTX + 2)
+    colBox:SetHeight(K.COLH)
+    local right = inner - K.BARW
+    AttachCol(colBox, "share", right - K.SHAREW, K.SHAREW)
+    AttachCol(colBox, "n", right - K.SHAREW - K.NW, K.NW)
+    AttachCol(colBox, "count", right - K.SHAREW - K.NW - K.COUNTW, K.COUNTW)
+    AttachCol(colBox, "name", K.TEXTX - 2, right - K.SHAREW - K.NW - K.COUNTW - K.TEXTX + 2)
     listBox = CreateFrame("Frame", nil, frame)
-    listBox:SetPoint("TOPLEFT", PAD, -(HEAD + SEARCHH + COLH))
+    listBox:SetPoint("TOPLEFT", K.PAD, -(K.HEAD + K.SEARCHH + K.COLH))
     listBox:SetWidth(inner)
     listBox:EnableMouseWheel(true)
     listBox:SetScript("OnMouseWheel", function(_, delta)
@@ -423,7 +424,7 @@ function Panel.Attach(parent, width)
         Panel.Refresh()
     end)
     if ns.MakeScrollBar then
-        listBar = ns.MakeScrollBar(frame, listCount * ROW)
+        listBar = ns.MakeScrollBar(frame, listCount * K.ROW)
         listBar.onScroll = function(offset)
             listOffset = offset
             Panel.Refresh()
@@ -437,7 +438,7 @@ function Panel.Attach(parent, width)
             if ns.Timeline and ns.Timeline.Redraw then ns.Timeline.Redraw() end
         end
     end
-    for i = 1, LISTMAX do
+    for i = 1, K.LISTMAX do
         local row = AttachRow(listBox, i, inner)
         row.onClick = Setter(false)
         row.onRightClick = row.onClick
@@ -457,13 +458,13 @@ function Panel.Attach(parent, width)
         Panel.Refresh()
     end)
     if ns.MakeScrollBar then
-        hiddenBar = ns.MakeScrollBar(frame, hiddenCount * ROW)
+        hiddenBar = ns.MakeScrollBar(frame, hiddenCount * K.ROW)
         hiddenBar.onScroll = function(offset)
             hiddenOffset = offset
             Panel.Refresh()
         end
     end
-    for i = 1, HIDDENMAX do
+    for i = 1, K.HIDDENMAX do
         local row = AttachRow(hiddenBox, i, inner)
         row.onClick = Setter(true)
         row.onRightClick = row.onClick
@@ -501,26 +502,26 @@ function Panel.Layout(height, width)
     local fresh = Measure()
     if fresh or (width and width ~= curWidth) then Geom(width or curWidth) end
     frame:SetHeight(height)
-    local budget = height - HEAD - SEARCHH - COLH - GAP - SUBHEAD - PAD
-    hiddenCount = max(3, min(HIDDENMAX, floor(budget * HIDDENSHARE / ROW)))
-    listCount = max(4, min(LISTMAX, floor((budget - hiddenCount * ROW) / ROW)))
-    listBox:SetHeight(listCount * ROW)
-    local listBottom = HEAD + SEARCHH + COLH + listCount * ROW
+    local budget = height - K.HEAD - K.SEARCHH - K.COLH - K.GAP - K.SUBHEAD - K.PAD
+    hiddenCount = max(3, min(K.HIDDENMAX, floor(budget * K.HIDDENSHARE / K.ROW)))
+    listCount = max(4, min(K.LISTMAX, floor((budget - hiddenCount * K.ROW) / K.ROW)))
+    listBox:SetHeight(listCount * K.ROW)
+    local listBottom = K.HEAD + K.SEARCHH + K.COLH + listCount * K.ROW
     divider:ClearAllPoints()
-    divider:SetPoint("TOPLEFT", PAD, -(listBottom + floor(GAP / 2)))
-    divider:SetPoint("TOPRIGHT", -PAD, -(listBottom + floor(GAP / 2)))
+    divider:SetPoint("TOPLEFT", K.PAD, -(listBottom + floor(K.GAP / 2)))
+    divider:SetPoint("TOPRIGHT", -K.PAD, -(listBottom + floor(K.GAP / 2)))
     hiddenHead:ClearAllPoints()
-    hiddenHead:SetPoint("TOPLEFT", PAD, -(listBottom + GAP))
+    hiddenHead:SetPoint("TOPLEFT", K.PAD, -(listBottom + K.GAP))
     hiddenBox:ClearAllPoints()
-    hiddenBox:SetPoint("TOPLEFT", PAD, -(listBottom + GAP + SUBHEAD))
-    hiddenBox:SetHeight(hiddenCount * ROW)
+    hiddenBox:SetPoint("TOPLEFT", K.PAD, -(listBottom + K.GAP + K.SUBHEAD))
+    hiddenBox:SetHeight(hiddenCount * K.ROW)
     if listBar then
-        listBar:SetHeight(listCount * ROW)
+        listBar:SetHeight(listCount * K.ROW)
         listBar:ClearAllPoints()
         listBar:SetPoint("TOPRIGHT", listBox, "TOPRIGHT", 0, 0)
     end
     if hiddenBar then
-        hiddenBar:SetHeight(hiddenCount * ROW)
+        hiddenBar:SetHeight(hiddenCount * K.ROW)
         hiddenBar:ClearAllPoints()
         hiddenBar:SetPoint("TOPRIGHT", hiddenBox, "TOPRIGHT", 0, 0)
     end

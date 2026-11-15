@@ -48,8 +48,29 @@ local cache = setmetatable({}, { __mode = "k" })
 local warmKeys = setmetatable({}, { __mode = "k" })
 local warmed = setmetatable({}, { __mode = "k" })
 local hasPos = setmetatable({}, { __mode = "k" })
+local warming = setmetatable({}, { __mode = "k" })
 local sceneFight = nil
 local sceneReady = nil
+local KEEP = 2
+local WARM_WAIT = 30
+local order = {}
+local function Drop(fight)
+    cache[fight], warmed[fight], hasPos[fight], warming[fight] = nil, nil, nil, nil
+    local key = warmKeys[fight]
+    if key then ns.Jobs.Cancel(key) end
+    warmKeys[fight] = nil
+end
+local function Touch(fight)
+    if order[1] == fight then return end
+    for i = 2, #order do
+        if order[i] == fight then
+            table.remove(order, i)
+            break
+        end
+    end
+    table.insert(order, 1, fight)
+    while #order > KEEP do Drop(table.remove(order)) end
+end
 local function New(who, at, death)
     local before = death and ns.Tune("preview") or SPOT_BEFORE
     local after = death and AFTER or SPOT_AFTER
@@ -504,6 +525,7 @@ function DP.HasMap(fight)
     for k = 1, #segs do
         local s = segs[k]
         if next(s.pos or {}) or next(ns.RecCodec.LiveBufs(s, "pos") or {}) then
+            Touch(fight)
             hasPos[fight] = true
             return true
         end
@@ -577,6 +599,7 @@ function DP.Peek(fight, who, at)
     return list and list[KeyOf(who, at)] or nil
 end
 local function Keep(fight, pv)
+    Touch(fight)
     local list = cache[fight]
     if not list then
         list = {}
@@ -598,16 +621,21 @@ function DP.Request(fight, who, at, death, onDone)
     end, true)
 end
 function DP.Warm(fight)
-    if ns.Store.Bare(fight) then return end
+    if warmed[fight] or (warming[fight] and GetTime() - warming[fight] < WARM_WAIT) or ns.Store.Bare(fight) or not ns.Index.Peek(fight) then return end
     local key = warmKeys[fight]
+    if key and ns.Jobs.Busy(key) then return end
+    Touch(fight)
     if not key then
         key = {}
         warmKeys[fight] = key
     end
-    if warmed[fight] or ns.Jobs.Busy(key) or not ns.Index.Peek(fight) then return end
+    warming[fight] = GetTime()
     ns.Summary.Of(fight, function(s)
         ns.Index.Get(fight, function(idx)
-            if not idx then return end
+            if not idx or warmKeys[fight] ~= key then
+                warming[fight] = nil
+                return
+            end
             ns.Jobs.Run(key, function()
                 for i = 1, #s.players do
                     local p = s.players[i]
@@ -617,14 +645,29 @@ function DP.Warm(fight)
                     end
                 end
                 warmed[fight] = true
-            end, function() DP.Scene(fight, function() end) end, "prev.data")
+            end, function()
+                warming[fight] = nil
+                DP.Scene(fight, function() end)
+            end, "prev.data")
         end)
     end)
 end
-function DP.Reset()
-    for k in pairs(cache) do cache[k] = nil end
-    for k in pairs(warmed) do warmed[k] = nil end
-    for k in pairs(hasPos) do hasPos[k] = nil end
-    ns.Jobs.Cancel(SCENE_KEY)
-    sceneFight, sceneReady = nil, nil
+function DP.Reset(keep)
+    for i = #order, 1, -1 do
+        if not (keep and keep[order[i]]) then Drop(table.remove(order, i)) end
+    end
+    for _, t in ipairs({ cache, warmed, hasPos, warming, warmKeys }) do
+        for f in pairs(t) do
+            if not (keep and keep[f]) then t[f] = nil end
+        end
+    end
+    if not (keep and sceneFight and keep[sceneFight]) then
+        ns.Jobs.Cancel(SCENE_KEY)
+        sceneFight, sceneReady = nil, nil
+    end
+end
+function DP.Held()
+    local n = 0
+    for _ in pairs(cache) do n = n + 1 end
+    return n
 end

@@ -587,6 +587,7 @@ function Bar.Use(scene)
     st.laneY = {}
     for v = 1, #st.shown do st.laneY[st.shown[v]] = m.top + (v - 1) * m.lane end
     st.tiers = tiers
+    if not scene then st.scaleOf, st.scaleFolds, st.scale = nil, nil, nil end
     for tier = 1, #tiers do
         local groups = tiers[tier]
         local n = st.laneY[tier] and min(#groups, POOL) or 0
@@ -776,7 +777,10 @@ function Bar.Advance(elapsed)
     local run = st.run
     local scene = run and run.scene
     if not (scene and run.playing) then return end
+    local was = run.t
     run.t = run.t + elapsed * run.speed
+    local folds = scene.layers and scene.layers.folds
+    if folds and #folds > 0 then run.t = scene.pull + MK.Skip(folds, was - scene.pull, run.t - scene.pull) end
     run.marksDirty = true
     if run.t >= scene.to then
         run.t = scene.to

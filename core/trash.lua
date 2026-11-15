@@ -164,15 +164,18 @@ function Trash.Step(seg, now, all)
         if first and first > cutMs then cutMs = first end
     end
     Trim(seg, cutMs)
-    if all or Codec.DictBytes(seg) > max(DICT_BYTES, 2 * (packed[seg] or 0)) then
+    if all then
         Codec.Compact(seg)
         packed[seg] = Codec.DictBytes(seg)
+    elseif Codec.DictBytes(seg) > max(DICT_BYTES, 2 * (packed[seg] or 0)) then
+        Codec.CompactLater(seg, function() packed[seg] = Codec.DictBytes(seg) end)
     end
     if all then return false end
     return Codec.FrontOld(seg, cutMs) or (seg.chunks[1] ~= nil and Codec.Size(seg) > Trash.RING_BYTES)
 end
 function Trash.Pull(seg, ts)
     seg.pull = ts
+    ns.RecCodec.CompactCancel()
     local cutMs = floor((ts - RING - seg.t0) * 1000)
     ns.RecCodec.Flush(seg)
     while ns.RecCodec.FrontOld(seg, cutMs) do
@@ -190,6 +193,7 @@ function Trash.Pull(seg, ts)
 end
 function Trash.Close(seg)
     if seg and not seg.pull then
+        ns.RecCodec.CompactCancel()
         ns.RecCodec.Flush(seg)
         while seg.chunks[1] do
             live = live or Trash.Begin(seg.raid, seg.t0)
