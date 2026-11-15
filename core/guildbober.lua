@@ -2,6 +2,7 @@ local _, ns = ...
 local tonumber, type, ipairs = tonumber, type, ipairs
 local strsub, strmatch, format = string.sub, string.match, string.format
 local WEEK = 7 * 86400
+local MSK = 3 * 3600
 local D = ns.guildLocks
 local GB = {}
 ns.GuildBober = GB
@@ -30,7 +31,7 @@ function GB.Modes(raid)
     return { short .. tostring(raid.size or 25) .. (raid.heroic and "h" or "n") }
 end
 local function WeekStart()
-    local d = date("*t", ns.GuildLocks.NextReset(time()) - WEEK)
+    local d = date("!*t", ns.GuildLocks.NextReset(time()) - WEEK + MSK)
     return format("%02d%02d%02d", d.year % 100, d.month, d.day)
 end
 function GB.Time(ymd)
@@ -57,7 +58,7 @@ function GB.Save(name, raid)
     for i = 1, #list do
         local r = list[i]
         if r.date < since then break end
-        if (r.killed or 0) > 0 then
+        if (r.week or r.date) >= since and (r.killed or 0) > 0 then
             local GL = ns.GuildLocks
             local save = { key = GL.MapOf(raid.map) or GL.MapOf(raid.name), size = raid.size,
                 heroic = strsub(r.mode, -1) == "h" or nil, id = 0, ends = GL.NextReset(time()), src = "bober", raid = r }

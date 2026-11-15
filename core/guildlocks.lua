@@ -322,19 +322,25 @@ function GuildLocks.RoleOf(name, class)
 end
 local function Join(group, src)
     local members = ns.GuildNotes.Members()
-    local root = nil
+    local me = Me()
+    local names = {}
     for name in pairs(group) do
-        if members[name] then
-            local main = ns.GuildNotes.MainOf(name)
-            if main ~= name or next(ns.GuildNotes.AltsOf(name)) then
-                root = main
-                break
-            end
+        if members[name] then names[#names + 1] = name end
+    end
+    tsort(names, function(x, y)
+        if (x == me) ~= (y == me) then return x == me end
+        return x < y
+    end)
+    local root = nil
+    for i = 1, #names do
+        local name = names[i]
+        local main = ns.GuildNotes.MainOf(name)
+        if main ~= name or next(ns.GuildNotes.AltsOf(name)) then
+            root = main
+            break
         end
     end
-    for name in pairs(group) do
-        if members[name] and not root then root = name end
-    end
+    root = root or names[1]
     if not root then return end
     root = owners[root] or root
     for name in pairs(group) do

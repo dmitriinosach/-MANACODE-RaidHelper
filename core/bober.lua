@@ -168,6 +168,7 @@ local function RaidHead(info, raid)
     local date, _, lead, guild, bosses = strsplit("|", raw)
     local killed, total = strmatch(bosses or "", "^(%d+)/(%d+)$")
     raid.date = date or ""
+    raid.week = strmatch(raw, "^[^|]*|[^|]*|[^|]*|[^|]*|[^|]*|[^|]*|[^|]*|[^|]*|[^|]*|[^|]*|(%d%d%d%d%d%d)$")
     raid.lead = lead ~= "" and lead or nil
     raid.guild = guild ~= "" and guild or nil
     raid.killed, raid.total = tonumber(killed), tonumber(total)

@@ -86,7 +86,7 @@ function GuildSync.Payload()
     local n = 1
     for i = 1, #list do
         local c = list[i]
-        if c.name ~= me and n < MAX_CHARS and type(c.saves) == "table" then
+        if c.name ~= me and n < MAX_CHARS and type(c.saves) == "table" and now - (tonumber(c.at) or now) <= MAX_AGE then
             local saves = {}
             for _, s in pairs(c.saves) do saves[#saves + 1] = GL.Norm(s, "own") end
             CharRec(out, c, saves, now)
@@ -150,7 +150,7 @@ local function ReadChar(f, now)
     if #f ~= 7 or not NameOk(f[2]) then return nil end
     local level, age = tonumber(f[4]), tonumber(f[7])
     if not level or level < 1 or level > 100 or level ~= floor(level) then return nil end
-    if not age or age < 0 or age > MAX_AGE then return nil end
+    if not age or age < 0 then return nil end
     if f[3] ~= "" and not ns.guildNotes.trees[f[3]] then return nil end
     local gs = nil
     if f[5] ~= "" then
@@ -159,7 +159,7 @@ local function ReadChar(f, now)
     end
     if f[6] ~= "" and not ns.guildNotes.specs[f[6]] then return nil end
     return { name = f[2], class = f[3] ~= "" and f[3] or nil, level = level, gs = gs, spec = f[6] ~= "" and f[6] or nil,
-        at = now - age, saves = {} }
+        at = now - age, saves = {}, stale = age > MAX_AGE or nil }
 end
 local function ReadSave(f, now)
     if #f ~= 6 or f[2] == "" or #f[2] > MAX_RAID then return nil end
@@ -183,7 +183,7 @@ function GuildSync.Parse(data)
             if #chars >= MAX_CHARS then return nil end
             cur = ReadChar(f, now)
             if not cur then return nil end
-            chars[#chars + 1] = cur
+            if not cur.stale then chars[#chars + 1] = cur end
         elseif f[1] == "S" and cur then
             if #cur.saves >= MAX_SAVES then return nil end
             local s = ReadSave(f, now)
