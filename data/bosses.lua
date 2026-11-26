@@ -35,6 +35,32 @@ ns.ENC = {
     dummy = 31144,
 }
 local E = ns.ENC
+ns.encFaces = {
+    [E.marrowgar] = "Interface\\Icons\\Achievement_Boss_LordMarrowgar",
+    [E.deathwhisper] = "Interface\\Icons\\Achievement_Boss_LadyDeathwhisper",
+    [E.saurfang] = "Interface\\Icons\\Achievement_Boss_Saurfang",
+    [E.festergut] = "Interface\\Icons\\Achievement_Boss_FestergutRotface",
+    [E.rotface] = "Interface\\Icons\\Achievement_Boss_FestergutRotface",
+    [E.putricide] = "Interface\\Icons\\Achievement_Boss_ProfPutricide",
+    [E.council] = "Interface\\Icons\\Achievement_Boss_PrinceTaldaram",
+    [E.lanathel] = "Interface\\Icons\\Achievement_Boss_Lanathel",
+    [E.sindragosa] = "Interface\\Icons\\Achievement_Boss_Sindragosa",
+    [E.lichking] = "Interface\\Icons\\Achievement_Boss_LichKing",
+    [E.leviathan] = "Interface\\Icons\\Achievement_Boss_TheFlameLeviathan_01",
+    [E.ignis] = "Interface\\Icons\\Achievement_Boss_Ignis_01",
+    [E.razorscale] = "Interface\\Icons\\Achievement_Boss_Razorscale",
+    [E.xt002] = "Interface\\Icons\\Achievement_Boss_XT002Deconstructor_01",
+    [E.ironcouncil] = "Interface\\Icons\\Achievement_Boss_TheIronCouncil_01",
+    [E.kologarn] = "Interface\\Icons\\Achievement_Boss_Kologarn_01",
+    [E.auriaya] = "Interface\\Icons\\Achievement_Boss_Auriaya_01",
+    [E.hodir] = "Interface\\Icons\\Achievement_Boss_Hodir_01",
+    [E.thorim] = "Interface\\Icons\\Achievement_Boss_Thorim",
+    [E.freya] = "Interface\\Icons\\Achievement_Boss_Freya_01",
+    [E.vezax] = "Interface\\Icons\\Achievement_Boss_GeneralVezax_01",
+    [E.yogg] = "Interface\\Icons\\Achievement_Boss_YoggSaron_01",
+    [E.algalon] = "Interface\\Icons\\Achievement_Boss_Algalon_01",
+    [E.anubarak] = "Interface\\Icons\\Achievement_Boss_Anubarak",
+}
 ns.npcPortraits = {
     [36609] = "Interface\\Icons\\Achievement_Boss_SvalaSorrowgrave",
 }

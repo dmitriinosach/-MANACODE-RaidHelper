@@ -71,6 +71,13 @@ function Filter.Pulls(sub, srcFlags, dstGUID, dstName, auto)
     end
     return find(sub, "_DAMAGE", 1, true) ~= nil or find(sub, "_HEAL", 1, true) ~= nil
 end
+function Filter.Strikes(sub, srcGUID, srcName, dstFlags, auto)
+    if dstFlags == nil or band(dstFlags, F_BY_PLAYER) == 0 or (band(dstFlags, F_GROUP) == 0 and not Filter.spec)
+        or not IsBoss(srcGUID, srcName, auto) then
+        return false
+    end
+    return sub == "SWING_DAMAGE" or sub == "SWING_MISSED"
+end
 function Filter.BossOn(enc)
     if enc == nil then return true end
     local db = ns.GetDB and ns.GetDB()

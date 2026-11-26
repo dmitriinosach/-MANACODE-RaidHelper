@@ -67,6 +67,7 @@ local function ConfigFigure(fig, tr, scene)
         LayersView.Clear(fig)
         fig.name = format(ns.T("iso.boss"), scene.bossName or ns.EncName(scene.fight.boss))
         fig.cr, fig.cg, fig.cb = Kit.Color("sem.lane.boss")
+        fig.face = ns.encFaces and ns.encFaces[scene.fight.boss] or nil
         Figs.Config(fig, nil, "boss")
     end
 end
@@ -77,6 +78,7 @@ local function ConfigBody(fig, name)
     LayersView.Clear(fig)
     fig.name = format(ns.T("iso.boss"), name)
     fig.cr, fig.cg, fig.cb = Kit.Color("sem.lane.boss")
+    fig.face = nil
     Figs.Config(fig, nil, "boss")
 end
 local Parts = Figs.Parts
@@ -96,6 +98,7 @@ local function DrawFigure(fig, s, sx, sy, scale, flat, elapsed, k)
         fig:Show()
     end
     Parts(fig, true, not s.dead)
+    Figs.Died(fig, not fig.isBoss and not fig.isAdd and s.dead and run.t - s.deadFor - run.scene.pull or nil, s.deadFor)
 end
 local function HideFigure(fig)
     if fig.shown then

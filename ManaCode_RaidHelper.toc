@@ -3,8 +3,8 @@
 ## Notes: Raid review from the combat log.
 ## Notes-ruRU: Разбор рейда по боевому логу
 ## Author: Manacode
-## Version: 1.15.0
-## X-Date: 2026-11-15
+## Version: 1.16.0
+## X-Date: 2026-11-26
 ## X-RecFormat: 2
 ## SavedVariables: ManaCodeRaidHelperDB, ManaCodeRaidLeadDB
 ## SavedVariablesPerCharacter: ManaCodeRaidHelperChar

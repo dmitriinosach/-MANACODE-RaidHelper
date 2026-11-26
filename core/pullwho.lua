@@ -16,22 +16,22 @@ local function Lead(firsts)
     return firsts[1]
 end
 function PullWho.Decide(hit, firsts, touch)
-    if not hit or not firsts or not firsts[1] then return hit end
-    local who = hit.owner or (not hit.pet and hit.src) or nil
+    if not firsts or not firsts[1] then return hit end
+    local who = hit and (hit.owner or (not hit.pet and hit.src)) or nil
     for i = 1, #firsts do
         local f = firsts[i]
         f.pet = f.owner ~= nil
-        if Person(f) == who then return hit end
+        if hit and Person(f) == who then return hit end
     end
     local d = ns.pullWho
     local f = Lead(firsts)
-    if f.t > hit.t - d.gap or f.t < hit.t - d.window then return hit end
+    if hit and (f.t > hit.t - d.gap or f.t < hit.t - d.window) then return hit end
     local person = Person(f)
     local tc = touch and person and touch[person]
-    if tc and (tc.t < f.t - d.gap or tc.t > hit.t) then tc = nil end
+    if tc and (tc.t < f.t - d.gap or (hit and tc.t > hit.t)) then tc = nil end
     return { t = f.t, src = f.src, owner = f.owner, pet = f.owner ~= nil,
              spell = tc and tc.spell or nil, sid = tc and tc.sid or nil, body = (not tc) or nil,
-             timer = hit.timer }
+             timer = hit and hit.timer or nil }
 end
 function PullWho.Who(pull)
     if pull.owner then return format(ns.T("pull.of"), pull.src, pull.owner) end
@@ -71,9 +71,8 @@ function PullWho.Feed(pw, s, ts, sub, K, srcGUID, srcName, srcFlags, dstBoss, a1
 end
 function PullWho.Finish(pw, s, owners, pets)
     local hit = s.pull
-    if not hit then return end
     local g = pw.guid
-    if g then hit.owner = owners[g] or pets[g] end
+    if hit and g then hit.owner = owners[g] or pets[g] end
     if not pw.firsts[1] then return end
     local touch, from = {}, {}
     for name, tc in pairs(pw.touch) do

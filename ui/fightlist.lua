@@ -28,7 +28,6 @@ K.WHEEL = 2
 K.ICONPAD = 5
 K.ICON = K.RAIDH - K.ICONPAD * 2
 K.ICONX = 1
-K.RAIDOUT = 8
 K.ICONIN = 1
 K.TEXTGAP = 7
 K.TEXTX = K.ICONX + K.ICON + K.TEXTGAP
@@ -56,7 +55,6 @@ K.DELR = -K.OKX + K.OKSZ / 2 - K.DELHIT / 2
 K.FOLD_TEX = "Interface\\Buttons\\UI-SortArrow"
 K.FOLDSZ = 8
 K.SCORER = K.DELR + K.DELHIT + 2
-K.LFG = "Interface\\LFGFrame\\LFGIcon-"
 K.SKULL = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8"
 K.READY = "Interface\\RAIDFRAME\\ReadyCheck-Ready"
 K.NOTREADY = "Interface\\RAIDFRAME\\ReadyCheck-NotReady"
@@ -104,16 +102,17 @@ local NAME_INST = {
     ["Onyxia's Lair"] = "ony",
     ["Vault of Archavon"] = "voa",
 }
-local INST_ICON = {
-    icc = K.LFG .. "IcecrownCitadel",
-    rs = K.LFG .. "RubySanctum",
-    uld = K.LFG .. "Ulduar",
-    toc = K.LFG .. "ArgentRaid",
-    naxx = K.LFG .. "Naxxramas",
-    eoe = K.LFG .. "Malygos",
-    os = K.LFG .. "ChamberOfAspects",
-    ony = K.LFG .. "OnyxiaEncounter",
-    voa = K.LFG .. "VaultOfArchavon",
+local SCREEN = "Interface\\Glues\\LoadingScreens\\LoadScreen"
+local BACK = "Interface\\LFGFrame\\UI-LFG-BACKGROUND-"
+local INST_ART = {
+    icc = { file = SCREEN .. "IcecrownCitadel", l = 0.04, r = 0.96, y = 0.47 },
+    rs = { file = SCREEN .. "RubySanctum", l = 0.04, r = 0.96, y = 0.6 },
+    uld = { file = SCREEN .. "UlduarRaid", l = 0.04, r = 0.96, y = 0.6 },
+    toc = { file = SCREEN .. "ArgentRaid", l = 0.04, r = 0.96, y = 0.6 },
+    naxx = { file = SCREEN .. "Naxxramas", l = 0.04, r = 0.96, y = 0.6 },
+    eoe = { file = SCREEN .. "Malygos", l = 0.04, r = 0.96, y = 0.6 },
+    os = { file = BACK .. "ChamberOfAspects", l = 0, r = 1, y = 0.5, wide = 2 },
+    voa = { file = BACK .. "VaultOfArchavon", l = 0, r = 1, y = 0.5, wide = 2 },
 }
 local STEP = { raid = K.RAIDH + 2, enc = K.ENCH + 1, wipe = K.WIPEH + 1 }
 local FL = {}
@@ -369,12 +368,8 @@ local function FoldButton(r)
     return b
 end
 local function CardInner(w)
-    local d = Kit.Theme().row.raid
-    local c, n = d.coord, d.inner
-    if not (c and n) then return 0, w, 0, K.RAIDH end
-    local sx = (w + K.RAIDOUT) / (c[2] - c[1])
-    local sy = K.RAIDH / (c[4] - c[3])
-    return (n[1] - c[1]) * sx - K.RAIDOUT, (n[2] - c[1]) * sx - K.RAIDOUT, (n[3] - c[3]) * sy, (n[4] - c[3]) * sy
+    local n = Kit.Theme().row.raid.inset or 0
+    return n, w - n, n, K.RAIDH - n
 end
 local function RaidGeom(r)
     r:SetHeight(K.RAIDH)
@@ -406,10 +401,24 @@ local function RaidRow()
     r.on:SetDrawLayer("BORDER", 1)
     r.on:SetAllPoints(r.bg)
     r.on:Hide()
-    r.tile = Kit.InstTile(r)
+    r.hover:ClearAllPoints()
+    r.hover:SetAllPoints(r.bg)
+    r.art = r:CreateTexture(nil, "BACKGROUND")
+    r.art:SetDrawLayer("BACKGROUND", -3)
+    r.art:SetAllPoints(r.bg)
+    r.glow = r:CreateTexture(nil, "BACKGROUND")
+    r.glow:SetDrawLayer("BACKGROUND", -2)
+    r.glow:SetAllPoints(r.bg)
+    r.glow:SetBlendMode("ADD")
+    r.fade = r:CreateTexture(nil, "BACKGROUND")
+    r.fade:SetDrawLayer("BACKGROUND", -1)
+    r.fade:SetPoint("TOPLEFT", r.bg, "TOPLEFT", 0, 0)
+    r.fade:SetPoint("BOTTOMLEFT", r.bg, "BOTTOMLEFT", 0, 0)
+    r.tile = CreateFrame("Frame", nil, r)
     r.tile:EnableMouse(false)
-    r.hc, r.size = r.tile.skull, r.tile.size
-    r.hc:ClearAllPoints()
+    r.size = Kit.Str(r.tile, "GameFontNormalLarge")
+    Kit.Text(r.size, "text.primary")
+    r.hc = r.tile:CreateTexture(nil, "OVERLAY")
     r.hc:SetPoint("TOP", r.tile, "TOP", 0, -K.ICONIN)
     r.name = Label(r, "GameFontNormalSmall", K.LINE)
     Kit.Text(r.name, "text.title")
@@ -507,24 +516,69 @@ local function Take(kind)
     r:Show()
     return r
 end
+local function PaintArt(r, inst, a, inset, alpha)
+    local pic = inst and INST_ART[inst]
+    if not pic then
+        r.art:Hide()
+        r.glow:Hide()
+        r.fade:Hide()
+        return
+    end
+    local w, h = max(1, rowW - inset * 2), max(1, K.RAIDH - inset * 2)
+    local half = (pic.r - pic.l) * h / w * (pic.wide or 1) / 2
+    local top, bottom = pic.y - half, pic.y + half
+    r.art:SetTexture(pic.file)
+    r.art:SetTexCoord(pic.l, pic.r, top, bottom)
+    r.art:SetAlpha(alpha)
+    r.glow:SetTexture(pic.file)
+    r.glow:SetTexCoord(pic.l, pic.r, top, bottom)
+    r.glow:SetAlpha(a.glow)
+    Kit.Fill(r.fade, a.fade)
+    r.fade:SetWidth(w * a.fadeTo)
+    r.art:Show()
+    if a.glow > 0 then r.glow:Show() else r.glow:Hide() end
+    r.fade:Show()
+end
 local function PaintRaid(r, line)
     local raid = line.raid
-    Kit.Fill(r.bg, Kit.Theme().row.raid)
+    local d, sel = Kit.Theme().row.raid, Kit.Theme().row.raidOn
+    local on = RaidShown(raid)
+    local cr, cg, cb
+    if line.inst then
+        cr, cg, cb = Kit.Color("sem.inst." .. line.inst)
+    else
+        cr, cg, cb = d.border[1], d.border[2], d.border[3]
+    end
+    local lift = on and sel.lift or d.lift
+    local edge = r.edge or {}
+    r.edge = edge
+    edge[1], edge[2], edge[3], edge[4] = cr + (1 - cr) * lift, cg + (1 - cg) * lift, cb + (1 - cb) * lift, 1
+    Kit.Backdrop(r, d, edge)
+    Kit.Fill(r.bg, d.shade)
     r.bg:ClearAllPoints()
-    r.bg:SetPoint("TOPLEFT", r, "TOPLEFT", -K.RAIDOUT, 0)
-    r.bg:SetPoint("BOTTOMRIGHT", r, "BOTTOMRIGHT", 0, 0)
-    Kit.InstTileSet(r.tile, K.ICON, INST_ICON[line.inst or ""] or (K.LFG .. "Raid"), raid.size, raid.heroic)
+    r.bg:SetPoint("TOPLEFT", r, "TOPLEFT", d.inset, -d.inset)
+    r.bg:SetPoint("BOTTOMRIGHT", r, "BOTTOMRIGHT", -d.inset, d.inset)
+    PaintArt(r, line.inst, d.art, d.inset, on and sel.art or d.art.alpha)
+    r.tile:SetWidth(K.ICON)
+    r.tile:SetHeight(K.ICON)
+    r.size:SetText(raid.size and tostring(raid.size) or "")
+    Kit.Icon.Flag(r.hc, K.ICON)
+    if raid.heroic then r.hc:Show() else r.hc:Hide() end
     r.size:ClearAllPoints()
     if raid.heroic then
         r.size:SetPoint("BOTTOM", r.tile, "BOTTOM", 0, K.ICONIN)
     else
         r.size:SetPoint("CENTER", r.tile, "CENTER", 0, 0)
     end
-    local on = RaidShown(raid)
     r.picked = on
     DelShade(r)
     if on then
-        Kit.Fill(r.on, Kit.Theme().row.raidOn)
+        local glow = r.glowFill or { grad = { dir = "VERTICAL", from = {}, to = {} }, blend = "ADD" }
+        r.glowFill = glow
+        local lo, hi = glow.grad.from, glow.grad.to
+        lo[1], lo[2], lo[3], lo[4] = cr, cg, cb, sel.glow[1]
+        hi[1], hi[2], hi[3], hi[4] = cr, cg, cb, sel.glow[2]
+        Kit.Fill(r.on, glow)
         r.on:Show()
     else
         r.on:Hide()

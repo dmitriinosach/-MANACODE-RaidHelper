@@ -155,7 +155,11 @@ function PullTimer.Clock()
     return clock.kind, left, clock.who, clock.sec
 end
 local function OnPizza(_, sec, text, _broadcast, sender)
-    SetClock(PizzaKind(text), tonumber(sec), sender or UnitName("player"))
+    local kind = PizzaKind(text)
+    SetClock(kind, tonumber(sec), sender or UnitName("player"))
+    if kind == "pull" and not sender and ns.Recorder and ns.Recorder.IsOn and ns.Recorder.IsOn() then
+        PullTimer.Note(UnitName("player"), Seconds(tonumber(sec)))
+    end
 end
 function PullTimer.HookDbm()
     if hooked or type(DBM) ~= "table" or type(DBM.CreatePizzaTimer) ~= "function" then return end

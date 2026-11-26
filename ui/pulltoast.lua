@@ -3,10 +3,10 @@ local Kit = ns.Kit
 local floor = math.floor
 local max = math.max
 local min = math.min
-local W, PAD, ICON, GAP = 360, 10, 32, 3
+local format = string.format
+local W, PAD, ICON, GAP = 360, 10, 40, 2
 local IN_T, OUT_T, SLIDE, TOP_Y = 0.2, 0.4, 16, -40
-local ICON_TEX = "Interface\\Icons\\Ability_Warrior_Charge"
-local TITLE, SMALL = "GameFontNormal", "GameFontHighlightSmall"
+local BIG, SMALL = "GameFontNormalLarge", "GameFontHighlightSmall"
 local Toast = {}
 ns.PullToast = Toast
 local frame
@@ -25,11 +25,17 @@ local function Layout()
     frame.back:SetWidth(icon + 2)
     frame.back:SetHeight(icon + 2)
     local room = w - PAD * 3 - icon
-    frame.title:SetWidth(room)
-    frame.text:SetWidth(room)
-    local th = frame.title:GetHeight() or 0
-    if frame.text:IsShown() then th = th + GAP + (frame.text:GetHeight() or 0) end
-    frame:SetHeight(max(icon, th) + PAD * 2)
+    frame.who:SetWidth(room)
+    frame.how:SetWidth(room)
+    frame.timer:SetWidth(room)
+    local th = (frame.who:GetHeight() or 0) + GAP + (frame.how:GetHeight() or 0)
+    if frame.timer:IsShown() then th = th + GAP + (frame.timer:GetHeight() or 0) end
+    local h = max(icon, th)
+    frame:SetHeight(h + PAD * 2)
+    frame.icon:ClearAllPoints()
+    frame.icon:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -PAD - floor((h - icon) / 2 + 0.5))
+    frame.who:ClearAllPoints()
+    frame.who:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD * 2 + icon, -PAD - floor((h - th) / 2 + 0.5))
 end
 local function Step(self, dt)
     if phase == "in" then
@@ -53,6 +59,11 @@ local function Step(self, dt)
         end
     end
 end
+local function Line(parent, base)
+    local fs = Kit.Str(parent, base)
+    fs:SetJustifyH("LEFT")
+    return fs
+end
 local function Build()
     frame = CreateFrame("Frame", "ManaCodeRaidHelperPullToast", UIParent)
     frame:SetFrameStrata("HIGH")
@@ -62,29 +73,36 @@ local function Build()
     frame.back = frame:CreateTexture(nil, "BORDER")
     Kit.Paint(frame.back, "surface.shade")
     frame.icon = frame:CreateTexture(nil, "ARTWORK")
-    frame.icon:SetTexture(ICON_TEX)
     frame.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-    frame.icon:SetPoint("LEFT", frame, "LEFT", PAD, 0)
     frame.back:SetPoint("CENTER", frame.icon, "CENTER", 0, 0)
-    frame.title = Kit.Str(frame, TITLE)
-    Kit.Title(frame.title)
-    frame.title:SetJustifyH("LEFT")
-    frame.title:SetPoint("TOPLEFT", frame.icon, "TOPRIGHT", PAD, 0)
-    frame.text = Kit.Str(frame, SMALL)
-    Kit.Text(frame.text, "text.secondary")
-    frame.text:SetJustifyH("LEFT")
-    frame.text:SetPoint("TOPLEFT", frame.title, "BOTTOMLEFT", 0, -GAP)
+    frame.who = Line(frame, BIG)
+    Kit.OneLine(frame.who)
+    frame.how = Line(frame, SMALL)
+    Kit.Text(frame.how, "text.secondary")
+    frame.how:SetPoint("TOPLEFT", frame.who, "BOTTOMLEFT", 0, -GAP)
+    frame.timer = Line(frame, SMALL)
+    Kit.Text(frame.timer, "text.secondary")
+    frame.timer:SetPoint("TOPLEFT", frame.how, "BOTTOMLEFT", 0, -GAP)
     frame:SetScript("OnUpdate", ns.Prof.Wrap("ui.other", Step))
     frame:Hide()
 end
 Kit.OnFont(function()
     if frame and frame:IsShown() then Layout() end
 end)
-function Toast.Show(title, text)
+function Toast.TimerLine(m)
+    if not m.timer then return nil end
+    if not m.early then return m.timer end
+    return format(ns.T("sum.pull.line"), m.timer, Kit.Hex("text.warn") .. m.early .. "|r")
+end
+function Toast.Show(m)
     if not frame then Build() end
-    frame.title:SetText(title)
-    frame.text:SetText(text or "")
-    if text then frame.text:Show() else frame.text:Hide() end
+    frame.icon:SetTexture(m.icon or Kit.QMARK)
+    frame.who:SetText(m.who)
+    if m.class then Kit.ClassText(frame.who, m.class) else Kit.Title(frame.who) end
+    frame.how:SetText(m.how)
+    local timer = Toast.TimerLine(m)
+    frame.timer:SetText(timer or "")
+    if timer then frame.timer:Show() else frame.timer:Hide() end
     Layout()
     phase, t, left = "in", 0, ns.pullWho.toast
     frame:SetAlpha(0)
@@ -95,6 +113,7 @@ function Toast.Shown()
     return frame ~= nil and frame:IsShown() and true or false
 end
 function Toast.Lines()
-    if not frame then return nil, nil end
-    return frame.title:GetText(), frame.text:IsShown() and frame.text:GetText() or nil
+    if not frame then return nil, nil, nil, nil end
+    return frame.who:GetText(), frame.how:GetText(), frame.timer:IsShown() and frame.timer:GetText() or nil,
+        frame.icon:GetTexture()
 end

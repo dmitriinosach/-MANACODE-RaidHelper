@@ -1,4 +1,5 @@
 local ADDON, ns = ...
+local format = string.format
 local floor = math.floor
 local ceil = math.ceil
 local max = math.max
@@ -63,6 +64,8 @@ local KINDS = { "disc", "chip", "vol" }
 local NEXT = { disc = "chip", chip = "vol", vol = "disc" }
 local ROLE_TOKEN = { tank = "sem.rep.tank", heal = "sem.rep.heal", boss = "sem.lane.boss", add = "sem.rep.add" }
 local ADD_FIT = 0.74
+local SKULL_K = 0.45
+local SKULL_IN = 0.1
 local ADD_TOKEN = "sem.rep.add"
 local DD_TOKEN = "sem.rep.dd"
 local DD_ARC = "sem.rep.ddHp"
@@ -233,6 +236,7 @@ function Figs.Build(fig)
     fig.rimTok = DD_TOKEN
 end
 function Figs.Config(fig, class, role)
+    if role ~= "boss" then fig.face = nil end
     fig.clsTok = class
     fig.role = role or "dd"
     fig.rimTok = ROLE_TOKEN[role or ""] or DD_TOKEN
@@ -344,7 +348,12 @@ local function Skin(fig)
     fig.skin = kind
     local vol = kind == "vol"
     local lead = fig.role == "tank" or fig.role == "heal"
-    if fig.role == "boss" then
+    if fig.role == "boss" and fig.face then
+        fig.icon:SetTexture(fig.face)
+        fig.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+        if not fig.skull then fig.skull = fig:CreateTexture(nil, "OVERLAY") end
+        Kit.Icon.Mark(fig.skull, ns.replayFeed.glyphs.boss.mark)
+    elseif fig.role == "boss" then
         Kit.Icon.Mark(fig.icon, ns.replayFeed.glyphs.boss.mark)
     elseif fig.isAdd then
         if type(fig.addIcon) == "number" then
@@ -461,10 +470,20 @@ local function PlaceStand(fig, w, flat, tall, lift)
 end
 local function Dead(fig, inner, flat)
     Put(fig.icon, fig, inner, inner * flat, 0, 0)
+    fig.skullWant = false
     if not fig.icon:SetDesaturated(true) then Kit.Hue(fig.icon, "sem.rep.gone") end
     fig.top, fig.hy, fig.under = inner * flat / 2, 0, nil
     fig.pctWant = false
     BadgesOver(fig, false)
+end
+local function PlaceSkull(fig, size)
+    fig.skullWant = fig.skull ~= nil and fig.face ~= nil
+    if not fig.skullWant then return end
+    local s = size * SKULL_K
+    fig.skull:ClearAllPoints()
+    fig.skull:SetWidth(max(1, s))
+    fig.skull:SetHeight(max(1, s))
+    fig.skull:SetPoint("CENTER", fig.icon, "TOPRIGHT", -s * SKULL_IN, -s * SKULL_IN)
 end
 local function Alive(fig)
     fig.icon:SetDesaturated(false)
@@ -527,6 +546,7 @@ local function DrawVol(fig, dead, scale, flat, lift, hp)
     local y0 = (VOL_LIFT + lift + (fig.isBoss and VOL_BOSS_UP or fig.isAdd and VOL_ADD_UP or 0)) * scale
     local cy = y0 + ic / 2
     Put(fig.icon, fig, ic, ic, 0, cy)
+    PlaceSkull(fig, ic)
     Alive(fig)
     local plate = ic + VOL_PAD
     local R = Res(fig, plate)
@@ -599,8 +619,9 @@ local function Draw(fig, dead, scale, flat, lift, hp)
     local cy = tall + up
     Put(fig.ring, fig, d, d * flat, 0, cy)
     fig.trailWant = arc ~= nil and arc < ARC_N
-    local fit = fig.isAdd and ADD_FIT or 1
+    local fit = (fig.isAdd or fig.face) and ADD_FIT or 1
     Put(fig.icon, fig, inner * fit, inner * fit * flat, 0, cy)
+    PlaceSkull(fig, inner * fit)
     Alive(fig)
     fig.top, fig.hy = cy + d * flat / 2, cy
     fig.under, fig.uw = cy - d * flat / 2, d
@@ -656,6 +677,30 @@ function Figs.Parts(fig, icon, ring)
         Toggle(fig.addHpFill, fig.pctOn and fig.pctN > 0 or false, fig, "addHpFillOn")
     end
     if fig.ask then Toggle(fig.ask, icon and fig.ghost or false, fig, "askOn") end
+    if fig.skull then Toggle(fig.skull, icon and fig.skullWant or false, fig, "skullOn") end
+end
+local function Clock(sec)
+    return format("%d:%02d", floor(sec / 60), sec % 60)
+end
+function Figs.Died(fig, sec, lying)
+    local q = sec and floor(max(0, sec)) or nil
+    local l = q and floor(max(0, lying or 0)) or nil
+    if q and not fig.rip then
+        fig.rip = fig:CreateFontString(nil, "OVERLAY")
+        fig.rip:SetFontObject(PctFont())
+        fig.rip:SetJustifyH("CENTER")
+        fig.rip:SetPoint("TOP", fig.icon, "BOTTOM", 0, -PCT_GAP)
+        Kit.Text(fig.rip, "sem.death")
+        fig.rip:Hide()
+        fig.ripOn = false
+    end
+    if not fig.rip then return end
+    if q and (fig.ripQ ~= q or fig.ripL ~= l) then
+        fig.ripQ, fig.ripL = q, l
+        local dur = l < 60 and format(ns.T("iso.died.sec"), l) or Clock(l)
+        fig.rip:SetText(format(ns.T("iso.died"), Clock(q), dur))
+    end
+    Toggle(fig.rip, q ~= nil and fig.iconOn == true, fig, "ripOn")
 end
 function Figs.Pulse(fig, extra)
     if st.kind == "vol" and fig.pw then

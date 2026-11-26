@@ -397,11 +397,11 @@ local function NotePet(guid, owner)
     at[guid] = time()
     if petsN > K.PET_MAX + K.PET_SLACK then Recorder.PrunePets() end
 end
-local function NoteSummon(srcName, srcFlags, dstGUID, dstName)
+local function NoteSummon(srcName, srcFlags, dstGUID, dstName, spellId)
     if not srcName or not dstGUID or not srcFlags then return end
     if band(srcFlags, F_PLAYER) == 0 or band(srcFlags, F_GROUP) == 0 then return end
     NotePet(dstGUID, srcName)
-    ns.RecPull.Summon(srcName, dstName)
+    ns.RecPull.Summon(srcName, dstName, spellId)
 end
 local healStart
 local function HealStart()
@@ -528,7 +528,7 @@ local function RecordEvent(ts, ...)
     local sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, spellName, _, auraType = ...
     NoteClass(srcGUID, srcName, srcFlags)
     NoteClass(dstGUID, dstName, dstFlags)
-    if sub == "SPELL_SUMMON" then NoteSummon(srcName, srcFlags, dstGUID, dstName) end
+    if sub == "SPELL_SUMMON" then NoteSummon(srcName, srcFlags, dstGUID, dstName, spellId) end
     local seg = ns.GetDB().live
     if not seg then
         ns.Store.Open(ts)
@@ -544,9 +544,15 @@ local function RecordEvent(ts, ...)
     else
         seg.skip = (seg.skip or 0) + 1
     end
-    if not seg.pull and ns.RecFilter.Pulls(sub, srcFlags, dstGUID, dstName, seg.bosses)
-        and not Spent(dstGUID, dstName, seg.bosses) and not Held(dstGUID, dstName, seg.bosses) then
-        local enc = ns.Encounters.Of(dstGUID, dstName, seg.bosses)
+    local pulls, strike = false, false
+    if not seg.pull then
+        pulls = ns.RecFilter.Pulls(sub, srcFlags, dstGUID, dstName, seg.bosses)
+        strike = not pulls and ns.RecFilter.Strikes(sub, srcGUID, srcName, dstFlags, seg.bosses)
+    end
+    local bossGUID, bossName = dstGUID, dstName
+    if strike then bossGUID, bossName = srcGUID, srcName end
+    if (pulls or strike) and not Spent(bossGUID, bossName, seg.bosses) and not Held(bossGUID, bossName, seg.bosses) then
+        local enc = ns.Encounters.Of(bossGUID, bossName, seg.bosses)
         pullEnc = enc
         ns.Trash.Pull(seg, ts)
         if not ns.RecFilter.BossOn(enc) then
@@ -560,8 +566,12 @@ local function RecordEvent(ts, ...)
         ns.Specs.Take(ts)
         if ns.GearLvl then ns.GearLvl.Pull(ts, enc) end
         if ns.PullTimer then ns.PullTimer.OnPull(ts) end
-        ns.RecPull.Pull(sub, srcGUID, srcName, srcFlags, spellName,
-            enc ~= nil and not ns.Encounters.IsDummy(ns.NpcKey(dstGUID)))
+        local boss = enc ~= nil and not ns.Encounters.IsDummy(ns.NpcKey(bossGUID))
+        if strike then
+            ns.RecPull.Strike(sub, dstGUID, dstName, dstFlags, boss)
+        else
+            ns.RecPull.Pull(sub, srcGUID, srcName, srcFlags, spellName, boss)
+        end
         frameHp, framePos = true, true
     end
     if sub == "UNIT_DIED" and dstFlags and band(dstFlags, F_PLAYER) > 0 and band(dstFlags, F_GROUP) > 0 then

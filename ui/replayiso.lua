@@ -223,6 +223,7 @@ local function ApplyFocus()
     if ns.ReplayRaidView then ns.ReplayRaidView.Focus(run.focus) end
     ns.ReplayArrowsView.Focus(run.focus)
     IsoBuild.ShowFocus(run.focus)
+    Bar.Focus(run.focus)
     Follow.Apply()
 end
 local function SetFocus(name)

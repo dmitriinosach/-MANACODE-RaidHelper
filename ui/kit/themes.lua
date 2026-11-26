@@ -10,9 +10,8 @@ local CHECK_DOWN = "Interface\\Buttons\\UI-CheckBox-Down"
 local CHECK_HL = "Interface\\Buttons\\UI-CheckBox-Highlight"
 local CHECK_MARK = "Interface\\Buttons\\UI-CheckBox-Check"
 local CHECK_OFF = "Interface\\Buttons\\UI-CheckBox-Check-Disabled"
-local ACH_CAT = "Interface\\AchievementFrame\\UI-Achievement-Category-Background"
-local ACH_HL = "Interface\\AchievementFrame\\UI-Achievement-Category-Highlight"
 local ROUND = "Interface\\AddOns\\" .. ADDON .. "\\art\\kit\\round"
+local CARD = "Interface\\AddOns\\" .. ADDON .. "\\art\\kit\\card"
 local ACCENT = { 0.22, 0.72, 0.32 }
 local WHITE = { 1, 1, 1 }
 local DIMMED = { 0.45, 0.45, 0.45 }
@@ -239,10 +238,21 @@ Kit.themes.dark = {
         bgHover = { 1, 1, 1, 0.08 },
         bgOn = { 1, 1, 1, 0.16 },
         text = WHITE,
-        raid = { tex = ACH_CAT, coord = { 5 / 256, 162 / 256, 4 / 32, 23.5 / 32 }, color = { 1, 1, 1, 0.9 },
-            inner = { 10.5 / 256, 159.5 / 256, 6 / 32, 22 / 32 } },
-        raidOn = { tex = ACH_HL, coord = { 5 / 256, 162 / 256, 4 / 32, 23.5 / 32 }, color = { 1, 0.6, 0.5, 0.75 },
-            blend = "ADD" },
+        raid = {
+            backdrop = { bgFile = WHITE8, edgeFile = CARD, tile = false, edgeSize = 12, insets = INSET3 },
+            bg = { 0.07, 0.065, 0.06, 0.96 },
+            border = { 0.86, 0.70, 0.40, 1 },
+            lift = 0,
+            inset = 5,
+            shade = { grad = { dir = "VERTICAL", from = { 0, 0, 0, 0.3 }, to = { 0, 0, 0, 0 } } },
+            art = {
+                alpha = 0.55,
+                glow = 0,
+                fadeTo = 1,
+                fade = { grad = { dir = "HORIZONTAL", from = { 0, 0, 0, 0.88 }, to = { 0, 0, 0, 0.72 } } },
+            },
+        },
+        raidOn = { lift = 0.7, glow = { 0.06, 0.32 }, art = 0.95 },
     },
     card = {
         backdrop = {

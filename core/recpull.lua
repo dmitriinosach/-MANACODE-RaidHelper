@@ -7,6 +7,7 @@ local gsub = string.gsub
 local format = string.format
 local F_PLAYER = ns.F.PLAYER
 local F_BY_PLAYER = ns.F.BY_PLAYER
+local F_MINE = 0x1
 local NAMES_MAX = 200
 local TIP = "ManaCodeRaidHelperOwnerScan"
 local MAX_RAID = 40
@@ -35,6 +36,7 @@ local pending = nil
 local touch = {}
 local summoner = {}
 local summoned = 0
+local summonSpell = {}
 local scan
 local function Busy(unit, owner)
     if not UnitAffectingCombat(unit) then return false end
@@ -163,11 +165,12 @@ local function TipOwner(guid)
     scan:Hide()
     return owner
 end
-function RecPull.Owner(guid, name)
+function RecPull.Owner(guid, name, flags)
     local pets = ns.GetDB().pets
     local o = pets[guid]
     if o then return o end
-    o = PetOwner(guid) or TipOwner(guid) or (name and summoner[name]) or nil
+    o = PetOwner(guid) or (flags and band(flags, F_MINE) > 0 and UnitName("player")) or TipOwner(guid)
+        or (name and summoner[name]) or nil
     if o then pets[guid] = o end
     return o
 end
@@ -188,16 +191,18 @@ local function Engage(now)
         end
     end
 end
-function RecPull.Summon(srcName, dstName)
+function RecPull.Summon(srcName, dstName, spellId)
     if not dstName then return end
     if not summoner[dstName] then
         summoned = summoned + 1
         if summoned > NAMES_MAX then
             wipe(summoner)
+            wipe(summonSpell)
             summoned = 1
         end
     end
     summoner[dstName] = srcName
+    summonSpell[dstName] = tonumber(spellId) or summonSpell[dstName]
 end
 function RecPull.Touch(srcGUID, srcName, srcFlags, spell)
     if not srcName or not srcFlags or band(srcFlags, F_BY_PLAYER) == 0 then return end
@@ -220,9 +225,21 @@ function RecPull.Pull(sub, srcGUID, srcName, srcFlags, spell, boss)
     if srcName and find(sub, "_DAMAGE", 1, true) then
         local pet = srcFlags ~= nil and band(srcFlags, F_PLAYER) == 0
         hit = { t = now, src = srcName, pet = pet, spell = (not find(sub, "SWING", 1, true)) and type(spell) == "string"
-            and spell or nil, owner = pet and srcGUID and RecPull.Owner(srcGUID, srcName) or nil }
+            and spell or nil, owner = pet and srcGUID and RecPull.Owner(srcGUID, srcName, srcFlags) or nil }
     end
     pending = { at = now, hit = hit, boss = boss }
+end
+function RecPull.Strike(sub, dstGUID, dstName, dstFlags, boss)
+    if pending then return end
+    local now = GetTime()
+    if not firstAt then Tick(now) end
+    if firstAt then Engage(now) end
+    if dstGUID and dstName and (not aggro or find(sub, "SWING", 1, true)) then
+        local pet = dstFlags ~= nil and band(dstFlags, F_PLAYER) == 0
+        aggro = { guid = dstGUID, name = dstName, owner = pet and RecPull.Owner(dstGUID, dstName, dstFlags) or nil }
+        bossAt = bossAt or now
+    end
+    pending = { at = now, boss = boss }
 end
 local function Flush(now)
     local p = pending
@@ -255,18 +272,58 @@ end
 function RecPull.SetNotify(on)
     if on then ns.GetDB().settings.notePull = nil else ns.GetDB().settings.notePull = false end
 end
-function RecPull.Message(pull)
-    local text
-    local who, sec, ends = ns.PullTimer.AtPull()
-    if who then
-        local early = ends - pull.t
-        if early > ns.pullTimer.early then
-            text = format(ns.T("sum.pull.timerearly"), sec, who, ns.Fixed(early))
-        else
-            text = format(ns.T("sum.pull.timer"), sec, who)
+local ICON_MELEE = "Interface\\Icons\\INV_Sword_04"
+local ICON_BODY = "Interface\\Icons\\Ability_Warrior_Charge"
+local PULL_SPELLS = { 31935, 57755, 49576, 45477, 56222, 62124, 355, 100, 20252, 23922, 6343, 20243, 6572, 78, 3018,
+    5019, 2764, 6795, 16857, 770, 8921, 5176, 2912, 33878, 6807, 34477, 75, 3044, 56641, 1978, 1130, 116, 133, 30455,
+    44614, 686, 172, 348, 8092, 589, 585, 403, 8050, 1752, 57934, 47541, 45462, 49184, 53595, 53600, 26573, 879, 2649,
+    16827, 17253, 3716, 31707, 47468 }
+local pullIcons
+local function SpellIcon(pull)
+    local icon = pull.sid and ns.SpellIcon(pull.sid)
+    if icon then return icon end
+    icon = select(3, GetSpellInfo(pull.spell))
+    if icon then return icon end
+    if not pullIcons then
+        pullIcons = {}
+        for i = 1, #PULL_SPELLS do
+            local name, _, tex = GetSpellInfo(PULL_SPELLS[i])
+            if name and tex then pullIcons[name] = tex end
         end
     end
-    return ns.PullWho.Text(pull), text
+    return pullIcons[pull.spell]
+end
+function RecPull.Message(pull)
+    local W = ns.PullWho
+    local how = W.How(pull)
+    local who = pull.src
+    if pull.owner then
+        who, how = pull.owner, format(ns.T("sum.pull.line"), pull.src, how)
+    elseif pull.pet then
+        who = W.Who(pull)
+    end
+    local icon = pull.pet and (ns.SpellIcon(summonSpell[pull.src]) or select(3, GetSpellInfo(pull.src))
+        or select(10, GetItemInfo(pull.src))) or nil
+    if icon then
+    elseif pull.body then
+        icon = ICON_BODY
+    elseif pull.spell then
+        icon = SpellIcon(pull)
+    else
+        icon = ICON_MELEE
+    end
+    local m = { icon = icon, who = who, class = ns.Encounters.ClassOf(who), how = how }
+    local by, sec, ends = ns.PullTimer.AtPull()
+    if by then
+        local early = ends - pull.t
+        if early > ns.pullTimer.early then
+            m.timer = format(ns.T("pull.timer"), sec, by)
+            m.early = format(ns.T("sum.pull.early"), ns.Fixed(early))
+        else
+            m.timer = format(ns.T("sum.pull.timer"), sec, by)
+        end
+    end
+    return m
 end
 function RecPull.Step(dt)
     local now = GetTime()

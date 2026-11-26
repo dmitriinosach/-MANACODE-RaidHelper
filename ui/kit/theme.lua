@@ -179,17 +179,22 @@ function Kit.Skin(f, group)
     if g then Kit.Backdrop(f, g) end
 end
 function Kit.Fill(tex, d)
-    tex:SetTexture(d.tex or d.bgFile or WHITE8)
+    local g = d.grad
+    if g then
+        local a = g.from
+        tex:SetTexture(a[1], a[2], a[3], 1)
+    else
+        tex:SetTexture(d.tex or d.bgFile or WHITE8)
+    end
     local c = d.coord
     if c then
         tex:SetTexCoord(c[1], c[2], c[3], c[4])
     else
         tex:SetTexCoord(0, 1, 0, 1)
     end
-    local g = d.grad
     if g then
         local a, b = g.from, g.to
-        tex:SetGradientAlpha(g.dir or "VERTICAL", a[1], a[2], a[3], a[4] or 1, b[1], b[2], b[3], b[4] or 1)
+        tex:SetGradientAlpha(g.dir or "VERTICAL", 1, 1, 1, a[4] or 1, 1, 1, 1, b[4] or 1)
     elseif d.color then
         local k = d.color
         tex:SetVertexColor(k[1], k[2], k[3], k[4] or 1)

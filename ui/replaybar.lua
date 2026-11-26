@@ -61,6 +61,9 @@ local st = { width = 0, scrubW = 0, tiers = { {}, {}, {}, {} }, shown = {}, lane
              deathGroups = {}, deathAt = {}, scrubX = 0, phases = {}, hover = false, labelsW = 0, labelR = 0, col = 0, pad = 0 }
 local pools = { {}, {}, {}, {} }
 local ticks, dlabels, bands, phs, mins = {}, {}, {}, {}, {}
+local focusTex = {}
+local FOCUS_POOL = 8
+local FOCUS_W = 2
 local markFont
 local m = { btn = BTN, row = ROW_H, track = BTN, name = 12, pt = 10, clockW = 80, lane = LANE_H, icon = ICON, top = 0 }
 local function Metrics()
@@ -570,6 +573,38 @@ local function Split(scene)
     end
     return tiers, deaths
 end
+local function DrawFocus(scene)
+    local ui, name, n = st.ui, st.focus, 0
+    if ui and scene and name then
+        local list = scene.deaths
+        local r, g, b = Kit.ClassColor(ns.Encounters.ClassOf(name))
+        local h = m.top + #st.shown * m.lane
+        for i = 1, #list do
+            local d = list[i]
+            if d.name == name and n < FOCUS_POOL then
+                n = n + 1
+                local tex = focusTex[n]
+                if not tex then
+                    tex = ui.bar:CreateTexture(nil, "OVERLAY")
+                    tex:SetTexture(WHITE)
+                    focusTex[n] = tex
+                end
+                local x = Clamp(XAt(scene, d.t - scene.pull), FOCUS_W / 2, st.scrubW - FOCUS_W / 2)
+                tex:ClearAllPoints()
+                tex:SetPoint("TOP", ui.bar, "TOPLEFT", st.scrubX + x, 0)
+                tex:SetWidth(FOCUS_W)
+                tex:SetHeight(h)
+                tex:SetVertexColor(r, g, b, 1)
+                tex:Show()
+            end
+        end
+    end
+    for i = n + 1, #focusTex do focusTex[i]:Hide() end
+end
+function Bar.Focus(name)
+    st.focus = name
+    DrawFocus(st.run and st.run.scene)
+end
 function Bar.Use(scene)
     local ui = st.ui
     if not ui then return false end
@@ -604,6 +639,7 @@ function Bar.Use(scene)
     for k = acc.labels + 1, #dlabels do dlabels[k]:Hide() end
     st.deaths = acc.used
     DrawPhases(scene)
+    DrawFocus(scene)
     if m.row == row then return false end
     ui.bar:SetHeight(m.row)
     return true

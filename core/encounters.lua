@@ -14,7 +14,7 @@ local RESUME_GAP = 180
 local MIN_FIGHT = 20
 local MIN_DUMMY = 3
 local FX_VERSION = 5
-local SCAN_VERSION = 17
+local SCAN_VERSION = 18
 local CLS_VERSION = 1
 local CAST_WINDOW = 3
 local REVIVE_GAP = 2
@@ -453,9 +453,11 @@ local function ScanAll()
             local enc = asDst or asSrc
             if enc then
                 local f = open[enc]
-                local pulled = asDst ~= nil and byPlayer
+                local pulled = (asDst ~= nil and byPlayer
                     and not (ns.bossYield and ns.bossYield[asDst] and dstFlags ~= nil
-                        and bit.band(dstFlags, F_FRIENDLY) > 0)
+                        and bit.band(dstFlags, F_FRIENDLY) > 0))
+                    or (asDst == nil and asSrc ~= nil and K.swing and (hurt or K.miss) and dstFlags ~= nil
+                        and bit.band(dstFlags, F_BY_PLAYER) > 0 and not (ns.bossYield and ns.bossYield[asSrc]))
                 local stale = f ~= nil
                     and (ts - f.last > (f.killed and IDLE_GAP or RESUME_GAP)
                         or (not f.killed and ts - f.last > IDLE_GAP and Wiped(f)))
